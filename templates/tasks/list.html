@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% load static %}
+{% load tasks_tags %}
+
+{% block title %}Tasks · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Tasks{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=2">
+{% endblock %}
+{% block extra_js %}
+  <script src="{% static 'js/tasks.js' %}?v=2" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="tsk-page">
+
+  {# ---------- Header ---------- #}
+  <header class="tsk-page-head">
+    <div>
+      <h1>Tasks</h1>
+      <p>{{ total }} task{{ total|pluralize }} in your scope.</p>
+    </div>
+
+    <div class="tsk-page-head-actions">
+      <div class="tsk-view-toggle">
+        <a href="?view=list&q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}"
+           class="{% if view_mode != 'kanban' %}is-active{% endif %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>
+          List
+        </a>
+        <a href="?view=kanban&q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}"
+           class="{% if view_mode == 'kanban' %}is-active{% endif %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="10" rx="1"/></svg>
+          Kanban
+        </a>
+      </div>
+
+      <button type="button" class="tsk-btn tsk-btn-ghost" data-bulk-toggle-btn>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Select
+      </button>
+
+      <a href="{% url 'tasks:create' %}" class="tsk-btn tsk-btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New task
+      </a>
+    </div>
+  </header>
+
+  {# ---------- Tabs ---------- #}
+  <nav class="tsk-tabs">
+    <a class="tsk-tab {% if scope_filter == '' and state_filter == 'active' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&state=active&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Active</a>
+    <a class="tsk-tab {% if state_filter == 'all' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&state=all&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">All</a>
+    <a class="tsk-tab {% if scope_filter == 'assigned' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&scope=assigned&state=active&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Assigned to me</a>
+    <a class="tsk-tab {% if scope_filter == 'mine' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&scope=mine&state=active&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Created by me</a>
+    <a class="tsk-tab {% if state_filter == 'overdue' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&state=overdue&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Overdue</a>
+    <a class="tsk-tab {% if state_filter == 'completed' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&state=completed&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Completed</a>
+  </nav>
+
+  {# ---------- Filters ---------- #}
+  <form method="get" class="tsk-filters"
+        hx-get="{% url 'tasks:list' %}"
+        hx-target="#tsk-list-container" hx-select="#tsk-list-container"
+        hx-swap="outerHTML" hx-push-url="true"
+        hx-indicator="#tsk-list-container"
+        hx-trigger="submit from:form, change from:select, keyup changed delay:400ms from:input[name=q]">
+
+    <input type="search" name="q" value="{{ q }}"
+           placeholder="Search tasks…"
+           class="tsk-search" autocomplete="off">
+
+    <select name="state">
+      <option value="active"     {% if state_filter == 'active' %}selected{% endif %}>Any active</option>
+      <option value="all"        {% if state_filter == 'all' %}selected{% endif %}>Any state</option>
+      <option value="open"       {% if state_filter == 'open' %}selected{% endif %}>Open</option>
+      <option value="draft"      {% if state_filter == 'draft' %}selected{% endif %}>Draft</option>
+      <option value="in_progress" {% if state_filter == 'in_progress' %}selected{% endif %}>In progress</option>
+      <option value="awaiting_review" {% if state_filter == 'awaiting_review' %}selected{% endif %}>Awaiting review</option>
+      <option value="overdue"    {% if state_filter == 'overdue' %}selected{% endif %}>Overdue</option>
+      <option value="completed"  {% if state_filter == 'completed' %}selected{% endif %}>Completed</option>
+      <option value="cancelled"  {% if state_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+
+    <select name="category">
+      <option value="">All categories</option>
+      {% for c in categories %}
+        <option value="{{ c.code }}" {% if cat_filter == c.code %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="priority">
+      <option value="">Any priority</option>
+      {% for value, label in priority_choices %}
+        <option value="{{ value }}" {% if prio_filter == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="assignee">
+      <option value="">Any assignee</option>
+      {% for u in all_users %}
+        <option value="{{ u.pk }}" {% if assignee_filter == u.pk|stringformat:"s" %}selected{% endif %}>
+          {{ u.get_full_name|default:u.email }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <select name="sort">
+      <option value="created"  {% if sort_key == 'created' %}selected{% endif %}>Newest first</option>
+      <option value="due"      {% if sort_key == 'due' %}selected{% endif %}>Due date</option>
+      <option value="priority" {% if sort_key == 'priority' %}selected{% endif %}>Priority</option>
+      <option value="state"    {% if sort_key == 'state' %}selected{% endif %}>State</option>
+      <option value="title"    {% if sort_key == 'title' %}selected{% endif %}>Title</option>
+    </select>
+
+    <input type="hidden" name="scope" value="{{ scope_filter }}">
+    <input type="hidden" name="view"  value="{{ view_mode }}">
+
+    {% if q or cat_filter or prio_filter or scope_filter or assignee_filter %}
+      <a href="{% url 'tasks:list' %}" class="tsk-filter-reset">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Clear
+      </a>
+    {% endif %}
+  </form>
+
+  {# ---------- Container ---------- #}
+  <div id="tsk-list-container" class="tsk-list-container">
+    {% if view_mode == 'kanban' %}
+      {% include "tasks/_kanban.html" %}
+    {% else %}
+      {% if page.object_list %}
+        <div class="tsk-list" data-bulk-scope>
+          {% for task in page.object_list %}
+            {% include "tasks/_card.html" with task=task %}
+          {% endfor %}
+        </div>
+
+        {% if page.has_other_pages %}
+          <nav class="tsk-pagination">
+            {% if page.has_previous %}
+              <a href="?view={{ view_mode }}&q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+                 hx-get="?view={{ view_mode }}&q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+                 hx-target="#tsk-list-container" hx-select="#tsk-list-container"
+                 hx-swap="outerHTML" hx-push-url="true">‹ Prev</a>
+            {% else %}<span class="is-disabled">‹ Prev</span>{% endif %}
+            <span class="is-current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+            {% if page.has_next %}
+              <a href="?view={{ view_mode }}&q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+                 hx-get="?view={{ view_mode }}&q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+                 hx-target="#tsk-list-container" hx-select="#tsk-list-container"
+                 hx-swap="outerHTML" hx-push-url="true">Next ›</a>
+            {% else %}<span class="is-disabled">Next ›</span>{% endif %}
+          </nav>
+        {% endif %}
+
+      {% else %}
+        <div class="tsk-empty">
+          <div class="tsk-empty-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </div>
+          <h3>{% if q or cat_filter or prio_filter or assignee_filter %}No tasks match these filters{% else %}No tasks yet{% endif %}</h3>
+          <p>{% if q or cat_filter or prio_filter or assignee_filter %}Try adjusting the filters, or clear them to see everything.{% else %}Create your first task to start assigning work to your team.{% endif %}</p>
+          {% if q or cat_filter or prio_filter or assignee_filter %}
+            <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost">Clear filters</a>
+          {% else %}
+            <a href="{% url 'tasks:create' %}" class="tsk-btn tsk-btn-primary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Create the first task
+            </a>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {# ---------- Bulk action bar ---------- #}
+  <form method="post" action="{% url 'tasks:bulk_action' %}" data-bulk-bar class="tsk-bulk-bar">
+    {% csrf_token %}
+    <input type="hidden" name="task_ids" value="" data-bulk-ids>
+    <span class="tsk-bulk-count" data-bulk-count>0 selected</span>
+
+    <select name="action" class="tsk-bulk-select" data-bulk-action-select>
+      <option value="assign">Assign to…</option>
+      <option value="priority">Change priority…</option>
+      <option value="cancel">Cancel tasks</option>
+      <option value="delete">Delete tasks</option>
+    </select>
+
+    <select name="assignee" class="tsk-bulk-select" data-bulk-field="assign">
+      <option value="">— pick assignee —</option>
+      {% for u in all_users %}
+        <option value="{{ u.pk }}">{{ u.get_full_name|default:u.email }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="priority" class="tsk-bulk-select" data-bulk-field="priority" style="display:none;">
+      <option value="">— pick priority —</option>
+      {% for value, label in priority_choices %}
+        <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <input type="text" name="reason" placeholder="Reason (cancel/delete)"
+           class="tsk-bulk-reason" data-bulk-field="reason" style="display:none;">
+
+    <div class="tsk-bulk-actions">
+      <button type="button" class="tsk-btn tsk-btn-ghost" data-bulk-clear>Clear</button>
+      <button type="submit" class="tsk-btn tsk-btn-primary">Apply</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  var toggleBtn = document.querySelector("[data-bulk-toggle-btn]");
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", function () {
+      document.querySelectorAll(".tsk-list, .tsk-kanban").forEach(function (s) {
+        s.classList.toggle("is-bulk-mode");
+      });
+      toggleBtn.classList.toggle("is-active");
+    });
+  }
+
+  var sel = document.querySelector("[data-bulk-action-select]");
+  var bar = document.querySelector("[data-bulk-bar]");
+  if (sel && bar) {
+    var sync = function () {
+      var v = sel.value;
+      bar.querySelectorAll("[data-bulk-field]").forEach(function (f) {
+        f.style.display = (f.getAttribute("data-bulk-field") === v) ? "" : "none";
+      });
+    };
+    sel.addEventListener("change", sync);
+    sync();
+  }
+})();
+</script>
+{% endblock %}

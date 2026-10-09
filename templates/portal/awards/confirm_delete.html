@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Delete award · {{ SITE_NAME }}{% endblock %}
+
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/portal.css' %}?v=3">{% endblock %}
+
+{% block content %}
+<div class="portal-page portal-page-narrow">
+  <div class="portal-confirm">
+    <div class="portal-confirm-icon portal-confirm-icon-danger">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    </div>
+    <h2>Delete this award?</h2>
+    <p class="portal-confirm-sub">{{ award.title }} — {{ award.recipient.full_name }}</p>
+    <p class="muted">This is a soft delete — the record is preserved for audit and can be restored by an admin. Any attached image or certificate is kept on disk.</p>
+    <form method="post" class="portal-confirm-actions">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger">Yes, delete</button>
+      <a href="{% url 'portal:award_detail' award.pk %}" class="btn btn-ghost">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

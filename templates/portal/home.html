@@ -1,0 +1,36 @@
+{% extends "portal/_layout.html" %}
+
+{% block title %}Portal · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Portal{% endblock %}
+
+{% block content %}
+<div class="portal-page">
+  <header class="portal-head">
+    <div>
+      <h1>Workplace Portal</h1>
+      <p>Announcements, events, and reminders — everything in one place.</p>
+    </div>
+  </header>
+
+  <nav class="portal-tabs">
+    <a href="{% url 'portal:home' %}"                 class="portal-tab is-active">Overview</a>
+    <a href="{% url 'portal:announcement_list' %}"    class="portal-tab">Announcements</a>
+    <a href="{% url 'portal:event_list' %}"           class="portal-tab">Events</a>
+    <a href="{% url 'portal:reminder_list' %}"        class="portal-tab">Reminders</a>
+    <a href="{% url 'portal:document_list' %}"        class="portal-tab">Documents</a>
+  </nav>
+
+  <div class="portal-grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+    <section>
+      {% load portal_tags %}
+      {% announcements_widget limit=6 %}
+    </section>
+    <section>
+      {% events_widget limit=4 %}
+    </section>
+    <section>
+      {% reminders_widget limit=6 %}
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}New request · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}New request{% endblock %}
+
+{% block content %}
+<div class="wf-page-head">
+  <div>
+    <a href="{% url 'workflow:my_requests' %}" class="btn btn-subtle btn-sm" style="margin-bottom:12px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to my requests
+    </a>
+    <h1>What do you need?</h1>
+    <p>Pick the type of request below. Each type has its own fields and routing.</p>
+  </div>
+</div>
+
+{% if categories %}
+  {% for category in categories %}
+    <section style="margin-bottom:28px;">
+      <h2 class="section-label" style="margin-top:0;">{{ category.name }}</h2>
+      <div class="wf-types-grid">
+        {% for rt in category.request_types.all %}
+          {% if rt.is_active %}
+            <a href="{% url 'workflow:raise_type' rt.code %}" class="wf-type-card">
+              <div class="wf-type-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              </div>
+              <div class="wf-type-body">
+                <strong>{{ rt.name }}</strong>
+                <span class="muted">
+                  {% if rt.description %}{{ rt.description|truncatechars:80 }}
+                  {% else %}Routes to {{ rt.handling_department.name }}.{% endif %}
+                </span>
+              </div>
+            </a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+{% else %}
+  <div class="wf-empty">
+    <div class="wf-empty-icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </div>
+    <h3>No request types are available</h3>
+    <p>Contact ICT support — an administrator needs to seed the request types first.</p>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load static %}
+{% load tasks_tags %}
+{% block title %}Review queue · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Review queue{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=2">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=2" defer></script>{% endblock %}
+
+{% block content %}
+<div class="tsk-page">
+  <header class="tsk-page-head">
+    <div>
+      <h1>Review queue</h1>
+      <p>{{ total }} task{{ total|pluralize }} waiting for your review.</p>
+    </div>
+  </header>
+
+  <form method="get" class="tsk-filters"
+        hx-get="{% url 'tasks:review_queue' %}"
+        hx-target="#tsk-list-container" hx-select="#tsk-list-container"
+        hx-swap="outerHTML" hx-push-url="true"
+        hx-indicator="#tsk-list-container"
+        hx-trigger="submit from:form, keyup changed delay:400ms from:input[name=q]">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search review queue…" class="tsk-search" autocomplete="off">
+  </form>
+
+  <div id="tsk-list-container" class="tsk-list-container">
+    {% if page.object_list %}
+      <div class="tsk-list">
+        {% for task in page.object_list %}
+          {% include "tasks/_card.html" with task=task %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="tsk-empty">
+        <div class="tsk-empty-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h3>Review queue is empty</h3>
+        <p>Nothing needs your sign-off right now. Nice work.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

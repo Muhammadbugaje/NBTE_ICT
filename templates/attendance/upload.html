@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Upload attendance · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Upload attendance{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="att-page att-page-narrow">
+
+  {# ============================ HERO ============================ #}
+  <header class="att-hero">
+    <div class="att-hero-left">
+      <a class="att-back" href="{% url 'attendance:department' %}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Department report
+      </a>
+      <h1>Upload attendance</h1>
+      <p>Upload an Excel file with one row per staff member and one column per day (1, 2, 3, …).</p>
+    </div>
+  </header>
+
+  {# ============================ HELP + SAMPLE ============================ #}
+  <section class="att-upload-help">
+    <h3>Expected format</h3>
+
+    <div class="att-upload-code">
+<pre>| Email            | 1 | 2 | 3 | 4 | 5 | ... |
+|------------------|---|---|---|---|---|-----|
+| ali@nbte.gov.ng  | 1 | 1 | 0 | 1 | L | ... |
+| fatima@nbte.ng   | 1 | 0 | 0 | 1 | 1 | ... |</pre>
+    </div>
+
+    <ul class="att-upload-legend">
+      <li><code>1</code> or <code>P</code> — Present</li>
+      <li><code>L</code> — Late</li>
+      <li><code>0</code> or <code>A</code> — Absent</li>
+      <li><code>E</code> — Excused</li>
+      <li><code>H</code> — Holiday</li>
+      <li>Blank cell — skip (no record created)</li>
+    </ul>
+
+    <div class="att-upload-sample">
+      <a class="att-btn att-btn-primary"
+         href="{% url 'attendance:download_sample' %}{% if form.year.value or form.month.value %}?year={{ form.year.value }}&month={{ form.month.value }}{% endif %}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download sample template
+      </a>
+      <span class="att-upload-sample-hint">
+        Pre-filled with your department's staff emails and the correct day columns.
+      </span>
+    </div>
+  </section>
+
+  {# ============================ FORM ============================ #}
+  <form method="post" enctype="multipart/form-data" class="att-upload-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="preview">
+
+    <div class="att-upload-drop" data-upload-drop>
+      <div class="att-upload-drop-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </div>
+      <div class="att-upload-drop-body">
+        <label for="{{ form.file.id_for_label }}" style="cursor:pointer;font-weight:600;color:var(--att-accent);">
+          Choose a file
+        </label>
+        <span>or drag &amp; drop here — .xlsx or .xls, up to 10 MB</span>
+        <span class="att-upload-drop-filename" data-file-name></span>
+      </div>
+      <input type="file" name="file" id="{{ form.file.id_for_label }}"
+             accept=".xlsx,.xls" class="sr-only" data-upload-input required>
+    </div>
+
+    <div class="att-upload-row">
+      <div class="att-filter-group">
+        <label class="att-filter-label" for="{{ form.month.id_for_label }}">Month</label>
+        {{ form.month }}
+      </div>
+      <div class="att-filter-group">
+        <label class="att-filter-label" for="{{ form.year.id_for_label }}">Year</label>
+        {{ form.year }}
+      </div>
+    </div>
+
+    <label class="att-field-check">
+      {{ form.overwrite }}
+      <span>{{ form.overwrite.help_text|default:"Overwrite existing records for these dates" }}</span>
+    </label>
+
+    <div class="att-upload-actions">
+      <button type="submit" class="att-btn att-btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Preview upload
+      </button>
+      <a href="{% url 'attendance:department' %}" class="att-btn att-btn-ghost">Cancel</a>
+    </div>
+  </form>
+
+  {# ============================ PREVIEW ============================ #}
+  {% if preview %}
+    <section class="att-upload-preview">
+      <div class="att-upload-preview-head">
+        <h3>Preview</h3>
+        <div class="att-upload-preview-meta">
+          <span><strong>{{ preview.month }}/{{ preview.year }}</strong></span>
+          <span class="att-dot">·</span>
+          <span>{{ preview.columns_detected|length }} day column{{ preview.columns_detected|length|pluralize }}</span>
+          <span class="att-dot">·</span>
+          <span><strong>{{ preview.emails_ok }}</strong> matched</span>
+          {% if preview.emails_missing %}
+            <span class="att-dot">·</span>
+            <span style="color:#dc2626;"><strong>{{ preview.emails_missing }}</strong> unmatched</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="att-table-wrap att-table-wrap-compact">
+        <table class="att-table">
+          <thead>
+            <tr>
+              <th>Row</th>
+              <th>Email</th>
+              {% for d in preview.days|slice:":12" %}
+                <th class="att-preview-day-head">{{ d }}</th>
+              {% endfor %}
+              {% if preview.days|length > 12 %}<th class="att-preview-day-head">…</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview.rows|slice:":10" %}
+              <tr class="{% if row.errors %}att-row-error{% endif %}">
+                <td class="muted">{{ row.row_number }}</td>
+                <td>
+                  <strong>{{ row.email }}</strong>
+                  {% if row.errors %}<div class="att-row-error-msg">{{ row.errors|join:" " }}</div>{% endif %}
+                </td>
+                {% for d in preview.days|slice:":12" %}
+                  <td class="att-preview-cell">
+                    {% with v=row.statuses|default_if_none:"" %}{% endwith %}
+                    {% for k, val in row.statuses.items %}{% if k == d %}{{ val|default:"—" }}{% endif %}{% endfor %}
+                  </td>
+                {% endfor %}
+                {% if preview.days|length > 12 %}<td class="att-preview-cell">…</td>{% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if preview.rows|length > 10 %}
+        <p class="att-muted" style="margin-top:10px;font-size:12px;">
+          Showing first 10 of {{ preview.rows|length }} rows.
+        </p>
+      {% endif %}
+
+      {% if preview.emails_missing %}
+        <div class="att-banner att-banner-warn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Rows with no matching active user will be skipped when you apply.
+        </div>
+      {% endif %}
+
+      <div class="att-upload-preview-actions">
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="apply">
+          <input type="hidden" name="month" value="{{ preview.month }}">
+          <input type="hidden" name="year" value="{{ preview.year }}">
+
+          <div class="att-upload-confirm">
+            <label class="att-filter-label" for="id_apply_file">Re-upload the same file to confirm</label>
+            <input type="file" name="file" id="id_apply_file" accept=".xlsx,.xls" required class="input">
+          </div>
+
+          <label class="att-field-check">
+            <input type="checkbox" name="overwrite" checked>
+            <span>Overwrite existing records for these dates</span>
+          </label>
+
+          <div class="att-upload-actions">
+            <button type="submit" class="att-btn att-btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Apply upload
+            </button>
+            <a href="{% url 'attendance:upload' %}" class="att-btn att-btn-ghost">Start over</a>
+          </div>
+        </form>
+      </div>
+    </section>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/attendance.js' %}?v=2" defer></script>
+{% endblock %}

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% load static %}
+{% load tasks_tags %}
+{% block title %}New task · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}New task{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=3">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=3" defer></script>{% endblock %}
+
+{% block content %}
+<div class="tsk-page">
+  <header class="tsk-page-head">
+    <div>
+      <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost" style="margin-bottom:12px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        All tasks
+      </a>
+      <h1>{% if locked_category %}{{ locked_category.name }} task{% else %}New task{% endif %}</h1>
+      <p>{% if locked_category %}{{ locked_category.description|default:"Fill in the details below." }}{% else %}Assign work, set priorities, and choose who reviews it. You can split into subtasks after saving.{% endif %}</p>
+    </div>
+  </header>
+
+  <form method="post" novalidate class="tsk-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="tsk-form-banner tsk-form-banner-error">{{ form.non_field_errors|join:" " }}</div>
+    {% endif %}
+
+    <div class="tsk-form-section">
+      <h3 class="tsk-form-section-title">What needs doing</h3>
+
+      <label class="tsk-field">
+        <span class="tsk-field-label">Title <span class="tsk-field-required">*</span></span>
+        {{ form.title }}
+        {% if form.title.errors %}<span class="tsk-field-error">{{ form.title.errors|join:" " }}</span>{% endif %}
+        <span class="tsk-field-hint">One clear line — e.g. "Quarterly printer maintenance, 3rd floor".</span>
+      </label>
+
+      <label class="tsk-field">
+        <span class="tsk-field-label">Description</span>
+        {{ form.description }}
+        <span class="tsk-field-hint">What does "done" look like? Include any acceptance criteria.</span>
+      </label>
+    </div>
+
+    <div class="tsk-form-section">
+      <h3 class="tsk-form-section-title">Classification & schedule</h3>
+
+      {% if not locked_category %}
+        <label class="tsk-field">
+          <span class="tsk-field-label">Category</span>
+          {{ form.category }}
+          <span class="tsk-field-hint">Determines who can be assigned and default review rules.</span>
+        </label>
+      {% else %}
+        {{ form.category }}
+      {% endif %}
+
+      <div class="tsk-field-row">
+        <label class="tsk-field">
+          <span class="tsk-field-label">Priority</span>
+          {{ form.priority }}
+        </label>
+        <label class="tsk-field">
+          <span class="tsk-field-label">Estimated hours</span>
+          {{ form.estimated_hours }}
+        </label>
+      </div>
+
+      <div class="tsk-field-row">
+        <label class="tsk-field">
+          <span class="tsk-field-label">Start date</span>
+          {{ form.start_date }}
+        </label>
+        <label class="tsk-field">
+          <span class="tsk-field-label">Due date</span>
+          {{ form.due_date }}
+        </label>
+      </div>
+    </div>
+
+    <div class="tsk-form-section">
+      <h3 class="tsk-form-section-title">Assignees</h3>
+      {% if locked_category %}
+        {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_category_code=locked_category.code %}
+      {% else %}
+        {% include "tasks/_assignee_picker.html" with picker_name="assignees" %}
+      {% endif %}
+      <span class="tsk-field-hint" style="margin-top:10px;">
+        Only people below your rank appear — never the Executive Secretary. Pick a category first to narrow the list to that department.
+      </span>
+    </div>
+
+    <div class="tsk-form-section">
+      <h3 class="tsk-form-section-title">Review</h3>
+      <label class="tsk-check">
+        {{ form.requires_review }}
+        <span>Requires review before closing.</span>
+      </label>
+      <label class="tsk-field" style="margin-top:14px;">
+        <span class="tsk-field-label">Reviewer <span class="muted" style="font-weight:400;color:var(--tsk-fg-subtle);">(optional)</span></span>
+        {{ form.reviewer }}
+        <span class="tsk-field-hint">Leave blank to review it yourself.</span>
+      </label>
+    </div>
+
+    <div class="tsk-form-section">
+      <h3 class="tsk-form-section-title">Recurrence & tags</h3>
+      <div class="tsk-field-row">
+        <label class="tsk-field">
+          <span class="tsk-field-label">Recurrence</span>
+          {{ form.recurrence_type }}
+        </label>
+        <label class="tsk-field">
+          <span class="tsk-field-label">Custom rule <span class="muted" style="font-weight:400;color:var(--tsk-fg-subtle);">(if Custom)</span></span>
+          {{ form.recurrence_rule }}
+        </label>
+      </div>
+      <label class="tsk-field">
+        <span class="tsk-field-label">Tags</span>
+        {{ form.tags }}
+        <span class="tsk-field-hint">Comma-separated — e.g. maintenance, weekly.</span>
+      </label>
+    </div>
+
+    <div class="tsk-form-actions">
+      <button type="submit" name="_open_now" value="1" class="tsk-btn tsk-btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Create &amp; open
+      </button>
+      <button type="submit" name="_open_now" value="0" class="tsk-btn tsk-btn-ghost">
+        Save as draft
+      </button>
+      <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

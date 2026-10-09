@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Staff directory · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Staff directory{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/staff.css' %}?v=3">
+{% endblock %}
+
+{% block content %}
+<div class="staff-page">
+
+  {# ---------- HERO ---------- #}
+  <header class="staff-hero">
+    <div>
+      <h1>Staff directory</h1>
+      <p>
+        {{ total }} staff member{{ total|pluralize }}
+        {% if request.user.department and not is_all_departments %}
+          in {{ request.user.department.name }}
+        {% endif %}
+      </p>
+    </div>
+    <div class="staff-hero-actions">
+      {% if can_create %}
+        <a href="{% url 'staff:create' %}" class="btn btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add staff
+        </a>
+      {% endif %}
+    </div>
+  </header>
+
+  {# ---------- FILTERS ---------- #}
+  <form method="get" class="staff-search" role="search">
+    <div class="staff-search-field staff-search-field-q">
+      <label for="staff-q">Search</label>
+      {{ search.q }}
+    </div>
+
+    <div class="staff-search-field">
+      <label for="staff-dept">Department</label>
+      {{ search.department }}
+    </div>
+
+    <div class="staff-search-field">
+      <label for="staff-state">Status</label>
+      {{ search.state }}
+    </div>
+
+    <div class="staff-search-actions">
+      <button type="submit" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Search
+      </button>
+      {% if filters_active %}
+        <a href="{% url 'staff:list' %}" class="btn btn-ghost">Reset</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {# ---------- ACTIVE FILTER SUMMARY ---------- #}
+  {% if filters_active %}
+    <div class="staff-filter-summary">
+      <span class="muted">Filtered results:</span>
+      {% if search.q.value %}<span class="staff-filter-chip">“{{ search.q.value }}”</span>{% endif %}
+      {% for f in search.fields.values %}
+        {% if f.value and f.name != "q" %}
+          <span class="staff-filter-chip">
+            {{ f.label }}: {{ f.value }}
+          </span>
+        {% endif %}
+      {% endfor %}
+      <a href="{% url 'staff:list' %}" class="staff-filter-clear">Clear</a>
+    </div>
+  {% endif %}
+
+  {# ---------- RESULT LIST ---------- #}
+  {% if page.object_list %}
+    <div class="staff-grid">
+      {% for s in page.object_list %}
+        <a href="{% url 'staff:detail' s.pk %}" class="staff-card">
+          <div class="staff-card-photo">
+            {% if s.photo %}
+              <img src="{{ s.photo_thumb_url }}" alt="" loading="lazy">
+            {% else %}
+              <span aria-hidden="true">{{ s.first_name|slice:":1"|upper }}{{ s.last_name|slice:":1"|upper }}</span>
+            {% endif %}
+            {% if s.state %}
+              <span class="staff-card-photo-state staff-state-{{ s.state.code|default:'neutral' }}">
+                {{ s.state.name }}
+              </span>
+            {% endif %}
+          </div>
+          <div class="staff-card-body">
+            <div class="staff-card-name">{{ s.full_name }}</div>
+            <div class="staff-card-meta">
+              {{ s.designation|default:"—" }}
+              {% if s.department %}<span class="staff-card-meta-sep">·</span> {{ s.department.name }}{% endif %}
+            </div>
+            <div class="staff-card-foot">
+              <span class="staff-card-no" title="Employee number">{{ s.employee_no }}</span>
+              {% if s.office %}
+                <span class="staff-card-office">{{ s.office.name }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+
+    {% if page.has_other_pages %}
+      <nav class="staff-pagination" aria-label="Pagination">
+        {% if page.has_previous %}
+          <a href="?{% querystring page=page.previous_page_number %}" class="staff-pagination-btn" aria-label="Previous page">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            Prev
+          </a>
+        {% else %}
+          <span class="staff-pagination-btn disabled" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Prev
+          </span>
+        {% endif %}
+
+        <span class="staff-pagination-current">
+          Page <strong>{{ page.number }}</strong> of {{ page.paginator.num_pages }}
+        </span>
+
+        {% if page.has_next %}
+          <a href="?{% querystring page=page.next_page_number %}" class="staff-pagination-btn" aria-label="Next page">
+            Next
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+        {% else %}
+          <span class="staff-pagination-btn disabled" aria-hidden="true">
+            Next
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </span>
+        {% endif %}
+      </nav>
+    {% endif %}
+
+  {% else %}
+    {# ---------- EMPTY STATE ---------- #}
+    <div class="staff-empty">
+      <div class="staff-empty-icon">
+        {% if filters_active %}
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        {% else %}
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        {% endif %}
+      </div>
+
+      {% if filters_active %}
+        <h3>No staff match your filters</h3>
+        <p>Try broadening your search or clearing the filters.</p>
+        <div class="staff-empty-actions">
+          <a href="{% url 'staff:list' %}" class="btn btn-primary">Clear filters</a>
+        </div>
+      {% else %}
+        <h3>No staff yet</h3>
+        <p>The directory is empty. Add the first staff member to get started.</p>
+        {% if can_create %}
+          <div class="staff-empty-actions">
+            <a href="{% url 'staff:create' %}" class="btn btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add the first staff member
+            </a>
+          </div>
+        {% endif %}
+      {% endif %}
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

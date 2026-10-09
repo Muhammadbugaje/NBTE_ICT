@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New holiday{% else %}Edit holiday{% endif %} · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="hol-form-page">
+
+  <a href="{% url 'portal:holidays_list' %}" class="hol-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    All holidays
+  </a>
+
+  <header class="hol-hero">
+    <div class="hol-hero-inner">
+      <div class="hol-hero-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <div>
+        <h1>{% if mode == "create" %}Add a holiday{% else %}Edit holiday{% endif %}</h1>
+        <p>Public, religious or departmental. Multi-day is supported.</p>
+      </div>
+    </div>
+  </header>
+
+  <form method="post" class="hol-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    <section class="hol-section">
+      <header class="hol-section-head"><h3>Details</h3></header>
+
+      <div class="hol-field">
+        <label for="{{ form.name.id_for_label }}">Name</label>
+        {{ form.name }}{{ form.name.errors }}
+      </div>
+
+      <div class="hol-field-row">
+        <div class="hol-field">
+          <label for="{{ form.kind.id_for_label }}">Kind</label>
+          {{ form.kind }}{{ form.kind.errors }}
+        </div>
+        <div class="hol-field">
+          <label for="{{ form.department.id_for_label }}">Department <span class="muted">(optional)</span></label>
+          {{ form.department }}{{ form.department.errors }}
+        </div>
+      </div>
+
+      <div class="hol-field-row">
+        <div class="hol-field">
+          <label for="{{ form.date_start.id_for_label }}">Start date</label>
+          {{ form.date_start }}{{ form.date_start.errors }}
+        </div>
+        <div class="hol-field">
+          <label for="{{ form.date_end.id_for_label }}">End date</label>
+          {{ form.date_end }}{{ form.date_end.errors }}
+        </div>
+      </div>
+
+      <div class="hol-field">
+        <label for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}{{ form.description.errors }}
+      </div>
+    </section>
+
+    <section class="hol-section">
+      <header class="hol-section-head"><h3>Scope</h3></header>
+
+      <div class="hol-field">
+        <label for="{{ form.visibility.id_for_label }}">Visibility</label>
+        {{ form.visibility }}{{ form.visibility.errors }}
+      </div>
+
+      <label class="hol-check">
+        {{ form.is_recurring }}
+        <span>Repeats every year on the same date</span>
+      </label>
+
+      <label class="hol-check">
+        {{ form.is_active }}
+        <span>Active</span>
+      </label>
+    </section>
+
+    <div class="hol-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Add holiday{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'portal:holidays_list' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

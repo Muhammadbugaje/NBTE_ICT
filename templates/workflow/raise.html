@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% load static %}
+{% load workflow_extras %}
+
+{% block title %}{{ request_type.name }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{{ request_type.name }}{% endblock %}
+
+{% block content %}
+<div class="wf-page-head">
+  <div>
+    <a href="{% url 'workflow:raise' %}" class="btn btn-subtle btn-sm" style="margin-bottom:12px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to request types
+    </a>
+    <h1>{{ request_type.name }}</h1>
+    <p>
+      {{ request_type.description|default:"Fill in the details below." }}
+      <br>
+      <span class="muted" style="font-size:12px;">
+        Routes to <strong>{{ request_type.handling_department.name }}</strong>.
+      </span>
+    </p>
+  </div>
+</div>
+
+<div class="wf-raise-card">
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="wizard-error">{{ form.non_field_errors|join:" " }}</div>
+    {% endif %}
+
+    {# ---------- Schema fields (type-specific) ---------- #}
+    {% if schema_fields %}
+      <div class="wf-schema-block">
+        <h3 class="wf-schema-title">Request details</h3>
+
+        {% for key, defn in schema_fields %}
+          <div class="field">
+            {% if defn.type == 'checkbox' %}
+              <label class="check" style="margin-bottom:0;">
+                {{ form|get_item:key }}
+                <span>{{ defn.label }}{% if defn.required %} <span class="req">*</span>{% endif %}</span>
+              </label>
+            {% else %}
+              <label for="{{ form|get_item:key|attr:'id_for_label' }}">
+                {{ defn.label }}{% if defn.required %} <span class="req">*</span>{% endif %}
+              </label>
+              {{ form|get_item:key }}
+            {% endif %}
+            {% if defn.help %}<span class="hint">{{ defn.help }}</span>{% endif %}
+            {% with errors=form|get_field_errors:key %}
+              {% if errors %}<span class="error">{{ errors|join:" " }}</span>{% endif %}
+            {% endwith %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {# ---------- Common fields ---------- #}
+    <div class="wf-schema-block">
+      <h3 class="wf-schema-title">Summary</h3>
+
+      <div class="field">
+        <label for="{{ form.subject.id_for_label }}">Subject <span class="req">*</span></label>
+        {{ form.subject }}
+        {% if form.subject.errors %}<span class="error">{{ form.subject.errors|join:" " }}</span>{% endif %}
+      </div>
+
+      <div class="field">
+        <label for="{{ form.body.id_for_label }}">Details</label>
+        {{ form.body }}
+        {% if form.body.errors %}<span class="error">{{ form.body.errors|join:" " }}</span>{% endif %}
+        <span class="hint">Include anything that will help the receiving department act quickly.</span>
+      </div>
+
+      <div class="field">
+        <label for="{{ form.priority.id_for_label }}">Priority</label>
+        {{ form.priority }}
+      </div>
+    </div>
+
+    <div class="wf-raise-actions">
+      <button class="btn btn-primary" type="submit">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Submit request
+      </button>
+      <a href="{% url 'workflow:raise' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "portal/_layout.html" %}
+{% block title %}Events · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Events{% endblock %}
+
+{% block content %}
+<div class="portal-page">
+
+  <header class="portal-head">
+    <div>
+      <h1>Events</h1>
+      <p>Meetings, ceremonies, and everything in between.</p>
+    </div>
+    {% if perms.portal.add_event %}
+      <a href="{% url 'portal:event_create' %}" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New event
+      </a>
+    {% endif %}
+  </header>
+
+  <nav class="portal-tabs">
+    <a href="{% url 'portal:home' %}"              class="portal-tab">Overview</a>
+    <a href="{% url 'portal:announcement_list' %}" class="portal-tab">Announcements</a>
+    <a href="{% url 'portal:event_list' %}"        class="portal-tab is-active">Events</a>
+    <a href="{% url 'portal:reminder_list' %}"     class="portal-tab">Reminders</a>
+    <a href="{% url 'portal:document_list' %}"     class="portal-tab">Documents</a>
+  </nav>
+
+  {# ------- Live / Mine / Drafts tabs ------- #}
+  {% if request.user.is_authenticated %}
+    <nav class="portal-subtabs" aria-label="Filter">
+      <a href="?show=live&when={{ active_when }}"
+         class="portal-subtab {% if active_show == 'live' %}is-active{% endif %}">
+        Live
+        {% if tab_counts.live %}<span class="portal-subtab-count">{{ tab_counts.live }}</span>{% endif %}
+      </a>
+      <a href="?show=mine"
+         class="portal-subtab {% if active_show == 'mine' %}is-active{% endif %}">
+        My events
+        {% if tab_counts.mine %}<span class="portal-subtab-count">{{ tab_counts.mine }}</span>{% endif %}
+      </a>
+      {% if tab_counts.drafts or perms.portal.change_event %}
+        <a href="?show=drafts"
+           class="portal-subtab {% if active_show == 'drafts' %}is-active{% endif %}">
+          Drafts
+          {% if tab_counts.drafts %}<span class="portal-subtab-count">{{ tab_counts.drafts }}</span>{% endif %}
+        </a>
+      {% endif %}
+    </nav>
+  {% endif %}
+
+  {# ------- Upcoming / Ongoing / Past (only when Live tab is active) ------- #}
+  {% if when_applicable %}
+    <nav class="portal-subtabs portal-subtabs-inline" aria-label="Time">
+      {% for value, label in when_choices %}
+        <a href="?show={{ active_show }}&when={{ value }}{% if active_category %}&category={{ active_category }}{% endif %}{% if search_q %}&q={{ search_q }}{% endif %}"
+           class="portal-subtab {% if active_when == value %}is-active{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+  {% endif %}
+
+  <form class="portal-filters"
+        method="get"
+        action="{% url 'portal:event_list' %}"
+        hx-get="{% url 'portal:event_list' %}"
+        hx-target="#event-list"
+        hx-swap="outerHTML"
+        hx-trigger="submit, change from:select"
+        hx-push-url="true">
+    <input type="hidden" name="show" value="{{ active_show }}">
+    <input type="hidden" name="when" value="{{ active_when }}">
+    <div class="portal-filters-q">
+      <input type="text" name="q" value="{{ search_q }}" placeholder="Search events…">
+    </div>
+    <select name="category">
+      <option value="">All categories</option>
+      {% for c in categories %}
+        <option value="{{ c.slug }}" {% if active_category == c.slug %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    {% if filters_active %}
+      <a href="?show={{ active_show }}{% if when_applicable %}&when={{ active_when }}{% endif %}"
+         class="portal-filters-reset">Clear</a>
+    {% endif %}
+  </form>
+
+  {% include "portal/events/_list.html" %}
+</div>
+{% endblock %}

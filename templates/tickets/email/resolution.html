@@ -1,0 +1,167 @@
+{% extends "email/base_email.html" %}
+
+{% block subject %}{{ ticket.reference }} resolved — {{ ticket.subject }}{% endblock %}
+
+{% block preheader %}
+Your ticket {{ ticket.reference }} has been resolved by {{ resolver_name|default:"the ICT team" }}.
+{% endblock %}
+
+{% block badge %}
+<span style="display:inline-block;padding:5px 12px;background:rgba(255,255,255,0.18);color:#ffffff;font-size:10.5px;font-weight:700;letter-spacing:0.09em;border-radius:999px;text-transform:uppercase;">Resolved</span>
+{% endblock %}
+
+{% block header_title %}Your ticket has been resolved{% endblock %}
+
+{% block intro %}{{ intro }}{% endblock %}
+
+{% block content %}
+
+  {# ============ TICKET SUMMARY ============ #}
+  <tr>
+    <td style="padding:12px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <tr>
+          <td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:12px;font-weight:700;color:#64748b;letter-spacing:0.04em;">
+              {{ ticket.reference }}
+            </div>
+            <div style="font-size:15px;font-weight:600;color:#0f172a;margin-top:6px;line-height:1.4;">
+              {{ ticket.subject }}
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 20px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-size:12px;color:#64748b;padding:3px 0;">Category</td>
+                <td align="right" style="font-size:12.5px;color:#0f172a;font-weight:500;padding:3px 0;">
+                  {{ ticket.category.name }}
+                </td>
+              </tr>
+              <tr>
+                <td style="font-size:12px;color:#64748b;padding:3px 0;">Priority</td>
+                <td align="right" style="padding:3px 0;">
+                  {% if ticket.priority == 'urgent' %}
+                    <span style="display:inline-block;padding:2px 10px;background:rgba(220,38,38,0.12);color:#dc2626;font-size:11px;font-weight:600;border-radius:999px;">Urgent</span>
+                  {% elif ticket.priority == 'high' %}
+                    <span style="display:inline-block;padding:2px 10px;background:rgba(234,88,12,0.12);color:#ea580c;font-size:11px;font-weight:600;border-radius:999px;">High</span>
+                  {% elif ticket.priority == 'normal' %}
+                    <span style="display:inline-block;padding:2px 10px;background:rgba(71,85,105,0.10);color:#475569;font-size:11px;font-weight:600;border-radius:999px;">Normal</span>
+                  {% else %}
+                    <span style="display:inline-block;padding:2px 10px;background:rgba(148,163,184,0.12);color:#94a3b8;font-size:11px;font-weight:600;border-radius:999px;">Low</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% if ticket.resolved_at %}
+              <tr>
+                <td style="font-size:12px;color:#64748b;padding:3px 0;">Resolved</td>
+                <td align="right" style="font-size:12.5px;color:#0f172a;font-weight:500;padding:3px 0;">
+                  {{ ticket.resolved_at|date:"M j, Y · H:i" }}
+                </td>
+              </tr>
+              {% endif %}
+              {% if resolver_name %}
+              <tr>
+                <td style="font-size:12px;color:#64748b;padding:3px 0;">Resolved by</td>
+                <td align="right" style="font-size:12.5px;color:#0f172a;font-weight:500;padding:3px 0;">
+                  {{ resolver_name }}
+                </td>
+              </tr>
+              {% endif %}
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  {# ============ RESOLUTION NOTES ============ #}
+  {% if ticket.resolution_notes %}
+  <tr>
+    <td style="padding:20px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-left:3px solid #10b981;background:rgba(16,185,129,0.05);border-radius:0 10px 10px 0;">
+        <tr>
+          <td style="padding:14px 18px;">
+            <div style="font-size:10.5px;font-weight:800;color:#047857;letter-spacing:0.09em;text-transform:uppercase;margin-bottom:8px;">
+              What was done
+            </div>
+            <div style="font-size:14px;line-height:1.65;color:#0f172a;white-space:pre-wrap;">{{ ticket.resolution_notes }}</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  {% endif %}
+
+  {# ============ COLLECTION DETAILS ============ #}
+  {% if ticket.collection_location or ticket.collection_timeframe %}
+  <tr>
+    <td style="padding:20px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;">
+        <tr>
+          <td style="padding:16px 18px;">
+            <div style="font-size:10.5px;font-weight:800;color:#1e40af;letter-spacing:0.09em;text-transform:uppercase;margin-bottom:10px;">
+              Collection details
+            </div>
+            {% if ticket.collection_location %}
+            <div style="font-size:13.5px;color:#0f172a;line-height:1.6;margin-bottom:6px;">
+              <strong style="color:#1e40af;">Location:</strong> {{ ticket.collection_location }}
+            </div>
+            {% endif %}
+            {% if ticket.collection_timeframe %}
+            <div style="font-size:13.5px;color:#0f172a;line-height:1.6;">
+              <strong style="color:#1e40af;">Timeframe:</strong> {{ ticket.collection_timeframe }}
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  {% endif %}
+
+  {# ============ RELATED ASSET ============ #}
+  {% if ticket.asset %}
+  <tr>
+    <td style="padding:20px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+        <tr>
+          <td style="padding:14px 18px;">
+            <div style="font-size:10.5px;font-weight:800;color:#64748b;letter-spacing:0.09em;text-transform:uppercase;margin-bottom:8px;">
+              Related asset
+            </div>
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:13px;color:#0f172a;font-weight:600;">
+              {{ ticket.asset.asset_tag }}
+            </div>
+            <div style="font-size:12.5px;color:#475569;margin-top:3px;">
+              {{ ticket.asset.display_name }}
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  {% endif %}
+
+  {# ============ CTA ============ #}
+  <tr>
+    <td style="padding:28px 30px 8px;">
+      <p style="margin:0 0 18px;font-size:14px;line-height:1.65;color:#475569;">
+        If everything looks right, open the ticket and click
+        <strong style="color:#0f172a;">Close &amp; rate</strong> to let us know how we did.
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="background:#1F6B3E;border-radius:9px;">
+            <a href="{{ detail_url }}"
+               style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:-0.005em;">
+              Open the ticket &nbsp;→
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+{% endblock %}

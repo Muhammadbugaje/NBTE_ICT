@@ -1,0 +1,47 @@
+{% load tasks_tags %}
+<div class="tsk-kanban" data-kanban>
+  {% for col in columns %}
+    <div class="tsk-kanban-col" data-key="{{ col.key }}">
+      <div class="tsk-kanban-head">
+        <span class="tsk-kanban-head-title">{{ col.label }}</span>
+        <span class="tsk-kanban-head-count">{{ col.count }}</span>
+      </div>
+      <div class="tsk-kanban-cards">
+        {% for task in col.tasks %}
+          <a href="{% url 'tasks:detail' task.pk %}"
+             class="tsk-kanban-card"
+             data-state="{{ task.state }}"
+             data-task-id="{{ task.pk }}"
+             draggable="true">
+            <div class="tsk-kanban-title">{{ task.title }}</div>
+            <div class="tsk-kanban-foot">
+              <div class="tsk-kanban-foot-left">
+                <span class="tsk-chip {{ task.priority|priority_chip_class }}" style="font-size:10px;padding:1px 6px;">
+                  {{ task.get_priority_display }}
+                </span>
+                {% if task.due_date %}
+                  <span class="tsk-time">· {{ task.due_date|date:"M j" }}</span>
+                {% endif %}
+              </div>
+              {% with rows=task.assignee_rows.all %}
+                {% if rows %}
+                  <div class="tsk-avatars">
+                    {% for row in rows|slice:":2" %}
+                      <span class="tsk-avatar-mini" style="width:22px;height:22px;font-size:9px;"
+                            title="{{ row.user.get_full_name|default:row.user.email }}">
+                        {% if row.user.first_name %}{{ row.user.first_name|slice:":1"|upper }}{{ row.user.last_name|slice:":1"|upper }}{% else %}{{ row.user.email|slice:":1"|upper }}{% endif %}
+                      </span>
+                    {% endfor %}
+                    {% if rows|length > 2 %}<span class="tsk-avatar-mini is-overflow" style="width:22px;height:22px;font-size:9px;">+{{ rows|length|add:"-2" }}</span>{% endif %}
+                  </div>
+                {% endif %}
+              {% endwith %}
+            </div>
+          </a>
+        {% empty %}
+          <div class="tsk-kanban-empty">Drop tasks here</div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+</div>

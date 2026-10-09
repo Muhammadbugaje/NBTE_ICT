@@ -1,0 +1,64 @@
+{% extends "email/base_email.html" %}
+
+{% block subject %}{{ request.reference }} has been completed{% endblock %}
+
+{% block preheader %}Your request "{{ request.subject }}" is complete.{% endblock %}
+
+{% block badge %}
+<span style="display:inline-block;padding:5px 12px;background:rgba(255,255,255,0.18);color:#ffffff;font-size:10.5px;font-weight:700;letter-spacing:0.09em;border-radius:999px;text-transform:uppercase;">Completed</span>
+{% endblock %}
+
+{% block header_title %}Your request is complete{% endblock %}
+{% block intro %}Hi {{ requester_name }} — the request you raised has been fully approved and completed.{% endblock %}
+
+{% block content %}
+  <tr>
+    <td style="padding:12px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;">
+        <tr>
+          <td style="padding:16px 20px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:12px;font-weight:700;color:#047857;letter-spacing:0.04em;">{{ request.reference }}</div>
+            <div style="font-size:15px;font-weight:600;color:#0f172a;margin-top:6px;line-height:1.4;">{{ request.subject }}</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:20px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+        <tr>
+          <td style="padding:14px 20px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-size:12px;color:#64748b;padding:3px 0;">Type</td>
+                <td align="right" style="font-size:12.5px;color:#0f172a;font-weight:500;padding:3px 0;">{{ request.request_type.name }}</td>
+              </tr>
+              <tr>
+                <td style="font-size:12px;color:#64748b;padding:3px 0;">Completed</td>
+                <td align="right" style="font-size:12.5px;color:#0f172a;font-weight:500;padding:3px 0;">{{ request.completed_at|date:"M j, Y · H:i" }}</td>
+              </tr>
+              {% if request.assigned_to %}
+              <tr>
+                <td style="font-size:12px;color:#64748b;padding:3px 0;">Handled by</td>
+                <td align="right" style="font-size:12.5px;color:#0f172a;font-weight:500;padding:3px 0;">{{ request.assigned_to.get_full_name|default:request.assigned_to.email }}</td>
+              </tr>
+              {% endif %}
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:28px 30px 8px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="background:#1F6B3E;border-radius:9px;">
+            <a href="{{ detail_url }}" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">Open the request &nbsp;→</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+{% endblock %}

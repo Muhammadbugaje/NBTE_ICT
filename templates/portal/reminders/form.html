@@ -1,0 +1,93 @@
+{% extends "portal/_layout.html" %}
+{% block title %}{% if mode == "create" %}New reminder{% else %}Edit reminder{% endif %}{% endblock %}
+
+{% block content %}
+<div class="portal-page portal-page-narrow">
+
+  <header class="portal-head">
+    <div>
+      <a href="{% url 'portal:reminder_list' %}" class="portal-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Reminders
+      </a>
+      <h1>{% if mode == "create" %}New reminder{% else %}Edit reminder{% endif %}</h1>
+      <p class="muted">Reminders fire an in-app notification when their time arrives.</p>
+    </div>
+  </header>
+
+  <form method="post" class="portal-form" data-scope-form="reminder">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    {# ---------- 1. CONTENT ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">1</span>
+        <div><h3>What's the reminder?</h3><p>Title and any details.</p></div>
+      </header>
+      <div class="portal-field">{{ form.title.label_tag }}{{ form.title }}{{ form.title.errors }}</div>
+      <div class="portal-field">{{ form.body.label_tag }}{{ form.body }}{{ form.body.errors }}</div>
+      <div class="portal-field">
+        {{ form.url.label_tag }}{{ form.url }}
+        <span class="hint">{{ form.url.help_text }}</span>
+        {{ form.url.errors }}
+      </div>
+    </section>
+
+    {# ---------- 2. WHO ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">2</span>
+        <div><h3>Who should receive it?</h3><p>Pick a scope — the form adapts.</p></div>
+      </header>
+      <div class="portal-field">
+        {{ form.kind.label_tag }}{{ form.kind }}{{ form.kind.errors }}
+      </div>
+
+      <div class="portal-scope-slot" data-scope-for="reminder" data-scope-when="department">
+        <div class="portal-field">{{ form.department.label_tag }}{{ form.department }}{{ form.department.errors }}</div>
+      </div>
+
+      <div class="portal-scope-slot" data-scope-for="reminder" data-scope-when="custom">
+        <div class="portal-field">
+          {{ form.roles.label_tag }}
+          <div data-portal-picker>{{ form.roles }}</div>
+          {{ form.roles.errors }}
+        </div>
+        <div class="portal-field">
+          {{ form.recipients.label_tag }}
+          <div data-portal-picker>{{ form.recipients }}</div>
+          {{ form.recipients.errors }}
+        </div>
+      </div>
+    </section>
+
+    {# ---------- 3. WHEN ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">3</span>
+        <div><h3>When should it fire?</h3><p>The notification goes out at this time.</p></div>
+      </header>
+      <div class="portal-row">
+        <div class="portal-field portal-field-half">
+          {{ form.remind_at.label_tag }}{{ form.remind_at }}
+          <span class="hint">{{ form.remind_at.help_text }}</span>
+          {{ form.remind_at.errors }}
+        </div>
+        <div class="portal-field portal-field-half">
+          {{ form.expires_at.label_tag }}{{ form.expires_at }}
+          <span class="hint">{{ form.expires_at.help_text }}</span>
+          {{ form.expires_at.errors }}
+        </div>
+      </div>
+    </section>
+
+    <div class="portal-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Create reminder{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'portal:reminder_list' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

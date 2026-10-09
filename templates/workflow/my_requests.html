@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}My requests · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}My requests{% endblock %}
+
+{% block content %}
+<div class="wf-page-head">
+  <div>
+    <h1>My requests</h1>
+    <p>Everything you've raised, with the current status of each.</p>
+  </div>
+  <a href="{% url 'workflow:raise' %}" class="btn btn-primary">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    New request
+  </a>
+</div>
+
+{# ---------- KPI tiles (full reload — navigation, not filter) ---------- #}
+<div class="wf-kpis">
+  <a href="?status=all&sort={{ sort_key }}&direction={{ sort_dir }}" class="wf-kpi">
+    <div class="wf-kpi-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    </div>
+    <div class="wf-kpi-body">
+      <div class="wf-kpi-num">{{ counts.all }}</div>
+      <div class="wf-kpi-label">Total</div>
+    </div>
+  </a>
+
+  <a href="?status=awaiting_approval&sort={{ sort_key }}&direction={{ sort_dir }}" class="wf-kpi wf-kpi-warn">
+    <div class="wf-kpi-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    </div>
+    <div class="wf-kpi-body">
+      <div class="wf-kpi-num">{{ counts.awaiting_approval }}</div>
+      <div class="wf-kpi-label">Awaiting</div>
+    </div>
+  </a>
+
+  <a href="?status=in_progress&sort={{ sort_key }}&direction={{ sort_dir }}" class="wf-kpi wf-kpi-info">
+    <div class="wf-kpi-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6l3-3"/><path d="M12 2v6l-3-3"/><circle cx="12" cy="14" r="8"/></svg>
+    </div>
+    <div class="wf-kpi-body">
+      <div class="wf-kpi-num">{{ counts.in_progress }}</div>
+      <div class="wf-kpi-label">In progress</div>
+    </div>
+  </a>
+
+  <a href="?status=ready_for_handover&sort={{ sort_key }}&direction={{ sort_dir }}" class="wf-kpi wf-kpi-success">
+    <div class="wf-kpi-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    </div>
+    <div class="wf-kpi-body">
+      <div class="wf-kpi-num">{{ counts.ready_for_handover }}</div>
+      <div class="wf-kpi-label">Ready</div>
+    </div>
+  </a>
+
+  <a href="?status=completed&sort={{ sort_key }}&direction={{ sort_dir }}" class="wf-kpi">
+    <div class="wf-kpi-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div class="wf-kpi-body">
+      <div class="wf-kpi-num">{{ counts.completed }}</div>
+      <div class="wf-kpi-label">Completed</div>
+    </div>
+  </a>
+</div>
+
+{# ---------- Status tabs (full reload — navigation) ---------- #}
+<div class="wf-tabs">
+  <a class="wf-tab {% if status_filter == 'all' %}active{% endif %}" href="?status=all&sort={{ sort_key }}&direction={{ sort_dir }}">
+    All <span class="wf-tab-count">{{ counts.all }}</span>
+  </a>
+  {% for value, label in status_choices %}
+    <a class="wf-tab {% if status_filter == value %}active{% endif %}" href="?status={{ value }}&sort={{ sort_key }}&direction={{ sort_dir }}">
+      {{ label }}
+      <span class="wf-tab-count">
+        {% if value == 'draft' %}{{ counts.draft|default:0 }}
+        {% elif value == 'awaiting_approval' %}{{ counts.awaiting_approval|default:0 }}
+        {% elif value == 'awaiting_receiving' %}{{ counts.awaiting_receiving|default:0 }}
+        {% elif value == 'returned' %}{{ counts.returned|default:0 }}
+        {% elif value == 'in_progress' %}{{ counts.in_progress|default:0 }}
+        {% elif value == 'awaiting_fulfillment' %}{{ counts.awaiting_fulfillment|default:0 }}
+        {% elif value == 'ready_for_handover' %}{{ counts.ready_for_handover|default:0 }}
+        {% elif value == 'completed' %}{{ counts.completed|default:0 }}
+        {% elif value == 'rejected' %}{{ counts.rejected|default:0 }}
+        {% elif value == 'cancelled' %}{{ counts.cancelled|default:0 }}
+        {% endif %}
+      </span>
+    </a>
+  {% endfor %}
+</div>
+
+{# ---------- Filter form (HTMX — swaps the list container only) ---------- #}
+<form method="get"
+      class="wf-filters"
+      hx-get="{% url 'workflow:my_requests' %}"
+      hx-target="#wf-list-container"
+      hx-select="#wf-list-container"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      hx-indicator="#wf-list-container"
+      hx-trigger="submit from:form, change from:select, keyup changed delay:400ms from:input[name=q]">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Search by subject or reference…"
+         class="input wf-filter-search" autocomplete="off">
+  <select name="status" class="input wf-filter-select">
+    <option value="all">Any status</option>
+    {% for value, label in status_choices %}
+      <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <input type="hidden" name="sort" value="{{ sort_key }}">
+  <input type="hidden" name="direction" value="{{ sort_dir }}">
+  {% if q or status_filter != 'all' %}
+    <a href="{% url 'workflow:my_requests' %}" class="btn btn-ghost btn-sm">Reset</a>
+  {% endif %}
+</form>
+
+{# ---------- List container (HTMX swaps this) ---------- #}
+<div id="wf-list-container" class="wf-list-container">
+  {% if page.object_list %}
+    <div class="wf-table-wrap">
+      <table class="wf-table">
+        <thead>
+          <tr>
+            <th class="wf-th-sortable {% if sort_key == 'reference' %}is-sorted{% endif %}">
+              <a href="?q={{ q|urlencode }}&status={{ status_filter }}&sort=reference&direction={% if sort_key == 'reference' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-get="?q={{ q|urlencode }}&status={{ status_filter }}&sort=reference&direction={% if sort_key == 'reference' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-target="#wf-list-container" hx-select="#wf-list-container"
+                 hx-swap="outerHTML" hx-push-url="true">
+                Ref <span class="wf-sort-arrow">{% if sort_key == 'reference' %}{% if sort_dir == 'desc' %}▼{% else %}▲{% endif %}{% endif %}</span>
+              </a>
+            </th>
+            <th class="wf-th-sortable {% if sort_key == 'subject' %}is-sorted{% endif %}">
+              <a href="?q={{ q|urlencode }}&status={{ status_filter }}&sort=subject&direction={% if sort_key == 'subject' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-get="?q={{ q|urlencode }}&status={{ status_filter }}&sort=subject&direction={% if sort_key == 'subject' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-target="#wf-list-container" hx-select="#wf-list-container"
+                 hx-swap="outerHTML" hx-push-url="true">
+                Subject <span class="wf-sort-arrow">{% if sort_key == 'subject' %}{% if sort_dir == 'desc' %}▼{% else %}▲{% endif %}{% endif %}</span>
+              </a>
+            </th>
+            <th class="wf-th-sortable {% if sort_key == 'status' %}is-sorted{% endif %}">
+              <a href="?q={{ q|urlencode }}&status={{ status_filter }}&sort=status&direction={% if sort_key == 'status' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-get="?q={{ q|urlencode }}&status={{ status_filter }}&sort=status&direction={% if sort_key == 'status' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-target="#wf-list-container" hx-select="#wf-list-container"
+                 hx-swap="outerHTML" hx-push-url="true">
+                Status <span class="wf-sort-arrow">{% if sort_key == 'status' %}{% if sort_dir == 'desc' %}▼{% else %}▲{% endif %}{% endif %}</span>
+              </a>
+            </th>
+            <th class="wf-th-sortable {% if sort_key == 'priority' %}is-sorted{% endif %}">
+              <a href="?q={{ q|urlencode }}&status={{ status_filter }}&sort=priority&direction={% if sort_key == 'priority' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-get="?q={{ q|urlencode }}&status={{ status_filter }}&sort=priority&direction={% if sort_key == 'priority' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-target="#wf-list-container" hx-select="#wf-list-container"
+                 hx-swap="outerHTML" hx-push-url="true">
+                Priority <span class="wf-sort-arrow">{% if sort_key == 'priority' %}{% if sort_dir == 'desc' %}▼{% else %}▲{% endif %}{% endif %}</span>
+              </a>
+            </th>
+            <th class="wf-th-sortable {% if sort_key == 'created' %}is-sorted{% endif %}">
+              <a href="?q={{ q|urlencode }}&status={{ status_filter }}&sort=created&direction={% if sort_key == 'created' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-get="?q={{ q|urlencode }}&status={{ status_filter }}&sort=created&direction={% if sort_key == 'created' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-target="#wf-list-container" hx-select="#wf-list-container"
+                 hx-swap="outerHTML" hx-push-url="true">
+                Raised <span class="wf-sort-arrow">{% if sort_key == 'created' %}{% if sort_dir == 'desc' %}▼{% else %}▲{% endif %}{% endif %}</span>
+              </a>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for req in page.object_list %}
+            <tr onclick="window.location='{% url 'workflow:detail' req.pk %}'" style="cursor:pointer;">
+              <td><strong>{{ req.reference|slice:"-5:" }}</strong></td>
+              <td>
+                <div class="wf-table-title">{{ req.subject }}</div>
+                <div class="wf-table-sub">
+                  {{ req.request_type.name }}
+                  {% if req.receiving_department %} · {{ req.receiving_department.name }}{% endif %}
+                  {% if req.assigned_to %} · {{ req.assigned_to.get_full_name|default:req.assigned_to.email }}{% endif %}
+                </div>
+              </td>
+              <td><span class="badge badge-status-{{ req.status }}">{{ req.get_status_display }}</span></td>
+              <td><span class="badge badge-priority-{{ req.priority }}">{{ req.get_priority_display }}</span></td>
+              <td class="muted">{{ req.created_at|timesince }} ago</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page.has_other_pages %}
+      <nav class="pagination">
+        {% if page.has_previous %}
+          <a href="?q={{ q|urlencode }}&status={{ status_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+             hx-get="?q={{ q|urlencode }}&status={{ status_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+             hx-target="#wf-list-container" hx-select="#wf-list-container"
+             hx-swap="outerHTML" hx-push-url="true">« Prev</a>
+        {% else %}<span class="disabled">« Prev</span>{% endif %}
+        <span class="current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}
+          <a href="?q={{ q|urlencode }}&status={{ status_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+             hx-get="?q={{ q|urlencode }}&status={{ status_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+             hx-target="#wf-list-container" hx-select="#wf-list-container"
+             hx-swap="outerHTML" hx-push-url="true">Next »</a>
+        {% else %}<span class="disabled">Next »</span>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="wf-empty">
+      <div class="wf-empty-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </div>
+      <h3>{% if q or status_filter != 'all' %}No requests match these filters{% else %}No requests yet{% endif %}</h3>
+      <p>{% if q or status_filter != 'all' %}Try adjusting the search or filters.{% else %}When you raise a request, it'll show up here.{% endif %}</p>
+      {% if q or status_filter != 'all' %}
+        <a href="{% url 'workflow:my_requests' %}" class="btn btn-ghost">Clear filters</a>
+      {% else %}
+        <a href="{% url 'workflow:raise' %}" class="btn btn-primary">Raise your first request</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

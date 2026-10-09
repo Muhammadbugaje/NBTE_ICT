@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ tenure.staff.full_name }} · {{ tenure.position.name }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="lead-page lead-page-narrow">
+
+  <a href="{% url 'staff:public_leadership' %}" class="lead-back">
+    ← Leadership
+  </a>
+
+  <article class="lead-profile">
+    <header class="lead-profile-head">
+      <div class="lead-profile-photo">
+        {% if tenure.photo %}
+          <img src="{{ tenure.photo.url }}" alt="">
+        {% elif tenure.staff.photo %}
+          <img src="{{ tenure.staff.photo.url }}" alt="">
+        {% else %}
+          <span>{{ tenure.staff.first_name|slice:":1"|upper }}{{ tenure.staff.last_name|slice:":1"|upper }}</span>
+        {% endif %}
+      </div>
+      <div class="lead-profile-info">
+        <div class="lead-profile-position">{{ tenure.position.name }}</div>
+        <h1>{{ tenure.staff.full_name }}</h1>
+        <div class="lead-profile-tenure">
+          {{ tenure.started_on|date:"F j, Y" }}
+          {% if tenure.ended_on %} → {{ tenure.ended_on|date:"F j, Y" }}{% else %} — Present{% endif %}
+          <span class="lead-profile-duration">· {{ tenure.duration_years }} years</span>
+          {% if tenure.is_acting %}<span class="lead-profile-tag">Acting</span>{% endif %}
+        </div>
+      </div>
+    </header>
+
+    {% if tenure.bio %}
+      <section class="lead-profile-section">
+        <h2>Biography</h2>
+        <div class="lead-profile-body">{{ tenure.bio|linebreaksbr }}</div>
+      </section>
+    {% endif %}
+
+    {% if tenure.qualifications %}
+      <section class="lead-profile-section">
+        <h2>Qualifications</h2>
+        <div class="lead-profile-body">{{ tenure.qualifications|linebreaksbr }}</div>
+      </section>
+    {% endif %}
+
+    {% if tenure.appointment_reference %}
+      <section class="lead-profile-section">
+        <h2>Appointment</h2>
+        <p class="muted">{{ tenure.appointment_reference }}</p>
+      </section>
+    {% endif %}
+
+    {% if other_tenures %}
+      <section class="lead-profile-section">
+        <h2>Other positions held</h2>
+        <ul class="lead-profile-others">
+          {% for t in other_tenures %}
+            <li>
+              <a href="{% url 'staff:leadership_tenure' t.pk %}">
+                <strong>{{ t.position.name }}</strong>
+                <span class="muted">{{ t.started_on|date:"M Y" }} – {% if t.ended_on %}{{ t.ended_on|date:"M Y" }}{% else %}Present{% endif %}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

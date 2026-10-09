@@ -1,0 +1,272 @@
+/* =========================================================================
+   Notifications — bell, badge, dropdown
+   ========================================================================= */
+
+/* ---------- Bell button wrapper ---------- */
+.app-notifications {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.notif-bell {
+  position: relative;
+}
+
+/* ---------- Badge ---------- */
+.notif-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  border: 2px solid var(--bg, #fff);
+  pointer-events: none;
+}
+.notif-badge[hidden] { display: none; }
+
+/* =========================================================================
+   Dropdown shell
+   ========================================================================= */
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 90;
+
+  display: flex;
+  flex-direction: column;
+
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  max-height: min(560px, calc(100vh - 100px));
+
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #E5E7EB);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
+  overflow: hidden;
+  padding: 0;
+  animation: notif-in 0.14s ease;
+}
+
+@keyframes notif-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Hidden state — works with either aria-hidden or the hidden attribute */
+.notif-dropdown[aria-hidden="true"],
+.notif-dropdown[hidden] {
+  display: none !important;
+}
+
+/* =========================================================================
+   Dropdown internals — header / list / footer as flex children
+   ========================================================================= */
+.notif-dropdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border, #E5E7EB);
+  background: var(--bg-card, #fff);
+  flex: 0 0 auto;
+}
+.notif-dropdown-head strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--fg, #0F172A);
+  letter-spacing: -0.005em;
+}
+.notif-dropdown-head .link-btn,
+.notif-dropdown-head button.link-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand, #1F6B3E);
+  background: transparent;
+  border: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.notif-dropdown-head .link-btn:hover {
+  background: rgba(31, 107, 62, 0.08);
+}
+
+.notif-dropdown-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  /* Quiet the scrollbar */
+  scrollbar-width: thin;
+}
+.notif-dropdown-list::-webkit-scrollbar { width: 6px; }
+.notif-dropdown-list::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 3px;
+}
+
+.notif-dropdown-foot {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border, #E5E7EB);
+  text-align: center;
+  background: var(--bg-card, #fff);
+}
+.notif-dropdown-foot .link-btn {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand, #1F6B3E);
+  text-decoration: none;
+}
+.notif-dropdown-foot .link-btn:hover { text-decoration: underline; }
+
+.notif-dropdown-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 16px;
+  font-size: 13px;
+  color: var(--fg-muted, #64748B);
+  text-align: center;
+}
+
+/* =========================================================================
+   Notification rows — one per notification
+   ========================================================================= */
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 2px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  background: transparent;
+  transition: background 0.12s ease;
+  cursor: pointer;
+}
+.notif-item:hover { background: var(--bg-subtle, #F8FAFC); }
+.notif-item.is-unread { background: rgba(31, 107, 62, 0.06); }
+.notif-item.is-unread:hover { background: rgba(31, 107, 62, 0.10); }
+
+/* Icon column */
+.notif-item-icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-subtle, #F1F5F9);
+  color: var(--fg-muted, #64748B);
+}
+.notif-item-icon.is-success { background: #DCFCE7; color: #15803D; }
+.notif-item-icon.is-warning { background: #FEF3C7; color: #B45309; }
+.notif-item-icon.is-error   { background: #FEE2E2; color: #991B1B; }
+.notif-item-icon.is-info    { background: #DBEAFE; color: #1E40AF; }
+
+/* Body column — grows, ellipsizes children safely */
+.notif-item-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.notif-item-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg, #0F172A);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.notif-item-text {
+  display: block;
+  font-size: 12px;
+  color: var(--fg-muted, #64748B);
+  line-height: 1.4;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.notif-item-time {
+  display: block;
+  font-size: 11px;
+  color: var(--fg-subtle, #94A3B8);
+  margin-top: 4px;
+}
+
+/* Optional per-row action button */
+.notif-item-action {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--brand, #1F6B3E);
+  background: transparent;
+  border: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.notif-item-action:hover { background: rgba(31, 107, 62, 0.1); }
+
+/* Hide any stray dot spans (the mystery "o" from before) */
+.notif-item-dot,
+.notif-item > .dot { display: none; }
+
+/* =========================================================================
+   MOBILE — dropdown becomes a fixed full-width sheet below the topbar
+   =========================================================================
+   Uses --topbar-offset-bottom, set by JS to the actual bottom of the topbar
+   (so the impersonation banner is automatically accounted for).
+   ========================================================================= */
+@media (max-width: 720px) {
+  .notif-dropdown {
+    position: fixed;
+    top: calc(var(--topbar-offset-bottom, 56px) + 8px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100vh - var(--topbar-offset-bottom, 56px) - 24px);
+    border-radius: 14px;
+  }
+}
+
+/* =========================================================================
+   Dark mode
+   ========================================================================= */
+[data-theme="dark"] .notif-dropdown {
+  background: #1E293B;
+  border-color: #334155;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+[data-theme="dark"] .notif-dropdown-head,
+[data-theme="dark"] .notif-dropdown-foot {
+  background: #1E293B;
+  border-color: #334155;
+}
+[data-theme="dark"] .notif-dropdown-head strong { color: #F1F5F9; }
+[data-theme="dark"] .notif-item:hover { background: rgba(255, 255, 255, 0.05); }
+[data-theme="dark"] .notif-item.is-unread { background: rgba(31, 107, 62, 0.20); }
+[data-theme="dark"] .notif-item-title { color: #F1F5F9; }
+[data-theme="dark"] .notif-item-text  { color: #CBD5E1; }
+[data-theme="dark"] .notif-item-time  { color: #94A3B8; }
+[data-theme="dark"] .notif-item-icon  { background: #334155; color: #CBD5E1; }

@@ -1,0 +1,91 @@
+{% load attendance_tags %}
+{% if visible %}
+<section class="att-profile-widget" aria-label="Attendance summary">
+
+  <div class="att-profile-widget-head">
+    <div class="att-profile-widget-title">
+      <span class="att-profile-widget-icon" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </span>
+      <div>
+        <h3>Attendance</h3>
+        <p class="att-muted">Last {{ days }} days</p>
+      </div>
+    </div>
+    {% if is_self %}
+      <a class="att-profile-widget-link" href="{% url 'attendance:home' %}">Open →</a>
+    {% else %}
+      <a class="att-profile-widget-link" href="{% url 'attendance:my_attendance' %}?user={{ att_user.pk }}">
+        Full history →
+      </a>
+    {% endif %}
+  </div>
+
+  {# ---- Big % + ring ---- #}
+  <div class="att-profile-widget-body">
+    <div class="att-profile-widget-pct">
+      <div class="att-pct-ring"
+           data-pct="{{ stats.present_pct }}"
+           style="--att-pct: {{ stats.present_pct }}">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="42" fill="none" stroke="var(--att-border)" stroke-width="8"/>
+          <circle cx="50" cy="50" r="42" fill="none"
+                  stroke="var(--att-accent)" stroke-width="8" stroke-linecap="round"
+                  stroke-dasharray="263.894"
+                  stroke-dashoffset="263.894"
+                  transform="rotate(-90 50 50)"/>
+        </svg>
+        <div class="att-pct-ring-value">
+          <span class="att-pct-ring-number">{{ stats.present_pct }}</span>
+          <span class="att-pct-ring-unit">%</span>
+        </div>
+      </div>
+      <div class="att-pct-ring-caption">
+        {% if stats.present_pct >= 90 %}
+          <span class="att-pct-tag is-good">Excellent</span>
+        {% elif stats.present_pct >= 75 %}
+          <span class="att-pct-tag is-warn">Satisfactory</span>
+        {% else %}
+          <span class="att-pct-tag is-bad">Needs attention</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ---- Breakdown ---- #}
+    <div class="att-profile-widget-grid">
+      <div class="att-profile-widget-cell">
+        <span class="att-profile-widget-num">{{ stats.present }}</span>
+        <span class="att-profile-widget-label">On time</span>
+      </div>
+      <div class="att-profile-widget-cell {% if stats.late %}is-warn{% endif %}">
+        <span class="att-profile-widget-num">{{ stats.late }}</span>
+        <span class="att-profile-widget-label">Late</span>
+      </div>
+      <div class="att-profile-widget-cell {% if stats.absent %}is-bad{% endif %}">
+        <span class="att-profile-widget-num">{{ stats.absent }}</span>
+        <span class="att-profile-widget-label">Absent</span>
+      </div>
+      <div class="att-profile-widget-cell">
+        <span class="att-profile-widget-num">{{ stats.streak }}</span>
+        <span class="att-profile-widget-label">Streak</span>
+      </div>
+    </div>
+  </div>
+
+  {# ---- Recent records strip ---- #}
+  {% if recent %}
+    <div class="att-profile-widget-recent">
+      <div class="att-recent-strip">
+        {% for r in recent %}
+          <div class="att-recent-day att-recent-{{ r.status }}"
+               title="{{ r.date|date:'D, M j' }} — {{ r.get_status_display }}">
+            <span class="att-recent-weekday">{{ r.date|date:"D"|slice:":1" }}</span>
+            <span class="att-recent-num">{{ r.date.day }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+</section>
+{% endif %}

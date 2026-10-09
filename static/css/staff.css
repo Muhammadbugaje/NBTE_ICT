@@ -1,0 +1,669 @@
+/* ==========================================================================
+   Staff — list, detail, form, state change, delete
+   Uses the app-wide theme tokens (from app.css :root) so light + dark themes
+   both apply without per-component overrides.
+   ========================================================================== */
+
+.staff-page { max-width: 1200px; margin: 0 auto; }
+.staff-page-narrow { max-width: 780px; }
+
+/* ==========================================================================
+   HERO / HEADER
+   ========================================================================== */
+.staff-hero {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.staff-hero h1 {
+  margin: 0; font-size: 22px; letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.staff-hero p {
+  margin: 4px 0 0; color: var(--fg-subtle); font-size: 13.5px;
+}
+.staff-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--fg-subtle); text-decoration: none; margin-bottom: 6px;
+}
+.staff-back:hover { color: var(--brand); }
+
+/* ==========================================================================
+   SEARCH BAR
+   ========================================================================== */
+.staff-search {
+  display: grid; grid-template-columns: 2fr 1fr 1fr auto auto;
+  gap: 8px; align-items: center;
+  padding: 12px; margin-bottom: 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.staff-search input,
+.staff-search select {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  outline: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.staff-search input::placeholder { color: var(--fg-subtle); }
+.staff-search input:focus,
+.staff-search select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31, 107, 62, 0.18);
+}
+
+/* ==========================================================================
+   CARD GRID (list view)
+   ========================================================================== */
+.staff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.staff-card {
+  display: block; text-decoration: none; color: inherit;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.staff-card:hover {
+  border-color: var(--brand);
+  transform: translateY(-1px);
+}
+
+.staff-card-photo {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  background: var(--bg-subtle);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: 700; color: var(--brand);
+}
+.staff-card-photo img { width: 100%; height: 100%; object-fit: cover; }
+
+.staff-card-photo-state {
+  position: absolute; top: 8px; right: 8px;
+  padding: 3px 9px; border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72); color: #fff;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em;
+  backdrop-filter: blur(4px);
+}
+
+.staff-card-body { padding: 12px 14px; }
+.staff-card-name {
+  font-weight: 700; font-size: 14.5px;
+  color: var(--fg); letter-spacing: -0.005em;
+}
+.staff-card-meta {
+  color: var(--fg-subtle); font-size: 12.5px; margin-top: 2px;
+}
+.staff-card-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--fg-subtle);
+}
+.staff-card-no {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  color: var(--fg-muted);
+}
+.staff-card-office { color: var(--fg-subtle); }
+
+/* ==========================================================================
+   PILLS / TAGS
+   ========================================================================== */
+.staff-pill {
+  display: inline-flex; align-items: center;
+  padding: 3px 9px; border-radius: 999px;
+  background: rgba(31, 107, 62, 0.14);
+  color: var(--brand);
+  font-size: 11.5px; font-weight: 600;
+}
+.staff-pill-lg { font-size: 12.5px; padding: 5px 12px; margin-top: 6px; }
+
+/* ==========================================================================
+   DETAIL PAGE — HERO
+   ========================================================================== */
+.staff-detail-hero {
+  display: flex; align-items: flex-start; gap: 20px;
+  flex-wrap: wrap; margin-bottom: 22px;
+}
+.staff-detail-photo {
+  width: 84px; height: 84px; border-radius: 50%; flex-shrink: 0;
+  background: var(--bg-subtle);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 700; color: var(--brand);
+  overflow: hidden;
+}
+.staff-detail-photo-lg {
+  width: 96px; height: 96px; border-radius: 20px; font-size: 32px;
+}
+.staff-detail-photo img { width: 100%; height: 100%; object-fit: cover; }
+
+.staff-detail-hero-body { flex: 1; min-width: 240px; }
+.staff-detail-hero-top {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.staff-detail-hero-top h1 {
+  margin: 0; font-size: 24px; color: var(--fg);
+  letter-spacing: -0.015em;
+}
+.staff-detail-sub {
+  color: var(--fg-subtle); font-size: 13.5px; margin: 4px 0 0;
+}
+.staff-detail-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;
+}
+
+/* Quick chips (email, phone, employee no.) */
+.staff-detail-quick {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+}
+.staff-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 12px;
+  background: var(--bg-subtle);
+  color: var(--fg-muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.staff-chip:hover {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--border);
+}
+.staff-chip svg { opacity: 0.7; flex-shrink: 0; }
+.staff-chip-muted {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--fg-subtle);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+/* ==========================================================================
+   DETAIL GRID + CARDS
+   ========================================================================== */
+.staff-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+.staff-detail-card { padding: 16px 18px; }
+.staff-detail-card-wide { grid-column: 1 / -1; }
+
+.staff-card-title {
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-subtle);
+  margin: 0 0 12px;
+}
+
+/* ==========================================================================
+   DEFINITION LIST
+   ========================================================================== */
+.staff-dl {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px 12px;
+  margin: 0;
+  font-size: 13.5px;
+}
+.staff-dl dt { color: var(--fg-subtle); font-weight: 500; }
+.staff-dl dd { margin: 0; color: var(--fg); }
+.staff-dl a {
+  color: var(--brand); text-decoration: none;
+}
+.staff-dl a:hover { text-decoration: underline; }
+
+.staff-duties {
+  white-space: pre-line;
+  line-height: 1.55;
+  font-size: 13.5px;
+  color: var(--fg);
+}
+
+/* ==========================================================================
+   STATE HISTORY
+   ========================================================================== */
+.staff-history { list-style: none; padding: 0; margin: 0; }
+.staff-history li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.staff-history li:last-child { border-bottom: 0; }
+.staff-history-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px; color: var(--fg);
+}
+.staff-history-meta {
+  font-size: 12px; margin-top: 3px;
+  color: var(--fg-subtle);
+}
+.staff-history-reason {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+
+/* ==========================================================================
+   RESTRICTED / HR BLOCK
+   ========================================================================== */
+.staff-restricted {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border);
+  color: var(--fg-muted);
+}
+.staff-restricted svg { flex-shrink: 0; margin-top: 3px; }
+.staff-restricted strong {
+  display: block; font-size: 13px; color: var(--fg);
+}
+.staff-restricted p {
+  margin: 4px 0 0; font-size: 12.5px; color: var(--fg-muted);
+}
+
+.staff-hr-block {
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.staff-hr-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-subtle); margin: 0 0 10px; font-weight: 700;
+}
+
+/* ==========================================================================
+   FORM
+   ========================================================================== */
+.staff-form .staff-section {
+  padding: 16px 18px; margin-bottom: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.staff-section h3 {
+  margin: 0 0 12px;
+  font-size: 13px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-subtle);
+}
+.staff-section-accent {
+  background: rgba(31, 107, 62, 0.08);
+  border-color: rgba(31, 107, 62, 0.32);
+}
+.staff-section-hint {
+  font-size: 12.5px;
+  color: var(--fg-subtle);
+  margin: 0 0 12px;
+}
+
+.staff-row {
+  display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.staff-col {
+  flex: 1 1 180px;
+  display: flex; flex-direction: column; gap: 5px;
+  min-width: 0;
+}
+.staff-col-full { flex-basis: 100%; }
+.staff-col label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.staff-col input,
+.staff-col select,
+.staff-col textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13.5px;
+  outline: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.staff-col input::placeholder,
+.staff-col textarea::placeholder { color: var(--fg-subtle); }
+.staff-col input:focus,
+.staff-col select:focus,
+.staff-col textarea:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31, 107, 62, 0.18);
+}
+.staff-col .hint {
+  font-size: 11.5px;
+  color: var(--fg-subtle);
+  margin-top: 2px;
+}
+
+.staff-check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13.5px; color: var(--fg);
+}
+.staff-check input { width: auto; }
+
+.staff-form-actions {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding-top: 16px; margin-top: 8px;
+}
+
+.form-errors {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(220, 38, 38, 0.10);
+  border: 1px solid rgba(220, 38, 38, 0.30);
+  color: var(--danger);
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+/* ==========================================================================
+   PAGINATION + EMPTY STATES
+   ========================================================================== */
+.staff-pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px; margin-top: 22px; font-size: 13px;
+}
+.staff-pagination-current { color: var(--fg-subtle); }
+
+.staff-empty {
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+.staff-empty-icon {
+  width: 56px; height: 56px;
+  margin: 0 auto 12px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-subtle);
+  color: var(--fg-subtle);
+}
+.staff-empty h3 {
+  margin: 0 0 6px; font-size: 16px; color: var(--fg);
+}
+.staff-empty p {
+  color: var(--fg-subtle); margin: 0 0 16px;
+}
+
+/* ==========================================================================
+   MODAL (used by detail page for Message / Notify)
+   ========================================================================== */
+.modal[hidden] { display: none; }
+.modal {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+.modal-panel {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 480px; width: 100%;
+  max-height: 90vh; overflow: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-head h3 {
+  margin: 0; font-size: 15px; color: var(--fg);
+}
+.modal-close {
+  background: transparent; border: 0;
+  color: var(--fg-subtle); cursor: pointer;
+  padding: 4px; border-radius: 6px;
+}
+.modal-close:hover {
+  background: var(--bg-subtle); color: var(--fg);
+}
+.modal-body {
+  padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.modal-foot {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  display: flex; gap: 10px; justify-content: flex-end;
+}
+.field {
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 12.5px; color: var(--fg-muted); font-weight: 600;
+}
+.field .input,
+.field input,
+.field textarea {
+  font-weight: normal;
+  color: var(--fg);
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13.5px;
+  outline: 0;
+}
+.field .input:focus,
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31, 107, 62, 0.18);
+}
+
+/* ==========================================================================
+   BUTTONS — staff-specific refinements.
+   Base .btn / .btn-ghost / .btn-primary come from app.css and already
+   adapt to dark mode via --primary / --border / --text.
+   ========================================================================== */
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.btn-danger:hover { filter: brightness(1.05); }
+
+/* Ghost + danger (Delete link on detail page) */
+.btn-ghost.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+.btn-ghost.btn-danger:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+@media (max-width: 720px) {
+  .staff-search { grid-template-columns: 1fr 1fr; }
+  .staff-search-q { grid-column: 1 / -1; }
+
+  .staff-dl { grid-template-columns: 1fr; }
+  .staff-dl dt { font-weight: 700; margin-top: 6px; }
+
+  .staff-detail-actions { width: 100%; }
+  .staff-detail-actions .btn { flex: 1 1 auto; justify-content: center; }
+
+  .staff-detail-hero { gap: 14px; }
+  .staff-detail-photo-lg { width: 76px; height: 76px; border-radius: 16px; }
+  .staff-detail-hero-top h1 { font-size: 20px; }
+}
+
+/* ==========================================================================
+   List view — hero actions, filter bar, filter summary, pagination
+   ========================================================================== */
+
+/* ---- Hero actions ---- */
+.staff-hero-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ---- Filter bar: labeled fields ---- */
+.staff-search {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.staff-search-field {
+  display: flex; flex-direction: column; gap: 5px;
+  min-width: 0;
+}
+.staff-search-field label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-subtle);
+  margin: 0;
+}
+.staff-search-field input,
+.staff-search-field select {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13.5px;
+  outline: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.staff-search-field input::placeholder { color: var(--fg-subtle); }
+.staff-search-field input:focus,
+.staff-search-field select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31, 107, 62, 0.18);
+}
+
+.staff-search-actions {
+  display: flex; gap: 8px;
+  align-items: center;
+  padding-bottom: 0;
+}
+.staff-search-actions .btn { margin-top: 0; }
+
+/* ---- Active filter summary strip ---- */
+.staff-filter-summary {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 4px 14px;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+.staff-filter-summary .muted { color: var(--fg-subtle); }
+
+.staff-filter-chip {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(31, 107, 62, 0.12);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+}
+.staff-filter-clear {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-subtle);
+  text-decoration: none;
+  margin-left: 4px;
+}
+.staff-filter-clear:hover { color: var(--danger); text-decoration: underline; }
+
+/* ---- Card meta separators ---- */
+.staff-card-meta-sep { color: var(--fg-subtle); }
+
+/* ---- Pagination ---- */
+.staff-pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 16px; margin-top: 26px;
+  font-size: 13px;
+}
+.staff-pagination-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 12.5px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.staff-pagination-btn:hover {
+  background: var(--bg-subtle);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.staff-pagination-btn.disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+.staff-pagination-current {
+  color: var(--fg-subtle);
+  font-size: 12.5px;
+}
+.staff-pagination-current strong { color: var(--fg); }
+
+/* ---- Empty state actions ---- */
+.staff-empty-actions {
+  display: flex; gap: 8px; justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* ---- Mobile ---- */
+@media (max-width: 720px) {
+  .staff-search {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 12px;
+  }
+  .staff-search-field-q { grid-column: 1 / -1; }
+  .staff-search-actions { grid-column: 1 / -1; justify-content: stretch; }
+  .staff-search-actions .btn { flex: 1 1 auto; justify-content: center; }
+
+  .staff-pagination { flex-direction: column; gap: 10px; }
+}

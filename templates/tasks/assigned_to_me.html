@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% load static %}
+{% load tasks_tags %}
+{% block title %}Assigned to me · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Assigned to me{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=2">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=2" defer></script>{% endblock %}
+
+{% block content %}
+<div class="tsk-page">
+  <header class="tsk-page-head">
+    <div>
+      <h1>Assigned to me</h1>
+      <p>{{ total }} open task{{ total|pluralize }} waiting on you.</p>
+    </div>
+    <div class="tsk-page-head-actions">
+      {% capacity_for request.user as used_cap %}
+      <span class="tsk-capacity-pill {% if used_cap.2 == 0 %}is-full{% endif %}">
+        <span class="tsk-capacity-pill-dot"></span>
+        Capacity {{ used_cap.0 }} / {{ used_cap.1 }}
+      </span>
+    </div>
+  </header>
+
+  <form method="get" class="tsk-filters"
+        hx-get="{% url 'tasks:assigned_to_me' %}"
+        hx-target="#tsk-list-container" hx-select="#tsk-list-container"
+        hx-swap="outerHTML" hx-push-url="true"
+        hx-indicator="#tsk-list-container"
+        hx-trigger="submit from:form, change from:select, keyup changed delay:400ms from:input[name=q]">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search my assignments…" class="tsk-search" autocomplete="off">
+    <select name="state">
+      <option value="active"  {% if state_filter == 'active' %}selected{% endif %}>Active</option>
+      <option value="all"     {% if state_filter == 'all' %}selected{% endif %}>Any state</option>
+      <option value="overdue" {% if state_filter == 'overdue' %}selected{% endif %}>Overdue</option>
+    </select>
+    <select name="sort">
+      <option value="due"      {% if sort_key == 'due' %}selected{% endif %}>Due date</option>
+      <option value="priority" {% if sort_key == 'priority' %}selected{% endif %}>Priority</option>
+      <option value="created"  {% if sort_key == 'created' %}selected{% endif %}>Newest</option>
+    </select>
+    <select name="direction">
+      <option value="asc"  {% if sort_dir == 'asc' %}selected{% endif %}>↑</option>
+      <option value="desc" {% if sort_dir == 'desc' %}selected{% endif %}>↓</option>
+    </select>
+  </form>
+
+  <div id="tsk-list-container" class="tsk-list-container">
+    {% if page.object_list %}
+      <div class="tsk-list">
+        {% for task in page.object_list %}
+          {% include "tasks/_card.html" with task=task %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="tsk-empty">
+        <div class="tsk-empty-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h3>Nothing assigned to you right now</h3>
+        <p>You're all caught up. New assignments will appear here.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

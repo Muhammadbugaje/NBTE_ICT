@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Raise a ticket · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Raise a ticket{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="tk-page">
+  <header class="tk-page-head">
+    <div>
+      <h1>What do you need help with?</h1>
+      <p>Pick a category — the ticket routes to the right team automatically.</p>
+    </div>
+  </header>
+
+  {% if categories %}
+    <div class="tk-cat-grid">
+      {% for c in categories %}
+        <a href="{% url 'tickets:create_for_category' c.code %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+           class="tk-cat-card">
+          <div class="tk-cat-card-icon">
+            {% if c.code == 'hardware' %}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            {% elif c.code == 'software' %}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            {% elif c.code == 'network' %}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            {% elif c.code == 'access' %}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            {% elif c.code == 'facilities' %}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M9 13h.01"/><path d="M9 17h.01"/><path d="M15 9h.01"/><path d="M15 13h.01"/><path d="M15 17h.01"/></svg>
+            {% else %}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            {% endif %}
+          </div>
+          <h3 class="tk-cat-card-name">{{ c.name }}</h3>
+          <p class="tk-cat-card-desc">{{ c.description|default:"Open a ticket in this category." }}</p>
+          <div class="tk-cat-card-route">
+            Routes to <strong>{{ c.handling_department.name }}</strong>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="tk-empty">
+      <div class="tk-empty-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </div>
+      <h3>No ticket categories available</h3>
+      <p>Ask an administrator to seed ticket categories.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Categories · Workflow management{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page wf-page-narrow">
+  {% include "manage/workflow/_tabs.html" %}
+
+  <header class="wf-hero wf-hero-split">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon wf-hero-icon-purple">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </div>
+      <div>
+        <h1>Request categories</h1>
+        <p>Group request types by theme (ICT, Fleet, Facilities, HR…).</p>
+      </div>
+    </div>
+    <a href="{% url 'workflow_manage:category_create' %}" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New category
+    </a>
+  </header>
+
+  {% if categories %}
+    <div class="wf-list-card">
+      {% for c in categories %}
+        <a href="{% url 'workflow_manage:category_update' c.pk %}" class="wf-list-card-row">
+          <div class="wf-list-card-main">
+            <strong>{{ c.name }}</strong>
+            <span class="wf-muted wf-mono">{{ c.code }}</span>
+            {% if c.description %}
+              <span class="wf-list-card-desc">{{ c.description|truncatechars:80 }}</span>
+            {% endif %}
+          </div>
+          <div class="wf-list-card-side">
+            <span class="wf-pill">{{ c.type_count }} type{{ c.type_count|pluralize }}</span>
+            {% if not c.is_active %}<span class="wf-pill wf-pill-muted">Inactive</span>{% endif %}
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="wf-empty">
+      <div class="wf-empty-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </div>
+      <h3>No categories yet</h3>
+      <p>Categories group request types so they're easy to find.</p>
+      <a href="{% url 'workflow_manage:category_create' %}" class="btn btn-primary">Create the first category</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

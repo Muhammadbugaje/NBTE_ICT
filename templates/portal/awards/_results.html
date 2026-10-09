@@ -1,0 +1,88 @@
+{% if awards %}
+  <div class="award-grid">
+    {% for a in awards %}
+      <a href="{% url 'portal:award_detail' a.pk %}"
+         class="award-card kind-{{ a.kind }}{% if a.is_featured %} is-featured{% endif %}">
+
+        {# ---------- BANNER IMAGE ---------- #}
+        <div class="award-card-media">
+          {% if a.image %}
+            <img src="{{ a.image_thumb_url|default:a.image.url }}" alt="{{ a.title }}" loading="lazy">
+          {% else %}
+            <div class="award-card-media-placeholder">
+              {% if a.kind == "service_anniversary" %}
+                <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              {% elif a.kind == "promotion" %}
+                <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/><line x1="12" y1="9" x2="12" y2="21"/></svg>
+              {% elif a.kind == "retirement" %}
+                <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg>
+              {% else %}
+                <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {# ---- Kind badge (top-left) ---- #}
+          <span class="award-badge award-badge-kind">{{ a.get_kind_display }}</span>
+
+          {# ---- Featured star (top-right) ---- #}
+          {% if a.is_featured %}
+            <span class="award-badge award-badge-featured" title="Featured">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              Featured
+            </span>
+          {% endif %}
+
+          {# ---- Category chip (bottom-left, over gradient) ---- #}
+          {% if a.category %}
+            <span class="award-badge award-badge-category" style="--award-accent: {{ a.category.color }};">
+              {{ a.category.name }}
+            </span>
+          {% endif %}
+        </div>
+
+        {# ---------- CONTENT ---------- #}
+        <div class="award-card-content">
+          <h3>{{ a.title }}</h3>
+
+          <div class="award-card-recipient">
+            <div class="award-card-avatar">
+              {% if a.recipient.photo %}
+                <img src="{{ a.recipient.photo_thumb_url|default:a.recipient.photo.url }}" alt="">
+              {% else %}
+                {{ a.recipient.first_name|slice:":1"|upper }}{{ a.recipient.last_name|slice:":1"|upper }}
+              {% endif %}
+            </div>
+            <div class="award-card-recipient-info">
+              <strong>{{ a.recipient.full_name }}</strong>
+              {% if a.department %}<span>{{ a.department.name }}</span>{% endif %}
+            </div>
+          </div>
+
+          {% if a.description %}
+            <p class="award-card-desc">{{ a.description|truncatechars:110 }}</p>
+          {% endif %}
+        </div>
+
+        {# ---------- FOOTER ---------- #}
+        <div class="award-card-footer">
+          <span class="award-card-date">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            {{ a.awarded_on|date:"M j, Y" }}
+          </span>
+          {% if a.years %}
+            <span class="award-card-years">{{ a.years }} year{{ a.years|pluralize }}</span>
+          {% endif %}
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="portal-empty">
+    <div class="portal-empty-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+    </div>
+    <h3>No awards to show</h3>
+    <p>{% if q or active_kind or active_category %}Try widening your filters.{% else %}The first award you record will appear here.{% endif %}</p>
+  </div>
+{% endif %}

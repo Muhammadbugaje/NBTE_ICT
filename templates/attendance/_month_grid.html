@@ -1,0 +1,44 @@
+{% comment %}Arguments: month_grid, month_label, prev_month, next_month{% endcomment %}
+<div class="att-month">
+  <div class="att-month-head">
+    <a class="att-month-nav" href="?month={{ prev_month }}" aria-label="Previous month">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <h3 class="att-month-title">{{ month_label }}</h3>
+    <a class="att-month-nav" href="?month={{ next_month }}" aria-label="Next month">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+  </div>
+
+  <div class="att-month-weekdays">
+    <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span>
+    <span class="is-weekend">S</span><span class="is-weekend">S</span>
+  </div>
+
+  <div class="att-month-grid">
+    {% for week in month_grid %}
+      {% for cell in week %}
+        {% if not cell.in_month %}
+          <div class="att-day is-muted"></div>
+        {% else %}
+          <div class="att-day
+            {% if not cell.is_working %}is-off{% endif %}
+            {% if cell.record %}{% if cell.record.status == 'present' %}is-present{% elif cell.record.status == 'late' %}is-late{% elif cell.record.status == 'absent' %}is-absent{% elif cell.record.status == 'excused' %}is-excused{% elif cell.record.status == 'holiday' %}is-holiday{% endif %}{% endif %}"
+            title="{{ cell.date|date:'M j, Y' }}{% if cell.record %} · {{ cell.record.get_status_display }}{% endif %}">
+            <span class="att-day-num">{{ cell.date.day }}</span>
+            {% if cell.record %}
+              <span class="att-day-dot"></span>
+            {% endif %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  <div class="att-legend">
+    <span class="att-legend-item"><span class="att-legend-dot is-present"></span>Present</span>
+    <span class="att-legend-item"><span class="att-legend-dot is-late"></span>Late</span>
+    <span class="att-legend-item"><span class="att-legend-dot is-absent"></span>Absent</span>
+    <span class="att-legend-item"><span class="att-legend-dot is-excused"></span>Excused</span>
+  </div>
+</div>

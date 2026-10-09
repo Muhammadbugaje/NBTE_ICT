@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Attendance · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}My attendance{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=3">
+{% endblock %}
+{% block extra_js %}
+  <script src="{% static 'js/attendance.js' %}?v=3" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="att-page">
+
+  {# ---------- Header ---------- #}
+  <header class="att-hero">
+    <div class="att-hero-left">
+      <h1>Attendance</h1>
+      <p>
+        <strong>{{ today|date:"l, F j, Y" }}</strong>
+        {% if not is_working_day %}
+          <span class="att-pill att-pill-neutral">Not a working day</span>
+        {% endif %}
+      </p>
+    </div>
+    <div class="att-hero-right">
+      <a class="att-btn att-btn-ghost" href="{% url 'attendance:my_attendance' %}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        My attendance
+      </a>
+      {% if can_view_all %}
+        <a class="att-btn att-btn-ghost" href="{% url 'attendance:all_departments' %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><line x1="10" y1="21" x2="10" y2="12"/><line x1="14" y1="21" x2="14" y2="12"/></svg>
+          All departments
+        </a>
+      {% endif %}
+      {% if can_view_department %}
+        <a class="att-btn att-btn-ghost" href="{% url 'attendance:department' %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg>
+          Department report
+        </a>
+      {% endif %}
+      {% if can_upload %}
+        <a class="att-btn att-btn-ghost" href="{% url 'attendance:upload' %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Upload Excel
+        </a>
+      {% endif %}
+    </div>  
+</header>
+
+  {# ---------- Today's check-in card ---------- #}
+  {% if not is_working_day %}
+    <section class="att-today is-weekend">
+      <div class="att-today-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="M2 12h4"/><path d="M12 22a10 10 0 1 0 0-20"/></svg>
+      </div>
+      <div class="att-today-body">
+        <h2>Enjoy your day off</h2>
+        <p>Today isn't a working day for your department. Rest up.</p>
+      </div>
+      <div class="att-today-action">
+        <a class="att-btn att-btn-ghost" href="{% url 'attendance:my_attendance' %}">
+          My attendance
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </section>
+  {% elif today_record %}
+    <section class="att-today is-{{ today_record.status }}">
+      <div class="att-today-icon">
+        {% if today_record.status == 'present' %}
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        {% elif today_record.status == 'late' %}
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        {% else %}
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        {% endif %}
+      </div>
+      <div class="att-today-body">
+        <h2>
+          {% if today_record.status == 'present' %}You're checked in — on time
+          {% elif today_record.status == 'late' %}Checked in — recorded as late
+          {% elif today_record.status == 'absent' %}Marked absent today
+          {% elif today_record.status == 'excused' %}Excused today
+          {% else %}{{ today_record.get_status_display }}{% endif %}
+        </h2>
+        <p>
+          {% if today_record.check_in_at %}
+            Checked in at <strong>{{ today_record.check_in_at|time:"H:i" }}</strong>
+          {% endif %}
+          {% if today_record.location %}
+            · at <strong>{{ today_record.location.name }}</strong>
+          {% endif %}
+          {% if today_record.distance_meters %}
+            · {{ today_record.distance_meters }}m from center
+          {% endif %}
+        </p>
+      </div>
+      <div class="att-today-action">
+        <span class="att-pill att-pill-{{ today_record.status }}">
+          {{ today_record.get_status_display }}
+        </span>
+        <a class="att-btn att-btn-ghost" href="{% url 'attendance:my_attendance' %}">
+          My attendance
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </section>
+  {% else %}
+    <section class="att-today is-not-checked">
+      <div class="att-today-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </div>
+      <div class="att-today-body">
+        <h2>You haven't checked in today</h2>
+        <p>
+          {% if not has_department %}
+            You're not assigned to a department — ask an admin to set that up before you can check in.
+          {% elif locations_count == 0 %}
+            No attendance location is configured yet. Ask an admin to add one.
+          {% else %}
+            Head to the office, then check in with your location.
+          {% endif %}
+        </p>
+      </div>
+      <div class="att-today-action">
+        {% if has_department and locations_count %}
+          <a class="att-btn att-btn-primary" href="{% url 'attendance:check_in' %}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Check in now
+          </a>
+        {% endif %}
+        <a class="att-btn att-btn-ghost" href="{% url 'attendance:my_attendance' %}">
+          My attendance
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </section>
+  {% endif %}
+
+  {# ---------- Stats strip ---------- #}
+  <div class="att-stats">
+    <div class="att-stat">
+      <div class="att-stat-value">{{ stats.streak }}</div>
+      <div class="att-stat-label">Day streak</div>
+      <div class="att-stat-sub">consecutive working days</div>
+    </div>
+    <div class="att-stat">
+      <div class="att-stat-value {% if stats.present_pct >= 90 %}att-good{% elif stats.present_pct >= 75 %}att-warn{% else %}att-bad{% endif %}">
+        {{ stats.present_pct }}%
+      </div>
+      <div class="att-stat-label">Attendance</div>
+      <div class="att-stat-sub">last 30 days</div>
+    </div>
+    <div class="att-stat">
+      <div class="att-stat-value">{{ stats.present }}</div>
+      <div class="att-stat-label">On time</div>
+      <div class="att-stat-sub">last 30 days</div>
+    </div>
+    <div class="att-stat {% if stats.late > 0 %}is-warn{% endif %}">
+      <div class="att-stat-value">{{ stats.late }}</div>
+      <div class="att-stat-label">Late</div>
+      <div class="att-stat-sub">last 30 days</div>
+    </div>
+    <div class="att-stat {% if stats.absent > 0 %}is-danger{% endif %}">
+      <div class="att-stat-value">{{ stats.absent }}</div>
+      <div class="att-stat-label">Absent</div>
+      <div class="att-stat-sub">last 30 days</div>
+    </div>
+  </div>
+
+  {# ---------- Month grid ---------- #}
+  <div class="att-grid-wrap">
+    {% include "attendance/_month_grid.html" %}
+  </div>
+
+  {# ---------- Where you can check in ---------- #}
+  {% if has_department and my_dept_locations %}
+    <section class="att-locations">
+      <h2 class="att-section-title">Where you can check in</h2>
+      <div class="att-locations-grid">
+        {% for loc in my_dept_locations %}
+          <div class="att-location-card">
+            <div class="att-location-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <div class="att-location-body">
+              <div class="att-location-name">{{ loc.name }}</div>
+              <div class="att-location-meta">
+                {{ loc.radius_meters }}m radius
+                {% if loc.gps_offset_meters %} + {{ loc.gps_offset_meters }}m offset{% endif %}
+                · starts {{ loc.work_start_time|time:"H:i" }}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+</div>
+{% endblock %}

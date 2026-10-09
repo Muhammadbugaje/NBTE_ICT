@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Assigned to me · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Assigned to me{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=2">
+{% endblock %}
+{% block extra_js %}
+  <script src="{% static 'js/tickets.js' %}?v=2" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="tk-page">
+  <header class="tk-page-head">
+    <div>
+      <h1>Assigned to me</h1>
+      <p>{{ total }} open ticket{{ total|pluralize }} assigned to you.</p>
+    </div>
+  </header>
+
+  <form method="get" class="tk-filters"
+        hx-get="{% url 'tickets:assigned_to_me' %}"
+        hx-target="#assigned-container" hx-select="#assigned-container"
+        hx-swap="outerHTML" hx-push-url="true"
+        hx-indicator="#assigned-container"
+        hx-trigger="submit from:form, change from:select, keyup changed delay:400ms from:input[name=q]">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search…" class="tk-search" autocomplete="off">
+    <select name="state">
+      <option value="open" {% if state_filter == 'open' %}selected{% endif %}>Open</option>
+      <option value="all"  {% if state_filter == 'all' %}selected{% endif %}>Any state</option>
+      {% for value, label in state_choices %}
+        <option value="{{ value }}" {% if state_filter == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="sort">
+      <option value="due"     {% if sort_key == 'due' %}selected{% endif %}>Due</option>
+      <option value="priority" {% if sort_key == 'priority' %}selected{% endif %}>Priority</option>
+      <option value="created" {% if sort_key == 'created' %}selected{% endif %}>Newest</option>
+    </select>
+    <select name="direction">
+      <option value="asc"  {% if sort_dir == 'asc' %}selected{% endif %}>↑</option>
+      <option value="desc" {% if sort_dir == 'desc' %}selected{% endif %}>↓</option>
+    </select>
+  </form>
+
+  <div id="assigned-container" class="tk-list-container">
+    {% if page.object_list %}
+      <div class="tk-list">
+        {% for t in page.object_list %}
+          <a href="{% url 'tickets:detail' t.pk %}" class="tk-card" data-state="{{ t.state }}">
+            <div class="tk-card-left">
+              <span class="tk-ref">{{ t.reference }}</span>
+              <span class="tk-chip tk-chip-state-{{ t.state }}"><span class="tk-chip-dot"></span>{{ t.get_state_display }}</span>
+              <span class="tk-chip tk-chip-prio-{{ t.priority }}">{{ t.get_priority_display }}</span>
+            </div>
+            <div class="tk-card-body">
+              <h3 class="tk-card-title">{{ t.subject }}</h3>
+              <div class="tk-card-meta">
+                <span class="tk-card-meta-item">by {{ t.raised_by.get_full_name|default:t.raised_by.email }}</span>
+                <span class="tk-card-meta-item">{{ t.category.name }}</span>
+                <span class="tk-card-meta-item">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  {{ t.created_at|timesince }} ago
+                </span>
+              </div>
+            </div>
+            <div class="tk-card-right">
+              {% if t.resolution_due_at %}
+                <div class="tk-sla-bar" data-sla-bar data-level="ok" style="width:100%;"
+                     data-sla-due="{{ t.resolution_due_at|date:'c' }}"
+                     data-sla-start="{{ t.created_at|date:'c' }}">
+                  <div class="tk-sla-bar-fill" data-sla-bar-fill style="width:0%"></div>
+                </div>
+                <span class="tk-sla-label" data-sla-out>—</span>
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+      {% if page.has_other_pages %}
+        <nav class="tk-pagination">
+          {% if page.has_previous %}
+            <a href="?q={{ q|urlencode }}&state={{ state_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+               hx-get="?q={{ q|urlencode }}&state={{ state_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+               hx-target="#assigned-container" hx-select="#assigned-container"
+               hx-swap="outerHTML" hx-push-url="true">‹ Prev</a>
+          {% else %}<span class="is-disabled">‹ Prev</span>{% endif %}
+          <span class="is-current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+          {% if page.has_next %}
+            <a href="?q={{ q|urlencode }}&state={{ state_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+               hx-get="?q={{ q|urlencode }}&state={{ state_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+               hx-target="#assigned-container" hx-select="#assigned-container"
+               hx-swap="outerHTML" hx-push-url="true">Next ›</a>
+          {% else %}<span class="is-disabled">Next ›</span>{% endif %}
+        </nav>
+      {% endif %}
+    {% else %}
+      <div class="tk-empty">
+        <div class="tk-empty-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h3>Nothing assigned to you</h3>
+        <p>You're all caught up.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

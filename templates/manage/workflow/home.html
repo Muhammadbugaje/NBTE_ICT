@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Workflow management · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Workflow management{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=3">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page">
+  {% include "manage/workflow/_tabs.html" %}
+
+  {# ==================== HERO ==================== #}
+  <header class="wf-hero wf-hero-home">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon wf-hero-icon-green">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Workflow management</h1>
+        <p>Chains, request types, categories, roles — and a live resolution tester.</p>
+      </div>
+    </div>
+    <div class="wf-hero-actions">
+      <a href="{% url 'workflow_manage:chain_create' %}" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New chain
+      </a>
+      <a href="{% url 'workflow_manage:test' %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Test a request
+      </a>
+    </div>
+  </header>
+
+  {# ==================== WARNINGS ==================== #}
+  {% if warnings %}
+    <div class="wf-warnings">
+      {% for w in warnings %}
+        <div class="wf-warning wf-warning-{{ w.level }}">
+          <div class="wf-warning-icon">
+            {% if w.level == "warn" %}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            {% else %}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            {% endif %}
+          </div>
+          <div class="wf-warning-body">
+            <strong>{{ w.title }}</strong>
+            <p>{{ w.text }}</p>
+          </div>
+          {% if w.url %}
+            <a href="{{ w.url }}" class="wf-warning-link">{{ w.link_label }} →</a>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {# ==================== STATS ==================== #}
+  <section class="wf-stat-grid">
+
+    <div class="wf-stat-card">
+      <div class="wf-stat-icon wf-stat-icon-green">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+      </div>
+      <div class="wf-stat-body">
+        <div class="wf-stat-value">
+          {{ counts.active_chains }}
+          <span class="wf-stat-total">/ {{ counts.chains }}</span>
+        </div>
+        <div class="wf-stat-label">Chains active</div>
+      </div>
+    </div>
+
+    <div class="wf-stat-card">
+      <div class="wf-stat-icon wf-stat-icon-blue">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <div class="wf-stat-body">
+        <div class="wf-stat-value">
+          {{ counts.active_types }}
+          <span class="wf-stat-total">/ {{ counts.types }}</span>
+        </div>
+        <div class="wf-stat-label">Types active</div>
+      </div>
+    </div>
+
+    <div class="wf-stat-card">
+      <div class="wf-stat-icon wf-stat-icon-purple">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </div>
+      <div class="wf-stat-body">
+        <div class="wf-stat-value">{{ counts.categories }}</div>
+        <div class="wf-stat-label">Categories</div>
+      </div>
+    </div>
+
+    <div class="wf-stat-card">
+      <div class="wf-stat-icon wf-stat-icon-amber">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <div class="wf-stat-body">
+        <div class="wf-stat-value">{{ counts.roles }}</div>
+        <div class="wf-stat-label">Roles</div>
+      </div>
+    </div>
+
+  </section>
+
+  {# ==================== MAIN GRID ==================== #}
+  <div class="wf-home-grid">
+
+    {# ---------- RECENT CHAINS ---------- #}
+    <section class="wf-home-card">
+      <header class="wf-home-card-head">
+        <div>
+          <h2>Recent chains</h2>
+          <p class="wf-muted">Latest updated approval sequences.</p>
+        </div>
+        <a href="{% url 'workflow_manage:chain_list' %}" class="wf-home-card-link">All chains →</a>
+      </header>
+
+      {% if chains %}
+        <ul class="wf-home-list">
+          {% for c in chains %}
+            <li>
+              <a href="{% url 'workflow_manage:chain_detail' c.pk %}" class="wf-home-row">
+
+                <div class="wf-home-row-main">
+                  <div class="wf-home-row-title">
+                    <strong>{{ c.name }}</strong>
+                    <span class="wf-mono wf-muted">{{ c.code }}</span>
+                  </div>
+
+                  <div class="wf-home-row-meta">
+                    <span class="wf-chain-dots" title="{{ c.step_count }} step{{ c.step_count|pluralize }}">
+                      {% for i in "123456" %}
+                        {% if forloop.counter <= c.step_count %}<span class="wf-dot"></span>{% endif %}
+                      {% endfor %}
+                      {% if c.step_count > 6 %}<span class="wf-dot-more">+{{ c.step_count|add:"-6" }}</span>{% endif %}
+                    </span>
+                    <span class="wf-muted">{{ c.step_count }} step{{ c.step_count|pluralize }}</span>
+                    {% if c.type_count %}
+                      <span class="wf-muted">· {{ c.type_count }} type{{ c.type_count|pluralize }}</span>
+                    {% endif %}
+                  </div>
+                </div>
+
+                <div class="wf-home-row-side">
+                  {% if not c.is_active %}<span class="wf-pill wf-pill-muted">Inactive</span>{% endif %}
+                  <svg class="wf-home-row-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="wf-home-empty">
+          <p class="wf-muted">No chains yet.</p>
+          <a href="{% url 'workflow_manage:chain_create' %}" class="btn btn-primary btn-sm">
+            Create the first chain
+          </a>
+        </div>
+      {% endif %}
+    </section>
+
+    {# ---------- REQUEST TYPES ---------- #}
+    <section class="wf-home-card">
+      <header class="wf-home-card-head">
+        <div>
+          <h2>Request types</h2>
+          <p class="wf-muted">What staff can raise today.</p>
+        </div>
+        <a href="{% url 'workflow_manage:type_list' %}" class="wf-home-card-link">All types →</a>
+      </header>
+
+      {% if types %}
+        <ul class="wf-home-list">
+          {% for t in types %}
+            <li>
+              <a href="{% url 'workflow_manage:type_update' t.pk %}" class="wf-home-row">
+
+                <div class="wf-home-row-main">
+                  <div class="wf-home-row-title">
+                    <strong>{{ t.name }}</strong>
+                    {% if t.is_cross_department %}
+                      <span class="wf-pill wf-pill-info wf-pill-tiny">Cross-dept</span>
+                    {% endif %}
+                  </div>
+
+                  <div class="wf-home-row-meta">
+                    <span class="wf-chip wf-chip-tiny">{{ t.category.name }}</span>
+                    <span class="wf-muted">→ {{ t.handling_department.name }}</span>
+                  </div>
+                </div>
+
+                <div class="wf-home-row-side">
+                  <svg class="wf-home-row-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="wf-home-empty">
+          <p class="wf-muted">No request types yet.</p>
+          <a href="{% url 'workflow_manage:type_create' %}" class="btn btn-primary btn-sm">
+            Add a request type
+          </a>
+        </div>
+      {% endif %}
+    </section>
+
+  </div>
+
+  {# ==================== QUICK ACTIONS ==================== #}
+  <section class="wf-home-actions">
+    <header class="wf-home-card-head wf-home-card-head-plain">
+      <div>
+        <h2>Get things done</h2>
+        <p class="wf-muted">Jump straight into a task.</p>
+      </div>
+    </header>
+
+    <div class="wf-quick-grid">
+      <a href="{% url 'workflow_manage:chain_create' %}" class="wf-quick-tile wf-quick-tile-green">
+        <span class="wf-quick-icon wf-quick-icon-green">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </span>
+        <span class="wf-quick-body">
+          <strong>New chain</strong>
+          <span class="wf-muted">Define a sequence of approvals.</span>
+        </span>
+      </a>
+
+      <a href="{% url 'workflow_manage:type_create' %}" class="wf-quick-tile wf-quick-tile-blue">
+        <span class="wf-quick-icon wf-quick-icon-blue">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </span>
+        <span class="wf-quick-body">
+          <strong>New request type</strong>
+          <span class="wf-muted">Route a new kind of request.</span>
+        </span>
+      </a>
+
+      <a href="{% url 'workflow_manage:category_create' %}" class="wf-quick-tile wf-quick-tile-purple">
+        <span class="wf-quick-icon wf-quick-icon-purple">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </span>
+        <span class="wf-quick-body">
+          <strong>New category</strong>
+          <span class="wf-muted">Group related types together.</span>
+        </span>
+      </a>
+
+      <a href="{% url 'workflow_manage:test' %}" class="wf-quick-tile wf-quick-tile-amber">
+        <span class="wf-quick-icon wf-quick-icon-amber">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </span>
+        <span class="wf-quick-body">
+          <strong>Test a request</strong>
+          <span class="wf-muted">See which chain would run.</span>
+        </span>
+      </a>
+    </div>
+  </section>
+
+</div>
+{% endblock %}

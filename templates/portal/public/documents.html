@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Public documents · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Public documents{% endblock %}
+
+{% block content %}
+<div class="portal-page">
+  <header class="portal-head">
+    <div>
+      <h1>Public documents</h1>
+      <p>Freely available to anyone — policies, guides, and general reference material.</p>
+    </div>
+  </header>
+
+  <form class="portal-filters" method="get">
+    <div class="portal-filters-q">
+      <input type="text" name="q" value="{{ search_q }}" placeholder="Search public documents…">
+    </div>
+    <select name="category">
+      <option value="">All categories</option>
+      {% for c in categories %}
+        <option value="{{ c.slug }}" {% if active_category == c.slug %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    {% if search_q or active_category %}
+      <a href="{% url 'portal:public_document_list' %}" class="portal-filters-reset">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if documents %}
+    <div class="portal-grid">
+      {% for d in documents %}
+        {% include "portal/documents/_card.html" with document=d %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="portal-empty">
+      <div class="portal-empty-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <h3>No public documents</h3>
+      <p>Nothing published to the public site yet.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

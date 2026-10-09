@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Request types · Workflow management{% endblock %}
+{% block page_title %}Request types{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page">
+  {% include "manage/workflow/_tabs.html" %}
+
+  <header class="wf-hero wf-hero-split">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon wf-hero-icon-blue">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <div>
+        <h1>Request types</h1>
+        <p>{{ types|length }} type{{ types|length|pluralize }} defined.</p>
+      </div>
+    </div>
+    <a href="{% url 'workflow_manage:type_create' %}" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New type
+    </a>
+  </header>
+
+  <form method="get" class="wf-filter">
+    <div class="wf-filter-search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" name="q" value="{{ q }}" placeholder="Search by name or code…" autocomplete="off">
+    </div>
+    <div class="wf-filter-select">
+      <select name="category" onchange="this.form.submit()">
+        <option value="">All categories</option>
+        {% for c in categories %}
+          <option value="{{ c.code }}" {% if category == c.code %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if q or category %}<a href="{% url 'workflow_manage:type_list' %}" class="wf-filter-clear">Clear</a>{% endif %}
+  </form>
+
+  {% if types %}
+    <div class="wf-table-wrap">
+      <table class="wf-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Handling office</th>
+            <th>Chain</th>
+            <th>Extras</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in types %}
+            <tr>
+              <td class="wf-cell-primary">
+                <div class="wf-cell-primary-inner">
+                  <strong>{{ t.name }}</strong>
+                  <span class="wf-muted wf-mono">{{ t.code }}</span>
+                  {% if t.is_cross_department %}<span class="wf-pill wf-pill-info">Cross-dept</span>{% endif %}
+                  {% if not t.is_active %}<span class="wf-pill wf-pill-muted">Inactive</span>{% endif %}
+                </div>
+              </td>
+              <td data-label="Category"><span class="wf-chip">{{ t.category.name }}</span></td>
+              <td data-label="Handling office" class="wf-muted">{{ t.handling_department.name }}</td>
+              <td data-label="Chain">
+                {% if t.approval_chain %}
+                  <a href="{% url 'workflow_manage:chain_detail' t.approval_chain.pk %}" class="wf-link-inline">
+                    {{ t.approval_chain.name }}
+                  </a>
+                {% else %}
+                  <span class="wf-muted">—</span>
+                {% endif %}
+              </td>
+              <td data-label="Extras">
+                <div class="wf-extras">
+                  {% if t.requires_finance_approval %}<span class="wf-pill wf-pill-amber">Finance</span>{% endif %}
+                  {% if t.requires_audit_approval %}<span class="wf-pill wf-pill-amber">Audit</span>{% endif %}
+                  {% if t.requires_hr_approval %}<span class="wf-pill wf-pill-amber">HR</span>{% endif %}
+                  {% if t.requires_es_approval %}<span class="wf-pill wf-pill-amber">ES</span>{% endif %}
+                  {% if t.requires_records_filing %}<span class="wf-pill wf-pill-purple">Records</span>{% endif %}
+                  {% if not t.requires_finance_approval and not t.requires_audit_approval and not t.requires_hr_approval and not t.requires_es_approval and not t.requires_records_filing %}
+                    <span class="wf-muted">—</span>
+                  {% endif %}
+                </div>
+              </td>
+              <td class="wf-cell-actions">
+                <a href="{% url 'workflow_manage:type_update' t.pk %}" class="btn btn-ghost btn-sm">Edit</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="wf-empty">
+      <div class="wf-empty-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <h3>No request types found</h3>
+      <p>{% if q or category %}Try clearing the filters.{% else %}Request types define what can be raised.{% endif %}</p>
+      <a href="{% url 'workflow_manage:type_create' %}" class="btn btn-primary">Create the first type</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

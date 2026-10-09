@@ -1,0 +1,34 @@
+<div class="portal-widget">
+  <header class="portal-widget-head">
+    <h2>Announcements</h2>
+    <a href="{% url 'portal:announcement_list' %}" class="link-btn">See all{% if total_live > 3 %} ({{ total_live }}){% endif %}</a>
+  </header>
+
+  {% if announcements %}
+    <div class="portal-widget-list">
+      {% for a in announcements %}
+        <a href="{% url 'portal:announcement_detail' a.pk %}" class="portal-widget-item">
+          {% if a.image %}
+            <div class="portal-widget-thumb">
+              <img src="{{ a.image_thumb_url }}" alt="" loading="lazy">
+            </div>
+          {% else %}
+            <div class="portal-widget-thumb portal-widget-thumb-placeholder"
+                 style="--ann-accent: {{ a.category.color }};">
+              {{ a.category.name|slice:":1" }}
+            </div>
+          {% endif %}
+          <div class="portal-widget-body">
+            <div class="portal-widget-cat" style="--ann-accent: {{ a.category.color }};">
+              {{ a.category.name }}{% if a.is_pinned %} · 📌{% endif %}
+            </div>
+            <div class="portal-widget-title">{{ a.title }}</div>
+            <div class="portal-widget-time muted">{{ a.publish_at|date:"M j · H:i" }}</div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted portal-widget-empty">No announcements yet.</p>
+  {% endif %}
+</div>

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Holidays · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Holidays & Absence{% endblock %}
+
+{% block content %}
+<div class="hol-page">
+
+  <header class="hol-hero">
+    <div class="hol-hero-inner">
+      <div class="hol-hero-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <div>
+        <h1>Holidays & Absence</h1>
+        <p>{{ year }} calendar and who's out today.</p>
+      </div>
+    </div>
+    {% if perms.portal.manage_holiday %}
+      <a href="{% url 'portal:holiday_create' %}" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add holiday
+      </a>
+    {% endif %}
+  </header>
+
+  <div class="hol-layout">
+
+    <section class="hol-main">
+      <form class="hol-filter"
+            hx-get="{% url 'portal:holidays_list' %}"
+            hx-target="#holiday-results"
+            hx-trigger="change"
+            hx-swap="innerHTML"
+            hx-push-url="true"
+            hx-indicator="#hol-spinner">
+        <label class="hol-filter-label" for="hol-year">Year</label>
+        <select name="year" id="hol-year">
+          {% for y in years %}
+            <option value="{{ y }}" {% if year == y %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+        <div class="hol-filter-spinner" id="hol-spinner">
+          <span class="spinner spinner-sm"></span>
+        </div>
+      </form>
+
+      <div id="holiday-results">
+        {% include "portal/holidays/_results.html" %}
+      </div>
+    </section>
+
+    <aside class="hol-side">
+      <section class="hol-widget"
+               hx-get="{% url 'portal:absence_today' %}"
+               hx-trigger="load, every 120s"
+               hx-swap="innerHTML">
+        <div class="hol-widget-empty">
+          <span class="spinner spinner-sm"></span>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

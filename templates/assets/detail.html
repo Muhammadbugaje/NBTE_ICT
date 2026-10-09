@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ asset.asset_tag }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{{ asset.asset_tag }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/assets.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page-head">
+    {% if from_scan %}
+        <div class="scan-return-bar">
+            <span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="20 6 9 17 4 12"/></svg>
+            Looked up from scan
+            </span>
+            <a href="{% url 'assets:scan' %}">Scan another →</a>
+        </div>
+    {% endif %}
+  <div>
+    <a href="{% url 'assets:list' %}" class="btn btn-subtle btn-sm" style="margin-bottom:12px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to assets
+    </a>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="{% url 'assets:print_labels' %}?tags={{ asset.asset_tag }}" class="btn btn-ghost" target="_blank">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Print label
+    </a>
+    {% if can_edit %}
+      <a href="{% url 'assets:edit' asset.asset_tag %}" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Edit
+      </a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="asset-detail-layout">
+
+  {# ---------- Main ---------- #}
+  <div class="asset-detail-main">
+
+    {# Header card with QR #}
+    <section class="asset-header-card">
+      <div class="asset-header-info">
+        <h1>{{ asset.display_name }}</h1>
+        <p class="asset-header-sub">
+          {{ asset.asset_tag }}
+          {% if asset.serial_number %} · SN {{ asset.serial_number }}{% endif %}
+        </p>
+        <div class="wf-detail-badges" style="margin-top:14px;">
+          <span class="badge badge-state-{{ asset.state }}">{{ asset.get_state_display }}</span>
+          <span class="badge">{{ asset.category.name }}</span>
+          {% if asset.owner_department %}
+            <span class="badge badge-info">{{ asset.owner_department.name }}</span>
+          {% endif %}
+          {% if asset.current_custodian %}
+            <span class="badge badge-success">Held by {{ asset.current_custodian.get_full_name|default:asset.current_custodian.email }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="asset-header-qr">
+        {% if asset.qr_svg %}
+          {{ asset.qr_svg|safe }}
+        {% else %}
+          <div class="asset-qr-placeholder">Install <code>qrcode</code> for label generation</div>
+        {% endif %}
+      </div>
+    </section>
+
+    {# Details #}
+    <section class="wf-card-block">
+      <h2 class="wf-block-title">Details</h2>
+      <div class="asset-facts">
+        {% if asset.brand %}<div><span>Brand</span><strong>{{ asset.brand }}</strong></div>{% endif %}
+        {% if asset.model %}<div><span>Model</span><strong>{{ asset.model }}</strong></div>{% endif %}
+        {% if asset.color %}<div><span>Color</span><strong>{{ asset.color }}</strong></div>{% endif %}
+        {% if asset.current_location %}<div><span>Location</span><strong>{{ asset.current_location }}</strong></div>{% endif %}
+        {% if asset.acquired_at %}<div><span>Acquired</span><strong>{{ asset.acquired_at|date:"M j, Y" }}</strong></div>{% endif %}
+        {% if asset.cost %}<div><span>Cost</span><strong>₦{{ asset.cost|floatformat:2 }}</strong></div>{% endif %}
+        {% if asset.warranty_until %}<div><span>Warranty until</span><strong>{{ asset.warranty_until|date:"M j, Y" }}</strong></div>{% endif %}
+      </div>
+
+      {% if asset.description %}
+        <div style="margin-top:16px;">
+          <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-subtle);margin-bottom:6px;">Description</h3>
+          <p style="white-space:pre-wrap;color:var(--fg);line-height:1.6;">{{ asset.description }}</p>
+        </div>
+      {% endif %}
+
+      {% if asset.spec %}
+        <div style="margin-top:16px;">
+          <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-subtle);margin-bottom:6px;">Specifications</h3>
+          <div class="asset-facts">
+            {% for key, value in asset.spec.items %}
+              <div><span>{{ key|title }}</span><strong>{{ value|default:"—" }}</strong></div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </section>
+
+    {# Current assignment + history #}
+    <section class="wf-card-block">
+      <h2 class="wf-block-title">Assignment history</h2>
+      {% if assignments %}
+        <div class="asset-timeline">
+          {% for a in assignments %}
+            <div class="asset-timeline-item {% if a.is_open %}is-open{% endif %}">
+              <div class="asset-timeline-dot"></div>
+              <div class="asset-timeline-body">
+                <div class="asset-timeline-head">
+                  <strong>{{ a.assigned_to.get_full_name|default:a.assigned_to.email }}</strong>
+                  {% if a.is_open %}<span class="badge badge-success">Currently held</span>{% endif %}
+                </div>
+                <div class="asset-timeline-meta">
+                  Assigned by {{ a.assigned_by.get_full_name|default:a.assigned_by.email }}
+                  · {{ a.assigned_at|date:"M j, Y · H:i" }}
+                  {% if a.returned_at %}
+                    · Returned {{ a.returned_at|date:"M j, Y" }}
+                    · condition on return: {{ a.get_condition_on_return_display|default:"—" }}
+                  {% endif %}
+                  · held {{ a.duration_days }} day{{ a.duration_days|pluralize }}
+                </div>
+                {% if a.notes %}<div class="asset-timeline-notes">{{ a.notes }}</div>{% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">Not assigned to anyone yet.</p>
+      {% endif %}
+    </section>
+
+    {# Issues #}
+    <section class="wf-card-block">
+      <h2 class="wf-block-title">Issues & repairs</h2>
+      {% if issues %}
+        {% for issue in issues %}
+          <div class="asset-issue {% if issue.is_resolved %}is-resolved{% endif %}">
+            <div class="asset-issue-head">
+              <strong>{{ issue.summary }}</strong>
+              {% if issue.is_resolved %}
+                <span class="badge badge-success">Resolved</span>
+              {% else %}
+                <span class="badge badge-warn">Open</span>
+              {% endif %}
+            </div>
+            <div class="asset-issue-meta">
+              Reported by {{ issue.reported_by.get_full_name|default:issue.reported_by.email }}
+              · {{ issue.reported_at|date:"M j, Y" }}
+              {% if issue.request %}· linked to <a href="{% url 'workflow:detail' issue.request.pk %}">{{ issue.request.reference }}</a>{% endif %}
+              {% if issue.resolved_at %}· resolved {{ issue.resolved_at|date:"M j, Y" }} by {{ issue.resolved_by.get_full_name|default:issue.resolved_by.email|default:"—" }}{% endif %}
+            </div>
+            {% if issue.description %}<div class="asset-issue-body">{{ issue.description }}</div>{% endif %}
+            {% if issue.resolution_notes %}<div class="asset-issue-body" style="background:var(--primary-soft);">Resolution: {{ issue.resolution_notes }}</div>{% endif %}
+            {% if not issue.is_resolved and can_edit %}
+              <details class="asset-issue-resolve" style="margin-top:10px;">
+                <summary class="link-btn">Resolve this issue</summary>
+                <form method="post" action="{% url 'assets:resolve_issue' asset.asset_tag issue.pk %}" style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                  {% csrf_token %}
+                  {{ resolve_form.resolution_notes }}
+                  <label style="font-size:12px;color:var(--fg-subtle);">Restore asset to</label>
+                  {{ resolve_form.restore_state }}
+                  <button class="btn btn-primary btn-sm" type="submit" style="align-self:flex-start;">Mark resolved</button>
+                </form>
+              </details>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="muted">No issues recorded.</p>
+      {% endif %}
+
+      {% if not asset.state == 'retired' and not asset.state == 'disposed' %}
+        <details class="asset-issue-new" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--divider);">
+          <summary class="link-btn">Report a new issue</summary>
+          <form method="post" action="{% url 'assets:report_issue' asset.asset_tag %}" style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
+            {% csrf_token %}
+            {{ issue_form.summary }}
+            {{ issue_form.description }}
+            <button class="btn btn-primary btn-sm" type="submit" style="align-self:flex-start;">Report issue</button>
+          </form>
+        </details>
+      {% endif %}
+
+      <a href="{% url 'tickets:create' %}?asset_tag={{ asset.asset_tag|urlencode }}&subject={{ asset.display_name|urlencode }}%20issue"
+            class="btn btn-ghost">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            Raise repair ticket
+        </a>
+    </section>
+
+    {# Attachments #}
+    <section class="wf-card-block">
+      <h2 class="wf-block-title">Attachments</h2>
+      {% if attachments %}
+        {% for a in attachments %}
+          <div class="wf-attachment">
+            <div class="wf-attachment-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </div>
+            <div class="wf-attachment-info">
+              <a href="{{ a.file.url }}" target="_blank" class="wf-attachment-name">{{ a.original_name }}</a>
+              <div class="wf-attachment-desc">
+                {{ a.get_kind_display }}
+                · {{ a.uploaded_by.get_full_name|default:a.uploaded_by.email }}
+                · {{ a.created_at|date:"M j, Y" }}
+                {% if a.description %} · {{ a.description }}{% endif %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="muted">No attachments yet.</p>
+      {% endif %}
+
+      {% if can_edit %}
+        <form method="post" action="{% url 'assets:add_attachment' asset.asset_tag %}" enctype="multipart/form-data" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--divider);display:flex;flex-direction:column;gap:10px;">
+          {% csrf_token %}
+          {{ attachment_form.file }}
+          {{ attachment_form.kind }}
+          {{ attachment_form.description }}
+          <button class="btn btn-ghost btn-sm" type="submit" style="align-self:flex-start;">Upload</button>
+        </form>
+      {% endif %}
+    </section>
+  </div>
+
+  {# ---------- Sidebar ---------- #}
+  <aside class="asset-detail-side">
+
+    {% if can_edit %}
+      {% if open_assignment %}
+        <div class="wf-side-card">
+          <h3 class="wf-side-card-title">Currently assigned</h3>
+          <p class="wf-side-card-sub">
+            Held by <strong>{{ open_assignment.assigned_to.get_full_name|default:open_assignment.assigned_to.email }}</strong>
+            since {{ open_assignment.assigned_at|date:"M j, Y" }}.
+          </p>
+          <form method="post" action="{% url 'assets:return' asset.asset_tag %}" style="display:flex;flex-direction:column;gap:8px;">
+            {% csrf_token %}
+            <label class="wf-side-action-label">Condition on return</label>
+            {{ return_form.condition_on_return }}
+            {{ return_form.notes }}
+            <button class="btn btn-primary btn-sm" type="submit">Record return</button>
+          </form>
+        </div>
+      {% else %}
+        <div class="wf-side-card">
+          <h3 class="wf-side-card-title">Assign this asset</h3>
+          <p class="wf-side-card-sub">Hand it to a staff member.</p>
+          <form method="post" action="{% url 'assets:assign' asset.asset_tag %}" style="display:flex;flex-direction:column;gap:8px;">
+            {% csrf_token %}
+            {{ assign_form.assigned_to }}
+            <label class="wf-side-action-label">Condition on assign</label>
+            {{ assign_form.condition_on_assign }}
+            {{ assign_form.location_on_assign }}
+            {{ assign_form.notes }}
+            <button class="btn btn-primary btn-sm" type="submit">Assign</button>
+          </form>
+        </div>
+      {% endif %}
+
+      <div class="wf-side-card">
+        <h3 class="wf-side-card-title">Change state</h3>
+        <form method="post" action="{% url 'assets:set_state' asset.asset_tag %}" style="display:flex;flex-direction:column;gap:8px;">
+          {% csrf_token %}
+          {{ state_form.state }}
+          {{ state_form.reason }}
+          <button class="btn btn-ghost btn-sm" type="submit">Update state</button>
+        </form>
+      </div>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

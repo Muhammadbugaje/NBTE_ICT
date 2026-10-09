@@ -1,0 +1,119 @@
+<section class="dash-card" id="attendance">
+  <header class="dash-card-head">
+    <div>
+      <h2>Attendance</h2>
+      <p>Today's snapshot and 30-day trends across the directorate</p>
+    </div>
+    <a href="{% url 'attendance:all_departments' %}" class="link-btn">Open full report →</a>
+  </header>
+
+  <div class="dash-grid dash-grid-1-1-1" style="margin-bottom:16px;">
+    <div class="dash-kpi">
+      <div class="dash-kpi-icon dash-kpi-primary">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-num">{{ attendance_kpis.present }}</div>
+        <div class="dash-kpi-lbl">Present today</div>
+      </div>
+    </div>
+    <div class="dash-kpi">
+      <div class="dash-kpi-icon dash-kpi-warn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-num">{{ attendance_kpis.late }}</div>
+        <div class="dash-kpi-lbl">Late today</div>
+      </div>
+    </div>
+    <div class="dash-kpi">
+      <div class="dash-kpi-icon dash-kpi-danger">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-num">{{ attendance_kpis.absent }}</div>
+        <div class="dash-kpi-lbl">Absent today</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash-grid dash-grid-2-1">
+    <div>
+      <div class="dash-card-head" style="margin-bottom:8px;">
+        <div>
+          <h3 style="margin:0;font-size:13px;font-weight:700;">Attendance rate — last 30 days</h3>
+          <p style="margin:2px 0 0;font-size:11.5px;color:var(--fg-muted, #64748B);">% of recorded staff present per day</p>
+        </div>
+      </div>
+      {% if attendance_charts.trend.labels %}
+        <div class="dash-chart" data-chart-type="area">
+          {{ attendance_charts.trend|json_script:"chart-att-trend" }}
+          <canvas></canvas>
+        </div>
+      {% else %}
+        <div class="dash-empty"><p>No attendance trend data yet.</p></div>
+      {% endif %}
+    </div>
+
+    <div>
+      <div class="dash-card-head" style="margin-bottom:8px;">
+        <div>
+          <h3 style="margin:0;font-size:13px;font-weight:700;">By department</h3>
+          <p style="margin:2px 0 0;font-size:11.5px;color:var(--fg-muted, #64748B);">Last 30 days, by status</p>
+        </div>
+      </div>
+      {% if attendance_charts.by_dept.labels %}
+        <div class="dash-chart" data-chart-type="stackedBar">
+          {{ attendance_charts.by_dept|json_script:"chart-att-dept" }}
+          <canvas></canvas>
+        </div>
+        <div class="dash-chart-legend">
+          <span><i style="background:#10B981"></i>Present</span>
+          <span><i style="background:#F59E0B"></i>Late</span>
+          <span><i style="background:#EF4444"></i>Absent</span>
+          <span><i style="background:#6366F1"></i>Excused</span>
+        </div>
+      {% else %}
+        <div class="dash-empty"><p>No per-department attendance yet.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if attendance_depts %}
+    <div style="overflow-x:auto;margin-top:16px;">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Department</th>
+            <th style="text-align:right">Present</th>
+            <th style="text-align:right">Late</th>
+            <th style="text-align:right">Absent</th>
+            <th style="text-align:right">Excused</th>
+            <th style="text-align:right">Attendance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in attendance_depts %}
+            <tr>
+              <td>
+                <a href="{% url 'attendance:department' %}?department={{ r.department.pk }}"
+                   style="text-decoration:none;color:inherit;">
+                  <strong>{{ r.department.name }}</strong>
+                </a>
+              </td>
+              <td style="text-align:right">{{ r.present }}</td>
+              <td style="text-align:right">{% if r.late %}<span style="color:#B45309;font-weight:600;">{{ r.late }}</span>{% else %}—{% endif %}</td>
+              <td style="text-align:right">{% if r.absent %}<span style="color:#B91C1C;font-weight:600;">{{ r.absent }}</span>{% else %}—{% endif %}</td>
+              <td style="text-align:right">{% if r.excused %}{{ r.excused }}{% else %}—{% endif %}</td>
+              <td style="text-align:right">
+                <span class="dash-badge {% if r.pct >= 90 %}dash-badge-success{% elif r.pct >= 75 %}dash-badge-warn{% else %}dash-badge-danger{% endif %}">
+                  {{ r.pct }}%
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>

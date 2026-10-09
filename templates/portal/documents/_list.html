@@ -1,0 +1,34 @@
+<div id="doc-list" data-portal-list>
+  {% if documents %}
+    <div class="portal-grid">
+      {% for d in documents %}
+        {% include "portal/documents/_card.html" with document=d %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="portal-empty">
+      <div class="portal-empty-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      {% if active_show == "drafts" %}
+        <h3>No drafts</h3>
+        <p>You don't have any draft documents.</p>
+      {% elif active_show == "mine" %}
+        <h3>You haven't created any documents</h3>
+        <p>When you upload one it'll appear here.</p>
+        {% if perms.portal.add_document %}
+          <a href="{% url 'portal:document_create' %}" class="btn btn-primary">New document</a>
+        {% endif %}
+      {% elif active_show == "archived" %}
+        <h3>Nothing archived</h3>
+        <p>Archived documents will appear here.</p>
+      {% elif filters_active %}
+        <h3>No documents match</h3>
+        <p>Try clearing the filters.</p>
+      {% else %}
+        <h3>No documents yet</h3>
+        <p>Documents shared with you will appear here.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>

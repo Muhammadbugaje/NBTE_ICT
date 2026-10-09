@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% load static %}
+{% load list_tags %}
+
+{% block title %}Assigned to me · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Assigned to me{% endblock %}
+
+{% block content %}
+<div class="wf-page-head">
+  <div>
+    <h1>Assigned to me</h1>
+    <p>Requests where you're the assigned staff member.</p>
+  </div>
+</div>
+
+<form method="get"
+      class="wf-filters"
+      hx-get="{% url 'workflow:assigned_to_me' %}"
+      hx-target="#wf-list-container" hx-select="#wf-list-container"
+      hx-swap="outerHTML" hx-push-url="true"
+      hx-indicator="#wf-list-container"
+      hx-trigger="submit from:form, change from:select, keyup changed delay:400ms from:input[name=q]">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Search by subject or reference…"
+         class="input wf-filter-search" autocomplete="off">
+  <select name="status" class="input wf-filter-select">
+    <option value="all">Any status</option>
+    {% for value, label in status_choices %}
+      <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <input type="hidden" name="sort" value="{{ sort_key }}">
+  <input type="hidden" name="direction" value="{{ sort_dir }}">
+  {% if q or status_filter != 'all' %}
+    <a href="{% url 'workflow:assigned_to_me' %}" class="btn btn-ghost btn-sm">Reset</a>
+  {% endif %}
+</form>
+
+<div id="wf-list-container" class="wf-list-container">
+  {% if page.object_list %}
+    <div class="wf-table-wrap">
+      <table class="wf-table">
+        <thead>
+          <tr>
+            {% sortable_th "reference" "Ref" %}
+            {% sortable_th "subject"   "Subject" %}
+            {% sortable_th "status"    "Status" %}
+            {% sortable_th "priority"  "Priority" %}
+            {% sortable_th "created"   "Raised" %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for req in page.object_list %}
+            <tr onclick="window.location='{% url 'workflow:detail' req.pk %}'" style="cursor:pointer;">
+              <td><strong>{{ req.reference|slice:"-5:" }}</strong></td>
+              <td>
+                <div class="wf-table-title">{{ req.subject }}</div>
+                <div class="wf-table-sub">
+                  {{ req.requester.get_full_name|default:req.requester.email }}
+                  {% if req.receiving_department %} → {{ req.receiving_department.name }}{% endif %}
+                </div>
+              </td>
+              <td><span class="badge badge-status-{{ req.status }}">{{ req.get_status_display }}</span></td>
+              <td><span class="badge badge-priority-{{ req.priority }}">{{ req.get_priority_display }}</span></td>
+              <td class="muted">{{ req.created_at|timesince }} ago</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page.has_other_pages %}
+      <nav class="pagination">
+        {% if page.has_previous %}
+          <a href="?q={{ q|urlencode }}&status={{ status_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+             hx-get="?q={{ q|urlencode }}&status={{ status_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+             hx-target="#wf-list-container" hx-select="#wf-list-container"
+             hx-swap="outerHTML" hx-push-url="true">« Prev</a>
+        {% else %}<span class="disabled">« Prev</span>{% endif %}
+        <span class="current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}
+          <a href="?q={{ q|urlencode }}&status={{ status_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+             hx-get="?q={{ q|urlencode }}&status={{ status_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+             hx-target="#wf-list-container" hx-select="#wf-list-container"
+             hx-swap="outerHTML" hx-push-url="true">Next »</a>
+        {% else %}<span class="disabled">Next »</span>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="wf-empty">
+      <div class="wf-empty-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <h3>{% if q or status_filter != 'all' %}No matches{% else %}No assigned requests{% endif %}</h3>
+      <p>{% if q or status_filter != 'all' %}Try adjusting the search or status.{% else %}Nothing is currently assigned to you.{% endif %}</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

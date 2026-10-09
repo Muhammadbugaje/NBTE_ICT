@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if is_create %}New asset{% else %}Edit {{ asset.asset_tag }}{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{% if is_create %}New asset{% else %}Edit asset{% endif %}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/assets.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page-head">
+  <div>
+    <a href="{% if asset %}{% url 'assets:detail' asset.asset_tag %}{% else %}{% url 'assets:list' %}{% endif %}"
+       class="btn btn-subtle btn-sm" style="margin-bottom:12px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back
+    </a>
+    <h1>{% if is_create %}Register a new asset{% else %}Edit {{ asset.asset_tag }}{% endif %}</h1>
+    <p>{% if is_create %}Fill in the details below. Leave the tag blank to auto-generate it.{% else %}Update the details.{% endif %}</p>
+  </div>
+</div>
+
+<div class="wf-raise-card" style="max-width:820px;">
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="wizard-error">{{ form.non_field_errors|join:" " }}</div>
+    {% endif %}
+
+    <h3 class="asset-form-section">Identity</h3>
+
+    <div class="form-row">
+      <div class="form-col">
+        <label for="{{ form.asset_tag.id_for_label }}">Asset tag</label>
+        {{ form.asset_tag }}
+        {% if form.asset_tag.errors %}<span class="error">{{ form.asset_tag.errors|join:" " }}</span>{% endif %}
+        <span class="hint">{{ form.asset_tag.help_text|default:"Leave blank to auto-generate" }}</span>
+      </div>
+      <div class="form-col">
+        <label for="{{ form.serial_number.id_for_label }}">Serial number</label>
+        {{ form.serial_number }}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-col form-col-full">
+        <label for="{{ form.category.id_for_label }}">Category <span class="req">*</span></label>
+        {{ form.category }}
+        {% if form.category.errors %}<span class="error">{{ form.category.errors|join:" " }}</span>{% endif %}
+      </div>
+    </div>
+
+    <h3 class="asset-form-section">Description</h3>
+
+    <div class="form-row">
+      <div class="form-col">
+        <label for="{{ form.brand.id_for_label }}">Brand</label>
+        {{ form.brand }}
+      </div>
+      <div class="form-col">
+        <label for="{{ form.model.id_for_label }}">Model</label>
+        {{ form.model }}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-col">
+        <label for="{{ form.color.id_for_label }}">Color</label>
+        {{ form.color }}
+      </div>
+      <div class="form-col">
+        <label for="{{ form.current_location.id_for_label }}">Location</label>
+        {{ form.current_location }}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-col form-col-full">
+        <label for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}
+      </div>
+    </div>
+
+    <h3 class="asset-form-section">Ownership & lifecycle</h3>
+
+    <div class="form-row">
+      <div class="form-col">
+        <label for="{{ form.owner_department.id_for_label }}">Owner department</label>
+        {{ form.owner_department }}
+      </div>
+      <div class="form-col">
+        <label for="{{ form.state.id_for_label }}">State</label>
+        {{ form.state }}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-col">
+        <label for="{{ form.acquired_at.id_for_label }}">Acquired at</label>
+        {{ form.acquired_at }}
+      </div>
+      <div class="form-col">
+        <label for="{{ form.cost.id_for_label }}">Cost</label>
+        {{ form.cost }}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-col">
+        <label for="{{ form.warranty_until.id_for_label }}">Warranty until</label>
+        {{ form.warranty_until }}
+      </div>
+      <div class="form-col"></div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-col form-col-full">
+        <label for="{{ form.notes.id_for_label }}">Notes</label>
+        {{ form.notes }}
+      </div>
+    </div>
+
+    <div class="wf-raise-actions">
+      <button class="btn btn-primary" type="submit">
+        {% if is_create %}Create asset{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% if asset %}{% url 'assets:detail' asset.asset_tag %}{% else %}{% url 'assets:list' %}{% endif %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

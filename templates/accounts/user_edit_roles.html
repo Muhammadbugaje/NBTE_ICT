@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Edit roles · {{ u.email }}{% endblock %}
+{% block page_title %}Edit roles{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/home.css' %}?v=4">
+{% endblock %}
+
+{% block content %}
+<div class="home-page home-page-narrow">
+
+  <a href="{% url 'accounts:user_detail' u.pk %}" class="home-back">← {{ u.email }}</a>
+
+  <header class="home-header">
+    <div>
+      <h1>Edit roles</h1>
+      <p class="muted">Assign groups (roles) to <strong>{{ u.get_full_name|default:u.email }}</strong>.</p>
+    </div>
+  </header>
+
+  <form method="post" class="home-card">
+    {% csrf_token %}
+
+    <div class="role-list">
+      {% for g in all_groups %}
+        <label class="role-item">
+          <input type="checkbox" name="groups" value="{{ g.pk }}"
+                 {% if g in u.groups.all %}checked{% endif %}>
+          <div>
+            <strong>{{ g.name }}</strong>
+            {% if g.permissions.exists %}
+              <span class="muted">{{ g.permissions.count }} permission{{ g.permissions.count|pluralize }}</span>
+            {% endif %}
+          </div>
+        </label>
+      {% empty %}
+        <p class="muted">No groups defined yet. Create them in the Django admin.</p>
+      {% endfor %}
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button type="submit" class="btn btn-primary">Save roles</button>
+      <a href="{% url 'accounts:user_detail' u.pk %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

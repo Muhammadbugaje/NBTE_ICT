@@ -1,0 +1,38 @@
+<div class="hol-widget-head">
+  <h2>Who's out today</h2>
+  <span class="hol-widget-sub">{{ today|date:"M j, Y" }}</span>
+</div>
+
+{% if absent_staff %}
+  <div class="hol-widget-list">
+    {% for s in absent_staff %}
+      <a href="{% url 'staff:detail' s.pk %}" class="hol-widget-item">
+        <div class="hol-widget-avatar">
+          {% if s.photo %}
+            <img src="{{ s.photo_thumb_url }}" alt="">
+          {% else %}
+            {{ s.first_name|slice:":1"|upper }}{{ s.last_name|slice:":1"|upper }}
+          {% endif %}
+        </div>
+        <div class="hol-widget-body">
+          <div class="hol-widget-name">{{ s.full_name }}</div>
+          <div class="hol-widget-state">
+            <span class="hol-absence-dot"></span>
+            {% if s.state %}{{ s.state.name }}{% else %}Absent{% endif %}
+          </div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+  <div class="hol-widget-foot">
+    {{ absent_staff|length }} out today
+  </div>
+{% else %}
+  <div class="hol-widget-empty">
+    <div class="hol-widget-empty-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div class="hol-widget-empty-title">Everyone's around</div>
+    <div class="hol-widget-empty-sub">No absences recorded today.</div>
+  </div>
+{% endif %}

@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}New message · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}New message{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=3">
+{% endblock %}
+
+{% block content %}
+<div class="msg-page msg-page-narrow">
+
+  <a href="{% url 'messaging:inbox' %}" class="msg-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Back to inbox
+  </a>
+
+  <header class="msg-hero">
+    <div>
+      <h1>New message</h1>
+      <p class="muted">Send to one person or a group. You can select multiple recipients.</p>
+    </div>
+  </header>
+
+  <form method="post" action="{% url 'messaging:compose_send' %}" class="msg-compose-form" data-compose-form>
+    {% csrf_token %}
+
+    {# ---------- Recipients picker ---------- #}
+    <div class="msg-field">
+      <label class="msg-label">To</label>
+      <div class="msg-picker" data-picker>
+        <div class="msg-picker-control" data-picker-control>
+          <div class="msg-picker-chips" data-chips>
+            {# chips injected by JS #}
+            <input type="text" class="msg-picker-search" placeholder="Type a name…" data-search autocomplete="off">
+          </div>
+          <button type="button" class="msg-picker-caret" data-picker-toggle aria-label="Toggle recipients">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+
+        <div class="msg-picker-panel" data-panel style="display:none;">
+          <div class="msg-picker-panel-head">
+            <span data-count-label>0 selected</span>
+            <button type="button" class="msg-picker-clear" data-clear>Clear all</button>
+          </div>
+          <ul class="msg-picker-list" data-list>
+            {% for u in users %}
+              <li class="msg-picker-item"
+                  data-pk="{{ u.pk }}"
+                  data-search-text="{{ u.get_full_name|default:u.email|lower }} {{ u.email|lower }} {{ u.department.name|default:''|lower }}">
+                <label>
+                  <input type="checkbox" class="msg-picker-checkbox" value="{{ u.pk }}"
+                         {% if preselected and u.pk == preselected.pk %}checked{% endif %}>
+                  <span class="msg-avatar msg-avatar-sm msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}">
+                    {{ u.first_name|slice:":1"|upper }}{{ u.last_name|slice:":1"|upper }}
+                  </span>
+                  <span class="msg-user-info">
+                    <strong>{{ u.get_full_name|default:u.email }}</strong>
+                    <small>
+                      {{ u.email }}
+                      {% if u.department %} · {{ u.department.name }}{% endif %}
+                    </small>
+                  </span>
+                  <svg class="msg-picker-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </label>
+              </li>
+            {% empty %}
+              <li class="msg-picker-empty">No other users to message.</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        {# Hidden inputs mirroring selections — read via getlist("recipients") #}
+        <div data-hidden-inputs></div>
+      </div>
+      <span class="msg-hint">Search and tick as many people as you need.</span>
+    </div>
+
+    {# ---------- Subject ---------- #}
+    <div class="msg-field">
+      <label class="msg-label" for="compose-subject">Subject <span class="muted">(optional)</span></label>
+      <input class="msg-input" id="compose-subject" type="text" name="subject"
+             placeholder="What's this about?" value="{{ subject|default:'' }}">
+    </div>
+
+    {# ---------- Body ---------- #}
+    <div class="msg-field">
+      <label class="msg-label" for="compose-body">Message</label>
+      <textarea class="msg-input msg-textarea" id="compose-body" name="body" rows="8"
+                required placeholder="Write your message…" data-body></textarea>
+      <div class="msg-textarea-foot">
+        <span data-char-count>0 characters</span>
+        <span class="muted">Press Enter for a new line · Cmd/Ctrl + Enter to send</span>
+      </div>
+    </div>
+
+    <div class="msg-actions">
+      <button class="btn btn-primary" type="submit">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Send message
+      </button>
+      <a href="{% url 'messaging:inbox' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var root = document.querySelector('[data-picker]');
+  if (!root) return;
+
+  var control     = root.querySelector('[data-picker-control]');
+  var chipsBox    = root.querySelector('[data-chips]');
+  var search      = root.querySelector('[data-search]');
+  var panel       = root.querySelector('[data-panel]');
+  var list        = root.querySelector('[data-list]');
+  var hiddenBox   = root.querySelector('[data-hidden-inputs]');
+  var countLabel  = root.querySelector('[data-count-label]');
+  var clearBtn    = root.querySelector('[data-clear]');
+  var toggle      = root.querySelector('[data-picker-toggle]');
+
+  // Build a map of pk → { name, initials, hue } for chip rendering.
+  var userMap = {};
+  root.querySelectorAll('.msg-picker-item').forEach(function (li) {
+    var cb = li.querySelector('.msg-picker-checkbox');
+    var nameEl = li.querySelector('.msg-user-info strong');
+    var avatarEl = li.querySelector('.msg-avatar');
+    var cls = '';
+    if (avatarEl) {
+      avatarEl.classList.forEach(function (c) { if (c.indexOf('msg-avatar-c') === 0) cls = c; });
+    }
+    userMap[cb.value] = {
+      name: nameEl ? nameEl.textContent.trim() : cb.value,
+      initials: avatarEl ? avatarEl.textContent.trim() : '?',
+      cls: cls,
+    };
+  });
+
+  function openPanel() {
+    panel.style.display = '';
+    setTimeout(function () { search.focus(); }, 0);
+  }
+  function closePanel() {
+    panel.style.display = 'none';
+  }
+  function togglePanel() {
+    if (panel.style.display === 'none' || !panel.style.display) openPanel(); else closePanel();
+  }
+
+  function selectedCheckboxes() {
+    return Array.from(root.querySelectorAll('.msg-picker-checkbox:checked'));
+  }
+
+  function refreshChips() {
+    chipsBox.querySelectorAll('.msg-chip').forEach(function (el) { el.remove(); });
+
+    var checked = selectedCheckboxes();
+    checked.forEach(function (cb) {
+      var info = userMap[cb.value] || { name: cb.value, initials: '?', cls: '' };
+      var chip = document.createElement('span');
+      chip.className = 'msg-chip ' + info.cls;
+      chip.setAttribute('data-pk', cb.value);
+      chip.innerHTML = '<span class="msg-chip-avatar">' + info.initials + '</span>'
+                     + '<span class="msg-chip-name"></span>'
+                     + '<button type="button" class="msg-chip-x" aria-label="Remove">×</button>';
+      chip.querySelector('.msg-chip-name').textContent = info.name;
+      chipsBox.insertBefore(chip, search);
+    });
+
+    countLabel.textContent = checked.length + ' selected';
+
+    hiddenBox.innerHTML = '';
+    checked.forEach(function (cb) {
+      var h = document.createElement('input');
+      h.type = 'hidden';
+      h.name = 'recipients';
+      h.value = cb.value;
+      hiddenBox.appendChild(h);
+    });
+  }
+
+  list.addEventListener('change', function (e) {
+    if (e.target.classList.contains('msg-picker-checkbox')) {
+      refreshChips();
+    }
+  });
+
+  chipsBox.addEventListener('click', function (e) {
+    if (!e.target.classList.contains('msg-chip-x')) return;
+    e.stopPropagation();
+    var chip = e.target.closest('.msg-chip');
+    var pk = chip.getAttribute('data-pk');
+    var cb = root.querySelector('.msg-picker-checkbox[value="' + pk + '"]');
+    if (cb) { cb.checked = false; }
+    refreshChips();
+  });
+
+  search.addEventListener('input', function () {
+    var q = search.value.trim().toLowerCase();
+    root.querySelectorAll('.msg-picker-item').forEach(function (li) {
+      var hay = li.getAttribute('data-search-text') || '';
+      li.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+
+  control.addEventListener('click', function (e) {
+    if (e.target.classList.contains('msg-chip-x')) return;
+    openPanel();
+  });
+  search.addEventListener('focus', openPanel);
+  toggle.addEventListener('click', function (e) {
+    e.stopPropagation();
+    togglePanel();
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!root.contains(e.target)) closePanel();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closePanel();
+  });
+
+  clearBtn.addEventListener('click', function () {
+    root.querySelectorAll('.msg-picker-checkbox').forEach(function (cb) { cb.checked = false; });
+    refreshChips();
+  });
+
+  // Character counter + Cmd/Ctrl+Enter submit
+  var body = document.querySelector('[data-body]');
+  var counter = document.querySelector('[data-char-count]');
+  if (body && counter) {
+    function update() { counter.textContent = body.value.length + ' characters'; }
+    body.addEventListener('input', update);
+    update();
+    body.addEventListener('keydown', function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        document.querySelector('[data-compose-form]').requestSubmit();
+      }
+    });
+  }
+
+  refreshChips();
+})();
+</script>
+{% endblock %}

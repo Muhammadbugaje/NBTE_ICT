@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Delete · {{ SITE_NAME }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/gallery.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="gal-page gal-page-narrow">
+  <div class="confirm-page">
+    <div class="confirm-icon confirm-icon-danger">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+    </div>
+    <h2>{% if kind == "album" %}Delete this album?{% else %}Remove this item?{% endif %}</h2>
+    <p class="confirm-sub">
+      {% if kind == "album" %}{{ album.title }}{% else %}{{ item.caption|default:item.original_name }}{% endif %}
+    </p>
+    <p class="confirm-note">Soft delete — preserved for audit.</p>
+    <form method="post" class="confirm-actions">
+      {% csrf_token %}
+      <a href="{% if kind == 'album' %}{% url 'portal:gallery_detail' album.pk %}{% else %}{% url 'portal:gallery_detail' item.album.pk %}{% endif %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-danger">Delete</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

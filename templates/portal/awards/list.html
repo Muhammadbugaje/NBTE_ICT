@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Awards & Milestones · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Awards & Milestones{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/portal.css' %}?v=4">
+{% endblock %}
+
+{% block content %}
+<div class="portal-page">
+
+  <header class="portal-hero portal-hero-awards">
+    <div class="portal-hero-inner">
+      <div class="portal-hero-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+      </div>
+      <div>
+        <h1>Awards & Milestones</h1>
+        <p>Celebrating the people who make this place run.</p>
+      </div>
+    </div>
+    {% if perms.portal.manage_award %}
+      <a href="{% url 'portal:award_create' %}" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Record award
+      </a>
+    {% endif %}
+  </header>
+
+  <form class="pf-bar"
+        hx-get="{% url 'portal:awards_list' %}"
+        hx-target="#awards-results"
+        hx-trigger="change, keyup delay:350ms from:input[name=q]"
+        hx-swap="innerHTML"
+        hx-push-url="true"
+        hx-indicator="#awards-spinner">
+
+    <div class="pf-bar-inner">
+      <div class="pf-search">
+        <svg class="pf-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" name="q" value="{{ q }}" placeholder="Search by name or title…" autocomplete="off">
+      </div>
+
+      <div class="pf-select">
+        <select name="kind">
+          <option value="">All kinds</option>
+          <option value="award"                {% if active_kind == "award" %}selected{% endif %}>Award</option>
+          <option value="service_anniversary"  {% if active_kind == "service_anniversary" %}selected{% endif %}>Service anniversary</option>
+          <option value="promotion"            {% if active_kind == "promotion" %}selected{% endif %}>Promotion</option>
+          <option value="certification"        {% if active_kind == "certification" %}selected{% endif %}>Certification</option>
+          <option value="retirement"           {% if active_kind == "retirement" %}selected{% endif %}>Retirement</option>
+          <option value="other"                {% if active_kind == "other" %}selected{% endif %}>Other</option>
+        </select>
+      </div>
+
+      <div class="pf-select">
+        <select name="category">
+          <option value="">All categories</option>
+          {% for c in categories %}
+            <option value="{{ c.slug }}" {% if active_category == c.slug %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="pf-spinner" id="awards-spinner" aria-hidden="true">
+        <span class="spinner spinner-sm"></span>
+      </div>
+
+      {% if q or active_kind or active_category %}
+        <a href="{% url 'portal:awards_list' %}" class="pf-clear" title="Clear filters">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Clear
+        </a>
+      {% endif %}
+    </div>
+  </form>
+
+  <div id="awards-results">
+    {% include "portal/awards/_results.html" %}
+  </div>
+</div>
+{% endblock %}

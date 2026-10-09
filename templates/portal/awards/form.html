@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New award{% else %}Edit award{% endif %} · {{ SITE_NAME }}{% endblock %}
+
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/portal.css' %}?v=3">{% endblock %}
+
+{% block content %}
+<div class="portal-page portal-page-narrow">
+
+  <header class="portal-hero">
+    <div class="portal-hero-inner">
+      <div class="portal-hero-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+      </div>
+      <div>
+        <h1>{% if mode == "create" %}Record an award{% else %}Edit award{% endif %}</h1>
+        <p>{% if mode == "create" %}Celebrate someone's achievement or milestone.{% else %}Update the details below.{% endif %}</p>
+      </div>
+    </div>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="portal-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    {# ---- KIND & CONTENT ---- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <h3>What are you recognising?</h3>
+        <p>Pick the kind and add the story.</p>
+      </header>
+
+      <div class="portal-field-grid">
+        <div class="portal-field">
+          <label for="{{ form.kind.id_for_label }}">Kind</label>
+          {{ form.kind }}
+          {{ form.kind.errors }}
+        </div>
+        <div class="portal-field">
+          <label for="{{ form.category.id_for_label }}">Category</label>
+          {{ form.category }}
+          {{ form.category.errors }}
+        </div>
+      </div>
+
+      <div class="portal-field">
+        <label for="{{ form.title.id_for_label }}">Title</label>
+        {{ form.title }}
+        {{ form.title.errors }}
+      </div>
+
+      <div class="portal-field">
+        <label for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}
+        {{ form.description.errors }}
+      </div>
+
+      <div class="portal-field-grid">
+        <div class="portal-field">
+          <label for="{{ form.image.id_for_label }}">Image</label>
+          {{ form.image }}
+          {{ form.image.errors }}
+        </div>
+        <div class="portal-field">
+          <label for="{{ form.certificate.id_for_label }}">Certificate (PDF)</label>
+          {{ form.certificate }}
+          {{ form.certificate.errors }}
+        </div>
+      </div>
+    </section>
+
+    {# ---- RECIPIENT ---- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <h3>Who and when</h3>
+      </header>
+
+      <div class="portal-field-grid">
+        <div class="portal-field">
+          <label for="{{ form.recipient.id_for_label }}">Recipient</label>
+          {{ form.recipient }}
+          {{ form.recipient.errors }}
+        </div>
+        <div class="portal-field">
+          <label for="{{ form.department.id_for_label }}">Department</label>
+          {{ form.department }}
+          {{ form.department.errors }}
+        </div>
+      </div>
+
+      <div class="portal-field-grid">
+        <div class="portal-field">
+          <label for="{{ form.awarded_by.id_for_label }}">Awarded by</label>
+          {{ form.awarded_by }}
+          {{ form.awarded_by.errors }}
+        </div>
+        <div class="portal-field">
+          <label for="{{ form.awarded_on.id_for_label }}">Date awarded</label>
+          {{ form.awarded_on }}
+          {{ form.awarded_on.errors }}
+        </div>
+      </div>
+
+      <div class="portal-field-grid">
+        <div class="portal-field">
+          <label for="{{ form.years.id_for_label }}">Years <span class="muted">(service anniversaries)</span></label>
+          {{ form.years }}
+          {{ form.years.errors }}
+        </div>
+        <div class="portal-field portal-field-check">
+          <label class="portal-check">
+            {{ form.is_recurring }}
+            <span>Recurs annually</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    {# ---- VISIBILITY ---- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <h3>Who can see this</h3>
+        <p>Public awards can be featured on the public page.</p>
+      </header>
+
+      <div class="portal-field">
+        <label for="{{ form.visibility.id_for_label }}">Visibility</label>
+        {{ form.visibility }}
+        {{ form.visibility.errors }}
+      </div>
+
+      <div class="portal-field-grid">
+        <div class="portal-field">
+          <label>Roles</label>
+          {{ form.roles }}
+          {{ form.roles.errors }}
+        </div>
+        <div class="portal-field">
+          <label>Specific people</label>
+          {{ form.recipients }}
+          {{ form.recipients.errors }}
+        </div>
+      </div>
+
+      <label class="portal-check">
+        {{ form.is_featured }}
+        <span>Feature on the public page</span>
+      </label>
+    </section>
+
+    <div class="portal-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Record award{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'portal:awards_list' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('select[data-multi-picker]').forEach(function (sel) {
+  window.NBTE.MultiPicker.enhance(sel);
+});
+</script>
+{% endblock %}

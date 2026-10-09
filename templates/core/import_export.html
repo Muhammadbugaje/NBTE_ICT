@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Import / Export · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Import / Export{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/wizard.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Import &amp; export</h1>
+    <p class="muted">Move data in and out of the system with a guided, no-surprises workflow.</p>
+  </div>
+</div>
+
+<div class="wizard-layout">
+  {# ---------- Left: module list ---------- #}
+  <aside class="wizard-modules">
+    <h2 class="section-label">Modules</h2>
+    {% if specs %}
+      <nav class="module-list">
+        {% for name, s in specs.items %}
+          <a class="module-item {% if name == selected_name %}active{% endif %}"
+             href="{% url 'core:import_export_spec' name %}"
+             hx-get="{% url 'core:ie_panel' name %}"
+             hx-target="#wizard-panel"
+             hx-push-url="{% url 'core:import_export_spec' name %}"
+             hx-swap="innerHTML">
+            <div class="module-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </div>
+            <div class="module-info">
+              <strong>{{ s.label }}</strong>
+              {% if s.description %}<span>{{ s.description|truncatechars:64 }}</span>{% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      </nav>
+    {% else %}
+      <div class="empty-state" style="padding:var(--space-6);">
+        <p>No import/export modules are registered yet.</p>
+      </div>
+    {% endif %}
+  </aside>
+
+  {# ---------- Right: wizard panel ---------- #}
+  <section class="wizard-panel-wrap">
+    <div id="wizard-panel">
+      {% if selected %}
+        {% include "core/_wizard_panel.html" with spec=selected %}
+      {% else %}
+        <div class="wizard-placeholder">
+          <div class="wizard-placeholder-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </div>
+          <h3>Pick a module to begin</h3>
+          <p>Choose a module from the left. You can download a template, upload a filled copy, preview it, and commit.</p>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/wizard.js' %}?v=1" defer></script>
+{% endblock %}

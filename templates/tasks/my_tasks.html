@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load static %}
+{% load tasks_tags %}
+{% block title %}Created by me · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Created by me{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=2">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=2" defer></script>{% endblock %}
+
+{% block content %}
+<div class="tsk-page">
+  <header class="tsk-page-head">
+    <div>
+      <h1>Created by me</h1>
+      <p>{{ total }} task{{ total|pluralize }} you've assigned.</p>
+    </div>
+    <div class="tsk-page-head-actions">
+      <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        All tasks
+      </a>
+      <a href="{% url 'tasks:create' %}" class="tsk-btn tsk-btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New task
+      </a>
+    </div>
+  </header>
+
+  <form method="get" class="tsk-filters"
+        hx-get="{% url 'tasks:my_tasks' %}"
+        hx-target="#tsk-list-container" hx-select="#tsk-list-container"
+        hx-swap="outerHTML" hx-push-url="true"
+        hx-indicator="#tsk-list-container"
+        hx-trigger="submit from:form, change from:select, keyup changed delay:400ms from:input[name=q]">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search my tasks…" class="tsk-search" autocomplete="off">
+    <select name="state">
+      <option value="active"    {% if state_filter == 'active' %}selected{% endif %}>Active</option>
+      <option value="all"       {% if state_filter == 'all' %}selected{% endif %}>Any state</option>
+      <option value="completed" {% if state_filter == 'completed' %}selected{% endif %}>Completed</option>
+      <option value="cancelled" {% if state_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+    <select name="sort">
+      <option value="created"  {% if sort_key == 'created' %}selected{% endif %}>Newest</option>
+      <option value="due"      {% if sort_key == 'due' %}selected{% endif %}>Due date</option>
+      <option value="priority" {% if sort_key == 'priority' %}selected{% endif %}>Priority</option>
+      <option value="title"    {% if sort_key == 'title' %}selected{% endif %}>Title</option>
+    </select>
+    <select name="direction">
+      <option value="desc" {% if sort_dir == 'desc' %}selected{% endif %}>↓</option>
+      <option value="asc"  {% if sort_dir == 'asc' %}selected{% endif %}>↑</option>
+    </select>
+  </form>
+
+  <div id="tsk-list-container" class="tsk-list-container">
+    {% if page.object_list %}
+      <div class="tsk-list">
+        {% for task in page.object_list %}
+          {% include "tasks/_card.html" with task=task %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="tsk-empty">
+        <div class="tsk-empty-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <h3>You haven't created any tasks</h3>
+        <p>When you assign work to your team, tasks will show here with live progress.</p>
+        <a href="{% url 'tasks:create' %}" class="tsk-btn tsk-btn-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create your first task
+        </a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

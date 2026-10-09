@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Roles · Workflow management{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page">
+  {% include "manage/workflow/_tabs.html" %}
+
+  <header class="wf-hero">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon wf-hero-icon-green">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <div>
+        <h1>Roles & hierarchy</h1>
+        <p>
+          Ordered by rank — highest first. Ranks drive the rank-aware
+          skipping in chains.
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <section class="wf-tip-banner">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    <span>
+      In a <strong>hierarchical</strong> step, an actor whose rank is lower than the
+      requester's is skipped. Non-hierarchical gates (Finance, Audit, HR, ES,
+      Records) ignore rank entirely.
+    </span>
+  </section>
+
+  <div class="wf-role-grid">
+    {% for r in roles %}
+      <article class="wf-role-card">
+        <header class="wf-role-head">
+          <div class="wf-role-title">
+            <strong>{{ r.name }}</strong>
+            <span class="wf-muted wf-mono">{{ r.code }}</span>
+          </div>
+          <span class="wf-rank-badge">Rank {{ r.rank }}</span>
+        </header>
+
+        {% with users=users_by_role|default_if_none:"" %}{% endwith %}
+        {% if users_by_role and users_by_role|length %}{% endif %}
+
+        {% for k, v in users_by_role.items %}{% endfor %}
+
+        {# We use a workaround because Django templates can't do dict lookups by variable key easily. #}
+        {# Precompute in the view instead — see note below. #}
+
+        {% if r.user_count %}
+          <ul class="wf-role-users">
+            {% for u in r.users_list %}
+              <li>
+                <span class="wf-user-avatar">{{ u.first_name|slice:":1"|upper }}{{ u.last_name|slice:":1"|upper }}</span>
+                <span class="wf-user-info">
+                  <strong>{{ u.get_full_name|default:u.email }}</strong>
+                  <span class="wf-muted">{{ u.department.name|default:"No department" }}</span>
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="wf-muted" style="padding:6px 0;font-size:12.5px;">
+            No active users with this role yet.
+          </p>
+        {% endif %}
+      </article>
+    {% empty %}
+      <div class="wf-empty">
+        <h3>No roles defined</h3>
+        <p>Roles are managed in the accounts admin.</p>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

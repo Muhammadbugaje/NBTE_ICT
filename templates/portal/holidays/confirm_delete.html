@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Delete holiday · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="hol-form-page">
+  <div class="hol-section" style="text-align:center; padding:32px 24px;">
+    <div style="width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:rgba(220,38,38,0.10);color:var(--danger);display:flex;align-items:center;justify-content:center;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+    </div>
+    <h3 style="margin:0 0 6px;font-size:18px;color:var(--fg);">Delete this holiday?</h3>
+    <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:var(--fg-muted);">{{ holiday.name }}</p>
+    <p style="margin:0 0 20px;font-size:13px;color:var(--fg-subtle);">
+      {{ holiday.date_start|date:"F j, Y" }}{% if holiday.is_multiday %} → {{ holiday.date_end|date:"F j, Y" }}{% endif %}
+    </p>
+
+    <form method="post" style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+      {% csrf_token %}
+      <a href="{% url 'portal:holidays_list' %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-danger">Yes, delete</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

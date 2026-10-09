@@ -1,0 +1,27 @@
+<div class="rsvp-widget" id="rsvp-widget">
+  <span class="rsvp-widget-label">Your RSVP</span>
+
+  <form method="post" style="display:inline;" hx-post="{% url 'portal:event_rsvp' event.pk %}" hx-target="#rsvp-widget" hx-swap="outerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="rsvp" value="yes">
+    <button type="submit" class="rsvp-btn {% if my_rsvp == 'yes' %}is-active{% endif %}">Going</button>
+  </form>
+
+  <form method="post" style="display:inline;" hx-post="{% url 'portal:event_rsvp' event.pk %}" hx-target="#rsvp-widget" hx-swap="outerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="rsvp" value="maybe">
+    <button type="submit" class="rsvp-btn {% if my_rsvp == 'maybe' %}is-active is-active-maybe{% endif %}">Maybe</button>
+  </form>
+
+  <form method="post" style="display:inline;" hx-post="{% url 'portal:event_rsvp' event.pk %}" hx-target="#rsvp-widget" hx-swap="outerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="rsvp" value="no">
+    <button type="submit" class="rsvp-btn {% if my_rsvp == 'no' %}is-active is-active-no{% endif %}">Not going</button>
+  </form>
+
+  <div class="rsvp-summary" style="width:100%;">
+    <span>Going: <strong>{{ rsvp_summary.yes }}</strong></span>
+    <span>Maybe: <strong>{{ rsvp_summary.maybe }}</strong></span>
+    <span>Not going: <strong>{{ rsvp_summary.no }}</strong></span>
+  </div>
+</div>

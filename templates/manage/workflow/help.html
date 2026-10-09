@@ -1,0 +1,710 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Workflow how-to · Management{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=4">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page wf-page-help">
+  {% include "manage/workflow/_tabs.html" %}
+
+  {# ==================== HERO ==================== #}
+  <header class="wf-help-hero">
+    <div class="wf-help-hero-inner">
+      <div class="wf-help-hero-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div>
+        <h1>Build a workflow in 5 minutes</h1>
+        <p>Everything you need to know to design approval chains that actually work.</p>
+      </div>
+    </div>
+    <div class="wf-help-hero-actions">
+      <a href="{% url 'workflow_manage:chain_create' %}" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Start building
+      </a>
+      <a href="{% url 'workflow_manage:test' %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Try the tester
+      </a>
+    </div>
+  </header>
+
+  {# ==================== NAV PILLS ==================== #}
+  <nav class="wf-help-pills" aria-label="Sections">
+    <a href="#quick-start" class="wf-help-pill">
+      <span class="wf-help-pill-icon wf-help-pill-icon-green">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </span>
+      <span>Quick start</span>
+    </a>
+    <a href="#concepts" class="wf-help-pill">
+      <span class="wf-help-pill-icon wf-help-pill-icon-blue">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </span>
+      <span>Concepts</span>
+    </a>
+    <a href="#step-kinds" class="wf-help-pill">
+      <span class="wf-help-pill-icon wf-help-pill-icon-purple">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+      </span>
+      <span>Step kinds</span>
+    </a>
+    <a href="#approver-kinds" class="wf-help-pill">
+      <span class="wf-help-pill-icon wf-help-pill-icon-amber">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </span>
+      <span>Approvers</span>
+    </a>
+    <a href="#cross-dept" class="wf-help-pill">
+      <span class="wf-help-pill-icon wf-help-pill-icon-rose">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+      </span>
+      <span>Cross-department</span>
+    </a>
+    <a href="#testing" class="wf-help-pill">
+      <span class="wf-help-pill-icon wf-help-pill-icon-teal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </span>
+      <span>Testing</span>
+    </a>
+    <a href="#examples" class="wf-help-pill">
+      <span class="wf-help-pill-icon wf-help-pill-icon-indigo">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </span>
+      <span>Examples</span>
+    </a>
+    <a href="#safety" class="wf-help-pill">
+      <span class="wf-help-pill-icon wf-help-pill-icon-red">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </span>
+      <span>Change safety</span>
+    </a>
+  </nav>
+
+  {# ==================== QUICK START ==================== #}
+  <section id="quick-start" class="wf-help-section wf-help-section-green">
+    <div class="wf-help-section-head">
+      <div class="wf-help-section-icon wf-help-section-icon-green">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </div>
+      <div>
+        <h2>Quick start</h2>
+        <p>Your first workflow in five steps.</p>
+      </div>
+    </div>
+
+    <div class="wf-help-steps">
+      <div class="wf-help-step">
+        <div class="wf-help-step-num">1</div>
+        <div class="wf-help-step-body">
+          <strong>Create a chain</strong>
+          <p>Chains → <em>New chain</em>. Give it a name (e.g. "ICT Standard") and a lowercase code (e.g. <code>ict-standard</code>).</p>
+        </div>
+      </div>
+
+      <div class="wf-help-step">
+        <div class="wf-help-step-num">2</div>
+        <div class="wf-help-step-body">
+          <strong>Add steps</strong>
+          <p>Inside the chain, click <em>Add step</em>. Each step says <strong>who acts</strong> and <strong>what they do</strong>. Reorder by dragging the handle or using the ▲▼ arrows.</p>
+        </div>
+      </div>
+
+      <div class="wf-help-step">
+        <div class="wf-help-step-num">3</div>
+        <div class="wf-help-step-body">
+          <strong>Create a request type</strong>
+          <p>This is what users pick when raising a request. It links a category, a handling office, and a chain together.</p>
+        </div>
+      </div>
+
+      <div class="wf-help-step">
+        <div class="wf-help-step-num">4</div>
+        <div class="wf-help-step-body">
+          <strong>Test it</strong>
+          <p>Use the <a href="{% url 'workflow_manage:test' %}">Resolution tester</a> to see the exact chain a specific request would follow. Do this <em>before</em> switching it on.</p>
+        </div>
+      </div>
+
+      <div class="wf-help-step">
+        <div class="wf-help-step-num">5</div>
+        <div class="wf-help-step-body">
+          <strong>Switch it on</strong>
+          <p>Set the request type to <strong>Active</strong>. New requests will use it immediately. Existing in-flight requests finish on their current chain.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ==================== CONCEPTS ==================== #}
+  <section id="concepts" class="wf-help-section">
+    <div class="wf-help-section-head">
+      <div class="wf-help-section-icon wf-help-section-icon-blue">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+      </div>
+      <div>
+        <h2>Five concepts</h2>
+        <p>The vocabulary everything else is built on.</p>
+      </div>
+    </div>
+
+    <div class="wf-help-concept-grid">
+      <article class="wf-help-concept wf-help-concept-green">
+        <div class="wf-help-concept-tag">1</div>
+        <h3>Chain</h3>
+        <p>A named, ordered sequence of steps. Examples: <code>ict-standard</code>, <code>hr-leave</code>, <code>fleet-trip</code>. One chain can serve many request types.</p>
+      </article>
+
+      <article class="wf-help-concept wf-help-concept-blue">
+        <div class="wf-help-concept-tag">2</div>
+        <h3>Step</h3>
+        <p>One stage. Has a <strong>kind</strong> (approval / assignment / fulfillment / closure), an <strong>approver</strong> (who acts), and a <strong>scope</strong> (which department).</p>
+      </article>
+
+      <article class="wf-help-concept wf-help-concept-amber">
+        <div class="wf-help-concept-tag">3</div>
+        <h3>Request type</h3>
+        <p>The kind of thing a user raises: "Broken computer", "Vehicle trip". Links a category and handling office to a chain.</p>
+      </article>
+
+      <article class="wf-help-concept wf-help-concept-purple">
+        <div class="wf-help-concept-tag">4</div>
+        <h3>Category</h3>
+        <p>A theme grouping many types — ICT, Fleet, HR, Facilities. Organisational only; doesn't affect routing.</p>
+      </article>
+
+      <article class="wf-help-concept wf-help-concept-rose wf-help-concept-wide">
+        <div class="wf-help-concept-tag">5</div>
+        <h3>Runtime chain</h3>
+        <p>The full sequence a <em>specific</em> request actually follows. Built at raise-time from the request type's chain + mandatory extras (Finance, Audit, HR, ES, Records) + the requester-side chain for cross-department types.</p>
+      </article>
+    </div>
+  </section>
+
+  {# ==================== STEP KINDS ==================== #}
+  <section id="step-kinds" class="wf-help-section">
+    <div class="wf-help-section-head">
+      <div class="wf-help-section-icon wf-help-section-icon-purple">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+      </div>
+      <div>
+        <h2>Step kinds</h2>
+        <p>Four kinds. Every chain uses a mix.</p>
+      </div>
+    </div>
+
+    <div class="wf-help-kind-grid">
+      <article class="wf-help-kind wf-help-kind-approval">
+        <header>
+          <span class="wf-pill wf-pill-kind-approval">Approval</span>
+        </header>
+        <p>Approves, returns, or rejects the request.</p>
+        <div class="wf-help-kind-foot">
+          <span class="wf-help-kind-who">Actor:</span>
+          <span class="wf-muted">Resolved approver (role, head, director, or specific user).</span>
+        </div>
+      </article>
+
+      <article class="wf-help-kind wf-help-kind-assignment">
+        <header>
+          <span class="wf-pill wf-pill-kind-assignment">Assignment</span>
+        </header>
+        <p>The acting user picks the staff member who will actually do the work.</p>
+        <div class="wf-help-kind-foot">
+          <span class="wf-help-kind-who">Actor:</span>
+          <span class="wf-muted">Typically the receiving director.</span>
+        </div>
+      </article>
+
+      <article class="wf-help-kind wf-help-kind-fulfillment">
+        <header>
+          <span class="wf-pill wf-pill-kind-fulfillment">Fulfillment</span>
+        </header>
+        <p>The assigned staff member marks the work done.</p>
+        <div class="wf-help-kind-foot">
+          <span class="wf-help-kind-who">Actor:</span>
+          <span class="wf-muted">The <em>assignee</em>, not the approver.</span>
+        </div>
+      </article>
+
+      <article class="wf-help-kind wf-help-kind-closure">
+        <header>
+          <span class="wf-pill wf-pill-kind-closure">Closure</span>
+        </header>
+        <p>The requester confirms receipt — this finalises the request.</p>
+        <div class="wf-help-kind-foot">
+          <span class="wf-help-kind-who">Actor:</span>
+          <span class="wf-muted">The requester.</span>
+        </div>
+      </article>
+    </div>
+
+    <div class="wf-help-callout wf-help-callout-amber">
+      <div class="wf-help-callout-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div>
+        <strong>Always end on a closure step.</strong>
+        <p>Without one, the request completes silently when the last approval passes — the requester won't get to confirm receipt.</p>
+      </div>
+    </div>
+  </section>
+
+  {# ==================== APPROVER KINDS ==================== #}
+  <section id="approver-kinds" class="wf-help-section">
+    <div class="wf-help-section-head">
+      <div class="wf-help-section-icon wf-help-section-icon-amber">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <div>
+        <h2>Who acts at a step</h2>
+        <p>Seven ways to resolve the actor. Pick one per step.</p>
+      </div>
+    </div>
+
+    <div class="wf-help-approver-grid">
+      <div class="wf-help-approver">
+        <div class="wf-help-approver-code">role_in_department</div>
+        <p>Any active user with the selected role in the selected scope's department.</p>
+      </div>
+      <div class="wf-help-approver">
+        <div class="wf-help-approver-code">requester_head</div>
+        <p>The most senior person in the requester's own department.</p>
+      </div>
+      <div class="wf-help-approver">
+        <div class="wf-help-approver-code">requester_deputy</div>
+        <p>The deputy director of the requester's department.</p>
+      </div>
+      <div class="wf-help-approver">
+        <div class="wf-help-approver-code">requester_director</div>
+        <p>The director of the requester's department.</p>
+      </div>
+      <div class="wf-help-approver">
+        <div class="wf-help-approver-code">receiving_director</div>
+        <p>The director of the <em>handling</em> department.</p>
+      </div>
+      <div class="wf-help-approver">
+        <div class="wf-help-approver-code">specific_user</div>
+        <p>One named user — always resolves to that person.</p>
+      </div>
+      <div class="wf-help-approver">
+        <div class="wf-help-approver-code">es</div>
+        <p>The Executive Secretary (role <code>executive-secretary</code>).</p>
+      </div>
+    </div>
+
+    <div class="wf-help-callout wf-help-callout-blue">
+      <div class="wf-help-callout-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </div>
+      <div>
+        <strong>Scope picks the department.</strong>
+        <p><code>requester</code> = the requester's own. <code>receiving</code> = the handling office. Or a specific department code like <code>finance</code>, <code>audit</code>, <code>hr</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  {# ==================== MANDATORY VS HIERARCHICAL ==================== #}
+  <section class="wf-help-section">
+    <div class="wf-help-section-head">
+      <div class="wf-help-section-icon wf-help-section-icon-teal">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div>
+        <h2>Hierarchical vs mandatory</h2>
+        <p>One checkbox. Big implications.</p>
+      </div>
+    </div>
+
+    <div class="wf-help-compare">
+      <article class="wf-help-compare-item wf-help-compare-hier">
+        <header>
+          <span class="wf-help-compare-badge">Hierarchical</span>
+          <span class="wf-help-compare-sub">default — ON</span>
+        </header>
+        <p>Part of the normal chain. If the resolved actor is <em>junior to the requester</em>, the step is skipped automatically.</p>
+        <div class="wf-help-compare-example">
+          <strong>Use for:</strong> officer → head → deputy → director chains. The ES's request shouldn't bounce through an officer's desk.
+        </div>
+      </article>
+
+      <article class="wf-help-compare-item wf-help-compare-mand">
+        <header>
+          <span class="wf-help-compare-badge wf-help-compare-badge-amber">Mandatory gate</span>
+          <span class="wf-help-compare-sub">hierarchical OFF</span>
+        </header>
+        <p>Always runs. Rank doesn't matter. Even the Director's request goes through this step.</p>
+        <div class="wf-help-compare-example">
+          <strong>Use for:</strong> Finance, Audit, HR, ES sign-off, Records filing. Anything where compliance is the reason, not chain-of-command.
+        </div>
+      </article>
+    </div>
+
+    <div class="wf-help-callout wf-help-callout-green">
+      <div class="wf-help-callout-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div>
+        <strong>Rule of thumb:</strong>
+        <p>If the step exists to <em>enforce compliance</em>, turn hierarchical OFF. If it exists to <em>reflect chain-of-command</em>, leave it ON.</p>
+      </div>
+    </div>
+  </section>
+
+  {# ==================== CROSS-DEPARTMENT ==================== #}
+  <section id="cross-dept" class="wf-help-section">
+    <div class="wf-help-section-head">
+      <div class="wf-help-section-icon wf-help-section-icon-rose">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+      </div>
+      <div>
+        <h2>Cross-department flow</h2>
+        <p>When a request crosses between departments.</p>
+      </div>
+    </div>
+
+    <p class="wf-help-lead">
+      When <strong>is_cross_department</strong> is on <em>and</em> the requester and handling department differ, the runtime chain is assembled in three phases:
+    </p>
+
+    <div class="wf-help-flow">
+      <div class="wf-help-flow-phase wf-help-flow-phase-blue">
+        <div class="wf-help-flow-phase-head">Phase 1</div>
+        <div class="wf-help-flow-phase-body">
+          <strong>Requester's own chain</strong>
+          <p>Their head, then their director approve the request internally first.</p>
+        </div>
+      </div>
+
+      <div class="wf-help-flow-arrow">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+      </div>
+
+      <div class="wf-help-flow-phase wf-help-flow-phase-amber">
+        <div class="wf-help-flow-phase-head">Phase 2</div>
+        <div class="wf-help-flow-phase-body">
+          <strong>Mandatory extras</strong>
+          <p>Finance, Audit, HR, ES, Records — whichever the request type requires.</p>
+        </div>
+      </div>
+
+      <div class="wf-help-flow-arrow">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+      </div>
+
+      <div class="wf-help-flow-phase wf-help-flow-phase-green">
+        <div class="wf-help-flow-phase-head">Phase 3</div>
+        <div class="wf-help-flow-phase-body">
+          <strong>Receiving chain</strong>
+          <p>The handling department's own workflow: director approval, assignment, fulfillment, closure.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="wf-help-lead">
+      The <strong>handoff</strong> happens when Phase 1 finishes. The request then shows as
+      "Awaiting receiving department" and pops into the receiving director's queue.
+    </p>
+
+    <div class="wf-help-callout wf-help-callout-blue">
+      <div class="wf-help-callout-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </div>
+      <div>
+        <strong>Config key controls the receiving chain's rank-skipping.</strong>
+        <p>
+          <code>workflow.cross_dept_routing</code> can be
+          <code>full_chain</code> (default — untouched),
+          <code>rank_aware</code> (rank-skipped too), or
+          <code>director_direct</code> (directors skip junior steps; ES keeps full chain).
+        </p>
+      </div>
+    </div>
+  </section>
+
+  {# ==================== TESTING ==================== #}
+  <section id="testing" class="wf-help-section">
+    <div class="wf-help-section-head">
+      <div class="wf-help-section-icon wf-help-section-icon-teal">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </div>
+      <div>
+        <h2>Testing</h2>
+        <p>Always run these four scenarios before you switch a chain on.</p>
+      </div>
+    </div>
+
+    <div class="wf-help-test-grid">
+      <a href="{% url 'workflow_manage:test' %}" class="wf-help-test">
+        <div class="wf-help-test-num">1</div>
+        <div>
+          <strong>Typical requester</strong>
+          <p>A regular officer raising the type. Confirm the full chain looks right.</p>
+        </div>
+      </a>
+
+      <a href="{% url 'workflow_manage:test' %}" class="wf-help-test">
+        <div class="wf-help-test-num">2</div>
+        <div>
+          <strong>A director as requester</strong>
+          <p>Junior steps should be auto-skipped. If they aren't, the step's hierarchical flag is wrong.</p>
+        </div>
+      </a>
+
+      <a href="{% url 'workflow_manage:test' %}" class="wf-help-test">
+        <div class="wf-help-test-num">3</div>
+        <div>
+          <strong>An ES as requester</strong>
+          <p>Confirm ES does <em>not</em> skip the receiving chain — that's intentional behaviour.</p>
+        </div>
+      </a>
+
+      <a href="{% url 'workflow_manage:test' %}" class="wf-help-test">
+        <div class="wf-help-test-num">4</div>
+        <div>
+          <strong>A cross-department type</strong>
+          <p>Confirm the handoff marker lands on the right step and the extras run before the receiving chain.</p>
+        </div>
+      </a>
+    </div>
+
+    <p class="wf-help-lead wf-help-lead-muted">
+      The tester builds a preview request that is <em>not saved</em>. It's safe to run any number of times.
+    </p>
+  </section>
+
+  {# ==================== EXAMPLES ==================== #}
+  <section id="examples" class="wf-help-section">
+    <div class="wf-help-section-head">
+      <div class="wf-help-section-icon wf-help-section-icon-indigo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <div>
+        <h2>Worked examples</h2>
+        <p>Three real configurations you can copy.</p>
+      </div>
+    </div>
+
+    {# --- Example A --- #}
+    <article class="wf-help-example">
+      <header class="wf-help-example-head">
+        <span class="wf-help-example-badge wf-help-example-badge-green">A</span>
+        <div>
+          <strong>Internal ICT support</strong>
+          <p class="wf-muted">Non-cross-department. Requester and handling office are the same.</p>
+        </div>
+      </header>
+
+      <div class="wf-help-pipeline">
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">1</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-approval">Approval</span>
+          <span class="wf-help-pipe-label">Requester's head</span>
+          <span class="wf-help-pipe-meta">hierarchical</span>
+        </div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">2</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-assignment">Assignment</span>
+          <span class="wf-help-pipe-label">Requester's director</span>
+          <span class="wf-help-pipe-meta">picks the technician</span>
+        </div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">3</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-fulfillment">Fulfillment</span>
+          <span class="wf-help-pipe-label">Assignee</span>
+          <span class="wf-help-pipe-meta">marks work done</span>
+        </div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">4</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-closure">Closure</span>
+          <span class="wf-help-pipe-label">Requester</span>
+          <span class="wf-help-pipe-meta">confirms receipt</span>
+        </div>
+      </div>
+    </article>
+
+    {# --- Example B --- #}
+    <article class="wf-help-example">
+      <header class="wf-help-example-head">
+        <span class="wf-help-example-badge wf-help-example-badge-blue">B</span>
+        <div>
+          <strong>Facilities request from an external department</strong>
+          <p class="wf-muted">Requester in HR, handling office is Facilities, requires ES sign-off.</p>
+        </div>
+      </header>
+
+      <div class="wf-help-pipeline">
+        <div class="wf-help-pipe-header wf-help-pipe-header-blue">Requester chain — hr-standard</div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">1</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-approval">Approval</span>
+          <span class="wf-help-pipe-label">HR division head</span>
+        </div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">2</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-approval">Approval</span>
+          <span class="wf-help-pipe-label">HR director</span>
+        </div>
+
+        <div class="wf-help-pipe-handoff">
+          <span class="wf-help-pipe-handoff-line"></span>
+          <span class="wf-help-pipe-handoff-label">Extras + handoff</span>
+          <span class="wf-help-pipe-handoff-line"></span>
+        </div>
+
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">3</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-approval">Approval</span>
+          <span class="wf-help-pipe-label">Executive Secretary</span>
+          <span class="wf-help-pipe-meta wf-help-pipe-meta-gate">mandatory gate</span>
+        </div>
+
+        <div class="wf-help-pipe-header wf-help-pipe-header-green">Receiving chain — facilities-standard</div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">4</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-approval">Approval</span>
+          <span class="wf-help-pipe-label">Facilities director</span>
+        </div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">5</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-assignment">Assignment</span>
+          <span class="wf-help-pipe-label">Facilities director</span>
+        </div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">6</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-fulfillment">Fulfillment</span>
+          <span class="wf-help-pipe-label">Assignee</span>
+        </div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">7</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-closure">Closure</span>
+          <span class="wf-help-pipe-label">Requester</span>
+        </div>
+      </div>
+    </article>
+
+    {# --- Example C --- #}
+    <article class="wf-help-example">
+      <header class="wf-help-example-head">
+        <span class="wf-help-example-badge wf-help-example-badge-amber">C</span>
+        <div>
+          <strong>A director raising a request</strong>
+          <p class="wf-muted">Same chain as Example A, but the requester is a director. Hierarchical steps are auto-skipped.</p>
+        </div>
+      </header>
+
+      <div class="wf-help-pipeline">
+        <div class="wf-help-pipe-step wf-help-pipe-step-skipped">
+          <span class="wf-help-pipe-dot">1</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-approval">Approval</span>
+          <span class="wf-help-pipe-label">Requester's head</span>
+          <span class="wf-help-pipe-meta wf-help-pipe-meta-skipped">skipped — same person</span>
+        </div>
+        <div class="wf-help-pipe-step wf-help-pipe-step-skipped">
+          <span class="wf-help-pipe-dot">2</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-assignment">Assignment</span>
+          <span class="wf-help-pipe-label">Requester's director</span>
+          <span class="wf-help-pipe-meta wf-help-pipe-meta-skipped">skipped — same person</span>
+        </div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">3</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-fulfillment">Fulfillment</span>
+          <span class="wf-help-pipe-label">Assignee</span>
+          <span class="wf-help-pipe-meta wf-help-pipe-meta-run">runs</span>
+        </div>
+        <div class="wf-help-pipe-step">
+          <span class="wf-help-pipe-dot">4</span>
+          <span class="wf-help-pipe-kind wf-pill-kind-closure">Closure</span>
+          <span class="wf-help-pipe-label">Requester</span>
+          <span class="wf-help-pipe-meta wf-help-pipe-meta-run">runs</span>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  {# ==================== CHANGE SAFETY ==================== #}
+  <section id="safety" class="wf-help-section">
+    <div class="wf-help-section-head">
+      <div class="wf-help-section-icon wf-help-section-icon-red">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div>
+        <h2>Change safety</h2>
+        <p>What happens to in-flight requests when you edit a chain.</p>
+      </div>
+    </div>
+
+    <p class="wf-help-lead">
+      <strong>In-flight requests keep their chain.</strong> Every request stores its current
+      step identity (<code>db:&lt;pk&gt;</code> or <code>syn:&lt;name&gt;</code>) in its metadata.
+      Editing the chain after the fact doesn't retroactively move the request.
+    </p>
+
+    <div class="wf-help-safety-grid">
+      <div class="wf-help-safety-item">
+        <div class="wf-help-safety-icon wf-help-safety-icon-red">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+        </div>
+        <strong>Delete a step</strong>
+        <p>In-flight requests skip it silently on their next advance. No error.</p>
+      </div>
+
+      <div class="wf-help-safety-item">
+        <div class="wf-help-safety-icon wf-help-safety-icon-amber">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <strong>Reorder steps</strong>
+        <p>Existing requests keep their current position. The engine doesn't re-sort them.</p>
+      </div>
+
+      <div class="wf-help-safety-item">
+        <div class="wf-help-safety-icon wf-help-safety-icon-blue">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <strong>Add a step</strong>
+        <p>In-flight requests hit it if it lands after their current position.</p>
+      </div>
+
+      <div class="wf-help-safety-item">
+        <div class="wf-help-safety-icon wf-help-safety-icon-purple">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        </div>
+        <strong>Deactivate a chain</strong>
+        <p>In-flight requests finish normally. New requests of that type are blocked.</p>
+      </div>
+    </div>
+
+    <div class="wf-help-callout wf-help-callout-red">
+      <div class="wf-help-callout-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div>
+        <strong>Making a material change? Create a new chain instead.</strong>
+        <p>
+          If you need to restructure a chain that's already processing requests, create a
+          new chain and point the request type at it. Existing requests finish on the old chain,
+          new ones use the new. Zero disruption.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  {# ==================== FOOTER CTA ==================== #}
+  <div class="wf-help-cta">
+    <div class="wf-help-cta-body">
+      <strong>Ready to build?</strong>
+      <p>Chains take about two minutes to set up. Testing takes thirty seconds.</p>
+    </div>
+    <div class="wf-help-cta-actions">
+      <a href="{% url 'workflow_manage:chain_create' %}" class="btn btn-primary">Create a chain</a>
+      <a href="{% url 'workflow_manage:test' %}" class="btn btn-ghost">Test a request</a>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,156 @@
+{% extends "portal/_layout.html" %}
+{% block title %}{% if mode == "create" %}New event{% else %}Edit event{% endif %} · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="portal-page portal-page-narrow">
+
+  <header class="portal-head">
+    <div>
+      <a href="{% url 'portal:event_list' %}" class="portal-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Events
+      </a>
+      <h1>{% if mode == "create" %}New event{% else %}Edit event{% endif %}</h1>
+      <p class="muted">Set a time, location, and who should see it.</p>
+    </div>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="portal-form" data-scope-form="event">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    {# ---------- 1. CONTENT ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">1</span>
+        <div><h3>Content</h3><p>What is this event about?</p></div>
+      </header>
+      <div class="portal-field">
+        {{ form.title.label_tag }}{{ form.title }}{{ form.title.errors }}
+      </div>
+      <div class="portal-field">
+        {{ form.summary.label_tag }}{{ form.summary }}
+        <span class="hint">{{ form.summary.help_text }}</span>
+        {{ form.summary.errors }}
+      </div>
+      <div class="portal-field">
+        {{ form.description.label_tag }}{{ form.description }}{{ form.description.errors }}
+      </div>
+
+      {# --------- IMAGE FIELD with explicit preview --------- #}
+      <div class="portal-field">
+        <label for="{{ form.image.id_for_label }}">{{ form.image.label }}</label>
+        {{ form.image }}
+        <div class="portal-image-preview"
+             data-portal-image-preview
+             {% if event.image %}data-has-image="1"{% endif %}>
+          {% if event and event.image %}
+            <img src="{{ event.image_thumb_url }}"
+                 onerror="this.onerror=null;this.src='{{ event.image.url }}';"
+                 alt="">
+          {% else %}
+            <span class="portal-image-preview-empty">No image yet — optional.</span>
+          {% endif %}
+        </div>
+        {{ form.image.errors }}
+      </div>
+
+      <div class="portal-field">{{ form.category.label_tag }}{{ form.category }}{{ form.category.errors }}</div>
+    </section>
+
+    {# ---------- 2. TIMING ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">2</span>
+        <div><h3>Timing</h3><p>When does it start and end?</p></div>
+      </header>
+      <div class="portal-row">
+        <div class="portal-field portal-field-half">
+          {{ form.starts_at.label_tag }}{{ form.starts_at }}{{ form.starts_at.errors }}
+        </div>
+        <div class="portal-field portal-field-half">
+          {{ form.ends_at.label_tag }}{{ form.ends_at }}{{ form.ends_at.errors }}
+        </div>
+      </div>
+      <label class="portal-check">{{ form.all_day }} <span>All-day event</span></label>
+      <div class="portal-row" style="margin-top:12px;">
+        <div class="portal-field portal-field-half">
+          {{ form.reminder_lead_minutes.label_tag }}{{ form.reminder_lead_minutes }}
+          <span class="hint">{{ form.reminder_lead_minutes.help_text }}</span>
+          {{ form.reminder_lead_minutes.errors }}
+        </div>
+      </div>
+    </section>
+
+    {# ---------- 3. LOCATION ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">3</span>
+        <div><h3>Location</h3><p>Where will it happen? In-person, virtual, or both.</p></div>
+      </header>
+      <div class="portal-field">{{ form.location_name.label_tag }}{{ form.location_name }}{{ form.location_name.errors }}</div>
+      <div class="portal-field">{{ form.location_address.label_tag }}{{ form.location_address }}{{ form.location_address.errors }}</div>
+      <div class="portal-field">
+        {{ form.virtual_url.label_tag }}{{ form.virtual_url }}
+        <span class="hint">{{ form.virtual_url.help_text }}</span>
+        {{ form.virtual_url.errors }}
+      </div>
+    </section>
+
+    {# ---------- 4. VISIBILITY ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">4</span>
+        <div><h3>Visibility & scope</h3><p>Who should see this event?</p></div>
+      </header>
+      <div class="portal-field">
+        {{ form.visibility.label_tag }}{{ form.visibility }}{{ form.visibility.errors }}
+      </div>
+
+      <div class="portal-scope-slot" data-scope-for="event" data-scope-when="department">
+        <div class="portal-field">{{ form.department.label_tag }}{{ form.department }}{{ form.department.errors }}</div>
+      </div>
+
+      <div class="portal-scope-slot" data-scope-for="event" data-scope-when="role">
+        <div class="portal-field">
+          {{ form.roles.label_tag }}
+          <div data-portal-picker>{{ form.roles }}</div>
+          {{ form.roles.errors }}
+        </div>
+      </div>
+
+      <div class="portal-scope-slot" data-scope-for="event" data-scope-when="individual">
+        <div class="portal-field">
+          {{ form.recipients.label_tag }}
+          <div data-portal-picker>{{ form.recipients }}</div>
+          {{ form.recipients.errors }}
+        </div>
+      </div>
+
+      <label class="portal-check" style="margin-top:12px;">
+        {{ form.rsvp_required }} <span>Ask people to RSVP</span>
+      </label>
+    </section>
+
+    {# ---------- 5. STATUS ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">5</span>
+        <div><h3>Status</h3><p>Draft, cancelled, or live?</p></div>
+      </header>
+      <label class="portal-check">{{ form.is_cancelled }} <span>This event is cancelled</span></label>
+      <div class="portal-field" style="margin-top:12px;">
+        {{ form.cancellation_reason.label_tag }}{{ form.cancellation_reason }}{{ form.cancellation_reason.errors }}
+      </div>
+      <label class="portal-check">{{ form.is_draft }} <span>Save as draft (not visible)</span></label>
+    </section>
+
+    <div class="portal-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Create event{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'portal:event_list' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

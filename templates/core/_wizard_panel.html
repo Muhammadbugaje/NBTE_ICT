@@ -1,0 +1,109 @@
+{% load static %}
+<div class="wizard" data-spec="{{ spec.name }}">
+
+  <header class="wizard-head">
+    <div>
+      <h2>{{ spec.label }}</h2>
+      {% if spec.description %}<p class="muted">{{ spec.description }}</p>{% endif %}
+    </div>
+    <div class="wizard-head-actions">
+      {% if spec.import %}
+        <a class="btn btn-ghost btn-sm" href="{% url 'core:ie_template' spec.name %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download template
+        </a>
+      {% endif %}
+      {% if spec.export %}
+        <a class="btn btn-ghost btn-sm" href="{% url 'core:ie_export' spec.name %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Export current data
+        </a>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if spec.import %}
+    <section class="wizard-step">
+      <div class="wizard-step-head">
+        <span class="wizard-step-num">1</span>
+        <div>
+          <h3>Download &amp; fill the template</h3>
+          <p class="muted">
+            {{ spec.import.columns|length }} column{{ spec.import.columns|length|pluralize }} ·
+            <button type="button" class="link-btn" data-toggle-columns>Show columns</button>
+          </p>
+        </div>
+      </div>
+      <div class="wizard-columns" hidden>
+        <table class="wizard-cols">
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Required</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for col in spec.import.columns %}
+              <tr>
+                <td><code>{{ col.name }}</code></td>
+                <td>{% if col.required %}<span class="badge badge-warn">Required</span>{% else %}<span class="muted">Optional</span>{% endif %}</td>
+                <td class="muted">{{ col.help|default:"" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="wizard-step">
+      <div class="wizard-step-head">
+        <span class="wizard-step-num">2</span>
+        <div>
+          <h3>Upload the filled copy</h3>
+          <p class="muted">We'll validate every row before anything is saved.</p>
+        </div>
+      </div>
+
+      <form class="wizard-upload"
+            hx-post="{% url 'core:ie_preview' spec.name %}"
+            hx-target="#wizard-result"
+            hx-swap="innerHTML"
+            hx-encoding="multipart/form-data"
+            hx-indicator="#wizard-upload-indicator"
+            hx-disabled-elt="find button"
+            enctype="multipart/form-data"
+            method="post"
+            action="{% url 'core:ie_preview' spec.name %}">
+        {% csrf_token %}
+        <label class="drop-zone" data-drop-zone>
+          <input type="file" name="file" accept=".xlsx,.xlsm" required data-file-input>
+          <span class="drop-zone-inner">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <strong data-drop-label>Drop your file here or click to browse</strong>
+            <em class="muted">Only .xlsx files</em>
+          </span>
+        </label>
+
+        <div class="wizard-upload-actions">
+          <button type="submit" class="btn btn-primary">
+            Analyze file
+          </button>
+          <span id="wizard-upload-indicator" class="htmx-indicator wizard-inline-loader">
+            <span class="spinner spinner-sm"></span> Checking your rows — please wait…
+          </span>
+        </div>
+      </form>
+    </section>
+  {% else %}
+    <div class="wizard-notice">
+      This module supports export only. Use <em>Export current data</em> above.
+    </div>
+  {% endif %}
+
+  <div id="wizard-result"></div>
+</div>

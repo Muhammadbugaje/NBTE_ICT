@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}User management · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}User management{% endblock %}
+
+{% block content %}
+<div class="users-page">
+
+  {# ---------- HERO ---------- #}
+  <header class="users-hero">
+    <div class="users-hero-inner">
+      <div class="users-hero-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+      </div>
+      <div>
+        <h1>User management</h1>
+        <p>{{ total }} user{{ total|pluralize }}{% if q %} matching “{{ q }}”{% endif %}.</p>
+      </div>
+    </div>
+  </header>
+
+  {# ---------- FILTERS ---------- #}
+  <form method="get" class="users-filter">
+    <div class="users-filter-search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" name="q" value="{{ q }}" placeholder="Search by name or email…" autocomplete="off">
+    </div>
+
+    <div class="users-filter-select">
+      <select name="active">
+        <option value="">All users</option>
+        <option value="1" {% if active_filter == "1" %}selected{% endif %}>Active only</option>
+        <option value="0" {% if active_filter == "0" %}selected{% endif %}>Inactive only</option>
+      </select>
+    </div>
+
+    <div class="users-filter-actions">
+      <button type="submit" class="btn btn-primary">Apply</button>
+      <a href="{% url 'accounts:user_list' %}" class="btn btn-ghost">Reset</a>
+    </div>
+  </form>
+
+  {# ---------- RESULTS ---------- #}
+  {% if page.object_list %}
+
+    <div class="users-table-wrap">
+      <table class="users-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Department</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in page.object_list %}
+            <tr>
+              {# ---- User identity (primary cell) ---- #}
+              <td class="users-cell-primary">
+                <div class="users-cell-user">
+                  <div class="users-avatar {% if not u.is_active %}users-avatar-inactive{% endif %}">
+                    {% if u.first_name %}{{ u.first_name|slice:":1"|upper }}{% endif %}{% if u.last_name %}{{ u.last_name|slice:":1"|upper }}{% endif %}
+                  </div>
+                  <div class="users-user-info">
+                    <span class="users-user-name">{{ u.get_full_name|default:u.email }}</span>
+                    <span class="users-user-email">{{ u.email }}</span>
+                  </div>
+                </div>
+              </td>
+
+              {# ---- Email ---- #}
+              <td data-label="Email" class="users-cell-meta">
+                {% if u.email %}{{ u.email }}{% else %}<span class="users-cell-meta-empty">—</span>{% endif %}
+              </td>
+
+              {# ---- Department ---- #}
+              <td data-label="Department" class="users-cell-meta">
+                {% if u.department %}
+                  <span class="users-chip">{{ u.department.name }}</span>
+                {% else %}
+                  <span class="users-cell-meta-empty">—</span>
+                {% endif %}
+              </td>
+
+              {# ---- Role ---- #}
+              <td data-label="Role" class="users-cell-meta">
+                {% if u.role %}
+                  <span class="users-chip users-chip-role">{{ u.role.name }}</span>
+                {% else %}
+                  <span class="users-cell-meta-empty">—</span>
+                {% endif %}
+              </td>
+
+              {# ---- Status ---- #}
+              <td data-label="Status">
+                {% if u.is_active %}
+                  <span class="users-status users-status-active">Active</span>
+                {% else %}
+                  <span class="users-status users-status-inactive">Inactive</span>
+                {% endif %}
+              </td>
+
+              {# ---- Actions ---- #}
+              <td class="users-actions users-cell-actions">
+                <a href="{% url 'accounts:user_detail' u.pk %}" class="btn btn-ghost btn-sm">
+                  Manage
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page.has_other_pages %}
+      <nav class="users-pagination">
+        {% if page.has_previous %}
+          <a href="?{% querystring page=page.previous_page_number %}" class="users-pagination-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Prev
+          </a>
+        {% endif %}
+        <span class="users-pagination-count">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}
+          <a href="?{% querystring page=page.next_page_number %}" class="users-pagination-btn">
+            Next
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+        {% endif %}
+      </nav>
+    {% endif %}
+
+  {% else %}
+    <div class="users-empty">
+      <div class="users-empty-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <h3>No users found</h3>
+      <p>
+        {% if q or active_filter %}
+          Nothing matches those filters.
+          <a href="{% url 'accounts:user_list' %}" style="color: var(--brand); font-weight: 600;">Clear filters</a>
+        {% else %}
+          There are no user accounts yet.
+        {% endif %}
+      </p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

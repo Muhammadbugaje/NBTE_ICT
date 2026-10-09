@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Tickets · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Tickets{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=2">
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/tickets.js' %}?v=2" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="tk-page">
+
+  <header class="tk-page-head">
+    <div>
+      <h1>Tickets & Helpdesk</h1>
+      <p>{{ total }} ticket{{ total|pluralize }} in your scope.</p>
+    </div>
+    <div class="tk-page-head-actions">
+      <a href="{% url 'tickets:create' %}" class="tk-btn tk-btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New ticket
+      </a>
+    </div>
+  </header>
+
+  {# ---------- Tabs ---------- #}
+  <nav class="tk-tabs">
+    <a class="tk-tab {% if scope_filter == '' and state_filter == 'open' %}is-active{% endif %}"
+       href="?state=open&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">
+      Open
+    </a>
+    <a class="tk-tab {% if scope_filter == 'mine' %}is-active{% endif %}"
+       href="?scope=mine&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">
+      Raised by me
+    </a>
+    <a class="tk-tab {% if scope_filter == 'assigned' %}is-active{% endif %}"
+       href="?scope=assigned&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">
+      Assigned to me
+    </a>
+    <a class="tk-tab {% if state_filter == 'closed' %}is-active{% endif %}"
+       href="?state=closed&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">
+      Closed
+    </a>
+    <a class="tk-tab {% if state_filter == 'all' %}is-active{% endif %}"
+       href="?state=all&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">
+      All
+    </a>
+  </nav>
+
+  {# ---------- Filters ---------- #}
+  <form method="get"
+        class="tk-filters"
+        hx-get="{% url 'tickets:list' %}"
+        hx-target="#tickets-list-container" hx-select="#tickets-list-container"
+        hx-swap="outerHTML" hx-push-url="true"
+        hx-indicator="#tickets-list-container"
+        hx-trigger="submit from:form, change from:select, keyup changed delay:400ms from:input[name=q]">
+
+    <input type="search" name="q" value="{{ q }}"
+           placeholder="Search by reference, subject, location…"
+           class="tk-search" autocomplete="off">
+
+    <select name="state">
+      <option value="open"   {% if state_filter == 'open' %}selected{% endif %}>Open</option>
+      <option value="closed" {% if state_filter == 'closed' %}selected{% endif %}>Closed</option>
+      <option value="all"    {% if state_filter == 'all' %}selected{% endif %}>Any state</option>
+      {% for value, label in state_choices %}
+        <option value="{{ value }}" {% if state_filter == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="category">
+      <option value="">Any category</option>
+      {% for c in categories %}
+        <option value="{{ c.code }}" {% if cat_filter == c.code %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="priority">
+      <option value="">Any priority</option>
+      {% for value, label in priority_choices %}
+        <option value="{{ value }}" {% if prio_filter == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="sort" title="Sort by">
+      <option value="created"   {% if sort_key == 'created' %}selected{% endif %}>Newest</option>
+      <option value="priority"  {% if sort_key == 'priority' %}selected{% endif %}>Priority</option>
+      <option value="state"     {% if sort_key == 'state' %}selected{% endif %}>State</option>
+      <option value="due"       {% if sort_key == 'due' %}selected{% endif %}>Due</option>
+      <option value="reference" {% if sort_key == 'reference' %}selected{% endif %}>Reference</option>
+    </select>
+
+    <select name="direction">
+      <option value="desc" {% if sort_dir == 'desc' %}selected{% endif %}>↓ Descending</option>
+      <option value="asc"  {% if sort_dir == 'asc' %}selected{% endif %}>↑ Ascending</option>
+    </select>
+
+    <input type="hidden" name="scope" value="{{ scope_filter }}">
+
+    {% if q or cat_filter or prio_filter or scope_filter %}
+      <a href="{% url 'tickets:list' %}" class="tk-filter-reset">Reset</a>
+    {% endif %}
+  </form>
+
+  {# ---------- List container ---------- #}
+  <div id="tickets-list-container" class="tk-list-container">
+    {% if page.object_list %}
+      <div class="tk-list">
+        {% for t in page.object_list %}
+          <a href="{% url 'tickets:detail' t.pk %}" class="tk-card" data-state="{{ t.state }}">
+            <div class="tk-card-left">
+              <span class="tk-ref">{{ t.reference }}</span>
+              <span class="tk-chip tk-chip-state-{{ t.state }}">
+                <span class="tk-chip-dot"></span>
+                {{ t.get_state_display }}
+              </span>
+              <span class="tk-chip tk-chip-prio-{{ t.priority }}">
+                {{ t.get_priority_display }}
+              </span>
+            </div>
+
+            <div class="tk-card-body">
+              <h3 class="tk-card-title">{{ t.subject }}</h3>
+              <div class="tk-card-meta">
+                <span class="tk-card-meta-item">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  {{ t.raised_by.get_full_name|default:t.raised_by.email }}
+                </span>
+                <span class="tk-card-meta-item">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                  {{ t.category.name }}
+                </span>
+                {% if t.current_location %}
+                  <span class="tk-card-meta-item">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    {{ t.current_location }}
+                  </span>
+                {% endif %}
+                <span class="tk-card-meta-item">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  {{ t.created_at|timesince }} ago
+                </span>
+              </div>
+            </div>
+
+            <div class="tk-card-right">
+              {% if t.resolution_due_at and not t.is_closed %}
+                <div class="tk-sla-bar" data-sla-bar data-level="ok"
+                     data-sla-due="{{ t.resolution_due_at|date:'c' }}"
+                     data-sla-start="{{ t.created_at|date:'c' }}"
+                     style="width:100%;">
+                  <div class="tk-sla-bar-fill" data-sla-bar-fill style="width:0%"></div>
+                </div>
+                <span class="tk-sla-label" data-sla-out>—</span>
+              {% elif t.resolved_at %}
+                <span class="tk-chip tk-chip-sla-ok">Resolved</span>
+              {% else %}
+                <span class="tk-sla-label">No SLA</span>
+              {% endif %}
+
+              {% if t.assigned_to %}
+                <span class="tk-card-meta-item" style="font-size:12px;color:var(--tk-fg-muted);">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  {{ t.assigned_to.get_full_name|default:t.assigned_to.email }}
+                </span>
+              {% else %}
+                <span class="tk-sla-label">Unassigned</span>
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+
+      {% if page.has_other_pages %}
+        <nav class="tk-pagination">
+          {% if page.has_previous %}
+            <a href="?q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+               hx-get="?q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+               hx-target="#tickets-list-container" hx-select="#tickets-list-container"
+               hx-swap="outerHTML" hx-push-url="true">‹ Prev</a>
+          {% else %}
+            <span class="is-disabled">‹ Prev</span>
+          {% endif %}
+          <span class="is-current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+          {% if page.has_next %}
+            <a href="?q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+               hx-get="?q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+               hx-target="#tickets-list-container" hx-select="#tickets-list-container"
+               hx-swap="outerHTML" hx-push-url="true">Next ›</a>
+          {% else %}
+            <span class="is-disabled">Next ›</span>
+          {% endif %}
+        </nav>
+      {% endif %}
+
+    {% else %}
+      <div class="tk-empty">
+        <div class="tk-empty-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <h3>{% if q or cat_filter or prio_filter %}No tickets match your filters{% else %}No tickets yet{% endif %}</h3>
+        <p>{% if q or cat_filter or prio_filter %}Try adjusting your search or filters.{% else %}Tickets you raise or are assigned will appear here.{% endif %}</p>
+        {% if q or cat_filter or prio_filter %}
+          <a href="{% url 'tickets:list' %}" class="tk-btn tk-btn-ghost">Clear filters</a>
+        {% else %}
+          <a href="{% url 'tickets:create' %}" class="tk-btn tk-btn-primary">Raise your first ticket</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

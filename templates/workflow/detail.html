@@ -1,0 +1,592 @@
+{% extends "base.html" %}
+{% load static %}
+{% load workflow_extras %}
+
+{% block title %}{{ req.reference }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{{ req.reference }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/workflow.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+
+{# ---------- Page head ---------- #}
+<div class="wf-page-head">
+  <div>
+    <a href="{% url 'workflow:my_requests' %}" class="btn btn-subtle btn-sm" style="margin-bottom:12px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      My requests
+    </a>
+  </div>
+  {% if req.record_pdf %}
+    <a href="{% url 'workflow:record_pdf' req.pk %}" class="btn btn-primary" target="_blank">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Download record PDF
+    </a>
+  {% endif %}
+</div>
+
+{# ---------- Returned banner ---------- #}
+{% if req.status == 'returned' %}
+  <div class="wf-returned-banner">
+    <div class="wf-returned-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+    </div>
+    <div class="wf-returned-body">
+      {% if request.user.pk == req.requester_id %}
+        <strong>This request was returned to you for revision.</strong>
+        <p>
+          {% if req.returned_by %}Returned by {{ req.returned_by.get_full_name|default:req.returned_by.email }}{% if req.returned_at %} on {{ req.returned_at|date:"M j, Y · H:i" }}{% endif %}.{% endif %}
+          See the reviewer's comment below and revise your request.
+        </p>
+      {% else %}
+        <strong>Waiting for the requester to revise this request.</strong>
+        <p>
+          {{ req.requester.get_full_name|default:req.requester.email }}
+          {% if req.returned_by %}was asked by {{ req.returned_by.get_full_name|default:req.returned_by.email }}{% endif %}
+          {% if req.returned_at %} on {{ req.returned_at|date:"M j, Y" }}{% endif %}
+          to revise and resubmit.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+{# ---------- Hero ---------- #}
+<header class="wf-hero {% if req.status == 'returned' %}is-returned{% elif req.status == 'completed' %}is-completed{% elif req.status == 'rejected' %}is-rejected{% elif req.status == 'cancelled' %}is-cancelled{% endif %}">
+  <div class="wf-hero-top">
+    <span class="wf-hero-ref">{{ req.reference }}</span>
+    <span class="badge badge-priority-{{ req.priority }}">{{ req.get_priority_display }}</span>
+    <span class="badge badge-status-{{ req.status }}">{{ req.get_status_display }}</span>
+    {% if req.receiving_department %}<span class="badge">{{ req.receiving_department.name }}</span>{% endif %}
+    {% if req.assigned_to %}<span class="badge badge-info">Assigned: {{ req.assigned_to.get_full_name|default:req.assigned_to.email }}</span>{% endif %}
+    {% if req.revision_count %}<span class="badge">Revised {{ req.revision_count }}×</span>{% endif %}
+  </div>
+
+  <h1>{{ req.subject }}</h1>
+
+  <div class="wf-hero-meta">
+    <span class="wf-hero-meta-item">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <strong>{{ req.requester.get_full_name|default:req.requester.email }}</strong>
+    </span>
+    <span class="wf-hero-meta-item">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      {{ req.created_at|date:"M j, Y · H:i" }}
+    </span>
+    <span class="wf-hero-meta-item">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+      {{ req.request_type.name }}
+    </span>
+    {% if req.asset %}
+      <a href="{% url 'assets:detail' req.asset.asset_tag %}" class="wf-hero-meta-item is-link">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Asset: {{ req.asset.asset_tag }}
+      </a>
+    {% endif %}
+  </div>
+</header>
+
+<div class="wf-detail-grid">
+
+  {# ===================== MAIN ===================== #}
+  <div class="wf-detail-main">
+
+    {# --- Resubmit form (RETURNED + requester) --- #}
+    {% if req.status == 'returned' and request.user.pk == req.requester_id %}
+      <section class="wf-block">
+        <h2 class="wf-block-title">Revise and resubmit</h2>
+        <form method="post" action="{% url 'workflow:resubmit' req.pk %}" enctype="multipart/form-data">
+          {% csrf_token %}
+
+          {% if resubmit_schema_fields %}
+            <div style="padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--wf-border);">
+              <h3 style="font-size:11.5px;font-weight:700;color:var(--wf-fg-subtle);letter-spacing:0.07em;text-transform:uppercase;margin:0 0 14px;">Request details</h3>
+              {% for key, defn in resubmit_schema_fields %}
+                <div class="field" style="margin-bottom:14px;">
+                  {% if defn.type == 'checkbox' %}
+                    <label class="check" style="margin-bottom:0;display:flex;gap:10px;align-items:center;">
+                      {{ resubmit_form|get_item:key }}
+                      <span>{{ defn.label }}{% if defn.required %} <span class="req">*</span>{% endif %}</span>
+                    </label>
+                  {% else %}
+                    <label for="resubmit-{{ key }}" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">{{ defn.label }}{% if defn.required %} <span class="req">*</span>{% endif %}</label>
+                    {{ resubmit_form|get_item:key }}
+                  {% endif %}
+                  {% if defn.help %}<span class="hint" style="display:block;font-size:12px;color:var(--wf-fg-subtle);margin-top:4px;">{{ defn.help }}</span>{% endif %}
+                  {% with errs=resubmit_form|get_field_errors:key %}
+                    {% if errs %}<span style="color:#dc2626;font-size:12.5px;">{{ errs|join:" " }}</span>{% endif %}
+                  {% endwith %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <div class="field" style="margin-bottom:14px;">
+            <label for="resubmit-subject" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Subject</label>
+            <input class="input" type="text" name="subject" id="resubmit-subject" maxlength="255" required value="{{ resubmit_form.subject.value|default:req.subject }}">
+          </div>
+          <div class="field" style="margin-bottom:14px;">
+            <label for="resubmit-body" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Details</label>
+            <textarea class="input" name="body" id="resubmit-body" rows="6" required>{{ resubmit_form.body.value|default:req.body }}</textarea>
+          </div>
+          <div class="field" style="margin-bottom:14px;">
+            <label for="resubmit-comment" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Note to the reviewer <span class="muted" style="font-weight:400;color:var(--wf-fg-subtle);">(optional)</span></label>
+            <textarea class="input" name="comment" id="resubmit-comment" rows="2" placeholder="What did you change?"></textarea>
+          </div>
+          <div class="field" style="margin-bottom:14px;">
+            <label for="resubmit-file" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Attach a file <span class="muted" style="font-weight:400;color:var(--wf-fg-subtle);">(optional)</span></label>
+            <input class="input" type="file" name="file" id="resubmit-file">
+            <input class="input" type="text" name="file_description" placeholder="Optional description" style="margin-top:8px;">
+          </div>
+          <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">
+            <button class="btn btn-primary" type="submit">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Resubmit
+            </button>
+            <button class="btn btn-ghost" type="submit" formaction="{% url 'workflow:cancel' req.pk %}" name="comment" value="Cancelled during revision.">Cancel request</button>
+          </div>
+        </form>
+      </section>
+    {% endif %}
+
+    {# --- Request form data (read-only) --- #}
+    {% if req.form_data and not req.status == 'returned' %}
+      <section class="wf-block">
+        <h2 class="wf-block-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Request details
+        </h2>
+        <div class="wf-formdata">
+          {% for key, value in req.form_data.items %}
+            <div class="wf-formdata-row">
+              <span class="wf-formdata-label">{{ key|title }}</span>
+              <span class="wf-formdata-value">
+                {% if value is True %}Yes
+                {% elif value is False %}No
+                {% elif value %}{{ value }}
+                {% else %}—{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {# --- Body --- #}
+    {% if not req.status == 'returned' or request.user.pk != req.requester_id %}
+      <section class="wf-block">
+        <h2 class="wf-block-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          Details
+        </h2>
+        <div class="wf-body-text">{{ req.body|linebreaks }}</div>
+      </section>
+    {% endif %}
+
+    {# --- Timeline (SSE) --- #}
+    <section class="wf-block">
+      <h2 class="wf-block-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Timeline
+      </h2>
+      <div id="wf-tl-container"
+           hx-get="{% url 'workflow:timeline_partial' req.pk %}"
+           hx-trigger="sse:activity from:body"
+           hx-swap="innerHTML">
+        {% include "workflow/_timeline.html" %}
+      </div>
+    </section>
+
+    {# --- Approvals --- #}
+    {% if approvals %}
+      <section class="wf-block">
+        <h2 class="wf-block-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Approvals
+        </h2>
+        {% for a in approvals %}
+          <div class="wf-approval">
+            <div class="wf-approval-head">
+              <strong>{{ a.step.name }}</strong>
+              <span class="badge badge-{% if a.decision == 'approve' %}success{% elif a.decision == 'reject' %}danger{% else %}warn{% endif %}">{{ a.get_decision_display }}</span>
+            </div>
+            <div class="wf-approval-meta">
+              {{ a.actor.get_full_name|default:a.actor.email }}
+              {% if a.actor_role %}· {{ a.actor_role }}{% endif %}
+              · {{ a.decided_at|date:"M j, Y · H:i" }}
+            </div>
+            {% if a.comment %}<div class="wf-approval-comment">{{ a.comment }}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    {# --- Comments --- #}
+    <section class="wf-block">
+      <h2 class="wf-block-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Comments
+      </h2>
+
+      {% if comments %}
+        {% for c in comments %}
+          <div class="wf-comment">
+            <div class="wf-avatar {% if c.is_internal %}wf-avatar-internal{% endif %}">
+              {{ c.author.first_name|slice:":1"|upper }}{{ c.author.last_name|slice:":1"|upper }}
+            </div>
+            <div class="wf-comment-body">
+              <div class="wf-comment-head">
+                <span class="wf-comment-author">{{ c.author.get_full_name|default:c.author.email }}</span>
+                {% if c.is_internal %}<span class="badge badge-warn">Internal</span>{% endif %}
+                <span class="wf-comment-time">{{ c.created_at|date:"M j, Y · H:i" }}</span>
+                {% if not req.is_closed and request.user|can_delete_content:c.author %}
+                  <div class="wf-comment-actions">
+                    <form method="post" id="del-comment-{{ c.pk }}" action="{% url 'workflow:delete_comment' req.pk c.pk %}" style="display:none;">{% csrf_token %}</form>
+                    <button type="button" class="wf-icon-btn" title="Delete comment"
+                            data-delete-trigger data-form-id="del-comment-{{ c.pk }}"
+                            data-modal-title="Delete comment?"
+                            data-modal-message="This comment by {{ c.author.get_full_name|default:c.author.email }} will be permanently removed.">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                    </button>
+                  </div>
+                {% endif %}
+              </div>
+              <div class="wf-comment-text">{{ c.body }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p style="color:var(--wf-fg-subtle);font-size:13.5px;margin:0;">No comments yet.</p>
+      {% endif %}
+
+      {% if not is_closed %}
+        <form method="post" action="{% url 'workflow:comment' req.pk %}" style="margin-top:18px;padding-top:18px;border-top:1px solid var(--wf-border);">
+          {% csrf_token %}
+          {{ comment_form.body }}
+          <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;color:var(--wf-fg-muted);">
+            {{ comment_form.is_internal }} <span>Internal note (only staff can see this)</span>
+          </label>
+          <button class="btn btn-primary btn-sm" type="submit" style="margin-top:12px;">Post comment</button>
+        </form>
+      {% else %}
+        <div class="wf-closed-note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          This request is closed. Comments are read-only.
+        </div>
+      {% endif %}
+    </section>
+
+    {# --- Attachments --- #}
+    <section class="wf-block">
+      <h2 class="wf-block-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        Attachments
+      </h2>
+
+      {% if attachments %}
+        {% for a in attachments %}
+          <div class="wf-attachment">
+            <div class="wf-attachment-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div class="wf-attachment-info">
+              <a href="{{ a.file.url }}" target="_blank" rel="noopener" class="wf-attachment-name">{{ a.original_name }}</a>
+              <div class="wf-attachment-desc">
+                {{ a.uploaded_by.get_full_name|default:a.uploaded_by.email|default:"System" }}
+                · {{ a.created_at|date:"M j, Y · H:i" }}
+                {% if a.description %} · {{ a.description }}{% endif %}
+              </div>
+            </div>
+            {% if not req.is_closed and request.user|can_delete_content:a.uploaded_by %}
+              <div>
+                <form method="post" id="del-attachment-{{ a.pk }}" action="{% url 'workflow:delete_attachment' req.pk a.pk %}" style="display:none;">{% csrf_token %}</form>
+                <button type="button" class="wf-icon-btn" title="Delete attachment"
+                        data-delete-trigger data-form-id="del-attachment-{{ a.pk }}"
+                        data-modal-title="Delete attachment?"
+                        data-modal-message="'{{ a.original_name }}' will be permanently removed from storage.">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                </button>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <p style="color:var(--wf-fg-subtle);font-size:13.5px;margin:0;">No attachments yet.</p>
+      {% endif %}
+
+      {% if not is_closed %}
+        <form method="post" action="{% url 'workflow:attach' req.pk %}" enctype="multipart/form-data"
+              style="margin-top:16px;padding:14px;background:var(--wf-bg-subtle);border:1px dashed var(--wf-border);border-radius:var(--wf-radius-sm);display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;">
+          {% csrf_token %}
+          <div>
+            <input type="file" name="file" required style="font-size:12.5px;color:var(--wf-fg-muted);">
+            <input type="text" name="description" placeholder="Optional description"
+                   style="margin-top:8px;width:100%;padding:6px 10px;font-size:12.5px;background:transparent;border:1px solid var(--wf-border);border-radius:6px;color:var(--wf-fg);">
+          </div>
+          <button type="submit" class="btn btn-ghost btn-sm">Upload</button>
+        </form>
+      {% else %}
+        <div class="wf-closed-note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          This request is closed. Attachments are read-only.
+        </div>
+      {% endif %}
+    </section>
+  </div>
+
+  {# ===================== SIDEBAR ===================== #}
+  <aside class="wf-detail-side">
+
+    {# --- Current step (with pulse) --- #}
+    {% if current_step and req.status != 'returned' %}
+      <div class="wf-side-card wf-current-card">
+        <h3 class="wf-side-card-title">Current step</h3>
+        <p class="wf-side-card-sub" style="margin-bottom:10px;">
+          <span class="wf-pill wf-pill-current">{{ current_step.get_kind_display }}</span>
+          &nbsp;<strong style="color:var(--wf-fg);">{{ current_step.name }}</strong>
+        </p>
+        {% if current_step.instructions %}
+          <p style="font-size:13px;color:var(--wf-fg-muted);line-height:1.5;margin:0 0 12px;">{{ current_step.instructions }}</p>
+        {% endif %}
+        <div style="font-size:12px;color:var(--wf-fg-subtle);">
+          {% if current_actor %}
+            Acting: <strong style="color:var(--wf-fg);">{{ current_actor.get_full_name|default:current_actor.email }}</strong>
+            {% if current_actor.pk == request.user.pk %}<span class="badge badge-success" style="margin-left:6px;">You</span>{% endif %}
+          {% else %}
+            No one is currently assigned to this step.
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    {# --- Actions --- #}
+    {% if can_act and not req.is_closed and req.status != 'returned' %}
+      <div class="wf-side-card">
+        <h3 class="wf-side-card-title">Actions</h3>
+
+        {% if current_step.kind == 'assignment' %}
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">Assign to</span>
+            <form method="post" action="{% url 'workflow:assign' req.pk %}">
+              {% csrf_token %}{{ assign_form.assignee }}{{ assign_form.comment }}
+              <button class="btn btn-primary btn-sm" type="submit">Assign</button>
+            </form>
+          </div>
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">Or send back</span>
+            <form method="post" action="{% url 'workflow:return_to_requester' req.pk %}">
+              {% csrf_token %}{{ return_form.comment }}
+              <button class="btn btn-ghost btn-sm" type="submit">Return to requester</button>
+            </form>
+          </div>
+
+        {% elif current_step.kind == 'fulfillment' %}
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">You're the assignee</span>
+            <form method="post" action="{% url 'workflow:fulfilled' req.pk %}">
+              {% csrf_token %}{{ fulfilled_form.comment }}
+              <button class="btn btn-primary btn-sm" type="submit">Mark as done</button>
+            </form>
+          </div>
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">Can't complete?</span>
+            <form method="post" action="{% url 'workflow:return' req.pk %}">
+              {% csrf_token %}{{ return_form.comment }}
+              <button class="btn btn-ghost btn-sm" type="submit">Send back</button>
+            </form>
+          </div>
+
+        {% elif current_step.kind == 'closure' %}
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">Confirm receipt</span>
+            <form method="post" action="{% url 'workflow:close' req.pk %}">
+              {% csrf_token %}{{ close_form.comment }}
+              <button class="btn btn-primary btn-sm" type="submit">Confirm handover</button>
+            </form>
+          </div>
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">Not satisfied?</span>
+            <form method="post" action="{% url 'workflow:return' req.pk %}">
+              {% csrf_token %}{{ return_form.comment }}
+              <button class="btn btn-ghost btn-sm" type="submit">Send back to fix</button>
+            </form>
+          </div>
+
+        {% else %}
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">Approve</span>
+            <form method="post" action="{% url 'workflow:approve' req.pk %}">
+              {% csrf_token %}{{ approve_form.comment }}
+              <button class="btn btn-primary btn-sm" type="submit">Approve</button>
+            </form>
+          </div>
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">Send back to requester</span>
+            <form method="post" action="{% url 'workflow:return_to_requester' req.pk %}">
+              {% csrf_token %}{{ return_form.comment }}
+              <button class="btn btn-ghost btn-sm" type="submit">Return to requester</button>
+            </form>
+          </div>
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">Return to previous step</span>
+            <form method="post" action="{% url 'workflow:return' req.pk %}">
+              {% csrf_token %}{{ return_form.comment }}
+              <button class="btn btn-ghost btn-sm" type="submit">Return to previous</button>
+            </form>
+          </div>
+          <div class="wf-side-action">
+            <span class="wf-side-action-label">Reject</span>
+            <form method="post" action="{% url 'workflow:reject' req.pk %}">
+              {% csrf_token %}{{ reject_form.comment }}
+              <button class="btn btn-danger btn-sm" type="submit">Reject request</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if req.status == 'returned' and request.user.pk == req.requester_id %}
+      <div class="wf-side-card">
+        <h3 class="wf-side-card-title">Awaiting your revision</h3>
+        <p class="wf-side-card-sub">Update the form above and click <strong>Resubmit</strong>.</p>
+      </div>
+    {% endif %}
+
+    {# --- Convert to task --- #}
+    {% if not req.is_closed and req.status != 'returned' %}
+      <div class="wf-side-card">
+        <h3 class="wf-side-card-title">Convert</h3>
+        <a href="{% url 'tasks:create' %}?subject={{ req.subject|urlencode }}"
+           class="btn btn-ghost btn-sm" style="width:100%;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create task from this
+        </a>
+      </div>
+    {% endif %}
+
+    {% if req.is_closed %}
+      <div class="wf-side-card">
+        <h3 class="wf-side-card-title">Closed</h3>
+        <p class="wf-side-card-sub">
+          This request is <strong>{{ req.get_status_display|lower }}</strong>.
+          {% if req.completed_at %}Completed {{ req.completed_at|date:"M j, Y" }}.{% endif %}
+        </p>
+        {% if req.record_pdf %}
+          <a href="{% url 'workflow:record_pdf' req.pk %}" class="btn btn-ghost btn-sm" style="width:100%;" target="_blank">Download record PDF</a>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# --- Cancel --- #}
+    {% if is_requester and not req.is_closed and req.status != 'returned' %}
+      <div class="wf-side-card">
+        <h3 class="wf-side-card-title">Cancel request</h3>
+        <div class="wf-side-action">
+          <form method="post" id="cancel-request-form" action="{% url 'workflow:cancel' req.pk %}">
+            {% csrf_token %}{{ cancel_form.comment }}
+          </form>
+          <button type="button" class="btn btn-ghost btn-sm"
+                  data-delete-trigger data-form-id="cancel-request-form"
+                  data-modal-title="Cancel this request?"
+                  data-modal-message="The request will be withdrawn. The record stays for audit.">
+            Cancel request
+          </button>
+        </div>
+      </div>
+    {% endif %}
+
+    {# --- Danger zone --- #}
+    {% if is_requester or request.user.is_superuser %}
+      <details class="wf-side-card wf-danger-zone">
+        <summary class="wf-danger-summary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          Danger zone
+        </summary>
+        <div class="wf-side-action" style="margin-top:12px;">
+          <p style="font-size:12.5px;color:var(--wf-fg-muted);margin:0 0 10px;line-height:1.55;">
+            Permanently remove this request. Logged and notified.
+          </p>
+          <form method="post" id="delete-request-form" action="{% url 'workflow:delete' req.pk %}">
+            {% csrf_token %}
+            <label style="display:block;font-size:12px;font-weight:600;color:var(--wf-fg-muted);margin-bottom:5px;">Reason</label>
+            <textarea name="reason" rows="2" maxlength="500" required placeholder="Why is this being deleted?"
+                      style="width:100%;padding:8px 10px;font-family:inherit;font-size:13px;background:var(--wf-bg-subtle);border:1px solid var(--wf-border);border-radius:var(--wf-radius-sm);color:var(--wf-fg);resize:vertical;"></textarea>
+            <label style="display:block;font-size:12px;font-weight:600;color:var(--wf-fg-muted);margin:10px 0 5px;">Type <strong>DELETE</strong> to confirm</label>
+            <input type="text" name="confirm" placeholder="DELETE" autocomplete="off" required
+                   style="width:100%;padding:8px 10px;font-family:inherit;font-size:13px;background:var(--wf-bg-subtle);border:1px solid var(--wf-border);border-radius:var(--wf-radius-sm);color:var(--wf-fg);">
+          </form>
+          <button type="button" class="btn btn-danger btn-sm" style="margin-top:10px;width:100%;"
+                  data-delete-trigger data-form-id="delete-request-form"
+                  data-modal-title="Delete this request?"
+                  data-modal-message="This request will be permanently removed and everyone involved will be notified.">
+            Delete request
+          </button>
+        </div>
+      </details>
+    {% endif %}
+  </aside>
+</div>
+
+{# ---------- SSE stream ---------- #}
+<div hidden data-sse-stream="{% url 'workflow:request_stream' req.pk %}?since={{ timeline_last_pk|default:0 }}"></div>
+
+{# ---------- Confirm modal ---------- #}
+<div id="wf-confirm-modal" class="wf-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wf-modal-title" hidden>
+  <div class="wf-modal">
+    <div class="wf-modal-head">
+      <div class="wf-modal-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <h3 class="wf-modal-title" id="wf-modal-title">Confirm</h3>
+    </div>
+    <div class="wf-modal-body">
+      <p id="wf-modal-message" style="margin:0;">Are you sure?</p>
+      <p class="wf-modal-warning">This action cannot be undone.</p>
+    </div>
+    <div class="wf-modal-actions">
+      <button type="button" class="btn btn-ghost btn-sm" data-modal-cancel>Cancel</button>
+      <button type="button" class="btn btn-danger btn-sm" data-modal-confirm>Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById('wf-confirm-modal');
+  if (!modal) return;
+  var titleEl = document.getElementById('wf-modal-title');
+  var msgEl = document.getElementById('wf-modal-message');
+  var confirmBtn = modal.querySelector('[data-modal-confirm]');
+  var cancelBtn = modal.querySelector('[data-modal-cancel]');
+  var pendingFormId = null;
+
+  function open(title, message, formId) {
+    titleEl.textContent = title || 'Confirm';
+    msgEl.textContent = message || 'Are you sure?';
+    pendingFormId = formId;
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    setTimeout(function () { cancelBtn.focus(); }, 20);
+  }
+  function close() {
+    modal.hidden = true;
+    document.body.style.overflow = '';
+    pendingFormId = null;
+  }
+  document.querySelectorAll('[data-delete-trigger]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      open(btn.getAttribute('data-modal-title'), btn.getAttribute('data-modal-message'), btn.getAttribute('data-form-id'));
+    });
+  });
+  confirmBtn.addEventListener('click', function () {
+    if (pendingFormId) { var f = document.getElementById(pendingFormId); if (f) f.submit(); }
+    close();
+  });
+  cancelBtn.addEventListener('click', close);
+  modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+  document.addEventListener('keydown', function (e) { if (!modal.hidden && e.key === 'Escape') close(); });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,59 @@
+<a href="{% url 'portal:announcement_detail' announcement.pk %}"
+   class="portal-card {% if announcement.is_pinned %}is-pinned{% endif %} priority-{{ announcement.priority }} {% if not announcement.is_live %}is-non-live{% endif %}">
+  <div class="portal-card-image">
+    {% if announcement.image %}
+      <img src="{{ announcement.image_thumb_url }}"
+           onerror="this.onerror=null;this.src='{{ announcement.image.url }}';"
+           alt="" loading="lazy">
+    {% else %}
+      <div class="portal-card-image-placeholder"
+           style="--accent: {{ announcement.category.color }}; height: 100%;">
+        <span class="portal-card-image-icon">{{ announcement.category.name|slice:":1" }}</span>
+      </div>
+    {% endif %}
+
+    {% if announcement.is_pinned %}<span class="portal-pin" title="Pinned">📌</span>{% endif %}
+
+    {# ---- Non-live ribbon ---- #}
+    {% if announcement.status == "draft" %}
+      <span class="portal-draft-tag portal-draft-tag-draft">Draft</span>
+    {% elif announcement.status == "scheduled" %}
+      <span class="portal-draft-tag portal-draft-tag-scheduled">Scheduled</span>
+    {% elif announcement.status == "expired" %}
+      <span class="portal-draft-tag portal-draft-tag-expired">Expired</span>
+    {% elif announcement.status == "archived" %}
+      <span class="portal-draft-tag portal-draft-tag-expired">Archived</span>
+    {% endif %}
+  </div>
+
+  <div class="portal-card-body">
+    <div class="portal-card-head">
+      <span class="portal-card-cat" style="--accent: {{ announcement.category.color }};">
+        {{ announcement.category.name }}
+      </span>
+      {% if announcement.priority != "normal" %}
+        <span class="portal-priority portal-priority-{{ announcement.priority }}">
+          {{ announcement.get_priority_display }}
+        </span>
+      {% endif %}
+    </div>
+
+    <h3 class="portal-card-title">{{ announcement.title }}</h3>
+
+    {% if announcement.card_summary %}
+      <p class="portal-card-summary">{{ announcement.card_summary }}</p>
+    {% endif %}
+
+    <div class="portal-card-foot">
+      <span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        {{ announcement.publish_at|date:"M j, Y" }}
+      </span>
+      {% if active_show == "mine" or active_show == "drafts" %}
+        <span class="muted">{{ announcement.author.get_full_name|default:announcement.author.email }}</span>
+      {% elif announcement.links.count %}
+        <span>{{ announcement.links.count }} link{{ announcement.links.count|pluralize }}</span>
+      {% endif %}
+    </div>
+  </div>
+</a>

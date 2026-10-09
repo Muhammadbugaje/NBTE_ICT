@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}My tickets · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}My tickets{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=2">
+{% endblock %}
+{% block extra_js %}
+  <script src="{% static 'js/tickets.js' %}?v=2" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="tk-page">
+  <header class="tk-page-head">
+    <div>
+      <h1>My tickets</h1>
+      <p>{{ total }} ticket{{ total|pluralize }} you've raised.</p>
+    </div>
+    <div class="tk-page-head-actions">
+      <a href="{% url 'tickets:create' %}" class="tk-btn tk-btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New ticket
+      </a>
+    </div>
+  </header>
+
+  <form method="get" class="tk-filters"
+        hx-get="{% url 'tickets:my_tickets' %}"
+        hx-target="#my-tickets-container" hx-select="#my-tickets-container"
+        hx-swap="outerHTML" hx-push-url="true"
+        hx-indicator="#my-tickets-container"
+        hx-trigger="submit from:form, change from:select, keyup changed delay:400ms from:input[name=q]">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search…" class="tk-search" autocomplete="off">
+    <select name="state">
+      <option value="all"    {% if state_filter == 'all' %}selected{% endif %}>Any state</option>
+      <option value="open"   {% if state_filter == 'open' %}selected{% endif %}>Open</option>
+      <option value="closed" {% if state_filter == 'closed' %}selected{% endif %}>Closed</option>
+      {% for value, label in state_choices %}
+        <option value="{{ value }}" {% if state_filter == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="sort">
+      <option value="created"  {% if sort_key == 'created' %}selected{% endif %}>Newest</option>
+      <option value="priority" {% if sort_key == 'priority' %}selected{% endif %}>Priority</option>
+      <option value="state"    {% if sort_key == 'state' %}selected{% endif %}>State</option>
+    </select>
+    <select name="direction">
+      <option value="desc" {% if sort_dir == 'desc' %}selected{% endif %}>↓</option>
+      <option value="asc"  {% if sort_dir == 'asc' %}selected{% endif %}>↑</option>
+    </select>
+  </form>
+
+  <div id="my-tickets-container" class="tk-list-container">
+    {% if page.object_list %}
+      <div class="tk-list">
+        {% for t in page.object_list %}
+          <a href="{% url 'tickets:detail' t.pk %}" class="tk-card" data-state="{{ t.state }}">
+            <div class="tk-card-left">
+              <span class="tk-ref">{{ t.reference }}</span>
+              <span class="tk-chip tk-chip-state-{{ t.state }}"><span class="tk-chip-dot"></span>{{ t.get_state_display }}</span>
+              <span class="tk-chip tk-chip-prio-{{ t.priority }}">{{ t.get_priority_display }}</span>
+            </div>
+            <div class="tk-card-body">
+              <h3 class="tk-card-title">{{ t.subject }}</h3>
+              <div class="tk-card-meta">
+                <span class="tk-card-meta-item">{{ t.category.name }}</span>
+                <span class="tk-card-meta-item">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  {{ t.created_at|timesince }} ago
+                </span>
+                {% if t.assigned_to %}
+                  <span class="tk-card-meta-item">→ {{ t.assigned_to.get_full_name|default:t.assigned_to.email }}</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="tk-card-right">
+              {% if t.resolution_due_at and not t.is_closed %}
+                <div class="tk-sla-bar" data-sla-bar data-level="ok" style="width:100%;"
+                     data-sla-due="{{ t.resolution_due_at|date:'c' }}"
+                     data-sla-start="{{ t.created_at|date:'c' }}">
+                  <div class="tk-sla-bar-fill" data-sla-bar-fill style="width:0%"></div>
+                </div>
+                <span class="tk-sla-label" data-sla-out>—</span>
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+      {% if page.has_other_pages %}
+        <nav class="tk-pagination">
+          {% if page.has_previous %}
+            <a href="?q={{ q|urlencode }}&state={{ state_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+               hx-get="?q={{ q|urlencode }}&state={{ state_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.previous_page_number }}"
+               hx-target="#my-tickets-container" hx-select="#my-tickets-container"
+               hx-swap="outerHTML" hx-push-url="true">‹ Prev</a>
+          {% else %}<span class="is-disabled">‹ Prev</span>{% endif %}
+          <span class="is-current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+          {% if page.has_next %}
+            <a href="?q={{ q|urlencode }}&state={{ state_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+               hx-get="?q={{ q|urlencode }}&state={{ state_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}&page={{ page.next_page_number }}"
+               hx-target="#my-tickets-container" hx-select="#my-tickets-container"
+               hx-swap="outerHTML" hx-push-url="true">Next ›</a>
+          {% else %}<span class="is-disabled">Next ›</span>{% endif %}
+        </nav>
+      {% endif %}
+    {% else %}
+      <div class="tk-empty">
+        <div class="tk-empty-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <h3>No tickets yet</h3>
+        <p>When you raise a ticket, it'll show up here.</p>
+        <a href="{% url 'tickets:create' %}" class="tk-btn tk-btn-primary">Raise a ticket</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

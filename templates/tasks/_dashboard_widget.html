@@ -1,0 +1,100 @@
+{% load tasks_tags %}
+{% if visible %}
+<section class="tsk-widget">
+  <div class="tsk-widget-head">
+    <div class="tsk-widget-head-left">
+      <h2 class="tsk-widget-title">Tasks</h2>
+      <span class="tsk-widget-sub">
+        {{ capacity_used }} / {{ capacity_max }} capacity
+        {% if capacity_remaining == 0 %}· <span style="color:#dc2626;font-weight:600;">At capacity</span>{% endif %}
+      </span>
+    </div>
+    <a href="{% url 'tasks:list' %}" class="tsk-widget-link">All tasks →</a>
+  </div>
+
+  <div class="tsk-widget-cols">
+
+    {# ---- Assigned to me ---- #}
+    <div class="tsk-widget-col">
+      <div class="tsk-widget-col-head">
+        <span>Assigned to me</span>
+        <span class="tsk-widget-col-count {% if assigned_count %}is-active{% endif %}">{{ assigned_count }}</span>
+      </div>
+      {% if assigned_open %}
+        <ul class="tsk-widget-list">
+          {% for t in assigned_open %}
+            <li>
+              <a href="{% url 'tasks:detail' t.pk %}" class="tsk-widget-item">
+                <span class="tsk-chip {{ t.priority|priority_chip_class }}" style="font-size:9.5px;padding:1px 6px;">
+                  {{ t.get_priority_display|slice:":1" }}
+                </span>
+                <span class="tsk-widget-item-title">{{ t.title }}</span>
+                {% if t.due_date %}
+                  <span class="tsk-widget-item-due
+                    {% if t.is_overdue %}is-overdue{% endif %}">
+                    {{ t.due_date|date:"M j" }}
+                  </span>
+                {% endif %}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="tsk-widget-empty">Nothing assigned</div>
+      {% endif %}
+      <a href="{% url 'tasks:assigned_to_me' %}" class="tsk-widget-foot">View all →</a>
+    </div>
+
+    {# ---- Created by me ---- #}
+    <div class="tsk-widget-col">
+      <div class="tsk-widget-col-head">
+        <span>Created by me</span>
+        <span class="tsk-widget-col-count {% if created_count %}is-active{% endif %}">{{ created_count }}</span>
+      </div>
+      {% if created_open %}
+        <ul class="tsk-widget-list">
+          {% for t in created_open %}
+            <li>
+              <a href="{% url 'tasks:detail' t.pk %}" class="tsk-widget-item">
+                <span class="tsk-chip {{ t.state|state_chip_class }}" style="font-size:9.5px;padding:1px 6px;">
+                  <span class="tsk-chip-dot" style="width:4px;height:4px;"></span>
+                </span>
+                <span class="tsk-widget-item-title">{{ t.title }}</span>
+                <span class="tsk-ref" style="font-size:10px;padding:1px 5px;">{{ t.reference|slice:"-5:" }}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="tsk-widget-empty">Nothing open</div>
+      {% endif %}
+      <a href="{% url 'tasks:my_tasks' %}" class="tsk-widget-foot">View all →</a>
+    </div>
+
+  </div>
+
+  {# ---- Awaiting my review ---- #}
+  {% if review_count %}
+    <div class="tsk-widget-review">
+      <div class="tsk-widget-review-head">
+        <span class="tsk-widget-col-head-label">Awaiting my review</span>
+        <span class="tsk-widget-col-count is-review">{{ review_count }}</span>
+      </div>
+      <ul class="tsk-widget-list">
+        {% for t in awaiting_review %}
+          <li>
+            <a href="{% url 'tasks:detail' t.pk %}" class="tsk-widget-item">
+              <span class="tsk-chip tsk-chip-state-awaiting_review" style="font-size:9.5px;padding:1px 6px;">
+                <span class="tsk-chip-dot" style="width:4px;height:4px;"></span>
+              </span>
+              <span class="tsk-widget-item-title">{{ t.title }}</span>
+              <span class="tsk-ref" style="font-size:10px;padding:1px 5px;">{{ t.reference|slice:"-5:" }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+      <a href="{% url 'tasks:review_queue' %}" class="tsk-widget-foot">Review queue →</a>
+    </div>
+  {% endif %}
+</section>
+{% endif %}

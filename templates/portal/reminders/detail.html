@@ -1,0 +1,50 @@
+{% extends "portal/_layout.html" %}
+{% block title %}{{ reminder.title }} · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="portal-page portal-page-narrow">
+
+  <a href="{% url 'portal:reminder_list' %}" class="portal-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    All reminders
+  </a>
+
+  <article class="portal-detail">
+    <div class="portal-detail-badges">
+      <span class="reminder-kind">{{ reminder.get_kind_display }}</span>
+      {% if reminder.department %}<span class="portal-status portal-status-past">{{ reminder.department.name }}</span>{% endif %}
+    </div>
+
+    <h1>{{ reminder.title }}</h1>
+
+    <div class="portal-detail-meta">
+      <span>From <strong>{{ reminder.creator.get_full_name|default:reminder.creator.email }}</strong></span>
+      <span>·</span>
+      <span>Reminds {{ reminder.remind_at|date:"M j, Y · H:i" }}</span>
+      {% if reminder.expires_at %}<span>·</span><span>Expires {{ reminder.expires_at|date:"M j, Y · H:i" }}</span>{% endif %}
+    </div>
+
+    {% if reminder.creator_id == request.user.pk %}
+      <div class="portal-detail-actions">
+        <a href="{% url 'portal:reminder_update' reminder.pk %}" class="btn btn-ghost btn-sm">Edit</a>
+        <form method="post" action="{% url 'portal:reminder_dismiss' reminder.pk %}" style="display:inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-sm">Dismiss</button>
+        </form>
+      </div>
+    {% endif %}
+
+    {% if reminder.body %}<div class="portal-detail-body">{{ reminder.body|linebreaksbr }}</div>{% endif %}
+
+    {% if reminder.url %}
+      <div class="portal-link-list" style="margin-top:20px;">
+        <a href="{{ reminder.url }}" class="portal-link">
+          <span class="portal-link-kind">Link</span>
+          <span class="portal-link-label">{{ reminder.url }}</span>
+          <svg class="portal-link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

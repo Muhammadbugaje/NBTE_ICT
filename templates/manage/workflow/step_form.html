@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}Add step{% else %}Edit step{% endif %} · {{ chain.name }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page wf-page-narrow">
+  {% include "manage/workflow/_tabs.html" %}
+
+  <a href="{% url 'workflow_manage:chain_detail' chain.pk %}" class="wf-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Back to {{ chain.name }}
+  </a>
+
+  <header class="wf-hero">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon wf-hero-icon-green">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div>
+        <h1>{% if mode == "create" %}Add step{% else %}Edit step{% endif %}</h1>
+        <p>Define who acts, in what order, and what they do.</p>
+      </div>
+    </div>
+  </header>
+
+  <form method="post" class="wf-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    <section class="wf-section">
+      <header class="wf-section-head"><h3>Step</h3></header>
+      <div class="wf-field-row">
+        <div class="wf-field wf-field-tiny">
+          <label for="{{ form.position.id_for_label }}">Position</label>
+          {{ form.position }}{{ form.position.errors }}
+        </div>
+        <div class="wf-field">
+          <label for="{{ form.name.id_for_label }}">Step name</label>
+          {{ form.name }}{{ form.name.errors }}
+        </div>
+      </div>
+      <div class="wf-field">
+        <label for="{{ form.kind.id_for_label }}">Step kind</label>
+        {{ form.kind }}{{ form.kind.errors }}
+        <span class="wf-hint">
+          <strong>Approval</strong> — a decision (approve / return / reject).
+          <strong>Assignment</strong> — an office head picks the staff who will do the work.
+          <strong>Fulfillment</strong> — the assigned staff member marks the work done.
+          <strong>Closure</strong> — the requester confirms receipt and closes the request.
+        </span>
+      </div>
+    </section>
+
+    <section class="wf-section">
+      <header class="wf-section-head"><h3>Who acts at this step</h3></header>
+      <div class="wf-field">
+        <label for="{{ form.approver_kind.id_for_label }}">Approver kind</label>
+        {{ form.approver_kind }}{{ form.approver_kind.errors }}
+      </div>
+      <div class="wf-field-row">
+        <div class="wf-field">
+          <label for="{{ form.approver_role.id_for_label }}">Role</label>
+          {{ form.approver_role }}{{ form.approver_role.errors }}
+          <span class="wf-hint">{{ form.approver_role.help_text }}</span>
+        </div>
+        <div class="wf-field">
+          <label for="{{ form.approver_user.id_for_label }}">Specific user</label>
+          {{ form.approver_user }}{{ form.approver_user.errors }}
+          <span class="wf-hint">{{ form.approver_user.help_text }}</span>
+        </div>
+      </div>
+      <div class="wf-field">
+        <label for="{{ form.scope.id_for_label }}">Scope</label>
+        {{ form.scope }}{{ form.scope.errors }}
+        <span class="wf-hint">{{ form.scope.help_text }}</span>
+      </div>
+    </section>
+
+    <section class="wf-section">
+      <header class="wf-section-head"><h3>Behaviour</h3></header>
+      <label class="wf-check">
+        {{ form.is_hierarchical }}
+        <span>Hierarchical (rank-aware) — can be skipped if the resolved actor is more junior than the requester. <strong>Turn OFF</strong> for mandatory gates (Finance, Audit, HR, ES, Records).</span>
+      </label>
+      <label class="wf-check">
+        {{ form.is_optional }}
+        <span>Optional — skip silently if nobody matches the role.</span>
+      </label>
+      <div class="wf-field">
+        <label for="{{ form.instructions.id_for_label }}">Instructions for the acting user</label>
+        {{ form.instructions }}{{ form.instructions.errors }}
+        <span class="wf-hint">{{ form.instructions.help_text }}</span>
+      </div>
+    </section>
+
+    <div class="wf-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Add step{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'workflow_manage:chain_detail' chain.pk %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

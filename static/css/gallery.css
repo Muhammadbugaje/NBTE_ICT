@@ -1,0 +1,1255 @@
+/* ==========================================================================
+   Gallery — albums grid, masonry, lightbox, form, picker
+   ========================================================================== */
+
+/* ==========================================================================
+   PAGE WRAPPERS
+   ========================================================================== */
+.gal-page { max-width: 1180px; margin: 0 auto; padding-bottom: 40px; }
+.gal-page-wide { max-width: 1320px; }
+.gal-page-narrow { max-width: 760px; }
+
+.gal-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--fg-subtle); text-decoration: none;
+  margin-bottom: 14px;
+}
+.gal-back:hover { color: var(--brand); }
+
+/* ==========================================================================
+   HERO
+   ========================================================================== */
+.gal-hero {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap;
+  padding: 22px 26px;
+  margin-bottom: 22px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.gal-hero::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg,
+    rgba(217, 119, 6, 0.06) 0%,
+    rgba(217, 119, 6, 0) 45%);
+  pointer-events: none;
+}
+.gal-hero-inner {
+  display: flex; align-items: center; gap: 16px;
+  position: relative; min-width: 0;
+}
+.gal-hero-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  background: rgba(217, 119, 6, 0.14);
+  color: #b45309;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.gal-hero h1 {
+  margin: 0; font-size: 22px; letter-spacing: -0.015em;
+  color: var(--fg);
+}
+.gal-hero p { margin: 4px 0 0; color: var(--fg-subtle); font-size: 13.5px; }
+.gal-hero .btn { position: relative; }
+
+/* ==========================================================================
+   ALBUM CARDS
+   ========================================================================== */
+.gal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+@media (min-width: 1100px) { .gal-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1400px) { .gal-grid { grid-template-columns: repeat(4, 1fr); } }
+
+.gal-card {
+  display: flex; flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  text-decoration: none; color: inherit;
+  position: relative;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.22s ease,
+              border-color 0.22s ease;
+}
+.gal-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(31, 107, 62, 0.35);
+  box-shadow: 0 18px 36px -16px rgba(15, 23, 42, 0.22);
+}
+
+.gal-card-cover {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+.gal-card-cover img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.gal-card:hover .gal-card-cover img { transform: scale(1.06); }
+
+.gal-card-cover-placeholder {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg,
+    rgba(217, 119, 6, 0.14) 0%,
+    rgba(217, 119, 6, 0.02) 100%);
+  color: #b45309;
+}
+
+.gal-card-cover::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg,
+    rgba(15, 23, 42, 0) 50%,
+    rgba(15, 23, 42, 0.55) 100%);
+  pointer-events: none;
+}
+
+.gal-card-count {
+  position: absolute; bottom: 12px; right: 12px;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #0F172A;
+  font-size: 11px; font-weight: 800;
+  backdrop-filter: blur(8px);
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+  z-index: 2;
+}
+.gal-card-count svg { opacity: 0.7; }
+
+.gal-card-featured {
+  position: absolute; top: 12px; right: 12px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fbbf24, #d97706);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.45);
+  z-index: 2;
+}
+
+.gal-card-cat {
+  position: absolute; top: 12px; left: 12px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.65);
+  color: #fff;
+  font-size: 10px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
+
+.gal-card-body {
+  padding: 16px 18px 14px;
+  flex: 1;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.gal-card-body h3 {
+  margin: 0;
+  font-size: 16px; font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.gal-card-desc {
+  font-size: 13px; color: var(--fg-muted);
+  margin: 0;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.gal-card-date {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px;
+  color: var(--fg-subtle);
+  margin-top: auto;
+  padding-top: 8px;
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid var(--border);
+}
+
+/* ==========================================================================
+   ALBUM HEADER (detail page)
+   ========================================================================== */
+.gal-album-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap;
+  padding: 24px 26px;
+  margin-bottom: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.gal-album-head::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg,
+    rgba(217, 119, 6, 0.05) 0%,
+    rgba(217, 119, 6, 0) 50%);
+  pointer-events: none;
+}
+.gal-album-head-info { min-width: 0; flex: 1; position: relative; }
+.gal-album-cat {
+  display: inline-flex; align-items: center;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.14);
+  color: #b45309;
+  font-size: 10.5px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+.gal-album-head h1 {
+  font-size: 26px; letter-spacing: -0.02em;
+  margin: 0 0 8px;
+  color: var(--fg);
+  line-height: 1.2;
+}
+.gal-album-desc {
+  font-size: 14px; line-height: 1.6;
+  color: var(--fg-muted);
+  margin: 0 0 12px;
+  max-width: 720px;
+}
+.gal-album-meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--fg-subtle);
+}
+.gal-meta-sep { opacity: 0.4; }
+.gal-album-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  align-items: flex-start;
+  position: relative;
+}
+
+/* ==========================================================================
+   MASONRY GRID
+   ========================================================================== */
+.gal-masonry { column-count: 4; column-gap: 12px; }
+@media (max-width: 1200px) { .gal-masonry { column-count: 3; } }
+@media (max-width: 800px)  { .gal-masonry { column-count: 2; } }
+@media (max-width: 480px)  { .gal-masonry { column-count: 1; } }
+
+.gal-tile {
+  break-inside: avoid;
+  margin: 0 0 12px;
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.gal-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -8px rgba(15, 23, 42, 0.15);
+}
+
+.gal-tile-btn {
+  display: block; width: 100%;
+  padding: 0; border: 0; background: transparent;
+  cursor: zoom-in;
+  position: relative;
+}
+.gal-tile-btn img {
+  width: 100%; height: auto; display: block;
+  transition: transform 0.4s ease;
+}
+.gal-tile:hover .gal-tile-btn img { transform: scale(1.02); }
+.gal-tile-btn video { width: 100%; display: block; }
+
+.gal-tile-play {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.gal-tile-placeholder {
+  aspect-ratio: 4 / 3;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-subtle);
+  color: var(--fg-subtle);
+}
+
+.gal-tile-cap {
+  padding: 10px 12px;
+  position: relative;
+}
+.gal-tile-title { font-size: 12.5px; font-weight: 600; color: var(--fg); line-height: 1.4; }
+.gal-tile-credit { font-size: 11px; color: var(--fg-subtle); margin-top: 2px; }
+.gal-tile-del {
+  position: absolute; top: 8px; right: 8px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.gal-tile:hover .gal-tile-del { opacity: 1; }
+.gal-tile-del:hover { background: var(--danger); }
+
+/* ==========================================================================
+   LIGHTBOX
+   ========================================================================== */
+.gal-lightbox[hidden] { display: none !important; }
+.gal-lightbox {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  animation: gal-fade 0.15s ease;
+}
+@keyframes gal-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.gal-lightbox-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0, 0, 0, 0.94);
+  backdrop-filter: blur(6px);
+  cursor: zoom-out;
+}
+.gal-lightbox-panel {
+  position: relative;
+  z-index: 1;
+  max-width: min(1200px, 96vw);
+  max-height: 96vh;
+  display: flex; flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.gal-lightbox-media {
+  max-height: calc(96vh - 80px);
+  display: flex; align-items: center; justify-content: center;
+}
+.gal-lightbox-media img,
+.gal-lightbox-media video {
+  max-width: 100%;
+  max-height: calc(96vh - 80px);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  display: block;
+}
+.gal-lightbox-cap {
+  text-align: center; color: #fff;
+  max-width: 640px; padding: 0 16px;
+}
+.gal-lb-title { font-size: 14px; font-weight: 600; }
+.gal-lb-credit { font-size: 12px; opacity: 0.65; margin-top: 4px; }
+
+.gal-lightbox-close,
+.gal-lightbox-nav {
+  position: absolute;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.gal-lightbox-close:hover,
+.gal-lightbox-nav:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: scale(1.05);
+}
+.gal-lightbox-close { top: 16px; right: 16px; }
+.gal-lightbox-prev  { left: 16px; top: 50%; margin-top: -22px; }
+.gal-lightbox-next  { right: 16px; top: 50%; margin-top: -22px; }
+
+@media (max-width: 720px) {
+  .gal-lightbox-close { top: 10px; right: 10px; }
+  .gal-lightbox-prev  { left: 8px; }
+  .gal-lightbox-next  { right: 8px; }
+  .gal-lightbox-nav { width: 38px; height: 38px; }
+}
+
+/* ==========================================================================
+   UPLOAD DROPZONE
+   ========================================================================== */
+.gal-dropzone {
+  display: block;
+  position: relative;
+  padding: 40px 24px;
+  border: 2px dashed var(--border);
+  border-radius: 14px;
+  background: var(--bg-subtle);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+.gal-dropzone:hover,
+.gal-dropzone.is-dragover {
+  border-color: var(--brand);
+  background: rgba(31, 107, 62, 0.06);
+}
+.gal-dropzone.has-files {
+  border-style: solid;
+  border-color: var(--brand);
+  background: rgba(31, 107, 62, 0.04);
+}
+.gal-dropzone input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+}
+.gal-dropzone-icon {
+  width: 56px; height: 56px; margin: 0 auto 12px;
+  border-radius: 50%;
+  background: rgba(31, 107, 62, 0.10);
+  color: var(--brand);
+  display: flex; align-items: center; justify-content: center;
+}
+.gal-dropzone-title { font-size: 14.5px; font-weight: 700; color: var(--fg); }
+.gal-dropzone-sub { font-size: 12.5px; color: var(--fg-subtle); margin-top: 4px; }
+
+.gal-file-list {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--bg-subtle);
+  border-radius: 12px;
+}
+.gal-file-list-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+}
+.gal-file-list ul { list-style: none; padding: 0; margin: 0; }
+.gal-file-item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 12.5px;
+}
+.gal-file-item:last-child { border-bottom: 0; }
+.gal-file-name {
+  color: var(--fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gal-file-size { color: var(--fg-subtle); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   FORM SECTIONS
+   ==========================================================================
+   NOTE: no `overflow: hidden` on sections — it clips the picker dropdown.
+   ========================================================================== */
+.gal-form .gal-section {
+  padding: 22px 24px;
+  margin-bottom: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  position: relative;
+}
+.gal-section-visibility { border-left: 3px solid var(--brand); }
+
+.gal-section-head { margin-bottom: 18px; }
+.gal-section-head h3 {
+  margin: 0 0 3px;
+  font-size: 14px; font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.005em;
+}
+.gal-section-head p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--fg-subtle);
+}
+
+.gal-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.gal-field {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+.gal-field label {
+  font-size: 12.5px; font-weight: 600;
+  color: var(--fg-muted);
+}
+.gal-field input,
+.gal-field select,
+.gal-field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font: inherit; font-size: 13.5px;
+  outline: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.gal-field input:focus,
+.gal-field select:focus,
+.gal-field textarea:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31, 107, 62, 0.15);
+}
+.gal-field textarea { resize: vertical; min-height: 90px; }
+.gal-field-hint { font-size: 11.5px; color: var(--fg-subtle); margin-top: 2px; }
+
+.gal-check {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-size: 13.5px; color: var(--fg);
+  cursor: pointer; padding: 6px 0;
+}
+.gal-check input { width: auto; }
+
+.gal-form-actions {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding-top: 6px;
+}
+
+/* ==========================================================================
+   FIELD WITH INLINE "NEW" BUTTON
+   ========================================================================== */
+.gal-field-action {
+  display: flex; gap: 8px; align-items: stretch;
+}
+.gal-field-action select,
+.gal-field-action input {
+  flex: 1; min-width: 0;
+}
+.gal-btn-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 14px;
+  border-radius: 9px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  border: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 0.12s ease, transform 0.12s ease;
+}
+.gal-btn-new:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   CONFIRM MODAL
+   ========================================================================== */
+.confirm-modal[hidden] { display: none !important; }
+.confirm-modal {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: gal-fade 0.15s ease;
+}
+.confirm-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(3px);
+}
+.confirm-panel,
+.confirm-page {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 26px;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+}
+.confirm-icon {
+  width: 54px; height: 54px; margin: 0 auto 16px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.confirm-icon-danger {
+  background: rgba(220, 38, 38, 0.10);
+  color: var(--danger);
+}
+.confirm-panel h3,
+.confirm-page h2 {
+  margin: 0 0 6px;
+  font-size: 17px; letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.confirm-sub {
+  font-size: 14px; font-weight: 600;
+  color: var(--fg-muted); margin: 0 0 10px;
+}
+.confirm-note {
+  font-size: 12.5px; color: var(--fg-subtle);
+  line-height: 1.55; margin: 0 0 20px;
+}
+.confirm-actions {
+  display: flex; gap: 10px; justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   FILTER BAR
+   ========================================================================== */
+.gal-filter {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.gal-filter-search {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.gal-filter-search svg {
+  position: absolute; left: 12px;
+  color: var(--fg-subtle);
+  pointer-events: none;
+}
+.gal-filter-search input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px 0 38px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit; font-size: 13.5px;
+  outline: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.gal-filter-search input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31, 107, 62, 0.14);
+}
+.gal-filter-select { position: relative; flex: 0 0 auto; }
+.gal-filter-select select {
+  height: 40px;
+  padding: 0 36px 0 14px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit; font-size: 13px; font-weight: 500;
+  outline: 0;
+  cursor: pointer;
+  appearance: none;
+}
+.gal-filter-spinner { display: inline-flex; align-items: center; color: var(--fg-subtle); }
+.gal-filter-spinner .spinner-sm { width: 16px; height: 16px; border-width: 2px; }
+.gal-filter .htmx-indicator { opacity: 0; transition: opacity 0.2s ease; }
+.gal-filter .htmx-request .htmx-indicator,
+.gal-filter .htmx-request.htmx-indicator { opacity: 1; }
+.gal-filter-clear {
+  font-size: 12px; font-weight: 600;
+  color: var(--fg-subtle);
+  text-decoration: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.gal-filter-clear:hover { background: rgba(220, 38, 38, 0.08); color: var(--danger); }
+
+/* ==========================================================================
+   EMPTY STATE
+   ========================================================================== */
+.gal-empty {
+  padding: 60px 24px;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+}
+.gal-empty-icon {
+  width: 64px; height: 64px;
+  margin: 0 auto 14px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-subtle);
+  color: var(--fg-subtle);
+}
+.gal-empty h3 { margin: 0 0 6px; font-size: 16px; color: var(--fg); }
+.gal-empty p { margin: 0 0 16px; color: var(--fg-subtle); font-size: 13.5px; }
+
+/* ==========================================================================
+   CATEGORY MODAL
+   ========================================================================== */
+.gal-cat-modal[hidden] { display: none !important; }
+.gal-cat-modal {
+  position: fixed; inset: 0; z-index: 95;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.gal-cat-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(3px);
+}
+.gal-cat-panel {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 400px;
+  width: 100%;
+  padding: 22px 24px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+}
+.gal-cat-panel h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  color: var(--fg);
+}
+.gal-cat-panel input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font: inherit; font-size: 14px;
+  outline: 0;
+}
+.gal-cat-panel input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31, 107, 62, 0.15);
+}
+.gal-cat-error {
+  color: var(--danger);
+  font-size: 12px;
+  min-height: 16px;
+  margin-top: 6px;
+}
+.gal-cat-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+  margin-top: 14px;
+}
+
+/* ==========================================================================
+   MULTI-PICKER
+   ==========================================================================
+   The menu is absolutely positioned. When open, we give the trigger's
+   wrapper enough room so the menu can render without being clipped.
+   No parent has overflow: hidden.
+   ========================================================================== */
+.picker {
+  position: relative;
+  width: 100%;
+  font-size: 13.5px;
+}
+.picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 6px 14px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1.5px solid var(--border);
+  border-radius: 11px;
+  cursor: text;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.picker-trigger:hover { border-color: rgba(31, 107, 62, 0.35); }
+.picker-trigger:focus-within,
+.picker-trigger.is-open {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 4px rgba(31, 107, 62, 0.12);
+  background: var(--bg-card);
+}
+
+.picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  max-width: 220px;
+  transition: border-color 0.12s ease;
+}
+.picker-chip:hover { border-color: rgba(31, 107, 62, 0.4); }
+
+.picker-chip-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+.picker-chip-label {
+  padding: 0 4px;
+  color: var(--fg);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+.picker-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  padding: 0;
+  margin-right: 2px;
+  background: transparent;
+  border: 0;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.picker-chip-x:hover {
+  color: var(--danger);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.picker-search {
+  flex: 1;
+  min-width: 110px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13.5px;
+  padding: 6px 0;
+}
+.picker-search::placeholder { color: var(--fg-subtle); }
+
+.picker-arrow {
+  color: var(--fg-subtle);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.picker-trigger.is-open .picker-arrow { transform: rotate(180deg); }
+
+/* ---- Dropdown menu — self-contained scrollable list ---- */
+.picker-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px -12px rgba(15, 23, 42, 0.22),
+              0 4px 12px rgba(15, 23, 42, 0.06);
+
+  /* Enough height for ~9 rows, then scroll */
+  max-height: 420px;
+  min-height: 140px;
+
+  /* This makes the list actually scrollable */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  padding: 6px;
+  animation: picker-fade 0.14s ease;
+  scrollbar-width: thin;
+}
+.picker-menu::-webkit-scrollbar { width: 8px; }
+.picker-menu::-webkit-scrollbar-track { background: transparent; }
+.picker-menu::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 4px;
+}
+.picker-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.55);
+}
+.picker-menu[hidden] { display: none !important; }
+
+@keyframes picker-fade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.picker-list { list-style: none; padding: 0; margin: 0; }
+
+.picker-opt {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  position: relative;
+}
+.picker-opt:hover { background: var(--bg-subtle); }
+.picker-opt input[type=checkbox] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.picker-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+.picker-opt-label {
+  flex: 1;
+  color: var(--fg);
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.picker-tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-subtle);
+  color: transparent;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.picker-opt:has(input:checked) { background: rgba(31, 107, 62, 0.08); }
+.picker-opt:has(input:checked) .picker-tick {
+  background: var(--brand);
+  color: #fff;
+}
+.picker-empty {
+  padding: 22px 12px;
+  text-align: center;
+  color: var(--fg-subtle);
+  font-size: 12.5px;
+}
+
+/* ==========================================================================
+   MOBILE
+   ========================================================================== */
+@media (max-width: 720px) {
+  .gal-hero { padding: 18px; }
+  .gal-hero h1 { font-size: 19px; }
+  .gal-hero-icon { width: 42px; height: 42px; border-radius: 12px; }
+  .gal-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .gal-card-body { padding: 12px 14px; }
+  .gal-card-body h3 { font-size: 13.5px; }
+  .gal-album-head { padding: 18px; }
+  .gal-album-head h1 { font-size: 20px; }
+  .gal-album-actions { width: 100%; }
+  .gal-album-actions .btn { flex: 1; justify-content: center; }
+  .gal-form .gal-section { padding: 18px; }
+  .picker-menu { max-height: 60vh; }
+  .picker-chip-label { max-width: 90px; }
+}
+@media (max-width: 480px) {
+  .gal-grid { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   INDIVIDUAL TILE DELETE — cleaner, always visible, larger tap target
+   ========================================================================== */
+.gal-tile-cap {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gal-tile-cap-info {
+  flex: 1;
+  min-width: 0;
+}
+.gal-tile-del {
+  position: static;          /* was absolute — now inline with the caption */
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fg-subtle);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+.gal-tile:hover .gal-tile-del { opacity: 1; }
+.gal-tile-del:hover {
+  background: rgba(220, 38, 38, 0.08);
+  color: var(--danger);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+.gal-tile-del:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+/* If a tile has no caption, the delete button still floats top-right */
+.gal-tile:not(:has(.gal-tile-cap)) .gal-tile-del {
+  position: absolute;
+  top: 10px; right: 10px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  border-color: transparent;
+  backdrop-filter: blur(6px);
+  opacity: 0;
+}
+.gal-tile:not(:has(.gal-tile-cap)):hover .gal-tile-del { opacity: 1; }
+.gal-tile:not(:has(.gal-tile-cap)) .gal-tile-del:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ==========================================================================
+   SELECT MODE — checkbox overlays
+   ========================================================================== */
+.gal-tile-select {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  display: none;
+  cursor: pointer;
+}
+.gal-tile-select input[type=checkbox] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.gal-tile-select-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 2px solid rgba(15, 23, 42, 0.18);
+  color: transparent;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.gal-tile-select input:checked ~ .gal-tile-select-box {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+  transform: scale(1.05);
+}
+.gal-tile-select:hover .gal-tile-select-box {
+  border-color: var(--brand);
+}
+
+/* Show checkboxes only in select mode */
+.is-selecting .gal-tile-select { display: block; }
+.is-selecting .gal-tile-btn { cursor: pointer; }
+.is-selecting .gal-tile { cursor: pointer; }
+
+/* Selected tile outline + tint */
+.gal-tile.is-selected {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31, 107, 62, 0.24);
+}
+.gal-tile.is-selected::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: rgba(31, 107, 62, 0.06);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* ==========================================================================
+   FLOATING BULK ACTION BAR
+   ========================================================================== */
+.gal-bulkbar {
+  position: fixed;
+  z-index: 85;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px 10px 20px;
+  border-radius: 999px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 60px -12px rgba(15, 23, 42, 0.35),
+              0 6px 20px rgba(15, 23, 42, 0.12);
+  animation: gal-bulkbar-in 0.2s ease;
+  max-width: calc(100vw - 32px);
+}
+@keyframes gal-bulkbar-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.gal-bulkbar[hidden] { display: none !important; }
+
+.gal-bulkbar-info {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.gal-bulkbar-count {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.gal-bulkbar-label {
+  font-size: 12.5px;
+  color: var(--fg-subtle);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.gal-bulkbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gal-bulkbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.gal-bulkbar-btn:hover {
+  background: var(--bg-subtle);
+  border-color: rgba(31, 107, 62, 0.4);
+}
+.gal-bulkbar-btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.gal-bulkbar-btn-danger:hover {
+  filter: brightness(1.08);
+  background: var(--danger);
+}
+.gal-bulkbar-btn-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* ==========================================================================
+   SELECT TOGGLE BUTTON (album header)
+   ========================================================================== */
+#gal-select-toggle.is-active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+#gal-select-toggle.is-active:hover {
+  filter: brightness(1.08);
+}
+
+/* ==========================================================================
+   MOBILE
+   ========================================================================== */
+@media (max-width: 720px) {
+  .gal-tile-del {
+    width: 38px;
+    height: 38px;
+    opacity: 1;    /* always visible on touch devices */
+  }
+  .gal-tile-select-box {
+    width: 30px;
+    height: 30px;
+  }
+  .gal-bulkbar {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    transform: none;
+    border-radius: 14px;
+    padding: 12px 14px;
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .gal-bulkbar-info {
+    justify-content: center;
+  }
+  .gal-bulkbar-actions {
+    justify-content: stretch;
+  }
+  .gal-bulkbar-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}

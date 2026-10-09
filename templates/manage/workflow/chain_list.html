@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Chains · Workflow management{% endblock %}
+{% block page_title %}Workflow chains{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page">
+  {% include "manage/workflow/_tabs.html" %}
+
+  <header class="wf-hero wf-hero-split">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+      </div>
+      <div>
+        <h1>Approval chains</h1>
+        <p>{{ chains|length }} chain{{ chains|length|pluralize }} defined.</p>
+      </div>
+    </div>
+    <a href="{% url 'workflow_manage:chain_create' %}" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New chain
+    </a>
+  </header>
+
+  <form method="get" class="wf-filter">
+    <div class="wf-filter-search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" name="q" value="{{ q }}" placeholder="Search chains…" autocomplete="off">
+    </div>
+    {% if q %}<a href="{% url 'workflow_manage:chain_list' %}" class="wf-filter-clear">Clear</a>{% endif %}
+  </form>
+
+  {% if chains %}
+    <div class="wf-chain-grid">
+      {% for c in chains %}
+        <a href="{% url 'workflow_manage:chain_detail' c.pk %}" class="wf-chain-card">
+          <header class="wf-chain-card-head">
+            <div class="wf-chain-card-title">
+              <strong>{{ c.name }}</strong>
+              <span class="wf-muted wf-mono">{{ c.code }}</span>
+            </div>
+            {% if not c.is_active %}<span class="wf-pill wf-pill-warn">Inactive</span>{% endif %}
+          </header>
+
+          {% if c.description %}
+            <p class="wf-chain-card-desc">{{ c.description|truncatechars:140 }}</p>
+          {% endif %}
+
+          <footer class="wf-chain-card-foot">
+            <span class="wf-pill">{{ c.step_count }} step{{ c.step_count|pluralize }}</span>
+            <span class="wf-pill wf-pill-muted">{{ c.type_count }} type{{ c.type_count|pluralize }}</span>
+          </footer>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="wf-empty">
+      <div class="wf-empty-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+      </div>
+      <h3>No chains yet</h3>
+      <p>Chains define the approval sequence for every request type.</p>
+      <a href="{% url 'workflow_manage:chain_create' %}" class="btn btn-primary">Create the first chain</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

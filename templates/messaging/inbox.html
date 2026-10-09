@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Messages · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Messages{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=3">
+{% endblock %}
+
+{% block content %}
+<div class="msg-page">
+
+  <header class="msg-hero">
+    <div>
+      <h1>Messages</h1>
+      <p class="muted">
+        {% if total_unread %}
+          <strong class="msg-unread-count">{{ total_unread }}</strong> unread ·
+        {% endif %}
+        {{ total_threads }} thread{{ total_threads|pluralize }} in total
+      </p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="{% url 'messaging:archived' %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+        Archived
+      </a>
+      <a href="{% url 'messaging:compose' %}" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New message
+      </a>
+    </div>
+  </header>
+
+  {% if unread_threads %}
+    <section class="msg-section">
+      <h2 class="msg-section-label">
+        <span class="msg-section-dot"></span>
+        Unread
+        <span class="msg-section-count">{{ unread_threads|length }}</span>
+      </h2>
+      <div class="msg-thread-list">
+        {% for t in unread_threads %}
+          <a href="{% url 'messaging:thread' t.pk %}" class="msg-thread-row is-unread">
+            <span class="msg-avatar msg-avatar-md msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}">
+              {{ t.display_title|slice:":1"|upper }}
+            </span>
+            <div class="msg-thread-body">
+              <div class="msg-thread-head">
+                <strong>{{ t.display_title|default:"(no subject)" }}</strong>
+                <time>{% if t.last_msg %}{{ t.last_msg.sent_at|timesince }} ago{% endif %}</time>
+              </div>
+              <div class="msg-thread-preview">
+                {% if t.last_msg %}
+                  <span class="msg-thread-sender">{{ t.last_msg.sender.get_full_name|default:t.last_msg.sender.email|default:"System" }}:</span>
+                  {{ t.last_msg.body|truncatechars:90 }}
+                {% else %}
+                  <em class="muted">No messages yet</em>
+                {% endif %}
+              </div>
+            </div>
+            <span class="msg-unread-badge">{{ t.unread }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if read_threads %}
+    <section class="msg-section">
+      <h2 class="msg-section-label">
+        Earlier
+        <span class="msg-section-count">{{ read_threads|length }}</span>
+      </h2>
+      <div class="msg-thread-list">
+        {% for t in read_threads %}
+          <a href="{% url 'messaging:thread' t.pk %}" class="msg-thread-row">
+            <span class="msg-avatar msg-avatar-md msg-avatar-{% cycle 'c3' 'c4' 'c5' 'c6' 'c7' 'c0' 'c1' 'c2' %}">
+              {{ t.display_title|slice:":1"|upper }}
+            </span>
+            <div class="msg-thread-body">
+              <div class="msg-thread-head">
+                <strong>{{ t.display_title|default:"(no subject)" }}</strong>
+                <time>{% if t.last_msg %}{{ t.last_msg.sent_at|timesince }} ago{% endif %}</time>
+              </div>
+              <div class="msg-thread-preview">
+                {% if t.last_msg %}
+                  <span class="msg-thread-sender">{{ t.last_msg.sender.get_full_name|default:t.last_msg.sender.email|default:"System" }}:</span>
+                  {{ t.last_msg.body|truncatechars:90 }}
+                {% else %}
+                  <em class="muted">No messages yet</em>
+                {% endif %}
+              </div>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if not unread_threads and not read_threads %}
+    <div class="msg-empty">
+      <div class="msg-empty-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <h3>No messages yet</h3>
+      <p>Start a conversation with anyone in the directorate. Threads stay here so nothing gets lost.</p>
+      <a href="{% url 'messaging:compose' %}" class="btn btn-primary">Start a conversation</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

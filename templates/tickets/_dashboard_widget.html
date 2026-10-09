@@ -1,0 +1,60 @@
+{% if visible %}
+<section class="tk-widget">
+  <div class="tk-widget-head">
+    <h2 class="tk-widget-title">Tickets</h2>
+    <a href="{% url 'tickets:list' %}" class="tk-widget-link">All tickets →</a>
+  </div>
+
+  <div class="tk-widget-cols">
+    <div class="tk-widget-col">
+      <div class="tk-widget-col-head">
+        <span>Raised by me</span>
+        <span class="tk-widget-col-count {% if my_open_count %}is-active{% endif %}">{{ my_open_count }}</span>
+      </div>
+      {% if my_open %}
+        <ul class="tk-widget-list">
+          {% for t in my_open %}
+            <li>
+              <a href="{% url 'tickets:detail' t.pk %}" class="tk-widget-item">
+                <span class="tk-chip tk-chip-state-{{ t.state }}" style="font-size:9.5px;padding:1px 6px;">
+                  <span class="tk-chip-dot" style="width:4px;height:4px;"></span>
+                </span>
+                <span class="tk-widget-item-title">{{ t.subject }}</span>
+                <span class="tk-ref" style="font-size:10px;">{{ t.reference|slice:"-5:" }}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="tk-widget-empty">Nothing open</div>
+      {% endif %}
+      <a href="{% url 'tickets:my_tickets' %}" class="tk-widget-foot">View all →</a>
+    </div>
+
+    <div class="tk-widget-col">
+      <div class="tk-widget-col-head">
+        <span>Assigned to me</span>
+        <span class="tk-widget-col-count {% if assigned_count %}is-active{% endif %}">{{ assigned_count }}</span>
+      </div>
+      {% if assigned %}
+        <ul class="tk-widget-list">
+          {% for t in assigned %}
+            <li>
+              <a href="{% url 'tickets:detail' t.pk %}" class="tk-widget-item">
+                <span class="tk-chip tk-chip-prio-{{ t.priority }}" style="font-size:9.5px;padding:1px 6px;">
+                  {{ t.get_priority_display|slice:":1" }}
+                </span>
+                <span class="tk-widget-item-title">{{ t.subject }}</span>
+                <span class="tk-ref" style="font-size:10px;">{{ t.reference|slice:"-5:" }}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="tk-widget-empty">Nothing assigned</div>
+      {% endif %}
+      <a href="{% url 'tickets:assigned_to_me' %}" class="tk-widget-foot">View all →</a>
+    </div>
+  </div>
+</section>
+{% endif %}

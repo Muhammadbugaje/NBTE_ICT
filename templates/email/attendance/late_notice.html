@@ -1,0 +1,33 @@
+{% extends "email/base_email.html" %}
+{% block subject %}Late arrival recorded — {{ record.date|date:"M j, Y" }}{% endblock %}
+{% block preheader %}You were marked late on {{ record.date|date:"M j, Y" }}.{% endblock %}
+
+{% block badge %}
+<span style="display:inline-block;padding:5px 12px;background:rgba(255,255,255,0.18);color:#ffffff;font-size:10.5px;font-weight:700;letter-spacing:0.09em;border-radius:999px;text-transform:uppercase;">Late</span>
+{% endblock %}
+
+{% block header_title %}A late arrival was recorded{% endblock %}
+{% block intro %}Hi {{ user_name }} — your check-in on {{ record.date|date:"M j, Y" }} was recorded as <strong>late</strong>.{% endblock %}
+
+{% block content %}
+  <tr>
+    <td style="padding:12px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+        <tr><td style="padding:14px 20px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td style="font-size:12px;color:#64748b;padding:3px 0;">Date</td><td align="right" style="font-size:12.5px;color:#0f172a;font-weight:500;padding:3px 0;">{{ record.date|date:"M j, Y" }}</td></tr>
+            {% if location_name %}<tr><td style="font-size:12px;color:#64748b;padding:3px 0;">Location</td><td align="right" style="font-size:12.5px;color:#0f172a;font-weight:500;padding:3px 0;">{{ location_name }}</td></tr>{% endif %}
+            {% if check_in_time %}<tr><td style="font-size:12px;color:#64748b;padding:3px 0;">Checked in at</td><td align="right" style="font-size:12.5px;color:#0f172a;font-weight:500;padding:3px 0;">{{ check_in_time }}</td></tr>{% endif %}
+          </table>
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:20px 30px 8px;">
+      <p style="margin:0;font-size:13.5px;line-height:1.65;color:#475569;">
+        If this is a mistake, contact your Office Head so the record can be corrected.
+      </p>
+    </td>
+  </tr>
+{% endblock %}

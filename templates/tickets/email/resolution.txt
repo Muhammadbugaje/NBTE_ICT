@@ -1,0 +1,37 @@
+{{ intro }}
+
+TICKET
+------
+Reference:   {{ ticket.reference }}
+Subject:     {{ ticket.subject }}
+Category:    {{ ticket.category.name }}
+Priority:    {{ ticket.get_priority_display }}
+Status:      {{ ticket.get_state_display }}
+{% if ticket.resolved_at %}Resolved:    {{ ticket.resolved_at|date:"M j, Y · H:i" }}
+{% endif %}{% if resolver_name %}Resolved by: {{ resolver_name }}
+{% endif %}
+
+{% if ticket.resolution_notes %}
+WHAT WAS DONE
+-------------
+{{ ticket.resolution_notes }}
+
+{% endif %}{% if ticket.collection_location or ticket.collection_timeframe %}
+COLLECTION DETAILS
+------------------
+{% if ticket.collection_location %}Location:   {{ ticket.collection_location }}
+{% endif %}{% if ticket.collection_timeframe %}Timeframe:  {{ ticket.collection_timeframe }}
+{% endif %}
+
+{% endif %}{% if ticket.asset %}
+RELATED ASSET
+-------------
+{{ ticket.asset.asset_tag }} — {{ ticket.asset.display_name }}
+
+{% endif %}If everything looks right, open the ticket and click "Close & rate":
+{{ detail_url }}
+
+—
+{{ signature }}
+
+You can reply directly to this email if you need to clarify anything.

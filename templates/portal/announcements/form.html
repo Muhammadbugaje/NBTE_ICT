@@ -1,0 +1,180 @@
+{% extends "portal/_layout.html" %}
+{% block title %}{% if mode == "create" %}New announcement{% else %}Edit announcement{% endif %} · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="portal-page portal-page-narrow">
+
+  <header class="portal-head">
+    <div>
+      <a href="{% url 'portal:announcement_list' %}" class="portal-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Announcements
+      </a>
+      <h1>{% if mode == "create" %}New announcement{% else %}Edit announcement{% endif %}</h1>
+      <p class="muted">Publish now, schedule for later, or save as draft.</p>
+    </div>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="portal-form" data-scope-form="announcement">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    {# ---------- 1. CONTENT ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">1</span>
+        <div>
+          <h3>Content</h3>
+          <p>What is this announcement about?</p>
+        </div>
+      </header>
+      <div class="portal-field">
+        {{ form.title.label_tag }}{{ form.title }}
+        {{ form.title.errors }}
+      </div>
+      <div class="portal-field">
+        {{ form.summary.label_tag }}{{ form.summary }}
+        <span class="hint">{{ form.summary.help_text }}</span>
+        {{ form.summary.errors }}
+      </div>
+      <div class="portal-field">
+        {{ form.body.label_tag }}{{ form.body }}
+        {{ form.body.errors }}
+      </div>
+
+      {# --------- IMAGE FIELD with explicit preview --------- #}
+      <div class="portal-field">
+        <label for="{{ form.image.id_for_label }}">{{ form.image.label }}</label>
+        {{ form.image }}
+        <div class="portal-image-preview"
+             data-portal-image-preview
+             {% if announcement.image %}data-has-image="1"{% endif %}>
+          {% if announcement and announcement.image %}
+            <img src="{{ announcement.image_thumb_url }}"
+                 onerror="this.onerror=null;this.src='{{ announcement.image.url }}';"
+                 alt="">
+          {% else %}
+            <span class="portal-image-preview-empty">No image yet — optional.</span>
+          {% endif %}
+        </div>
+        {{ form.image.errors }}
+      </div>
+    </section>
+
+    {# ---------- 2. CLASSIFICATION ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">2</span>
+        <div>
+          <h3>Classification</h3>
+          <p>How should this be categorised and prioritised?</p>
+        </div>
+      </header>
+      <div class="portal-row">
+        <div class="portal-field portal-field-half">
+          {{ form.category.label_tag }}{{ form.category }}{{ form.category.errors }}
+        </div>
+        <div class="portal-field portal-field-half">
+          {{ form.priority.label_tag }}{{ form.priority }}{{ form.priority.errors }}
+        </div>
+      </div>
+      <label class="portal-check">{{ form.is_pinned }} <span>Pin to the top of every list</span></label>
+    </section>
+
+    {# ---------- 3. LINKS ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">3</span>
+        <div>
+          <h3>Links</h3>
+          <p>Attach as many labeled links as you need — Zoom, Meet, docs, etc.</p>
+        </div>
+      </header>
+      {{ formset.management_form }}
+      <div class="portal-formset">
+        {% for f in formset %}
+          <div class="portal-formset-row">
+            {{ f.id }}
+            <div class="portal-formset-fields">
+              <div class="portal-field">{{ f.kind.label_tag }}{{ f.kind }}{{ f.kind.errors }}</div>
+              <div class="portal-field">{{ f.label.label_tag }}{{ f.label }}{{ f.label.errors }}</div>
+              <div class="portal-field">{{ f.url.label_tag }}{{ f.url }}{{ f.url.errors }}</div>
+              <div class="portal-field portal-field-third">{{ f.sort_order.label_tag }}{{ f.sort_order }}{{ f.sort_order.errors }}</div>
+            </div>
+            {% if f.instance.pk %}
+              <label class="portal-formset-remove">{{ f.DELETE }} Remove this link</label>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    {# ---------- 4. VISIBILITY ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">4</span>
+        <div>
+          <h3>Visibility & scope</h3>
+          <p>Who should see this? Pick a scope and the fields adapt.</p>
+        </div>
+      </header>
+      <div class="portal-field">
+        {{ form.visibility.label_tag }}{{ form.visibility }}{{ form.visibility.errors }}
+      </div>
+
+      <div class="portal-scope-slot" data-scope-for="announcement" data-scope-when="department">
+        <div class="portal-field">
+          {{ form.department.label_tag }}{{ form.department }}{{ form.department.errors }}
+        </div>
+      </div>
+
+      <div class="portal-scope-slot" data-scope-for="announcement" data-scope-when="role">
+        <div class="portal-field">
+          {{ form.roles.label_tag }}
+          <div data-portal-picker>{{ form.roles }}</div>
+          {{ form.roles.errors }}
+        </div>
+      </div>
+
+      <div class="portal-scope-slot" data-scope-for="announcement" data-scope-when="individual">
+        <div class="portal-field">
+          {{ form.recipients.label_tag }}
+          <div data-portal-picker>{{ form.recipients }}</div>
+          {{ form.recipients.errors }}
+        </div>
+      </div>
+    </section>
+
+    {# ---------- 5. TIMING ---------- #}
+    <section class="portal-section">
+      <header class="portal-section-head">
+        <span class="portal-section-num">5</span>
+        <div>
+          <h3>Timing</h3>
+          <p>When does this go live, and when (if ever) should it disappear?</p>
+        </div>
+      </header>
+      <div class="portal-row">
+        <div class="portal-field portal-field-half">
+          {{ form.publish_at.label_tag }}{{ form.publish_at }}
+          <span class="hint">{{ form.publish_at.help_text }}</span>
+          {{ form.publish_at.errors }}
+        </div>
+        <div class="portal-field portal-field-half">
+          {{ form.expires_at.label_tag }}{{ form.expires_at }}
+          <span class="hint">{{ form.expires_at.help_text }}</span>
+          {{ form.expires_at.errors }}
+        </div>
+      </div>
+      <label class="portal-check">{{ form.is_draft }} <span>Save as draft (not published)</span></label>
+    </section>
+
+    <div class="portal-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Create announcement{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'portal:announcement_list' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

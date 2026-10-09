@@ -1,0 +1,126 @@
+{% extends "portal/_layout.html" %}
+{% block title %}{{ announcement.title }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Announcement{% endblock %}
+
+{% block content %}
+<div class="portal-page portal-page-narrow">
+
+  <a href="{% url 'portal:announcement_list' %}" class="portal-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    All announcements
+  </a>
+
+  {# ---------- Status banner (visible to the author on non-live items) ---------- #}
+  {% if announcement.status == "draft" or announcement.status == "scheduled" or announcement.status == "expired" or announcement.status == "archived" %}
+    {% if announcement.author_id == request.user.pk or request.user.is_superuser or perms.portal.change_announcement %}
+      <div class="portal-banner portal-banner-{{ announcement.status }}">
+        <div class="portal-banner-icon">
+          {% if announcement.status == "draft" %}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
+          {% elif announcement.status == "scheduled" %}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          {% else %}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9"/><polyline points="12 7 12 12 15 15"/></svg>
+          {% endif %}
+        </div>
+        <div class="portal-banner-body">
+          {% if announcement.status == "draft" %}
+            <strong>This is a draft.</strong>
+            <p>Only you can see it right now. Publish it when you're ready.</p>
+          {% elif announcement.status == "scheduled" %}
+            <strong>Scheduled for {{ announcement.publish_at|date:"M j, Y · H:i" }}.</strong>
+            <p>It will go live automatically at that time. Only you can see it right now.</p>
+          {% elif announcement.status == "expired" %}
+            <strong>This announcement has expired.</strong>
+            <p>It stopped being visible to others on {{ announcement.expires_at|date:"M j, Y · H:i" }}.</p>
+          {% elif announcement.status == "archived" %}
+            <strong>Archived.</strong>
+            <p>This announcement is no longer visible to others.</p>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <article class="portal-detail priority-{{ announcement.priority }}">
+    <header>
+      <div class="portal-detail-badges">
+        <span class="portal-card-cat" style="--accent: {{ announcement.category.color }};">
+          {{ announcement.category.name }}
+        </span>
+        {% if announcement.is_pinned %}
+          <span class="portal-pin" style="position:static;width:auto;height:auto;padding:3px 10px;border-radius:999px;">📌 Pinned</span>
+        {% endif %}
+        {% if announcement.priority != "normal" %}
+          <span class="portal-priority portal-priority-{{ announcement.priority }}">
+            {{ announcement.get_priority_display }}
+          </span>
+        {% endif %}
+        {% if announcement.status == "draft" %}
+          <span class="portal-status portal-status-past">Draft</span>
+        {% elif announcement.status == "scheduled" %}
+          <span class="portal-status portal-status-upcoming">Scheduled</span>
+        {% elif announcement.status == "expired" %}
+          <span class="portal-status portal-status-cancelled">Expired</span>
+        {% endif %}
+        {% if announcement.visibility == "public" %}
+          <span class="portal-status portal-status-upcoming">🌐 Public</span>
+        {% elif announcement.visibility == "department" and announcement.department %}
+          <span class="portal-status portal-status-past">{{ announcement.department.name }}</span>
+        {% endif %}
+      </div>
+
+      <h1>{{ announcement.title }}</h1>
+
+      <div class="portal-detail-meta">
+        <span>By <strong>{{ announcement.author.get_full_name|default:announcement.author.email }}</strong></span>
+        <span>·</span>
+        <span>{{ announcement.publish_at|date:"M j, Y · H:i" }}</span>
+        {% if announcement.expires_at %}
+          <span>·</span><span>Ends {{ announcement.expires_at|date:"M j, Y · H:i" }}</span>
+        {% endif %}
+      </div>
+
+      {% if perms.portal.change_announcement or announcement.author_id == request.user.pk %}
+        <div class="portal-detail-actions">
+          <a href="{% url 'portal:announcement_update' announcement.pk %}" class="btn btn-ghost btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
+            Edit
+          </a>
+          {% if perms.portal.pin_announcement %}
+            {% include "portal/announcements/_pin_button.html" %}
+          {% endif %}
+          {% if perms.portal.delete_announcement %}
+            <a href="{% url 'portal:announcement_delete' announcement.pk %}" class="btn btn-ghost btn-sm btn-danger">Delete</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </header>
+
+    {% if announcement.image %}
+      <figure class="portal-detail-figure">
+        <img src="{{ announcement.image.url }}" alt="">
+      </figure>
+    {% endif %}
+
+    {% if announcement.body %}
+      <div class="portal-detail-body">{{ announcement.body|linebreaksbr }}</div>
+    {% endif %}
+
+    {% if announcement.links.all %}
+      <section class="portal-links">
+        <h2>Links</h2>
+        <div class="portal-link-list">
+          {% for link in announcement.links.all %}
+            <a href="{{ link.url }}" target="_blank" rel="noopener" class="portal-link">
+              <span class="portal-link-kind">{{ link.get_kind_display }}</span>
+              <span class="portal-link-label">{{ link.label }}</span>
+              <svg class="portal-link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

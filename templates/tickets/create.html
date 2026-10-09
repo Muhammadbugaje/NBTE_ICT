@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ category.name }} · New ticket · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}New ticket — {{ category.name }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=3">
+{% endblock %}
+{% block extra_js %}
+  <script src="{% static 'js/tickets.js' %}?v=3" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="tk-page">
+  <header class="tk-page-head">
+    <div>
+      <a href="{% url 'tickets:create' %}" class="tk-btn tk-btn-ghost" style="margin-bottom:12px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Back to categories
+      </a>
+      <h1>{{ category.name }}</h1>
+      <p>
+        {{ category.description|default:"Fill in the details below." }}
+        &nbsp;·&nbsp; Routes to <strong>{{ category.handling_department.name }}</strong>
+        {% if category.requires_director_signoff %}
+          &nbsp;·&nbsp; <span class="tk-chip tk-chip-sla-warn" style="font-size:10.5px;">Director sign-off required</span>
+        {% endif %}
+      </p>
+    </div>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" novalidate class="tk-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="tk-form-banner tk-form-banner-error">
+        {{ form.non_field_errors|join:" " }}
+      </div>
+    {% endif %}
+
+    <div class="tk-form-section">
+      <label class="tk-field">
+        <span class="tk-field-label">Subject <span class="tk-field-required">*</span></span>
+        {{ form.subject }}
+        {% if form.subject.errors %}<span class="tk-field-error">{{ form.subject.errors|join:" " }}</span>{% endif %}
+        <span class="tk-field-hint">One line that tells us what this is about.</span>
+      </label>
+
+      <label class="tk-field">
+        <span class="tk-field-label">What's wrong? <span class="tk-field-required">*</span></span>
+        {{ form.body }}
+        {% if form.body.errors %}<span class="tk-field-error">{{ form.body.errors|join:" " }}</span>{% endif %}
+        <span class="tk-field-hint">Include any error messages, steps you tried, and what you expected to happen.</span>
+      </label>
+    </div>
+
+    <div class="tk-form-section">
+      <div class="tk-field-row">
+        <label class="tk-field">
+          <span class="tk-field-label">Priority</span>
+          {{ form.priority }}
+        </label>
+        <label class="tk-field">
+          <span class="tk-field-label">Location</span>
+          {{ form.current_location }}
+          <span class="tk-field-hint">Where is this — office, floor, room?</span>
+        </label>
+      </div>
+
+      <label class="tk-field">
+        <span class="tk-field-label">{{ form.asset_choice.label }}</span>
+        {{ form.asset_choice }}
+        <span class="tk-field-hint">Pick one of your assigned assets, or choose “Other” to enter a tag.</span>
+      </label>
+
+      <label class="tk-field" data-asset-manual-wrap>
+        <span class="tk-field-label">{{ form.asset_tag.label }}</span>
+        {{ form.asset_tag }}
+        <span class="tk-field-hint">Only needed if you chose “Other” above.</span>
+      </label>
+    </div>
+
+    <div class="tk-form-section">
+      <label class="tk-field">
+        <span class="tk-field-label">Attachment</span>
+        {{ form.attachment }}
+        <span class="tk-field-hint">Optional — screenshots or photos help a lot.</span>
+      </label>
+    </div>
+
+    <div class="tk-form-actions">
+      <button type="submit" class="tk-btn tk-btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Submit ticket
+      </button>
+      <a href="{% url 'tickets:create' %}" class="tk-btn tk-btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

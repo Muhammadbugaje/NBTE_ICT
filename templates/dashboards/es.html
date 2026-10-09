@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ dashboard_title }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{{ dashboard_title }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="dash-page">
+
+  <header class="dash-hero dash-hero-es">
+    <div class="dash-hero-inner">
+      <div class="dash-hero-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 12 2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div>
+        <h1>Executive Secretary</h1>
+        <p class="dash-hero-sub">{% now "l, j F Y" %} · sign-offs, filing and executive actions</p>
+      </div>
+    </div>
+    <div class="dash-hero-actions">
+      <a href="{% url 'attendance:all_departments' %}" class="btn btn-ghost btn-sm">All departments</a>
+      <a href="{% url 'workflow:my_requests' %}" class="btn btn-ghost btn-sm">All requests</a>
+      <a href="{% url 'workflow_manage:home' %}" class="btn btn-primary btn-sm">Workflow admin</a>
+    </div>
+  </header>
+
+  <div class="dash-kpis">
+    <a href="#es-queue" class="dash-kpi">
+      <div class="dash-kpi-icon dash-kpi-teal">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-num">{{ kpis.es_pending }}</div>
+        <div class="dash-kpi-lbl">ES sign-off pending</div>
+      </div>
+    </a>
+    <a href="#filing-queue" class="dash-kpi">
+      <div class="dash-kpi-icon dash-kpi-indigo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-num">{{ kpis.filing_queue }}</div>
+        <div class="dash-kpi-lbl">Awaiting filing</div>
+      </div>
+    </a>
+    <a href="{% url 'workflow:my_requests' %}?status=awaiting" class="dash-kpi">
+      <div class="dash-kpi-icon dash-kpi-warn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-num">{{ kpis.pending }}</div>
+        <div class="dash-kpi-lbl">System-wide pending</div>
+      </div>
+    </a>
+    <a href="{% url 'workflow:my_requests' %}" class="dash-kpi">
+      <div class="dash-kpi-icon dash-kpi-info">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-num">{{ kpis.completed_30d }}</div>
+        <div class="dash-kpi-lbl">Completed (30d)</div>
+      </div>
+    </a>
+    <a href="{% url 'attendance:all_departments' %}" class="dash-kpi">
+      <div class="dash-kpi-icon dash-kpi-teal">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-num">{{ attendance_kpis.present|default:0 }}</div>
+        <div class="dash-kpi-lbl">Present today</div>
+      </div>
+    </a>
+    <a href="{% url 'notifications:list' %}" class="dash-kpi">
+      <div class="dash-kpi-icon dash-kpi-rose">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-num">{{ kpis.unread }}</div>
+        <div class="dash-kpi-lbl">Unread for you</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="dash-grid dash-grid-1-1">
+    <section class="dash-card" id="es-queue">
+      <header class="dash-card-head">
+        <div><h2>Awaiting your sign-off</h2><p>Requests currently on an ES approval step</p></div>
+      </header>
+      {% if queue %}
+        <div class="dash-list">
+          {% for item in queue %}
+            <a href="{% url 'workflow:detail' item.request.pk %}" class="dash-item">
+              <div class="dash-item-icon dash-item-icon-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              </div>
+              <div class="dash-item-body">
+                <strong>{{ item.request.reference }}</strong>
+                <span>{{ item.request.subject|truncatechars:60 }}</span>
+              </div>
+              <time class="dash-item-meta">
+                {% if item.age_days is not None %}{{ item.age_days }}d{% else %}new{% endif %}
+              </time>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}<div class="dash-empty"><p>Nothing waiting on your sign-off.</p></div>{% endif %}
+    </section>
+
+    <section class="dash-card" id="filing-queue">
+      <header class="dash-card-head">
+        <div><h2>Awaiting filing</h2><p>Requests at the closure step</p></div>
+      </header>
+      {% if queue_filing %}
+        <div class="dash-list">
+          {% for item in queue_filing %}
+            <a href="{% url 'workflow:detail' item.request.pk %}" class="dash-item">
+              <div class="dash-item-icon dash-item-icon-info">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              </div>
+              <div class="dash-item-body">
+                <strong>{{ item.request.reference }}</strong>
+                <span>{{ item.request.receiving_department.name }} · {{ item.request.request_type.name }}</span>
+              </div>
+              <time class="dash-item-meta">
+                {% if item.age_days is not None %}{{ item.age_days }}d{% else %}new{% endif %}
+              </time>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}<div class="dash-empty"><p>Nothing waiting to be filed.</p></div>{% endif %}
+    </section>
+  </div>
+
+  <div class="dash-grid dash-grid-2-1">
+    <section class="dash-card">
+      <header class="dash-card-head">
+        <div><h2>Request activity — last 30 days</h2><p>Opened vs completed, daily</p></div>
+      </header>
+      {% if charts.activity.labels %}
+        <div class="dash-chart dash-chart-lg" data-chart-type="area">
+          {{ charts.activity|json_script:"chart-es-activity" }}
+          <canvas></canvas>
+        </div>
+      {% else %}<div class="dash-empty"><p>No activity in the last 30 days.</p></div>{% endif %}
+    </section>
+
+    <section class="dash-card">
+      <header class="dash-card-head">
+        <div><h2>Status mix</h2><p>Every request by state</p></div>
+      </header>
+      {% if charts.status_mix.labels %}
+        <div class="dash-chart dash-chart-lg" data-chart-type="donut">
+          {{ charts.status_mix|json_script:"chart-es-status" }}
+          <canvas></canvas>
+        </div>
+      {% else %}<div class="dash-empty"><p>No requests yet.</p></div>{% endif %}
+    </section>
+  </div>
+
+  <section class="dash-card">
+    <header class="dash-card-head">
+      <div><h2>Approvals per week</h2><p>System-wide, last 12 weeks</p></div>
+    </header>
+    {% if charts.approvals.labels %}
+      <div class="dash-chart" data-chart-type="line">
+        {{ charts.approvals|json_script:"chart-es-approvals" }}
+        <canvas></canvas>
+      </div>
+    {% else %}<div class="dash-empty"><p>No approvals recorded yet.</p></div>{% endif %}
+  </section>
+
+  {% include "dashboards/_attendance_section.html" %}
+
+  {% if leadership %}
+    <section class="dash-card">
+      <header class="dash-card-head">
+        <div><h2>Current leadership</h2><p>Executive positions and current holders</p></div>
+      </header>
+      <div class="dash-grid dash-grid-1-1-1">
+        {% for row in leadership %}
+          <div class="dash-item" style="cursor:default;">
+            <div class="dash-item-icon dash-item-icon-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="dash-item-body">
+              <strong>{{ row.tenure.staff.full_name }}</strong>
+              <span>{{ row.position.name }}{% if row.tenure.is_acting %} · Acting{% endif %}</span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="{% static 'js/charts.js' %}?v=1"></script>
+{% endblock %}

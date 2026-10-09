@@ -1,0 +1,20 @@
+{% load workflow_extras %}
+<ul class="wf-tl">
+  {% for event in timeline %}
+    <li class="wf-tl-item kind-{{ event.kind|lower }}">
+      <span class="wf-tl-dot" aria-hidden="true"></span>
+      <div class="wf-tl-body">
+        <div class="wf-tl-head">
+          <span class="wf-tl-kind">{{ event.kind|humanize_kind }}</span>
+          <span class="wf-tl-time">{{ event.created_at|date:"M j, Y · H:i" }}</span>
+        </div>
+        {% if event.message %}<div class="wf-tl-msg">{{ event.message }}</div>{% endif %}
+        {% if event.actor %}
+          <div class="wf-tl-actor">{{ event.actor.get_full_name|default:event.actor.email }}</div>
+        {% endif %}
+      </div>
+    </li>
+  {% empty %}
+    <li class="wf-tl-empty muted">No activity yet.</li>
+  {% endfor %}
+</ul>

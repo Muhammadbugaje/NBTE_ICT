@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}My attendance · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}My attendance{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=3">
+{% endblock %}
+
+{% block content %}
+<div class="att-page">
+
+  {# ---------- HERO ---------- #}
+  <header class="att-hero">
+    <div class="att-hero-left">
+      <a class="att-back" href="{% url 'attendance:home' %}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Attendance
+      </a>
+      <h1>My attendance history</h1>
+      <p>Everything you've been recorded for, in one place.</p>
+    </div>
+    <div class="att-hero-right">
+      <a class="att-btn att-btn-ghost" href="{% url 'attendance:home' %}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Attendance home
+      </a>
+    </div>
+  </header>
+
+  {# ---------- 90-day stats strip ---------- #}
+  <div class="att-stats">
+    <div class="att-stat">
+      <div class="att-stat-value {% if stats.present_pct >= 90 %}att-good{% elif stats.present_pct >= 75 %}att-warn{% else %}att-bad{% endif %}">
+        {{ stats.present_pct }}%
+      </div>
+      <div class="att-stat-label">Attendance</div>
+      <div class="att-stat-sub">last 90 days</div>
+    </div>
+    <div class="att-stat">
+      <div class="att-stat-value">{{ stats.present }}</div>
+      <div class="att-stat-label">On time</div>
+      <div class="att-stat-sub">last 90 days</div>
+    </div>
+    <div class="att-stat {% if stats.late > 0 %}is-warn{% endif %}">
+      <div class="att-stat-value">{{ stats.late }}</div>
+      <div class="att-stat-label">Late</div>
+      <div class="att-stat-sub">last 90 days</div>
+    </div>
+    <div class="att-stat {% if stats.absent > 0 %}is-danger{% endif %}">
+      <div class="att-stat-value">{{ stats.absent }}</div>
+      <div class="att-stat-label">Absent</div>
+      <div class="att-stat-sub">last 90 days</div>
+    </div>
+    <div class="att-stat">
+      <div class="att-stat-value">{{ stats.excused }}</div>
+      <div class="att-stat-label">Excused</div>
+      <div class="att-stat-sub">last 90 days</div>
+    </div>
+  </div>
+
+  {# ---------- Filter card ---------- #}
+  <section class="att-filter-card">
+    <form method="get" class="att-filters">
+      <div class="att-filter-group">
+        <label class="att-filter-label" for="filter-year">Year</label>
+        <select id="filter-year" name="year" class="att-input att-input-select">
+          {% for yr in years_available %}
+            <option value="{{ yr }}" {% if year_filter == yr %}selected{% endif %}>{{ yr }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="att-filter-group">
+        <label class="att-filter-label" for="filter-month">Month</label>
+        <select id="filter-month" name="month" class="att-input att-input-select">
+          <option value="">Full year</option>
+          <option value="1"  {% if month_filter == '1'  %}selected{% endif %}>January</option>
+          <option value="2"  {% if month_filter == '2'  %}selected{% endif %}>February</option>
+          <option value="3"  {% if month_filter == '3'  %}selected{% endif %}>March</option>
+          <option value="4"  {% if month_filter == '4'  %}selected{% endif %}>April</option>
+          <option value="5"  {% if month_filter == '5'  %}selected{% endif %}>May</option>
+          <option value="6"  {% if month_filter == '6'  %}selected{% endif %}>June</option>
+          <option value="7"  {% if month_filter == '7'  %}selected{% endif %}>July</option>
+          <option value="8"  {% if month_filter == '8'  %}selected{% endif %}>August</option>
+          <option value="9"  {% if month_filter == '9'  %}selected{% endif %}>September</option>
+          <option value="10" {% if month_filter == '10' %}selected{% endif %}>October</option>
+          <option value="11" {% if month_filter == '11' %}selected{% endif %}>November</option>
+          <option value="12" {% if month_filter == '12' %}selected{% endif %}>December</option>
+        </select>
+      </div>
+
+      <div class="att-filter-group">
+        <label class="att-filter-label" for="filter-status">Status</label>
+        <select id="filter-status" name="status" class="att-input att-input-select">
+          <option value="">Any status</option>
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="att-filter-actions">
+        <button type="submit" class="att-btn att-btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Apply
+        </button>
+        {% if month_filter or status_filter or year_filter != today.year %}
+          <a href="{% url 'attendance:my_attendance' %}" class="att-btn att-btn-ghost">Reset</a>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+
+  {# ---------- Period summary line ---------- #}
+  {% if page.object_list %}
+    <div class="att-result-summary">
+      <div class="att-result-summary-left">
+        <strong>{{ period_label }}</strong>
+        <span class="att-dot">·</span>
+        <span>{{ total_records }} record{{ total_records|pluralize }}</span>
+        {% if status_filter %}
+          <span class="att-dot">·</span>
+          <span class="att-result-chip">{{ status_filter|title }}</span>
+        {% endif %}
+      </div>
+      <div class="att-result-summary-right att-muted">
+        Page {{ page.number }} of {{ page.paginator.num_pages }}
+      </div>
+    </div>
+  {% endif %}
+
+  {# ---------- Table ---------- #}
+  {% if page.object_list %}
+    <div class="att-table-wrap">
+      <table class="att-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Day</th>
+            <th>Status</th>
+            <th>Check-in</th>
+            <th>Location</th>
+            <th>Source</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in page.object_list %}
+            <tr>
+              <td><strong>{{ r.date|date:"M j, Y" }}</strong></td>
+              <td class="att-muted">{{ r.date|date:"l" }}</td>
+              <td><span class="att-pill att-pill-{{ r.status }}">{{ r.get_status_display }}</span></td>
+              <td class="att-muted">{{ r.check_in_at|time:"H:i"|default:"—" }}</td>
+              <td class="att-muted">{{ r.location.name|default:"—" }}</td>
+              <td class="att-muted">{{ r.get_source_display }}</td>
+              <td class="att-muted att-notes">{{ r.notes|truncatechars:60|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page.has_other_pages %}
+      <nav class="att-pagination" aria-label="Pagination">
+        {% if page.has_previous %}
+          <a href="?year={{ year_filter }}&month={{ month_filter }}&status={{ status_filter }}&page=1" aria-label="First">« First</a>
+          <a href="?year={{ year_filter }}&month={{ month_filter }}&status={{ status_filter }}&page={{ page.previous_page_number }}" aria-label="Previous">‹ Prev</a>
+        {% else %}
+          <span class="disabled">« First</span>
+          <span class="disabled">‹ Prev</span>
+        {% endif %}
+
+        <span class="current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+
+        {% if page.has_next %}
+          <a href="?year={{ year_filter }}&month={{ month_filter }}&status={{ status_filter }}&page={{ page.next_page_number }}" aria-label="Next">Next ›</a>
+          <a href="?year={{ year_filter }}&month={{ month_filter }}&status={{ status_filter }}&page={{ page.paginator.num_pages }}" aria-label="Last">Last »</a>
+        {% else %}
+          <span class="disabled">Next ›</span>
+          <span class="disabled">Last »</span>
+        {% endif %}
+      </nav>
+    {% endif %}
+
+  {% else %}
+    <div class="att-empty">
+      <div class="att-empty-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <h3>No records</h3>
+      <p>
+        {% if month_filter or status_filter or year_filter != today.year %}
+          Nothing matches these filters. Try widening the period or resetting.
+        {% else %}
+          Once you start checking in, your records will appear here.
+        {% endif %}
+      </p>
+      {% if month_filter or status_filter or year_filter != today.year %}
+        <a href="{% url 'attendance:my_attendance' %}" class="att-btn att-btn-primary" style="margin-top:14px;">
+          Reset filters
+        </a>
+      {% endif %}
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

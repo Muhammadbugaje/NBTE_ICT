@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Check in · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Check in{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=1">
+{% endblock %}
+{% block extra_js %}
+  <script src="{% static 'js/attendance.js' %}?v=1" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="att-checkin-page"
+     data-check-in-url="{% url 'attendance:check_in_api' %}"
+     data-preview-url="{% url 'attendance:location_preview' %}"
+     data-home-url="{% url 'attendance:home' %}">
+
+  <a class="att-back" href="{% url 'attendance:home' %}">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Back
+  </a>
+
+  {% if not is_working_day %}
+    <section class="att-checkin-card is-muted">
+      <h1>Not a working day</h1>
+      <p>Today isn't a working day for you. See you on the next working day.</p>
+      <a class="att-btn att-btn-primary att-btn-full" href="{% url 'attendance:home' %}">Back to attendance</a>
+    </section>
+
+  {% elif today_record %}
+    <section class="att-checkin-card is-success">
+      <div class="att-checkin-icon att-checkin-icon-success">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <h1>Already checked in</h1>
+      <p>
+        You checked in at
+        <strong>{{ today_record.check_in_at|time:"H:i" }}</strong>
+        {% if today_record.location %} at <strong>{{ today_record.location.name }}</strong>{% endif %}.
+      </p>
+      <a class="att-btn att-btn-primary att-btn-full" href="{% url 'attendance:home' %}">Done</a>
+    </section>
+
+  {% else %}
+    <section class="att-checkin-card">
+      <div class="att-checkin-icon" id="att-checkin-icon">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </div>
+
+      <h1 id="att-checkin-title">Locating you…</h1>
+      <p id="att-checkin-message">
+        We'll use your current location to confirm you're at the office.
+      </p>
+
+      {# Distance ring #}
+      <div class="att-distance-ring" id="att-distance-ring" hidden>
+        <svg viewBox="0 0 120 120" width="140" height="140" role="img" aria-label="Distance to office">
+          <circle cx="60" cy="60" r="54" fill="none" stroke="var(--att-border)" stroke-width="6"/>
+          <circle id="att-ring-progress" cx="60" cy="60" r="54" fill="none"
+                  stroke="var(--att-accent)" stroke-width="6" stroke-linecap="round"
+                  stroke-dasharray="339.292" stroke-dashoffset="339.292"
+                  transform="rotate(-90 60 60)"/>
+        </svg>
+        <div class="att-distance-value">
+          <span id="att-distance-number">—</span>
+          <span class="att-distance-unit">m</span>
+        </div>
+      </div>
+
+      <div class="att-checkin-details" id="att-checkin-details" hidden>
+        <div class="att-checkin-row">
+          <span class="att-checkin-row-label">Nearest location</span>
+          <span class="att-checkin-row-value" id="att-nearest-location">—</span>
+        </div>
+        <div class="att-checkin-row">
+          <span class="att-checkin-row-label">Effective radius</span>
+          <span class="att-checkin-row-value" id="att-effective-radius">—</span>
+        </div>
+      </div>
+
+      <button type="button"
+              class="att-btn att-btn-primary att-btn-full att-checkin-submit"
+              id="att-submit"
+              disabled>
+        Check in
+      </button>
+
+      <button type="button"
+              class="att-btn att-btn-ghost att-btn-full"
+              id="att-retry"
+              hidden>
+        Try again
+      </button>
+
+      <p class="att-checkin-hint" id="att-hint"></p>
+    </section>
+
+    {# Locations list #}
+    {% if my_locations %}
+      <div class="att-checkin-locations">
+        <h3>Approved locations</h3>
+        <ul>
+          {% for loc in my_locations %}
+            <li>
+              <strong>{{ loc.name }}</strong>
+              <span>{{ loc.radius_meters }}m{% if loc.gps_offset_meters %} + {{ loc.gps_offset_meters }}m offset{% endif %}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

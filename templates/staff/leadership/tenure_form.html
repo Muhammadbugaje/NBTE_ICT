@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New tenure{% else %}Edit tenure{% endif %} · {{ SITE_NAME }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="lead-page lead-page-narrow">
+
+  <a href="{% url 'staff:leadership_panel' %}" class="lead-back">← Leadership panel</a>
+
+  <header class="lead-hero">
+    <div>
+      <h1>{% if mode == "create" %}Record a tenure{% else %}Edit tenure{% endif %}</h1>
+      <p>Who held what position, when, and for how long.</p>
+    </div>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="lead-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    <section class="lead-section">
+      <header class="lead-section-head"><h3>Who and where</h3></header>
+
+      <div class="lead-field-row">
+        <div class="lead-field">
+        <label for="{{ form.position.id_for_label }}">Position</label>
+        <div class="lead-field-with-action">
+            {{ form.position }}{{ form.position.errors }}
+            <a href="{% url 'staff:position_create' %}" class="lead-field-action" title="Create a new position">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New
+            </a>
+        </div>
+        {% if not form.position.field.queryset.exists %}
+            <span class="lead-field-warn">
+            No positions exist yet — click <strong>New</strong> to create your first one.
+            </span>
+        {% endif %}
+        </div>
+        <div class="lead-field">
+          <label for="{{ form.staff.id_for_label }}">Staff member</label>
+          {{ form.staff }}{{ form.staff.errors }}
+        </div>
+      </div>
+    </section>
+
+    <section class="lead-section">
+      <header class="lead-section-head"><h3>Dates</h3></header>
+
+      <div class="lead-field-row">
+        <div class="lead-field">
+          <label for="{{ form.started_on.id_for_label }}">Started on</label>
+          {{ form.started_on }}{{ form.started_on.errors }}
+        </div>
+        <div class="lead-field">
+          <label for="{{ form.ended_on.id_for_label }}">Ended on <span class="muted">(blank = current)</span></label>
+          {{ form.ended_on }}{{ form.ended_on.errors }}
+        </div>
+      </div>
+
+      <label class="lead-check">
+        {{ form.is_acting }}
+        <span>Acting appointment <span class="muted">(not substantive)</span></span>
+      </label>
+
+      <div class="lead-field">
+        <label for="{{ form.appointment_reference.id_for_label }}">Appointment reference</label>
+        {{ form.appointment_reference }}{{ form.appointment_reference.errors }}
+      </div>
+    </section>
+
+    <section class="lead-section">
+      <header class="lead-section-head"><h3>Public profile</h3></header>
+
+      <div class="lead-field">
+        <label for="{{ form.photo.id_for_label }}">Photo</label>
+        {{ form.photo }}{{ form.photo.errors }}
+        <span class="lead-hint">Square images look best. If left blank, the staff member's photo is used.</span>
+      </div>
+
+      <div class="lead-field">
+        <label for="{{ form.bio.id_for_label }}">Short biography</label>
+        {{ form.bio }}{{ form.bio.errors }}
+      </div>
+
+      <div class="lead-field">
+        <label for="{{ form.qualifications.id_for_label }}">Qualifications</label>
+        {{ form.qualifications }}{{ form.qualifications.errors }}
+      </div>
+    </section>
+
+    <section class="lead-section">
+      <header class="lead-section-head"><h3>Public visibility</h3></header>
+
+      <label class="lead-check">
+        {{ form.is_public }}
+        <span>Show on the public leadership page</span>
+      </label>
+
+      <label class="lead-check">
+        {{ form.is_featured }}
+        <span>Feature on the public homepage strip</span>
+      </label>
+
+      <div class="lead-field">
+        <label for="{{ form.display_order.id_for_label }}">Display order <span class="muted">(within position)</span></label>
+        {{ form.display_order }}{{ form.display_order.errors }}
+      </div>
+    </section>
+
+    <div class="lead-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Record tenure{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'staff:leadership_panel' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Resolution tester · Workflow management{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page">
+  {% include "manage/workflow/_tabs.html" %}
+
+  <header class="wf-hero">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon wf-hero-icon-amber">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </div>
+      <div>
+        <h1>Resolution tester</h1>
+        <p>Pick a request type and a requester — see which chain would run and who would act at each step.</p>
+      </div>
+    </div>
+  </header>
+
+  <form method="get" class="wf-tester-form">
+    <div class="wf-field">
+      <label for="tester-rt">Request type</label>
+      <select name="request_type" id="tester-rt" required>
+        <option value="">— Select a request type —</option>
+        {% for t in request_types %}
+          <option value="{{ t.pk }}" {% if form_data.request_type == t.pk|stringformat:"s" %}selected{% endif %}>
+            {{ t.category.name }} · {{ t.name }} — {{ t.handling_department.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="wf-field">
+      <label for="tester-ru">Requester</label>
+      <select name="requester" id="tester-ru" required>
+        <option value="">— Select a requester —</option>
+        {% for u in users %}
+          <option value="{{ u.pk }}" {% if form_data.requester == u.pk|stringformat:"s" %}selected{% endif %}>
+            {{ u.get_full_name|default:u.email }}
+            {% if u.department %} · {{ u.department.name }}{% endif %}
+            {% if u.role %} · {{ u.role.name }}{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="wf-tester-actions">
+      <button type="submit" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Resolve chain
+      </button>
+      {% if result %}<a href="{% url 'workflow_manage:test' %}" class="btn btn-ghost">Clear</a>{% endif %}
+    </div>
+  </form>
+
+  {% if result %}
+    {% if result.error %}
+      <div class="wf-error-banner">
+        <strong>Could not resolve:</strong> {{ result.error }}
+      </div>
+    {% else %}
+
+      <section class="wf-tester-summary">
+        <div class="wf-tester-summary-item">
+          <span class="wf-tester-summary-label">Request type</span>
+          <span class="wf-tester-summary-value">{{ result.request_type.name }}</span>
+        </div>
+        <div class="wf-tester-summary-item">
+          <span class="wf-tester-summary-label">Requester</span>
+          <span class="wf-tester-summary-value">
+            {{ result.requester.get_full_name|default:result.requester.email }}
+            {% if result.requester.department %}
+              <span class="wf-muted"> · {{ result.requester.department.name }}</span>
+            {% endif %}
+          </span>
+        </div>
+        <div class="wf-tester-summary-item">
+          <span class="wf-tester-summary-label">Handling office</span>
+          <span class="wf-tester-summary-value">{{ result.request_type.handling_department.name }}</span>
+        </div>
+        {% if result.request_type.is_cross_department %}
+          <div class="wf-tester-summary-item">
+            <span class="wf-tester-summary-label">Route</span>
+            <span class="wf-tester-summary-value"><span class="wf-pill wf-pill-info">Cross-department</span></span>
+          </div>
+        {% endif %}
+        <div class="wf-tester-summary-item">
+          <span class="wf-tester-summary-label">Runtime steps</span>
+          <span class="wf-tester-summary-value">{{ result.steps|length }}</span>
+        </div>
+      </section>
+
+      {% if result.handoff_index is not None %}
+        <p class="wf-tester-note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+          Handoff to the receiving department happens at <strong>step {{ result.handoff_index|add:"1" }}</strong>.
+        </p>
+      {% endif %}
+
+      <div class="wf-pipeline wf-pipeline-tester">
+        {% for row in result.steps %}
+          {% if row.is_handoff %}
+            <div class="wf-handoff-marker">
+              <span class="wf-handoff-line"></span>
+              <span class="wf-handoff-label">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+                Handoff to receiving department
+              </span>
+              <span class="wf-handoff-line"></span>
+            </div>
+          {% endif %}
+
+          <article class="wf-step wf-step-tester {% if row.is_synthetic %}wf-step-synthetic{% endif %}">
+            <div class="wf-step-rail">
+              <span class="wf-step-dot">{{ row.index|add:"1" }}</span>
+            </div>
+            <div class="wf-step-body">
+              <header class="wf-step-head">
+                <div class="wf-step-head-main">
+                  <strong class="wf-step-name">{{ row.step.name }}</strong>
+                  <span class="wf-pill wf-pill-kind-{{ row.step.kind }}">
+                    {{ row.step.get_kind_display }}
+                  </span>
+                  {% if row.is_synthetic %}
+                    <span class="wf-pill wf-pill-purple">Mandatory gate</span>
+                  {% elif not row.step.is_hierarchical %}
+                    <span class="wf-pill wf-pill-amber">Mandatory gate</span>
+                  {% else %}
+                    <span class="wf-pill wf-pill-muted">Hierarchical</span>
+                  {% endif %}
+                  {% if row.step.is_optional %}
+                    <span class="wf-pill wf-pill-muted">Optional</span>
+                  {% endif %}
+                </div>
+              </header>
+
+              <dl class="wf-step-meta">
+                <div>
+                  <dt>Approver kind</dt>
+                  <dd>{{ row.step.get_approver_kind_display }}</dd>
+                </div>
+                <div>
+                  <dt>Scope</dt>
+                  <dd class="wf-mono">{{ row.step.scope }}</dd>
+                </div>
+                {% if row.step.approver_role %}
+                  <div>
+                    <dt>Role</dt>
+                    <dd>{{ row.step.approver_role.name }}</dd>
+                  </div>
+                {% endif %}
+              </dl>
+
+              <div class="wf-step-resolved {% if not row.actor %}wf-step-resolved-missing{% endif %}">
+                {% if row.actor %}
+                  <span class="wf-resolved-avatar">
+                    {{ row.actor.first_name|slice:":1"|upper }}{{ row.actor.last_name|slice:":1"|upper }}
+                  </span>
+                  <span class="wf-resolved-info">
+                    <strong>{{ row.actor.get_full_name|default:row.actor.email }}</strong>
+                    <span class="wf-muted">
+                      {% if row.actor.department %} {{ row.actor.department.name }} · {% endif %}
+                      {% if row.actor.role %}{{ row.actor.role.name }}{% endif %}
+                      {% if row.actor.pk == result.requester.pk %}
+                        · <span class="wf-pill wf-pill-warn">Requester — will be skipped</span>
+                      {% endif %}
+                    </span>
+                  </span>
+                {% else %}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  <span>No user matches this step. The request would park here until someone is assigned.</span>
+                {% endif %}
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+
+      <div class="wf-tester-cta">
+        <a href="{% url 'workflow_manage:type_update' result.request_type.pk %}" class="btn btn-ghost">
+          Edit this request type
+        </a>
+        <a href="{% url 'workflow_manage:chain_detail' result.request_type.approval_chain.pk %}" class="btn btn-ghost">
+          Edit its main chain
+        </a>
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="wf-tester-empty">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <p>Pick a request type and a requester above, then click <strong>Resolve chain</strong>.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

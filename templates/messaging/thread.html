@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ thread.display_title|default:"Thread" }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{{ thread.display_title|default:"Thread" }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=3">
+{% endblock %}
+
+{% block content %}
+<div class="msg-page msg-page-thread">
+
+  <a href="{% if thread_is_archived %}{% url 'messaging:archived' %}{% else %}{% url 'messaging:inbox' %}{% endif %}" class="msg-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    {% if thread_is_archived %}Archived{% else %}Inbox{% endif %}
+  </a>
+
+  <header class="msg-thread-hero">
+    <div class="msg-thread-hero-body">
+      <h1>{{ thread.display_title|default:"Thread" }}</h1>
+      <div class="msg-thread-participants">
+        {% for p in participants %}
+          <span class="msg-participant-chip">
+            <span class="msg-avatar msg-avatar-xs msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}">
+              {{ p.user.first_name|slice:":1"|upper }}{{ p.user.last_name|slice:":1"|upper }}
+            </span>
+            {{ p.user.get_full_name|default:p.user.email }}
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if thread_is_archived %}
+      <form method="post" action="{% url 'messaging:unarchive' thread.pk %}">
+        {% csrf_token %}
+        <button class="btn btn-primary btn-sm" type="submit" title="Restore to inbox">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Unarchive
+        </button>
+      </form>
+    {% else %}
+      <form method="post" action="{% url 'messaging:archive' thread.pk %}">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit" title="Archive this thread">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+          Archive
+        </button>
+      </form>
+    {% endif %}
+  </header>
+
+  <div class="msg-thread" data-thread>
+    {% for m in messages %}
+      {% if m.is_system %}
+        <div class="msg-system-note">
+          <span>{{ m.body }}</span>
+        </div>
+      {% else %}
+        <article class="msg-bubble {% if m.sender_id == request.user.pk %}is-mine{% else %}is-theirs{% endif %}">
+          <span class="msg-avatar msg-avatar-sm msg-avatar-{% cycle 'c5' 'c0' 'c3' 'c7' 'c2' 'c4' 'c6' 'c1' %}">
+            {{ m.sender.first_name|slice:":1"|upper }}{{ m.sender.last_name|slice:":1"|upper }}
+          </span>
+          <div class="msg-bubble-body">
+            <div class="msg-bubble-head">
+              <strong>
+                {% if m.sender_id == request.user.pk %}You{% else %}
+                  {{ m.sender.get_full_name|default:m.sender.email|default:"System" }}
+                {% endif %}
+              </strong>
+              <time title="{{ m.sent_at|date:'M j, Y · H:i' }}">{{ m.sent_at|timesince }} ago</time>
+            </div>
+            <div class="msg-bubble-text">{{ m.body|linebreaksbr }}</div>
+          </div>
+        </article>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <form method="post" action="{% url 'messaging:reply' thread.pk %}" class="msg-reply" data-reply-form>
+    {% csrf_token %}
+    <div class="msg-reply-inner">
+      <textarea class="msg-reply-input" name="body" rows="3"
+                placeholder="Write a reply…" required
+                data-reply-body></textarea>
+      <div class="msg-reply-foot">
+        <span class="muted msg-reply-hint">Press Cmd/Ctrl + Enter to send</span>
+        <button class="btn btn-primary" type="submit">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Send reply
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var body = document.querySelector('[data-reply-body]');
+  if (!body) return;
+  body.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      document.querySelector('[data-reply-form]').requestSubmit();
+    }
+  });
+  body.focus();
+})();
+</script>
+{% endblock %}

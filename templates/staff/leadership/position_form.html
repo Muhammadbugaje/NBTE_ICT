@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New position{% else %}Edit position{% endif %} · {{ SITE_NAME }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="lead-page lead-page-narrow">
+
+  <a href="{% url 'staff:leadership_panel' %}" class="lead-back">← Leadership panel</a>
+
+  <header class="lead-hero">
+    <div>
+      <h1>{% if mode == "create" %}New leadership position{% else %}Edit position{% endif %}</h1>
+      <p>Positions outlive individual holders — define roles here.</p>
+    </div>
+  </header>
+
+  <form method="post" class="lead-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    <section class="lead-section">
+      <div class="lead-field">
+        <label for="{{ form.name.id_for_label }}">Position name</label>
+        {{ form.name }}{{ form.name.errors }}
+      </div>
+
+      <div class="lead-field">
+        <label for="{{ form.scope.id_for_label }}">Scope</label>
+        {{ form.scope }}{{ form.scope.errors }}
+        <span class="lead-hint">Federal = Executive Secretary etc. Board = Governing Council. Departmental = Directors & Heads.</span>
+      </div>
+
+      <div class="lead-field">
+        <label for="{{ form.department.id_for_label }}">Department <span class="muted">(departmental positions only)</span></label>
+        {{ form.department }}{{ form.department.errors }}
+      </div>
+
+      <div class="lead-field">
+        <label for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}{{ form.description.errors }}
+      </div>
+
+      <div class="lead-field-row">
+        <div class="lead-field">
+          <label for="{{ form.order.id_for_label }}">Display order</label>
+          {{ form.order }}{{ form.order.errors }}
+          <span class="lead-hint">Lower numbers appear first. ES = 1, Chairman = 5, Directors = 20+.</span>
+        </div>
+        <label class="lead-check">
+          {{ form.is_active }}
+          <span>Active</span>
+        </label>
+      </div>
+    </section>
+
+    <div class="lead-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Create position{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'staff:leadership_panel' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

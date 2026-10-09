@@ -1,0 +1,82 @@
+<div class="wizard-preview">
+  <header class="wizard-preview-head">
+    <h3>Preview</h3>
+    {% if result.ok %}
+      <span class="badge badge-success">All rows valid</span>
+    {% else %}
+      <span class="badge badge-warn">{{ result.rejected|length }} row{{ result.rejected|length|pluralize }} need{{ result.rejected|length|pluralize:"s," }} attention</span>
+    {% endif %}
+  </header>
+
+  <div class="preview-summary">
+    <div class="summary-tile summary-tile-create">
+      <span class="summary-num">{{ result.created }}</span>
+      <span class="summary-lbl">Will be created</span>
+    </div>
+    <div class="summary-tile summary-tile-update">
+      <span class="summary-num">{{ result.updated }}</span>
+      <span class="summary-lbl">Will be updated</span>
+    </div>
+    <div class="summary-tile summary-tile-reject {% if result.rejected %}has-issues{% endif %}">
+      <span class="summary-num">{{ result.rejected|length }}</span>
+      <span class="summary-lbl">Rejected</span>
+    </div>
+    <div class="summary-tile">
+      <span class="summary-num">{{ result.total }}</span>
+      <span class="summary-lbl">Total rows</span>
+    </div>
+  </div>
+
+  {% if result.rejected %}
+    <details class="preview-rejected" open>
+      <summary>
+        <strong>{{ result.rejected|length }} rejected row{{ result.rejected|length|pluralize }}</strong>
+        <span class="muted">— review below, or continue and skip them</span>
+      </summary>
+      <div class="preview-rejected-table-wrap">
+        <table class="preview-rejected-table">
+          <thead>
+            <tr>
+              <th>Row</th>
+              {% for c in spec.columns %}<th>{{ c.name }}</th>{% endfor %}
+              <th>Errors</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in result.rejected %}
+              <tr>
+                <td>{{ r.row_number }}</td>
+                {% for c in spec.columns %}
+                  <td>{{ r.data|default_if_none:"" }}{# dict #}</td>
+                {% endfor %}
+                <td class="preview-error-cell">{{ r.errors|join:"; " }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted preview-footnote">
+        Fix the file and re-upload to include these rows, or continue now to
+        import only the valid ones.
+      </p>
+    </details>
+  {% endif %}
+
+  <div class="wizard-actions">
+    <button type="button" class="btn btn-ghost" data-wizard-cancel>
+      Cancel
+    </button>
+    <button type="button" class="btn btn-primary"
+            hx-post="{% url 'core:ie_commit' spec.name %}"
+            hx-target="#wizard-result"
+            hx-swap="innerHTML"
+            hx-indicator="#wizard-commit-indicator"
+            hx-disabled-elt="this"
+            hx-vals='{"token": "{{ token }}"}' >
+      Commit import
+    </button>
+    <span id="wizard-commit-indicator" class="htmx-indicator wizard-inline-loader">
+      <span class="spinner spinner-sm"></span> Importing — please wait…
+    </span>
+  </div>
+</div>

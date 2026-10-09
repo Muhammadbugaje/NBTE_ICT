@@ -1,0 +1,44 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1F6B3E" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0f11" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="{% block meta_description %}{{ site_info.organisation_name }} — {{ site_info.department_name }} workspace.{% endblock %}">
+
+  <title>{% block title %}{{ site_info.organisation_name }} · {{ site_info.department_name }}{% endblock %}</title>
+
+  <link rel="icon" href="{% static 'img/NBTE_logo.png' %}" type="image/png">
+  <link rel="apple-touch-icon" href="{% static 'img/NBTE_logo.png' %}">
+
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}?v=11">
+  <link rel="stylesheet" href="{% static 'css/base.css' %}?v=11">
+  <link rel="stylesheet" href="{% static 'css/components.css' %}?v=11">
+  {% block extra_css %}{% endblock %}
+</head>
+<body class="public-body" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+
+  <div id="page-loader" class="page-loader" aria-hidden="true">
+    <div class="page-loader-inner">
+      <img src="{% static 'img/NBTE_logo.png' %}" alt="" class="page-loader-logo">
+      <div class="page-loader-bar" role="progressbar" aria-label="Loading"></div>
+    </div>
+  </div>
+
+  {% block body %}{% endblock %}
+
+  {% if messages %}
+    {% for m in messages %}
+      <span data-toast="{{ m.tags|default:'info' }}"
+            data-toast-title="{{ m|escape }}"
+            hidden></span>
+    {% endfor %}
+  {% endif %}
+
+  <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+  <script src="{% static 'js/app.js' %}?v=11" defer></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

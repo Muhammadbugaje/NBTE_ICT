@@ -1,0 +1,41 @@
+<div class="reminder-card is-{{ reminder.kind }}">
+  <div class="reminder-icon">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+  </div>
+
+  <div class="reminder-body">
+    <h3 class="reminder-title">
+      <a href="{% url 'portal:reminder_detail' reminder.pk %}"
+         style="color:inherit;text-decoration:none;">{{ reminder.title }}</a>
+    </h3>
+
+    {% if reminder.body %}
+      <div class="reminder-text">{{ reminder.body }}</div>
+    {% endif %}
+
+    <div class="reminder-meta">
+      <span class="reminder-kind">{{ reminder.get_kind_display }}</span>
+      <span>{{ reminder.remind_at|date:"M j · H:i" }}</span>
+      {% if reminder.department %}
+        <span>· {{ reminder.department.name }}</span>
+      {% endif %}
+      {% if reminder.related_event %}
+        <span>· Event: {{ reminder.related_event.title|truncatechars:28 }}</span>
+      {% endif %}
+      {% if reminder.related_announcement %}
+        <span>· Announcement: {{ reminder.related_announcement.title|truncatechars:28 }}</span>
+      {% endif %}
+      {% if reminder.related_task %}
+        <span>· Task: {{ reminder.related_task.title|truncatechars:28 }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if reminder.creator_id == request.user.pk %}
+    <button type="button"
+            class="portal-filters-reset"
+            data-dismiss-reminder="{% url 'portal:reminder_dismiss' reminder.pk %}"
+            aria-label="Dismiss reminder"
+            title="Dismiss">✕</button>
+  {% endif %}
+</div>

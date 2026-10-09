@@ -1,0 +1,113 @@
+{% extends "email/base_email.html" %}
+
+{% block subject %}Your NBTE ICT account is ready{% endblock %}
+
+{% block preheader %}Your login details for the ICT Directorate system — please change your password after signing in.{% endblock %}
+
+{% block badge %}
+  <span style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;
+               font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;
+               padding:5px 10px;border-radius:999px;">Welcome</span>
+{% endblock %}
+
+{% block header_title %}Welcome aboard, {{ staff.first_name|default:user.first_name|default:"there" }}.{% endblock %}
+
+{% block intro %}Your account on the ICT Directorate system has been created. Use the details below to sign in for the first time.{% endblock %}
+
+{% block content %}
+  {# ---- Credentials card ---- #}
+  <tr>
+    <td style="padding:8px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;">
+        <tr>
+          <td style="padding:18px 20px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:12px;">
+              Your sign-in details
+            </div>
+
+            {# Email row #}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px;">
+              <tr>
+                <td style="width:130px;font-size:13px;color:#64748b;padding:4px 0;vertical-align:top;">Email</td>
+                <td style="font-size:13.5px;color:#0f172a;font-weight:600;padding:4px 0;vertical-align:top;word-break:break-all;">
+                  {{ user.email }}
+                </td>
+              </tr>
+            </table>
+
+            {# Password row #}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="width:130px;font-size:13px;color:#64748b;padding:4px 0;vertical-align:top;">Temporary password</td>
+                <td style="padding:4px 0;vertical-align:top;">
+                  <span style="display:inline-block;font-family:'SF Mono',Menlo,Consolas,'Courier New',monospace;
+                               font-size:14px;font-weight:600;color:#0f172a;background:#ffffff;
+                               border:1px solid #e5e7eb;border-radius:6px;padding:6px 12px;
+                               letter-spacing:0.02em;">{{ temp_password }}</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  {# ---- Security note ---- #}
+  <tr>
+    <td style="padding:16px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background:#fef3c7;border-left:3px solid #d97706;border-radius:6px;">
+        <tr>
+          <td style="padding:12px 16px;font-size:13px;line-height:1.6;color:#78350f;">
+            <strong>Important:</strong> You'll be asked to change this password the first time you sign in.
+            Please don't share it with anyone.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  {# ---- CTA button ---- #}
+  <tr>
+    <td align="left" style="padding:24px 30px 8px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="center" style="background:#1F6B3E;border-radius:8px;">
+            <a href="{{ login_url }}"
+               style="display:inline-block;padding:13px 28px;color:#ffffff;text-decoration:none;
+                      font-size:14px;font-weight:600;letter-spacing:-0.005em;">
+              Sign in to your account
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  {# ---- Fallback URL ---- #}
+  <tr>
+    <td style="padding:0 30px 26px;">
+      <p style="margin:0;font-size:12px;line-height:1.6;color:#94a3b8;">
+        Button not working? Copy and paste this link into your browser:<br>
+        <a href="{{ login_url }}" style="color:#1F6B3E;text-decoration:underline;word-break:break-all;">{{ login_url }}</a>
+      </p>
+    </td>
+  </tr>
+{% endblock %}
+
+{% block pre_footer %}
+  <tr>
+    <td style="padding:26px 30px 8px;">
+      <div style="height:1px;background:#e5e7eb;"></div>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:0 30px 26px;">
+      <p style="margin:0;font-size:12px;line-height:1.6;color:#94a3b8;">
+        Didn't expect this email? Please contact your administrator — the account may have been created in error.
+      </p>
+    </td>
+  </tr>
+{% endblock %}

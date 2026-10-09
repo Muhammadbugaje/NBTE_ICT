@@ -1,0 +1,39 @@
+<div class="portal-widget">
+  <header class="portal-widget-head">
+    <h2>Upcoming events</h2>
+    <a href="{% url 'portal:event_list' %}" class="link-btn">
+      See all{% if total > 3 %} ({{ total }}){% endif %}
+    </a>
+  </header>
+
+  {% if events %}
+    <div class="portal-widget-list">
+      {% for e in events %}
+        <a href="{% url 'portal:event_detail' e.pk %}" class="portal-widget-item">
+          {% if e.image %}
+            <div class="portal-widget-thumb">
+              <img src="{{ e.image_thumb_url }}"
+                   onerror="this.onerror=null;this.src='{{ e.image.url }}';"
+                   alt="" loading="lazy">
+            </div>
+          {% else %}
+            <div class="portal-widget-thumb portal-widget-thumb-placeholder"
+                 style="--accent: {{ e.category.color }};">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+          {% endif %}
+
+          <div class="portal-widget-body">
+            <div class="portal-widget-cat" style="--accent: {{ e.category.color }};">
+              {{ e.category.name }}
+            </div>
+            <div class="portal-widget-title">{{ e.title }}</div>
+            <div class="portal-widget-time">{{ e.starts_at|date:"M j · H:i" }}</div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="portal-widget-empty">No upcoming events.</p>
+  {% endif %}
+</div>

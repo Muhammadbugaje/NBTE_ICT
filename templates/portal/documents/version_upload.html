@@ -1,0 +1,41 @@
+{% extends "portal/_layout.html" %}
+{% block title %}New version · {{ document.title }}{% endblock %}
+
+{% block content %}
+<div class="portal-page portal-page-narrow">
+
+  <a href="{% url 'portal:document_detail' document.pk %}" class="portal-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    {{ document.title }}
+  </a>
+
+  <header class="portal-head">
+    <div>
+      <h1>Upload a new version</h1>
+      <p class="muted">
+        Current version: <strong>v{{ document.current_version_number }}</strong>.
+        The old version is kept on disk and remains accessible — NR-08.
+      </p>
+    </div>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="portal-form">
+    {% csrf_token %}
+    <section class="portal-section">
+      <div class="portal-field">
+        {{ form.file.label_tag }}{{ form.file }}{{ form.file.errors }}
+      </div>
+      <div class="portal-field">
+        {{ form.change_note.label_tag }}{{ form.change_note }}
+        <span class="hint">A short note about what changed — shown in the version history.</span>
+        {{ form.change_note.errors }}
+      </div>
+    </section>
+
+    <div class="portal-form-actions">
+      <button type="submit" class="btn btn-primary">Upload new version</button>
+      <a href="{% url 'portal:document_detail' document.pk %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% load static %}
+{% load tasks_tags %}
+{% block title %}Edit {{ task.reference }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Edit task{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=3">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=3" defer></script>{% endblock %}
+
+{% block content %}
+<div class="tsk-page">
+  <header class="tsk-page-head">
+    <div>
+      <a href="{% url 'tasks:detail' task.pk %}" class="tsk-btn tsk-btn-ghost" style="margin-bottom:12px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Back to {{ task.reference }}
+      </a>
+      <h1>Edit task</h1>
+      <p>Update the content, schedule, and reviewer. Assignees are managed below.</p>
+    </div>
+  </header>
+
+  {# ---------- Main content form ---------- #}
+  <form method="post" novalidate class="tsk-form">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="tsk-form-banner tsk-form-banner-error">{{ form.non_field_errors|join:" " }}</div>
+    {% endif %}
+
+    <div class="tsk-form-section">
+      <h3 class="tsk-form-section-title">Content</h3>
+      <label class="tsk-field">
+        <span class="tsk-field-label">Title <span class="tsk-field-required">*</span></span>
+        {{ form.title }}
+        {% if form.title.errors %}<span class="tsk-field-error">{{ form.title.errors|join:" " }}</span>{% endif %}
+      </label>
+      <label class="tsk-field">
+        <span class="tsk-field-label">Description</span>
+        {{ form.description }}
+      </label>
+    </div>
+
+    <div class="tsk-form-section">
+      <h3 class="tsk-form-section-title">Classification & schedule</h3>
+      <label class="tsk-field">
+        <span class="tsk-field-label">Category</span>
+        {{ form.category }}
+      </label>
+      <div class="tsk-field-row">
+        <label class="tsk-field">
+          <span class="tsk-field-label">Priority</span>
+          {{ form.priority }}
+        </label>
+        <label class="tsk-field">
+          <span class="tsk-field-label">Estimated hours</span>
+          {{ form.estimated_hours }}
+        </label>
+      </div>
+      <div class="tsk-field-row">
+        <label class="tsk-field">
+          <span class="tsk-field-label">Start date</span>
+          {{ form.start_date }}
+        </label>
+        <label class="tsk-field">
+          <span class="tsk-field-label">Due date</span>
+          {{ form.due_date }}
+        </label>
+      </div>
+    </div>
+
+    <div class="tsk-form-section">
+      <h3 class="tsk-form-section-title">Review</h3>
+      <label class="tsk-check">
+        {{ form.requires_review }}
+        <span>Requires review before closing.</span>
+      </label>
+      <label class="tsk-field" style="margin-top:14px;">
+        <span class="tsk-field-label">Reviewer</span>
+        {{ form.reviewer }}
+      </label>
+    </div>
+
+    <div class="tsk-form-section">
+      <h3 class="tsk-form-section-title">Recurrence & tags</h3>
+      <div class="tsk-field-row">
+        <label class="tsk-field">
+          <span class="tsk-field-label">Recurrence</span>
+          {{ form.recurrence_type }}
+        </label>
+        <label class="tsk-field">
+          <span class="tsk-field-label">Custom rule</span>
+          {{ form.recurrence_rule }}
+        </label>
+      </div>
+      <label class="tsk-field">
+        <span class="tsk-field-label">Tags</span>
+        {{ form.tags }}
+      </label>
+    </div>
+
+    <div class="tsk-form-actions">
+      <button type="submit" class="tsk-btn tsk-btn-primary">Save changes</button>
+      <a href="{% url 'tasks:detail' task.pk %}" class="tsk-btn tsk-btn-ghost">Cancel</a>
+    </div>
+  </form>
+
+  {# ---------- Assignees form (separate so picker posts independently) ---------- #}
+  {% if task.state not in 'completed,cancelled' %}
+    <form method="post" action="{% url 'tasks:sync_assignees' task.pk %}" class="tsk-form" style="margin-top:20px;">
+      {% csrf_token %}
+      <div class="tsk-form-section">
+        <h3 class="tsk-form-section-title">Assignees</h3>
+        {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_task=task picker_initial_ids=current_assignee_ids %}
+        <span class="tsk-field-hint" style="margin-top:10px;">
+          Check to add, uncheck to remove. Only people below your rank appear — never the Executive Secretary. Capacity limits are enforced server-side.
+        </span>
+      </div>
+      <div class="tsk-form-actions">
+        <button type="submit" class="tsk-btn tsk-btn-primary">Update assignees</button>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

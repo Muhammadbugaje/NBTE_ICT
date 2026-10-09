@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New request type{% else %}Edit {{ rt.name }}{% endif %}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page wf-page-narrow">
+  {% include "manage/workflow/_tabs.html" %}
+
+  <a href="{% url 'workflow_manage:type_list' %}" class="wf-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    All request types
+  </a>
+
+  <header class="wf-hero">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon wf-hero-icon-blue">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <div>
+        <h1>{% if mode == "create" %}New request type{% else %}Edit request type{% endif %}</h1>
+        <p>Decide what the request is, where it goes, and how it's approved.</p>
+      </div>
+    </div>
+  </header>
+
+  <form method="post" class="wf-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    {# ==================== IDENTITY ==================== #}
+    <section class="wf-section">
+      <header class="wf-section-head"><h3>Identity</h3></header>
+      <div class="wf-field-row">
+        <div class="wf-field">
+          <label for="{{ form.name.id_for_label }}">Name</label>
+          {{ form.name }}{{ form.name.errors }}
+        </div>
+        <div class="wf-field">
+          <label for="{{ form.code.id_for_label }}">Code</label>
+          {{ form.code }}{{ form.code.errors }}
+          <span class="wf-hint">Used internally. Lowercase, no spaces.</span>
+        </div>
+      </div>
+      <div class="wf-field-row">
+        <div class="wf-field">
+          <label for="{{ form.category.id_for_label }}">Category</label>
+          {{ form.category }}{{ form.category.errors }}
+        </div>
+        <div class="wf-field">
+          <label for="{{ form.icon.id_for_label }}">Icon hint <span class="wf-muted">(optional)</span></label>
+          {{ form.icon }}{{ form.icon.errors }}
+        </div>
+      </div>
+      <div class="wf-field">
+        <label for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}{{ form.description.errors }}
+      </div>
+    </section>
+
+    {# ==================== ROUTING ==================== #}
+    <section class="wf-section">
+      <header class="wf-section-head"><h3>Routing</h3></header>
+      <div class="wf-field">
+        <label for="{{ form.handling_department.id_for_label }}">Handling department</label>
+        {{ form.handling_department }}{{ form.handling_department.errors }}
+        <span class="wf-hint">The office that receives and acts on requests of this type.</span>
+      </div>
+      <label class="wf-check">
+        {{ form.is_cross_department }}
+        <span>
+          <strong>Cross-department</strong> — when on, requests first run through the
+          requester's own approval chain, then hand off to the handling department.
+        </span>
+      </label>
+    </section>
+
+    {# ==================== CHAINS ==================== #}
+    <section class="wf-section">
+      <header class="wf-section-head"><h3>Approval chains</h3></header>
+      <div class="wf-field">
+        <label for="{{ form.approval_chain.id_for_label }}">Main chain</label>
+        {{ form.approval_chain }}{{ form.approval_chain.errors }}
+        <span class="wf-hint">
+          For non-cross-department types, this is the entire approval sequence.
+          For cross-department types, this is the <strong>receiving</strong> chain
+          (runs after the requester-side chain).
+        </span>
+      </div>
+      <div class="wf-field">
+        <label for="{{ form.requester_chain.id_for_label }}">Requester-side chain <span class="wf-muted">(cross-department only)</span></label>
+        {{ form.requester_chain }}{{ form.requester_chain.errors }}
+        <span class="wf-hint">
+          Runs in the requester's own department <em>before</em> handoff.
+          Leave blank for non-cross-department types.
+        </span>
+      </div>
+    </section>
+
+    {# ==================== EXTRA GATES ==================== #}
+    <section class="wf-section">
+      <header class="wf-section-head"><h3>Extra sign-offs</h3></header>
+      <p class="wf-hint" style="margin-top:-8px;margin-bottom:12px;">
+        Each ticked option inserts a mandatory gate step. These are never skipped
+        by rank — they always run.
+      </p>
+
+      <label class="wf-check">
+        {{ form.requires_finance_approval }}
+        <span><strong>Finance Director</strong> approval</span>
+      </label>
+      <label class="wf-check">
+        {{ form.requires_audit_approval }}
+        <span><strong>Audit Director</strong> approval</span>
+      </label>
+      <label class="wf-check">
+        {{ form.requires_hr_approval }}
+        <span><strong>HR Director</strong> approval</span>
+      </label>
+      <label class="wf-check">
+        {{ form.requires_es_approval }}
+        <span><strong>Executive Secretary</strong> approval</span>
+      </label>
+      <label class="wf-check">
+        {{ form.requires_records_filing }}
+        <span><strong>Records filing</strong> step at the end</span>
+      </label>
+    </section>
+
+    {# ==================== LIFECYCLE ==================== #}
+    <section class="wf-section">
+      <header class="wf-section-head"><h3>Lifecycle</h3></header>
+      <div class="wf-field-row">
+        <div class="wf-field">
+          <label for="{{ form.sort_order.id_for_label }}">Sort order</label>
+          {{ form.sort_order }}{{ form.sort_order.errors }}
+        </div>
+        <div class="wf-field" style="justify-content:flex-end;padding-bottom:8px;">
+          <label class="wf-check">
+            {{ form.is_active }}
+            <span>Active — visible on the raise-request page</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <div class="wf-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Create type{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'workflow_manage:type_list' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

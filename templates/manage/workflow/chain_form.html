@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New chain{% else %}Edit {{ chain.name }}{% endif %}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page wf-page-narrow">
+  {% include "manage/workflow/_tabs.html" %}
+
+  <a href="{% if chain %}{% url 'workflow_manage:chain_detail' chain.pk %}{% else %}{% url 'workflow_manage:chain_list' %}{% endif %}" class="wf-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Back
+  </a>
+
+  <header class="wf-hero">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+      </div>
+      <div>
+        <h1>{% if mode == "create" %}New chain{% else %}Edit chain{% endif %}</h1>
+        <p>Give it a name and a short, memorable code.</p>
+      </div>
+    </div>
+  </header>
+
+  <form method="post" class="wf-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    <section class="wf-section">
+      <div class="wf-field">
+        <label for="{{ form.name.id_for_label }}">Name</label>
+        {{ form.name }}{{ form.name.errors }}
+      </div>
+      <div class="wf-field">
+        <label for="{{ form.code.id_for_label }}">Code</label>
+        {{ form.code }}{{ form.code.errors }}
+        <span class="wf-hint">Used internally. Lowercase, no spaces.</span>
+      </div>
+      <div class="wf-field">
+        <label for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}{{ form.description.errors }}
+      </div>
+      <label class="wf-check">
+        {{ form.is_active }}
+        <span>Active</span>
+      </label>
+    </section>
+
+    <div class="wf-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Create chain{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% if chain %}{% url 'workflow_manage:chain_detail' chain.pk %}{% else %}{% url 'workflow_manage:chain_list' %}{% endif %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

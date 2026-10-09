@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ department.name }} attendance · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Department attendance{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=4">
+{% endblock %}
+
+{% block content %}
+<div class="att-page att-page-wide">
+
+  {# ============================ HERO ============================ #}
+  <header class="att-hero">
+    <div class="att-hero-left">
+      <a class="att-back" href="{% url 'attendance:home' %}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Attendance
+      </a>
+      <h1>{{ department.name }}</h1>
+      <p>
+        {{ staff_count }} staff member{{ staff_count|pluralize }}
+        · {{ working_days }} working day{{ working_days|pluralize }}
+        in {{ month_label }}
+      </p>
+    </div>
+
+    <div class="att-hero-right">
+      {% if can_view_all %}
+        <a class="att-btn att-btn-ghost" href="{% url 'attendance:all_departments' %}?year={{ year }}{% if month %}&month={{ month }}{% endif %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><line x1="10" y1="21" x2="10" y2="12"/><line x1="14" y1="21" x2="14" y2="12"/></svg>
+          All departments
+        </a>
+      {% endif %}
+      <a class="att-btn att-btn-ghost"
+         href="{% url 'attendance:export_excel' %}?year={{ year }}{% if month %}&month={{ month }}{% endif %}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Excel — {{ export_label }}
+      </a>
+      <a class="att-btn att-btn-ghost"
+         href="{% url 'attendance:export_pdf' %}?year={{ year }}{% if month %}&month={{ month }}{% endif %}"
+         target="_blank">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        PDF — {{ export_label }}
+      </a>
+      {% if can_upload %}
+        <a class="att-btn att-btn-primary"
+           href="{% url 'attendance:upload' %}?year={{ year }}&month={{ month|default:today.month }}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Upload
+        </a>
+      {% endif %}
+    </div>
+  </header>
+
+  {# ============================ SWITCHER ============================ #}
+  <div class="att-switcher">
+
+    {% if departments %}
+      <div class="att-switcher-group">
+        <span class="att-switcher-label">Department</span>
+        <form method="get" class="att-switcher-form">
+          {% if year %}<input type="hidden" name="year" value="{{ year }}">{% endif %}
+          {% if month %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
+          <select name="department" class="att-switcher-select" onchange="this.form.submit()">
+            {% for d in departments %}
+              <option value="{{ d.pk }}" {% if d.pk == department.pk %}selected{% endif %}>{{ d.name }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    {% endif %}
+
+    {# ---- Year switcher ---- #}
+    <div class="att-switcher-group">
+      <span class="att-switcher-label">Year</span>
+      <a class="att-switcher-btn"
+         href="?year={{ prev_year }}{% if month %}&month={{ month }}{% endif %}{% if department and can_view_all %}&department={{ department.pk }}{% endif %}"
+         aria-label="Previous year">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </a>
+
+      <form method="get" class="att-switcher-form">
+        {% if month %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
+        {% if can_view_all %}<input type="hidden" name="department" value="{{ department.pk }}">{% endif %}
+        <select name="year" class="att-switcher-select" onchange="this.form.submit()">
+          {% for yr in years_available %}
+            <option value="{{ yr }}" {% if year_filter == yr %}selected{% endif %}>{{ yr }}</option>
+          {% endfor %}
+        </select>
+      </form>
+
+      <a class="att-switcher-btn"
+         href="?year={{ next_year }}{% if month %}&month={{ month }}{% endif %}{% if department and can_view_all %}&department={{ department.pk }}{% endif %}"
+         aria-label="Next year">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+    </div>
+
+    {# ---- Month switcher (month mode only) ---- #}
+    {% if month %}
+    <div class="att-switcher-group">
+      <span class="att-switcher-label">Month</span>
+      <a class="att-switcher-btn"
+         href="?year={{ prev_month_year }}&month={{ prev_month }}{% if can_view_all %}&department={{ department.pk }}{% endif %}"
+         aria-label="Previous month">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </a>
+      <div class="att-switcher-value">{{ month_label }}</div>
+      <a class="att-switcher-btn"
+         href="?year={{ next_month_year }}&month={{ next_month }}{% if can_view_all %}&department={{ department.pk }}{% endif %}"
+         aria-label="Next month">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+    </div>
+    {% endif %}
+
+    {# ---- Mode toggle ---- #}
+    <div class="att-switcher-group att-switcher-group-toggle">
+      {% if month %}
+        <a class="att-switcher-toggle is-active" href="?year={{ year }}{% if can_view_all %}&department={{ department.pk }}{% endif %}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Full year
+        </a>
+        <span class="att-switcher-toggle is-current">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
+          {{ month_label }}
+        </span>
+      {% else %}
+        <span class="att-switcher-toggle is-current">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Full year — {{ year }}
+        </span>
+        <a class="att-switcher-toggle is-active" href="?year={{ year }}&month={{ today.month }}{% if can_view_all %}&department={{ department.pk }}{% endif %}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
+          View by month
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ============================ CONTENT ============================ #}
+  {% if rows %}
+
+    {% if view_mode == 'month' %}
+      <div class="att-matrix-wrap">
+        <table class="att-matrix">
+          <thead>
+            <tr>
+              <th class="att-matrix-staff-header">Staff</th>
+              {% for h in day_headers %}
+                <th class="att-matrix-day {% if not h.working %}is-off{% endif %}">
+                  <span class="att-matrix-weekday">{{ h.weekday }}</span>
+                  <span class="att-matrix-daynum">{{ h.day }}</span>
+                </th>
+              {% endfor %}
+              <th class="att-matrix-total">Present</th>
+              <th class="att-matrix-total">Late</th>
+              <th class="att-matrix-total">Absent</th>
+              <th class="att-matrix-total">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td class="att-matrix-staff">
+                  <div class="att-matrix-avatar">
+                    {{ row.user.first_name|slice:":1"|upper }}{{ row.user.last_name|slice:":1"|upper }}
+                  </div>
+                  <div class="att-matrix-staff-name">
+                    <strong>{{ row.user.get_full_name|default:row.user.email }}</strong>
+                    {% if row.user.role %}<span>{{ row.user.role.name }}</span>{% endif %}
+                  </div>
+                </td>
+                {% for cell in row.cells %}
+                  <td class="att-matrix-cell
+                    {% if cell.status == 'present' %}is-present
+                    {% elif cell.status == 'late' %}is-late
+                    {% elif cell.status == 'absent' %}is-absent
+                    {% elif cell.status == 'excused' %}is-excused
+                    {% elif cell.status == 'holiday' %}is-holiday
+                    {% elif cell.status == 'off' %}is-off
+                    {% else %}is-unrecorded{% endif %}"
+                    title="{{ cell.date|date:'D, M j' }}{% if cell.record %} · {{ cell.record.get_status_display }}{% endif %}">
+                    {% if cell.status == 'present' %}P
+                    {% elif cell.status == 'late' %}L
+                    {% elif cell.status == 'absent' %}A
+                    {% elif cell.status == 'excused' %}E
+                    {% elif cell.status == 'holiday' %}H
+                    {% elif cell.status == 'off' %}·
+                    {% else %}—{% endif %}
+                  </td>
+                {% endfor %}
+                <td class="att-matrix-total"><strong>{{ row.present }}</strong></td>
+                <td class="att-matrix-total">{% if row.late %}<span class="att-matrix-late">{{ row.late }}</span>{% else %}—{% endif %}</td>
+                <td class="att-matrix-total">{% if row.absent %}<span class="att-matrix-absent">{{ row.absent }}</span>{% else %}—{% endif %}</td>
+                <td class="att-matrix-total">
+                  <span class="att-pct {% if row.pct >= 90 %}is-good{% elif row.pct >= 75 %}is-warn{% else %}is-bad{% endif %}">
+                    {{ row.pct }}%
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="att-matrix-legend">
+        <span class="att-legend-item"><span class="att-legend-cell is-present">P</span> Present</span>
+        <span class="att-legend-item"><span class="att-legend-cell is-late">L</span> Late</span>
+        <span class="att-legend-item"><span class="att-legend-cell is-absent">A</span> Absent</span>
+        <span class="att-legend-item"><span class="att-legend-cell is-excused">E</span> Excused</span>
+        <span class="att-legend-item"><span class="att-legend-cell is-holiday">H</span> Holiday</span>
+        <span class="att-legend-item"><span class="att-legend-cell is-off">·</span> Not a working day</span>
+        <span class="att-legend-item"><span class="att-legend-cell is-unrecorded">—</span> Not recorded</span>
+      </div>
+
+    {% else %}
+      <div class="att-summary-wrap">
+        <table class="att-summary">
+          <thead>
+            <tr>
+              <th>Staff</th>
+              <th class="is-num">Present</th>
+              <th class="is-num">Late</th>
+              <th class="is-num">Absent</th>
+              <th class="is-num">Excused</th>
+              <th class="is-num">Holidays</th>
+              <th class="is-num">Attendance</th>
+              <th>Trend</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td class="att-summary-staff">
+                  <div class="att-matrix-avatar">
+                    {{ row.user.first_name|slice:":1"|upper }}{{ row.user.last_name|slice:":1"|upper }}
+                  </div>
+                  <div class="att-matrix-staff-name">
+                    <strong>{{ row.user.get_full_name|default:row.user.email }}</strong>
+                    {% if row.user.role %}<span>{{ row.user.role.name }}</span>{% endif %}
+                  </div>
+                </td>
+                <td class="is-num"><strong>{{ row.present }}</strong></td>
+                <td class="is-num">{% if row.late %}<span class="att-matrix-late">{{ row.late }}</span>{% else %}—{% endif %}</td>
+                <td class="is-num">{% if row.absent %}<span class="att-matrix-absent">{{ row.absent }}</span>{% else %}—{% endif %}</td>
+                <td class="is-num">{% if row.excused %}{{ row.excused }}{% else %}—{% endif %}</td>
+                <td class="is-num">{% if row.holiday %}{{ row.holiday }}{% else %}—{% endif %}</td>
+                <td class="is-num">
+                  <span class="att-pct {% if row.pct >= 90 %}is-good{% elif row.pct >= 75 %}is-warn{% else %}is-bad{% endif %}">
+                    {{ row.pct }}%
+                  </span>
+                </td>
+                <td class="att-summary-trend">
+                  <div class="att-trend-bar">
+                    <div class="att-trend-fill is-present" style="width: {{ row.pct }}%;"></div>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="att-summary-note">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        Showing the whole year. Switch to a month above to see the day-by-day matrix.
+      </div>
+    {% endif %}
+
+  {% else %}
+    <div class="att-empty">
+      <div class="att-empty-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      </div>
+      <h3>No staff in this department</h3>
+      <p>Once staff are assigned to {{ department.name }}, their attendance will show here.</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

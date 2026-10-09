@@ -1,0 +1,101 @@
+{% load attendance_tags %}
+{% if visible %}
+<section class="att-dash-widget">
+
+  <div class="att-dash-widget-head">
+    <div class="att-dash-widget-head-left">
+      <span class="att-dash-widget-icon" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </span>
+      <h3>Attendance</h3>
+      {% if is_working_day %}
+        <span class="att-dash-widget-sub">Working day</span>
+      {% else %}
+        <span class="att-dash-widget-sub">Day off</span>
+      {% endif %}
+    </div>
+    <a class="att-dash-widget-link" href="{% url 'attendance:home' %}">Open →</a>
+  </div>
+
+  <div class="att-dash-widget-body">
+
+    {# ---- Today's status ---- #}
+    <div class="att-dash-widget-today
+      {% if not is_working_day %}is-off
+      {% elif today %}{{ today.status }}
+      {% else %}is-not-checked{% endif %}">
+      {% if not is_working_day %}
+        <div class="att-dash-widget-status">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="M2 12h4"/></svg>
+          <div>
+            <strong>Enjoy the day off</strong>
+            <span>Today isn't a working day.</span>
+          </div>
+        </div>
+
+      {% elif today %}
+        <div class="att-dash-widget-status">
+          {% if today.status == 'present' %}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          {% elif today.status == 'late' %}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          {% else %}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          {% endif %}
+          <div>
+            <strong>
+              {% if today.status == 'present' %}You're checked in — on time
+              {% elif today.status == 'late' %}Checked in — recorded as late
+              {% elif today.status == 'absent' %}Marked absent today
+              {% elif today.status == 'excused' %}Excused today
+              {% else %}{{ today.get_status_display }}{% endif %}
+            </strong>
+            <span>
+              {% if today.check_in_at %}{{ today.check_in_at|time:"H:i" }}{% endif %}
+              {% if today.location %} · {{ today.location.name }}{% endif %}
+            </span>
+          </div>
+        </div>
+        <span class="att-pill att-pill-{{ today.status }}">{{ today.get_status_display }}</span>
+
+      {% else %}
+        <div class="att-dash-widget-status">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <div>
+            <strong>Not checked in today</strong>
+            <span>{% if has_department %}Tap below when you're at the office.{% else %}You have no department assigned.{% endif %}</span>
+          </div>
+        </div>
+        {% if can_check_in %}
+          <a class="att-btn att-btn-primary att-dash-widget-cta" href="{% url 'attendance:check_in' %}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Check in
+          </a>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {# ---- 30-day mini strip ---- #}
+    {% if stats %}
+      <div class="att-dash-widget-stats">
+        <div class="att-dash-widget-stat">
+          <span class="att-dash-widget-stat-num">{{ stats.present_pct }}%</span>
+          <span class="att-dash-widget-stat-label">30-day</span>
+        </div>
+        <div class="att-dash-widget-stat">
+          <span class="att-dash-widget-stat-num">{{ stats.streak }}</span>
+          <span class="att-dash-widget-stat-label">Streak</span>
+        </div>
+        <div class="att-dash-widget-stat {% if stats.late %}is-warn{% endif %}">
+          <span class="att-dash-widget-stat-num">{{ stats.late }}</span>
+          <span class="att-dash-widget-stat-label">Late</span>
+        </div>
+        <div class="att-dash-widget-stat {% if stats.absent %}is-bad{% endif %}">
+          <span class="att-dash-widget-stat-num">{{ stats.absent }}</span>
+          <span class="att-dash-widget-stat-label">Absent</span>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}

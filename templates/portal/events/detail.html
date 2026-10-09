@@ -1,0 +1,142 @@
+{% extends "portal/_layout.html" %}
+{% block title %}{{ event.title }} · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="portal-page portal-page-narrow">
+
+  <a href="{% url 'portal:event_list' %}" class="portal-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    All events
+  </a>
+
+  {# ---------- Status banner ---------- #}
+  {% if event.status == "draft" or event.is_cancelled %}
+    {% if event.organizer_id == request.user.pk or request.user.is_superuser or perms.portal.change_event %}
+      <div class="portal-banner {% if event.is_cancelled %}portal-banner-cancelled{% else %}portal-banner-draft{% endif %}">
+        <div class="portal-banner-icon">
+          {% if event.is_cancelled %}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          {% else %}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
+          {% endif %}
+        </div>
+        <div class="portal-banner-body">
+          {% if event.is_cancelled %}
+            <strong>This event is cancelled.</strong>
+            {% if event.cancellation_reason %}<p>{{ event.cancellation_reason }}</p>{% endif %}
+          {% else %}
+            <strong>This event is a draft.</strong>
+            <p>Only you can see it right now. Publish it when you're ready.</p>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <article class="portal-detail {% if event.is_cancelled %}priority-urgent{% endif %}">
+    <header>
+      <div class="portal-detail-badges">
+        <span class="portal-card-cat" style="--accent: {{ event.category.color }};">{{ event.category.name }}</span>
+        <span class="portal-status portal-status-{{ event.status }}">{{ event.status|capfirst }}</span>
+        {% if event.visibility == "public" %}<span class="portal-status portal-status-upcoming">🌐 Public</span>{% endif %}
+      </div>
+
+      <h1>{{ event.title }}</h1>
+
+      <div class="portal-detail-meta">
+        <span>By <strong>{{ event.organizer.get_full_name|default:event.organizer.email }}</strong></span>
+        {% if event.department %}<span>·</span><span>{{ event.department.name }}</span>{% endif %}
+      </div>
+
+      {% if perms.portal.change_event or event.organizer_id == request.user.pk %}
+        <div class="portal-detail-actions">
+          <a href="{% url 'portal:event_update' event.pk %}" class="btn btn-ghost btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
+            Edit
+          </a>
+          <a href="{% url 'portal:event_ics' event.pk %}" class="btn btn-ghost btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Add to calendar
+          </a>
+          {% if perms.portal.delete_event %}
+            <a href="{% url 'portal:event_delete' event.pk %}" class="btn btn-ghost btn-sm btn-danger">Delete</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </header>
+
+    {% if event.image %}
+      <figure class="portal-detail-figure">
+        <img src="{{ event.image.url }}" alt="">
+      </figure>
+    {% endif %}
+
+    {% if event.summary %}
+      <p class="portal-detail-body" style="font-size:16px;font-weight:500;margin-bottom:6px;">
+        {{ event.summary }}
+      </p>
+    {% endif %}
+    {% if event.description %}
+      <div class="portal-detail-body">{{ event.description|linebreaksbr }}</div>
+    {% endif %}
+
+    <div class="event-info-grid">
+      <div class="event-info-card">
+        <div class="event-info-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div>
+          <div class="event-info-label">When</div>
+          <div class="event-info-value">
+            {% if event.all_day %}All day, {% endif %}{{ event.starts_at|date:"D, M j, Y" }}
+          </div>
+          <div class="event-info-sub">
+            {{ event.starts_at|date:"H:i" }}{% if event.ends_at %} – {{ event.ends_at|date:"H:i" }}{% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% if event.location_name or event.location_address %}
+        <div class="event-info-card">
+          <div class="event-info-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+          <div>
+            <div class="event-info-label">Location</div>
+            <div class="event-info-value">{{ event.location_name }}</div>
+            {% if event.location_address %}<div class="event-info-sub">{{ event.location_address }}</div>{% endif %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if event.virtual_url %}
+        <div class="event-info-card">
+          <div class="event-info-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          </div>
+          <div style="min-width:0;">
+            <div class="event-info-label">Virtual</div>
+            <a href="{{ event.virtual_url }}" target="_blank" rel="noopener"
+               class="event-info-value" style="display:block;color:var(--brand);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              Join online →
+            </a>
+            <button type="button" class="portal-filters-reset"
+                    data-copy="{{ event.virtual_url }}" style="padding-left:0;">Copy link</button>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    {# ---- RSVP ---- #}
+    {% if event.rsvp_required and request.user.is_authenticated and not event.is_cancelled %}
+      <div class="rsvp-explainer">
+        <span class="rsvp-explainer-label">RSVP — your response</span>
+        <span class="muted">Let the organiser know if you're attending.</span>
+      </div>
+      {% include "portal/events/_rsvp_widget.html" with event=event my_rsvp=my_rsvp rsvp_summary=rsvp_summary %}
+    {% elif not event.rsvp_required %}
+      {# nothing #}
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

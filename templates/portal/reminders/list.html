@@ -1,0 +1,50 @@
+{% extends "portal/_layout.html" %}
+{% block title %}Reminders · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="portal-page">
+
+  <header class="portal-head">
+    <div>
+      <h1>Reminders</h1>
+      <p>Notes and nudges — personal, department-wide, or all-staff.</p>
+    </div>
+    <a href="{% url 'portal:reminder_create' %}" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New reminder
+    </a>
+  </header>
+
+  <nav class="portal-tabs">
+    <a href="{% url 'portal:home' %}"              class="portal-tab">Overview</a>
+    <a href="{% url 'portal:announcement_list' %}" class="portal-tab">Announcements</a>
+    <a href="{% url 'portal:event_list' %}"        class="portal-tab">Events</a>
+    <a href="{% url 'portal:reminder_list' %}"     class="portal-tab is-active">Reminders</a>
+    <a href="{% url 'portal:document_list' %}"        class="portal-tab">Documents</a>
+  </nav>
+
+  <form class="portal-filters"
+        method="get"
+        action="{% url 'portal:reminder_list' %}"
+        hx-get="{% url 'portal:reminder_list' %}"
+        hx-target="#reminder-list"
+        hx-swap="outerHTML"
+        hx-trigger="submit, change from:select"
+        hx-push-url="true">
+    <div class="portal-filters-q">
+      <input type="text" name="q" value="{{ search_q }}" placeholder="Search reminders…">
+    </div>
+    <select name="kind">
+      <option value="">All kinds</option>
+      {% for value, label in kind_choices %}
+        <option value="{{ value }}" {% if active_kind == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% if filters_active %}
+      <a href="#" data-clear-filters class="portal-filters-reset">Clear</a>
+    {% endif %}
+  </form>
+
+  {% include "portal/reminders/_list.html" %}
+</div>
+{% endblock %}

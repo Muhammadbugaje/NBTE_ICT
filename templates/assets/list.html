@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Assets · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Assets{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/assets.css' %}?v=4">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page-head">
+  <div>
+    <h1>Assets</h1>
+    <p>{{ total }} asset{{ total|pluralize }} in your scope.</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="{% url 'assets:scan' %}" class="btn btn-ghost">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+      Scan
+    </a>
+    <a href="{% url 'assets:my_assets' %}" class="btn btn-ghost">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      My assets
+    </a>
+    {% if perms.assets.add_asset or request.user.is_superuser %}
+      <a href="{% url 'assets:create' %}" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New asset
+      </a>
+    {% endif %}
+  </div>
+</div>
+
+{# Filter form — submits via HTMX, only the list container is swapped #}
+<form method="get"
+      class="asset-filters"
+      hx-get="{% url 'assets:list' %}"
+      hx-target="#asset-list-container"
+      hx-select="#asset-list-container"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      hx-indicator="#asset-list-container"
+      hx-trigger="change from:select, change from:input[type=checkbox], submit from:form">
+
+  <div class="asset-filters-row">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search by tag, serial, brand, model…"
+           class="input asset-filter-search" autocomplete="off">
+
+    <select name="category" class="input asset-filter-select">
+      <option value="">All categories</option>
+      {% for c in categories %}
+        <option value="{{ c.code }}" {% if cat_filter == c.code %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="state" class="input asset-filter-select">
+      <option value="">Any state</option>
+      {% for value, label in states %}
+        <option value="{{ value }}" {% if state_filter == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    {% if can_see_all %}
+      <select name="department" class="input asset-filter-select">
+        <option value="">Any department</option>
+        {% for d in departments %}
+          <option value="{{ d.code }}" {% if dept_filter == d.code %}selected{% endif %}>{{ d.name }}</option>
+        {% endfor %}
+      </select>
+    {% endif %}
+
+    <label class="check asset-filter-check">
+      <input type="checkbox" name="mine" value="1" {% if mine_filter %}checked{% endif %}>
+      <span>Only mine</span>
+    </label>
+
+    <button class="btn btn-primary btn-sm" type="submit">Filter</button>
+    {% if q or cat_filter or state_filter or dept_filter or mine_filter %}
+      <a class="btn btn-ghost btn-sm" href="{% url 'assets:list' %}">Reset</a>
+    {% endif %}
+  </div>
+</form>
+
+{# The list container — HTMX swaps this in place on filter changes #}
+<div id="asset-list-container" class="asset-list-container">
+  {% if page.object_list %}
+    <div class="asset-list">
+      {% for asset in page.object_list %}
+        <a href="{% url 'assets:detail' asset.asset_tag %}" class="asset-card">
+          <div class="asset-card-tag">
+            <span>{{ asset.asset_tag|slice:":8" }}</span>
+            <strong>{{ asset.asset_tag|slice:"8:" }}</strong>
+          </div>
+          <div class="asset-card-body">
+            <div class="asset-card-title">{{ asset.display_name }}</div>
+            <div class="asset-card-meta">
+              <span>{{ asset.category.name }}</span>
+              {% if asset.serial_number %}<span class="muted">· SN {{ asset.serial_number }}</span>{% endif %}
+              {% if asset.current_location %}<span class="muted">· {{ asset.current_location }}</span>{% endif %}
+            </div>
+            <div class="asset-card-meta">
+              {% if asset.current_custodian %}
+                <span>Held by {{ asset.current_custodian.get_full_name|default:asset.current_custodian.email }}</span>
+              {% else %}
+                <span class="muted">Not currently assigned</span>
+              {% endif %}
+              {% if asset.owner_department %}<span class="muted">· {{ asset.owner_department.name }}</span>{% endif %}
+            </div>
+          </div>
+          <div class="asset-card-badges">
+            <span class="badge badge-state-{{ asset.state }}">{{ asset.get_state_display }}</span>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+
+    {% if page.has_other_pages %}
+      <nav class="pagination">
+        {% if page.has_previous %}
+          <a href="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.previous_page_number }}"
+             hx-get="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.previous_page_number }}"
+             hx-target="#asset-list-container"
+             hx-select="#asset-list-container"
+             hx-swap="outerHTML"
+             hx-push-url="true">« Prev</a>
+        {% else %}<span class="disabled">« Prev</span>{% endif %}
+        <span class="current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}
+          <a href="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.next_page_number }}"
+             hx-get="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.next_page_number }}"
+             hx-target="#asset-list-container"
+             hx-select="#asset-list-container"
+             hx-swap="outerHTML"
+             hx-push-url="true">Next »</a>
+        {% else %}<span class="disabled">Next »</span>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="wf-empty">
+      <div class="wf-empty-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </div>
+      <h3>No assets match these filters</h3>
+      <p>Try adjusting the search or clearing the filters.</p>
+      {% if perms.assets.add_asset or request.user.is_superuser %}
+        <a href="{% url 'assets:create' %}" class="btn btn-primary">Add the first asset</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

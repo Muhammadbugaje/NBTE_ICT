@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}Add staff{% else %}Edit {{ staff.full_name }}{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{% if mode == "create" %}Add staff{% else %}Edit staff{% endif %}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/staff.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="staff-page staff-page-narrow">
+
+  <a href="{% if staff %}{% url 'staff:detail' staff.pk %}{% else %}{% url 'staff:list' %}{% endif %}" class="staff-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Back
+  </a>
+
+  <header class="staff-hero">
+    <div>
+      <h1>{% if mode == "create" %}Add a staff member{% else %}Edit {{ staff.full_name }}{% endif %}</h1>
+      <p>{% if mode == "create" %}Create the directory record and optionally provision a login.{% else %}Update the directory record. State changes use the dedicated “Change state” action.{% endif %}</p>
+    </div>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="staff-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    <section class="staff-section">
+      <h3>Identity</h3>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.employee_no.label_tag }}{{ form.employee_no }}{{ form.employee_no.errors }}</div>
+        <div class="staff-col">{{ form.email.label_tag }}{{ form.email }}{{ form.email.errors }}</div>
+      </div>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.first_name.label_tag }}{{ form.first_name }}{{ form.first_name.errors }}</div>
+        <div class="staff-col">{{ form.last_name.label_tag }}{{ form.last_name }}{{ form.last_name.errors }}</div>
+      </div>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.phone.label_tag }}{{ form.phone }}{{ form.phone.errors }}</div>
+        <div class="staff-col">{{ form.photo.label_tag }}{{ form.photo }}{{ form.photo.errors }}</div>
+      </div>
+    </section>
+
+    <section class="staff-section">
+      <h3>Position</h3>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.department.label_tag }}{{ form.department }}{{ form.department.errors }}</div>
+        <div class="staff-col">{{ form.office.label_tag }}{{ form.office }}{{ form.office.errors }}</div>
+      </div>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.designation.label_tag }}{{ form.designation }}{{ form.designation.errors }}</div>
+        <div class="staff-col">{{ form.grade_level.label_tag }}{{ form.grade_level }}{{ form.grade_level.errors }}</div>
+      </div>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.subsection.label_tag }}{{ form.subsection }}{{ form.subsection.errors }}</div>
+        <div class="staff-col">{{ form.category.label_tag }}{{ form.category }}{{ form.category.errors }}</div>
+      </div>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.office_location.label_tag }}{{ form.office_location }}{{ form.office_location.errors }}</div>
+        <div class="staff-col">{{ form.reports_to.label_tag }}{{ form.reports_to }}{{ form.reports_to.errors }}</div>
+      </div>
+    </section>
+
+    <section class="staff-section">
+      <h3>State</h3>
+      <p class="staff-section-hint">State changes create an audit record. Use the dedicated “Change state” action for tracked transitions.</p>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.state.label_tag }}{{ form.state }}{{ form.state.errors }}</div>
+        <div class="staff-col">{{ form.date_joined_service.label_tag }}{{ form.date_joined_service }}{{ form.date_joined_service.errors }}</div>
+      </div>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.state_start.label_tag }}{{ form.state_start }}{{ form.state_start.errors }}</div>
+        <div class="staff-col">{{ form.state_end.label_tag }}{{ form.state_end }}{{ form.state_end.errors }}</div>
+      </div>
+    </section>
+
+    <section class="staff-section">
+      <h3>Contact & emergency</h3>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.contact_preference.label_tag }}{{ form.contact_preference }}{{ form.contact_preference.errors }}</div>
+        <div class="staff-col">{{ form.birth_month.label_tag }}{{ form.birth_month }}{{ form.birth_month.errors }}</div>
+        <div class="staff-col">{{ form.birth_day.label_tag }}{{ form.birth_day }}{{ form.birth_day.errors }}</div>
+      </div>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.emergency_contact_name.label_tag }}{{ form.emergency_contact_name }}{{ form.emergency_contact_name.errors }}</div>
+        <div class="staff-col">{{ form.emergency_contact_phone.label_tag }}{{ form.emergency_contact_phone }}{{ form.emergency_contact_phone.errors }}</div>
+      </div>
+    </section>
+
+    <section class="staff-section">
+      <h3>Duties</h3>
+      {{ form.duties }}{{ form.duties.errors }}
+    </section>
+
+    {% if form.create_account %}
+      <section class="staff-section staff-section-accent">
+        <h3>Account access</h3>
+        <p class="staff-section-hint">When enabled, a login is created and the credentials are emailed.</p>
+        <label class="staff-check">
+          {{ form.create_account }}
+          <span>Create a user account for this staff member</span>
+        </label>
+        <div class="staff-row" style="margin-top:12px;">
+          <div class="staff-col staff-col-full">
+            {{ form.initial_password.label_tag }}
+            {{ form.initial_password }}
+            <span class="hint">{{ form.initial_password.help_text }}</span>
+            {{ form.initial_password.errors }}
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    <div class="staff-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Add staff{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% if staff %}{% url 'staff:detail' staff.pk %}{% else %}{% url 'staff:list' %}{% endif %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

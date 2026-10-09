@@ -1,0 +1,22 @@
+<a href="{% url 'staff:leadership_tenure' tenure.pk %}" class="lead-card">
+  <div class="lead-card-photo">
+    {% if tenure.photo %}
+      <img src="{{ tenure.photo_thumb_url }}" alt="">
+    {% elif tenure.staff.photo %}
+      <img src="{{ tenure.staff.photo_thumb_url }}" alt="">
+    {% else %}
+      <span>{{ tenure.staff.first_name|slice:":1"|upper }}{{ tenure.staff.last_name|slice:":1"|upper }}</span>
+    {% endif %}
+    {% if tenure.is_acting %}<span class="lead-card-badge">Acting</span>{% endif %}
+  </div>
+  <div class="lead-card-body">
+    <div class="lead-card-position">{{ tenure.position.name }}</div>
+    <div class="lead-card-name">{{ tenure.staff.full_name }}</div>
+    {% if tenure.staff.designation %}
+      <div class="lead-card-role">{{ tenure.staff.designation }}</div>
+    {% endif %}
+    <div class="lead-card-tenure">
+      {{ tenure.started_on|date:"M Y" }} – {% if tenure.ended_on %}{{ tenure.ended_on|date:"M Y" }}{% else %}Present{% endif %}
+    </div>
+  </div>
+</a>

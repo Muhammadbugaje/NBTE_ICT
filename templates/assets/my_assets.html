@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% load static %}
+{% load list_tags %}
+
+{% block title %}My assets · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}My assets{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/assets.css' %}?v=3">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page-head">
+  <div>
+    <h1>My assets</h1>
+    <p>Equipment currently assigned to you, plus your recent return history.</p>
+  </div>
+  <a href="{% url 'assets:list' %}" class="btn btn-ghost">All assets</a>
+</div>
+
+{# ---------- Search form (HTMX) ---------- #}
+<form method="get"
+      class="wf-filters"
+      hx-get="{% url 'assets:my_assets' %}"
+      hx-target="#my-assets-container" hx-select="#my-assets-container"
+      hx-swap="outerHTML" hx-push-url="true"
+      hx-indicator="#my-assets-container"
+      hx-trigger="submit from:form, keyup changed delay:400ms from:input[name=q]">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Search by tag, serial, brand, model…"
+         class="input wf-filter-search" autocomplete="off">
+  <input type="hidden" name="sort" value="{{ sort_key }}">
+  <input type="hidden" name="direction" value="{{ sort_dir }}">
+  {% if q %}
+    <a href="{% url 'assets:my_assets' %}" class="btn btn-ghost btn-sm">Reset</a>
+  {% endif %}
+</form>
+
+{# ---------- Container (HTMX swaps this) ---------- #}
+<div id="my-assets-container" class="my-assets-container">
+
+  {# ---------- Currently held ---------- #}
+  {% if assignments %}
+    <h2 class="section-label" style="margin-top:0;">Currently held ({{ assignments|length }})</h2>
+    <div class="wf-table-wrap">
+      <table class="wf-table">
+        <thead>
+          <tr>
+            <th class="wf-th-sortable {% if sort_key == 'tag' %}is-sorted{% endif %}">
+              <a href="?q={{ q|urlencode }}&sort=tag&direction={% if sort_key == 'tag' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-get="?q={{ q|urlencode }}&sort=tag&direction={% if sort_key == 'tag' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-target="#my-assets-container" hx-select="#my-assets-container"
+                 hx-swap="outerHTML" hx-push-url="true">
+                Asset <span class="wf-sort-arrow">{% if sort_key == 'tag' %}{% if sort_dir == 'desc' %}▼{% else %}▲{% endif %}{% endif %}</span>
+              </a>
+            </th>
+            <th>Category</th>
+            <th class="wf-th-sortable {% if sort_key == 'assigned' %}is-sorted{% endif %}">
+              <a href="?q={{ q|urlencode }}&sort=assigned&direction={% if sort_key == 'assigned' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-get="?q={{ q|urlencode }}&sort=assigned&direction={% if sort_key == 'assigned' and sort_dir == 'desc' %}asc{% else %}desc{% endif %}"
+                 hx-target="#my-assets-container" hx-select="#my-assets-container"
+                 hx-swap="outerHTML" hx-push-url="true">
+                Assigned <span class="wf-sort-arrow">{% if sort_key == 'assigned' %}{% if sort_dir == 'desc' %}▼{% else %}▲{% endif %}{% endif %}</span>
+              </a>
+            </th>
+            <th>Held</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in assignments %}
+            <tr onclick="window.location='{% url 'assets:detail' a.asset.asset_tag %}'" style="cursor:pointer;">
+              <td>
+                <div class="wf-table-title">{{ a.asset.display_name }}</div>
+                <div class="wf-table-sub">
+                  {{ a.asset.asset_tag }}
+                  {% if a.asset.serial_number %} · SN {{ a.asset.serial_number }}{% endif %}
+                </div>
+              </td>
+              <td>{{ a.asset.category.name }}</td>
+              <td class="muted">{{ a.assigned_at|date:"M j, Y" }}</td>
+              <td class="muted">{{ a.duration_days }} day{{ a.duration_days|pluralize }}</td>
+              <td><span class="badge badge-state-{{ a.asset.state }}">{{ a.asset.get_state_display }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="wf-empty">
+      <div class="wf-empty-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </div>
+      <h3>{% if q %}No matches{% else %}No assets assigned to you{% endif %}</h3>
+      <p>{% if q %}Try a different search.{% else %}When you're assigned an item, it will show up here.{% endif %}</p>
+      {% if q %}
+        <a href="{% url 'assets:my_assets' %}" class="btn btn-ghost">Clear search</a>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {# ---------- Recently returned (hidden while searching) ---------- #}
+  {% if history and not q %}
+    <h2 class="section-label">Recently returned</h2>
+    <div class="wf-table-wrap">
+      <table class="wf-table">
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Category</th>
+            <th>Returned</th>
+            <th>Condition</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in history %}
+            <tr onclick="window.location='{% url 'assets:detail' a.asset.asset_tag %}'" style="cursor:pointer;opacity:0.8;">
+              <td>
+                <div class="wf-table-title">{{ a.asset.display_name }}</div>
+                <div class="wf-table-sub">{{ a.asset.asset_tag }}</div>
+              </td>
+              <td>{{ a.asset.category.name }}</td>
+              <td class="muted">{{ a.returned_at|date:"M j, Y" }}</td>
+              <td class="muted">{{ a.get_condition_on_return_display|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

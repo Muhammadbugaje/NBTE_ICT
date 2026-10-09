@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Archived · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Archived messages{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=3">
+{% endblock %}
+
+{% block content %}
+<div class="msg-page">
+
+  <a href="{% url 'messaging:inbox' %}" class="msg-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Inbox
+  </a>
+
+  <header class="msg-hero">
+    <div>
+      <h1>Archived</h1>
+      <p class="muted">
+        {{ threads|length }} archived thread{{ threads|length|pluralize }}.
+        Click <strong>Unarchive</strong> to bring a thread back into your inbox.
+      </p>
+    </div>
+  </header>
+
+  {% if threads %}
+    <div class="msg-thread-list">
+      {% for t in threads %}
+        <div class="msg-thread-row-wrap">
+          <a href="{% url 'messaging:thread' t.pk %}" class="msg-thread-row-link">
+            <span class="msg-avatar msg-avatar-md msg-avatar-{% cycle 'c3' 'c4' 'c5' 'c6' 'c7' 'c0' 'c1' 'c2' %}">
+              {{ t.display_title|slice:":1"|upper }}
+            </span>
+            <div class="msg-thread-body">
+              <div class="msg-thread-head">
+                <strong>{{ t.display_title|default:"(no subject)" }}</strong>
+                <time>{% if t.last_msg %}{{ t.last_msg.sent_at|timesince }} ago{% endif %}</time>
+              </div>
+              <div class="msg-thread-preview">
+                {% if t.last_msg %}
+                  <span class="msg-thread-sender">{{ t.last_msg.sender.get_full_name|default:t.last_msg.sender.email|default:"System" }}:</span>
+                  {{ t.last_msg.body|truncatechars:90 }}
+                {% else %}
+                  <em class="muted">No messages yet</em>
+                {% endif %}
+              </div>
+            </div>
+            {% if t.unread %}<span class="msg-unread-badge">{{ t.unread }}</span>{% endif %}
+          </a>
+
+          <form method="post" action="{% url 'messaging:unarchive' t.pk %}" class="msg-thread-row-actions">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-ghost btn-sm" title="Restore to inbox">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+              Unarchive
+            </button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="msg-empty">
+      <div class="msg-empty-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+      </div>
+      <h3>Nothing archived</h3>
+      <p>Threads you archive will appear here, out of your inbox but still searchable.</p>
+      <a href="{% url 'messaging:inbox' %}" class="btn btn-ghost">Back to inbox</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

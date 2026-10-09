@@ -1,0 +1,52 @@
+{% extends "email/base_email.html" %}
+
+{% block subject %}{{ request.reference }} needs your revision{% endblock %}
+
+{% block preheader %}Please review the reviewer's comment and resubmit.{% endblock %}
+
+{% block badge %}
+<span style="display:inline-block;padding:5px 12px;background:rgba(255,255,255,0.18);color:#ffffff;font-size:10.5px;font-weight:700;letter-spacing:0.09em;border-radius:999px;text-transform:uppercase;">Revision</span>
+{% endblock %}
+
+{% block header_title %}Your request was returned for revision{% endblock %}
+{% block intro %}Hi {{ requester_name }} — the reviewer below has asked for changes before this request can move forward.{% endblock %}
+
+{% block content %}
+  <tr>
+    <td style="padding:12px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;">
+        <tr>
+          <td style="padding:16px 20px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:12px;font-weight:700;color:#b45309;letter-spacing:0.04em;">{{ request.reference }}</div>
+            <div style="font-size:15px;font-weight:600;color:#0f172a;margin-top:6px;line-height:1.4;">{{ request.subject }}</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  {% if return_comment %}
+  <tr>
+    <td style="padding:20px 30px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-left:3px solid #f59e0b;background:rgba(245,158,11,0.05);border-radius:0 10px 10px 0;">
+        <tr>
+          <td style="padding:14px 18px;">
+            <div style="font-size:10.5px;font-weight:800;color:#b45309;letter-spacing:0.09em;text-transform:uppercase;margin-bottom:8px;">Comment from {{ returner_name }}</div>
+            <div style="font-size:14px;line-height:1.65;color:#0f172a;white-space:pre-wrap;">{{ return_comment }}</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  {% endif %}
+  <tr>
+    <td style="padding:28px 30px 8px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="background:#1F6B3E;border-radius:9px;">
+            <a href="{{ detail_url }}" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">Open &amp; revise &nbsp;→</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+{% endblock %}

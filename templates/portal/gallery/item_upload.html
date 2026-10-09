@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Upload · {{ album.title }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/gallery.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="gal-page gal-page-narrow">
+
+  <a href="{% url 'portal:gallery_detail' album.pk %}" class="gal-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    {{ album.title }}
+  </a>
+
+  <header class="gal-hero">
+    <div class="gal-hero-inner">
+      <div class="gal-hero-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <div>
+        <h1>Upload media</h1>
+        <p>Add photos and videos to <strong>{{ album.title }}</strong>.</p>
+      </div>
+    </div>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="gal-form" id="upload-form">
+    {% csrf_token %}
+
+    <section class="gal-section">
+      <label class="gal-dropzone" for="id_files" data-dropzone>
+        <input type="file" name="files" id="id_files" multiple accept="image/*,video/*" data-dropzone-input>
+        <div class="gal-dropzone-body">
+          <div class="gal-dropzone-icon">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="gal-dropzone-title">Drop files here, or click to browse</div>
+          <div class="gal-dropzone-sub">Images and videos · up to 20 MB each</div>
+        </div>
+      </label>
+
+      <div class="gal-file-list" data-file-list hidden>
+        <div class="gal-file-list-head">
+          <strong data-file-count>0 files selected</strong>
+          <button type="button" class="link-btn" data-file-clear>Clear</button>
+        </div>
+        <ul data-file-items></ul>
+      </div>
+    </section>
+
+    <section class="gal-section">
+      <header class="gal-section-head"><h3>Common details</h3></header>
+
+      <div class="gal-field">
+        <label for="{{ form.caption.id_for_label }}">Caption <span class="muted">(applied to all)</span></label>
+        {{ form.caption }}
+      </div>
+
+      <div class="gal-field">
+        <label for="{{ form.credit.id_for_label }}">Photographer / source <span class="muted">(applied to all)</span></label>
+        {{ form.credit }}
+      </div>
+    </section>
+
+    <div class="gal-form-actions">
+      <button type="submit" class="btn btn-primary" data-upload-submit>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload
+      </button>
+      <a href="{% url 'portal:gallery_detail' album.pk %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/gallery-upload.js' %}?v=1" defer></script>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% if albums %}
+  <div class="gal-grid">
+    {% for a in albums %}
+      <a href="{% url 'portal:gallery_detail' a.pk %}" class="gal-card">
+        <div class="gal-card-cover">
+          {% if a.cover_url %}
+            <img src="{{ a.cover_url }}" alt="{{ a.title }}" loading="lazy">
+          {% else %}
+            <div class="gal-card-cover-placeholder">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </div>
+          {% endif %}
+
+          {% if a.is_featured %}
+            <span class="gal-card-featured" title="Featured">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </span>
+          {% endif %}
+
+          {% if a.category %}
+            <span class="gal-card-cat">{{ a.category.name }}</span>
+          {% endif %}
+
+          <span class="gal-card-count">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            {{ a.item_count }}
+          </span>
+        </div>
+
+        <div class="gal-card-body">
+          <h3>{{ a.title }}</h3>
+          {% if a.description %}
+            <p class="gal-card-desc">{{ a.description|truncatechars:90 }}</p>
+          {% endif %}
+          {% if a.event_date %}
+            <div class="gal-card-date">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              {{ a.event_date|date:"M j, Y" }}
+            </div>
+          {% endif %}
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="gal-empty">
+    <div class="gal-empty-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    </div>
+    <h3>No albums yet</h3>
+    <p>{% if q or active_category %}Try widening your search.{% else %}The first album you create will appear here.{% endif %}</p>
+    {% if perms.portal.manage_gallery %}
+      <a href="{% url 'portal:gallery_album_create' %}" class="btn btn-primary">Create an album</a>
+    {% endif %}
+  </div>
+{% endif %}

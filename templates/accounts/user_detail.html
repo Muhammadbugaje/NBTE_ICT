@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ u.get_full_name|default:u.email }} · User management{% endblock %}
+{% block page_title %}User details{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/home.css' %}?v=4">
+{% endblock %}
+
+{% block content %}
+<div class="home-page">
+
+  <a href="{% url 'accounts:user_list' %}" class="home-back">← All users</a>
+
+  <header class="home-header">
+    <div>
+      <h1>{{ u.get_full_name|default:u.email }}</h1>
+      <p class="muted">{{ u.email }}</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="{% url 'accounts:user_reset_password' u.pk %}" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Reset password
+      </a>
+      <a href="{% url 'accounts:user_edit_roles' u.pk %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Edit roles
+      </a>
+      <form method="post" action="{% url 'accounts:user_toggle_active' u.pk %}" style="display:inline;">
+        {% csrf_token %}
+        {% if u.is_active %}
+          <button type="submit" class="btn btn-ghost btn-danger">Deactivate</button>
+        {% else %}
+          <button type="submit" class="btn btn-primary">Activate</button>
+        {% endif %}
+      </form>
+    </div>
+  </header>
+
+  <div class="home-grid">
+    <div class="home-col-main">
+      <div class="home-card">
+        <h3 class="home-card-title">Account</h3>
+        <dl class="admin-dl">
+          <dt>Email</dt><dd>{{ u.email }}</dd>
+          <dt>Name</dt><dd>{{ u.get_full_name|default:"—" }}</dd>
+          <dt>Department</dt><dd>{{ u.department.name|default:"—" }}</dd>
+          <dt>Role</dt><dd>{{ u.role.name|default:"—" }}</dd>
+          <dt>Status</dt><dd>{% if u.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}</dd>
+          <dt>Staff member?</dt><dd>{% if u.is_staff %}Yes{% else %}No{% endif %}</dd>
+          <dt>Superuser?</dt><dd>{% if u.is_superuser %}Yes{% else %}No{% endif %}</dd>
+          <dt>Last login</dt><dd>{{ u.last_login|date:"M j, Y H:i"|default:"—" }}</dd>
+          <dt>Joined</dt><dd>{{ u.date_joined|date:"M j, Y" }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    <aside class="home-col-side">
+      <div class="home-card">
+        <h3 class="home-card-title">Linked staff record</h3>
+        {% if u.staff_profile %}
+          <a href="{% url 'staff:detail' u.staff_profile.pk %}" class="home-link-row">
+            <span>{{ u.staff_profile.full_name }}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+        {% else %}
+          <p class="muted">No linked staff record.</p>
+        {% endif %}
+      </div>
+    </aside>
+  </div>
+</div>
+{% endblock %}

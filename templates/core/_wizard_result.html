@@ -1,0 +1,48 @@
+<div class="wizard-result">
+  <header class="wizard-preview-head">
+    <h3>Import complete</h3>
+    {% if result.ok %}
+      <span class="badge badge-success">Success</span>
+    {% else %}
+      <span class="badge badge-warn">Completed with skips</span>
+    {% endif %}
+  </header>
+
+  <div class="preview-summary">
+    <div class="summary-tile summary-tile-create">
+      <span class="summary-num">{{ result.created }}</span>
+      <span class="summary-lbl">Created</span>
+    </div>
+    <div class="summary-tile summary-tile-update">
+      <span class="summary-num">{{ result.updated }}</span>
+      <span class="summary-lbl">Updated</span>
+    </div>
+    <div class="summary-tile summary-tile-reject {% if result.rejected %}has-issues{% endif %}">
+      <span class="summary-num">{{ result.rejected|length }}</span>
+      <span class="summary-lbl">Skipped</span>
+    </div>
+    <div class="summary-tile">
+      <span class="summary-num">{{ result.total }}</span>
+      <span class="summary-lbl">Total rows</span>
+    </div>
+  </div>
+
+  {% if result.rejected and rejected_url %}
+    <p class="muted">
+      Download a full report of the skipped rows to fix and re-upload.
+    </p>
+    <a class="btn btn-ghost" href="{{ rejected_url }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download skipped-rows report
+    </a>
+  {% endif %}
+
+  <div class="wizard-actions">
+    <button type="button" class="btn btn-primary"
+            hx-get="{% url 'core:ie_panel' spec.name %}"
+            hx-target="#wizard-panel"
+            hx-swap="innerHTML">
+      Import another file
+    </button>
+  </div>
+</div>

@@ -1,0 +1,186 @@
+/* ==========================================================================
+   NBTE ICT — Base: reset, typography, layout primitives
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--nav-height) + var(--space-5));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  transition:
+    background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
+}
+
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+a:hover { color: var(--primary-hover); }
+
+/* ---------- Typography ---------- */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg);
+  text-wrap: balance;
+}
+h1 { font-size: clamp(2.25rem, 5vw + 1rem, var(--text-5xl)); }
+h2 { font-size: clamp(1.75rem, 3vw + 1rem, var(--text-4xl)); }
+h3 { font-size: clamp(1.375rem, 2vw + 1rem, var(--text-2xl)); }
+h4 { font-size: var(--text-xl); }
+h5 { font-size: var(--text-lg); }
+h6 { font-size: var(--text-base); }
+
+p {
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+p.lead {
+  font-size: var(--text-lg);
+  line-height: var(--leading-relaxed);
+  color: var(--fg-muted);
+}
+
+small { font-size: var(--text-sm); }
+code, pre, kbd {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+code {
+  background: var(--bg-sunken);
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+}
+pre {
+  background: var(--bg-sunken);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+/* ---------- Layout primitives ---------- */
+.container {
+  width: 100%;
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding-inline: var(--space-5);
+}
+.container-narrow { max-width: var(--content-narrow); }
+.container-wide   { max-width: var(--content-full); }
+
+.stack > * + * { margin-top: var(--space-4); }
+.stack-sm > * + * { margin-top: var(--space-2); }
+.stack-lg > * + * { margin-top: var(--space-6); }
+
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+.cluster-between { justify-content: space-between; }
+.cluster-center  { justify-content: center; }
+
+.grid {
+  display: grid;
+  gap: var(--space-5);
+}
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+.grid-4 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+
+.center-text { text-align: center; }
+.muted { color: var(--fg-muted); }
+.subtle { color: var(--fg-subtle); }
+
+/* ---------- Focus visible ---------- */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ---------- Scrollbar (subtle, theme-aware) ---------- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+  border: 3px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
+
+/* ---------- Utility: visibility transitions for theme ---------- */
+.theme-transition {
+  transition:
+    background-color var(--duration-base) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
+}

@@ -1,0 +1,605 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Scan asset · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Scan asset{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/assets.css' %}?v=3">
+{% endblock %}
+
+{% block content %}
+<div class="scan-page" id="scan-app"
+     data-lookup-url="{% url 'assets:lookup_api' %}"
+     data-json-url-template="/assets/__TAG__/json/">
+
+  {# ---------- Header ---------- #}
+  <div class="scan-hero">
+    <div class="scan-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+    </div>
+    <h1>Scan or look up an asset</h1>
+    <p>Open the camera to scan a QR, or type a tag below. Details appear instantly — no page reloads.</p>
+  </div>
+
+  {# ---------- Camera + manual lookup ---------- #}
+  <div class="scan-actions">
+    <button type="button" class="btn btn-primary btn-lg" id="open-camera-btn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Open camera
+    </button>
+    <span class="scan-or">or</span>
+    <form method="get" action="{% url 'assets:scan' %}" class="scan-form-inline" autocomplete="off" id="manual-form">
+      <div class="scan-input-wrap">
+        <svg class="scan-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" name="tag" id="scan-input"
+               class="scan-input" placeholder="Type a tag…"
+               autocomplete="off" spellcheck="false">
+        <div id="scan-suggestions" class="scan-suggestions" hidden></div>
+      </div>
+    </form>
+  </div>
+
+  {# ---------- Camera view ---------- #}
+  <div class="scan-camera-wrap" id="camera-wrap" hidden>
+    <div class="scan-camera-head">
+      <span class="scan-camera-status" id="camera-status">
+        <span class="scan-pulse"></span> Point the camera at a QR code
+      </span>
+      <button type="button" class="btn btn-ghost btn-sm" id="close-camera-btn">Close camera</button>
+    </div>
+    <div id="qr-reader" class="scan-qr-reader"></div>
+    <div class="scan-camera-fallback" id="camera-fallback" hidden>
+      <p>Camera access is not available here. You can still type a tag above, or use your phone's camera app to scan the QR and open the link directly.</p>
+    </div>
+  </div>
+
+  {# ---------- Result card (populated by JS) ---------- #}
+  <div id="scan-result" class="scan-result" hidden></div>
+
+  {# ---------- Not found ---------- #}
+  <div id="scan-notfound" class="scan-error" hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <div>
+      <strong id="notfound-title">No asset matches that.</strong>
+      <p>Check the tag and try again, or search by name, serial, or location below.</p>
+    </div>
+  </div>
+
+  {# ---------- Recent ---------- #}
+  {% if recent %}
+    <section class="scan-recent">
+      <h2 class="scan-recent-title">Recently scanned</h2>
+      <div class="scan-recent-list">
+        {% for a in recent %}
+          <button type="button" class="scan-recent-item" data-quick-tag="{{ a.asset_tag }}">
+            <div class="scan-recent-tag">{{ a.asset_tag }}</div>
+            <div class="scan-recent-body">
+              <strong>{{ a.display_name }}</strong>
+              <span class="muted">
+                {{ a.category.name }}
+                {% if a.current_custodian %}
+                  · {{ a.current_custodian.get_full_name|default:a.current_custodian.email }}
+                {% endif %}
+              </span>
+            </div>
+          </button>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {# ---------- Help ---------- #}
+  <section class="scan-help">
+    <h2 class="scan-help-title">How this works</h2>
+    <ul class="scan-help-list">
+      <li>
+        <span class="scan-help-num">1</span>
+        <div>
+          <strong>Scan with the camera</strong>
+          <p>Click "Open camera" — you'll be asked to allow access. Hold the QR in front of the camera. On success, the asset loads below instantly.</p>
+        </div>
+      </li>
+      <li>
+        <span class="scan-help-num">2</span>
+        <div>
+          <strong>USB / Bluetooth scanner</strong>
+          <p>Most handheld scanners type into whatever field has focus. Click the search box and scan the label — it will look up automatically.</p>
+        </div>
+      </li>
+      <li>
+        <span class="scan-help-num">3</span>
+        <div>
+          <strong>Type a tag</strong>
+          <p>Just know the tag? Type <code>ICT-COMPUT-00042</code> in the search box and press Enter.</p>
+        </div>
+      </li>
+    </ul>
+  </section>
+</div>
+
+{# ---------- html5-qrcode for camera scanning ---------- #}
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+<script>
+(function () {
+  "use strict";
+
+  var app = document.getElementById("scan-app");
+  if (!app) return;
+
+  var lookupUrl = app.dataset.lookupUrl;
+  var jsonUrlTemplate = app.dataset.jsonUrlTemplate;
+
+  var cameraWrap = document.getElementById("camera-wrap");
+  var openCameraBtn = document.getElementById("open-camera-btn");
+  var closeCameraBtn = document.getElementById("close-camera-btn");
+  var cameraFallback = document.getElementById("camera-fallback");
+  var scanResultBox = document.getElementById("scan-result");
+  var notFoundBox = document.getElementById("scan-notfound");
+  var notFoundTitle = document.getElementById("notfound-title");
+  var input = document.getElementById("scan-input");
+  var suggestions = document.getElementById("scan-suggestions");
+  var manualForm = document.getElementById("manual-form");
+
+  var qrScanner = null;
+  var scanning = false;
+  var lastScanned = "";
+
+  /* ============================================================
+     URL / tag extraction
+     ============================================================ */
+  function extractTag(value) {
+    value = (value || "").trim();
+    if (!value) return "";
+    if (value.indexOf("/assets/") !== -1) {
+      try {
+        var after = value.split("/assets/")[1];
+        return (after.split("/")[0] || "").toUpperCase();
+      } catch (e) {
+        return value.toUpperCase();
+      }
+    }
+    return value.toUpperCase();
+  }
+
+  /* ============================================================
+     Fetch asset JSON and render the card
+     ============================================================ */
+  function fetchAsset(tag) {
+    if (!tag) return Promise.reject(new Error("No tag"));
+    var url = jsonUrlTemplate.replace("__TAG__", encodeURIComponent(tag));
+    return fetch(url, {
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    }).then(function (r) {
+      if (!r.ok) throw new Error("Not found");
+      return r.json();
+    });
+  }
+
+  function showNotFound(tag) {
+    scanResultBox.hidden = true;
+    scanResultBox.innerHTML = "";
+    notFoundTitle.textContent = 'No asset matches "' + tag + '".';
+    notFoundBox.hidden = false;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+
+  function renderAssetCard(a) {
+    var stateClass = "badge-state-" + a.state;
+
+    var custodianHtml = "";
+    if (a.custodian) {
+      custodianHtml =
+        '<div class="scanned-row">' +
+          '<span class="scanned-label">Held by</span>' +
+          '<span class="scanned-value">' +
+            '<strong>' + escapeHtml(a.custodian.name) + '</strong>' +
+            (a.custodian.since_human ? ' · since ' + escapeHtml(a.custodian.since_human) : '') +
+          '</span>' +
+        '</div>';
+    } else {
+      custodianHtml =
+        '<div class="scanned-row">' +
+          '<span class="scanned-label">Held by</span>' +
+          '<span class="scanned-value muted">Not currently assigned</span>' +
+        '</div>';
+    }
+
+    var specHtml = "";
+    if (a.spec && Object.keys(a.spec).length) {
+      var items = Object.keys(a.spec).map(function (k) {
+        return '<div class="scanned-spec-item"><span>' + escapeHtml(k) + '</span><strong>' +
+               escapeHtml(String(a.spec[k])) + '</strong></div>';
+      }).join("");
+      specHtml = '<div class="scanned-section"><h4>Specifications</h4><div class="scanned-spec-grid">' +
+                 items + '</div></div>';
+    }
+
+    var issueBadge = a.open_issue_count
+      ? '<span class="badge badge-warn">' + a.open_issue_count + ' open issue' +
+        (a.open_issue_count > 1 ? 's' : '') + '</span>'
+      : '';
+
+    var actions = [];
+
+    actions.push(
+      '<a class="scanned-action scanned-action-primary" href="' + a.detail_url + '">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+        'Full details' +
+      '</a>'
+    );
+
+    if (a.can_return && a.is_assigned) {
+      actions.push(
+        '<button class="scanned-action" type="button" data-action="return">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>' +
+          'Return asset' +
+        '</button>'
+      );
+    }
+
+    if (a.can_edit && !a.is_assigned) {
+      actions.push(
+        '<a class="scanned-action" href="' + a.actions.assign_url + '">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>' +
+          'Assign' +
+        '</a>'
+      );
+    }
+
+    actions.push(
+      '<button class="scanned-action" type="button" data-action="issue">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
+        'Report issue' +
+      '</button>'
+    );
+
+    actions.push(
+      '<a class="scanned-action" href="' + a.actions.print_url + '" target="_blank" rel="noopener">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>' +
+        'Print label' +
+      '</a>'
+    );
+
+    var html = '' +
+      '<div class="scanned-card">' +
+        '<div class="scanned-head">' +
+          '<div class="scanned-qr">' + (a.qr_svg || '') + '</div>' +
+          '<div class="scanned-identity">' +
+            '<span class="scanned-tag">' + escapeHtml(a.tag) + '</span>' +
+            '<h2>' + escapeHtml(a.display_name) + '</h2>' +
+            '<div class="scanned-badges">' +
+              '<span class="badge ' + stateClass + '">' + escapeHtml(a.state_display) + '</span>' +
+              '<span class="badge">' + escapeHtml(a.category) + '</span>' +
+              (a.owner_department ? '<span class="badge badge-info">' + escapeHtml(a.owner_department) + '</span>' : '') +
+              issueBadge +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="scanned-facts">' +
+          custodianHtml +
+          (a.serial_number ? '<div class="scanned-row"><span class="scanned-label">Serial</span><span class="scanned-value">' + escapeHtml(a.serial_number) + '</span></div>' : '') +
+          (a.brand || a.model ? '<div class="scanned-row"><span class="scanned-label">Model</span><span class="scanned-value">' + escapeHtml((a.brand + ' ' + a.model).trim()) + '</span></div>' : '') +
+          (a.location ? '<div class="scanned-row"><span class="scanned-label">Location</span><span class="scanned-value">' + escapeHtml(a.location) + '</span></div>' : '') +
+        '</div>' +
+
+        specHtml +
+
+        '<div class="scanned-actions" data-tag="' + escapeHtml(a.tag) + '">' +
+          actions.join("") +
+        '</div>' +
+
+        '<div class="scanned-inline-form" id="inline-form-' + escapeHtml(a.tag) + '" hidden></div>' +
+      '</div>';
+
+    scanResultBox.innerHTML = html;
+    scanResultBox.hidden = false;
+    notFoundBox.hidden = true;
+
+    // Wire up actions
+    scanResultBox.querySelectorAll("[data-action='return']").forEach(function (btn) {
+      btn.addEventListener("click", function () { openReturnForm(a); });
+    });
+    scanResultBox.querySelectorAll("[data-action='issue']").forEach(function (btn) {
+      btn.addEventListener("click", function () { openIssueForm(a); });
+    });
+  }
+
+  /* ============================================================
+     Inline forms — Return and Report Issue
+     ============================================================ */
+  function getCsrf() {
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+
+  function openReturnForm(a) {
+    var target = document.getElementById("inline-form-" + a.tag);
+    if (!target) return;
+    target.innerHTML = '' +
+      '<div class="scanned-inline-inner">' +
+        '<h4>Return this asset</h4>' +
+        '<div class="field">' +
+          '<label>Condition on return</label>' +
+          '<select class="input" id="return-condition">' +
+            '<option value="new">New</option>' +
+            '<option value="good" selected>Good</option>' +
+            '<option value="fair">Fair</option>' +
+            '<option value="poor">Poor</option>' +
+            '<option value="damaged">Damaged</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="field">' +
+          '<label>Notes <span class="muted">(optional)</span></label>' +
+          '<textarea class="input" id="return-notes" rows="2" placeholder="Any notes on the condition"></textarea>' +
+        '</div>' +
+        '<div class="scanned-inline-actions">' +
+          '<button class="btn btn-primary btn-sm" type="button" id="return-confirm">Confirm return</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" id="return-cancel">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    target.hidden = false;
+
+    document.getElementById("return-cancel").addEventListener("click", function () {
+      target.hidden = true;
+      target.innerHTML = "";
+    });
+
+    document.getElementById("return-confirm").addEventListener("click", function () {
+      var condition = document.getElementById("return-condition").value;
+      var notes = document.getElementById("return-notes").value;
+      var form = new FormData();
+      form.append("condition_on_return", condition);
+      form.append("notes", notes);
+      form.append("csrfmiddlewaretoken", getCsrf());
+
+      fetch(a.actions.return_url, {
+        method: "POST",
+        body: form,
+        credentials: "same-origin",
+        headers: { "X-CSRFToken": getCsrf(), "X-Requested-With": "XMLHttpRequest" },
+      }).then(function (r) {
+        if (r.ok || r.redirected) {
+          refreshCard(a.tag);
+        } else {
+          throw new Error("Return failed");
+        }
+      }).catch(function () {
+        if (window.NBTE && window.NBTE.Toast) {
+          window.NBTE.Toast.error("Could not return asset", "Please try again or use the detail page.");
+        }
+      });
+    });
+  }
+
+  function openIssueForm(a) {
+    var target = document.getElementById("inline-form-" + a.tag);
+    if (!target) return;
+    target.innerHTML = '' +
+      '<div class="scanned-inline-inner">' +
+        '<h4>Report an issue</h4>' +
+        '<div class="field">' +
+          '<label>Summary</label>' +
+          '<input class="input" id="issue-summary" type="text" placeholder="Short summary of the problem">' +
+        '</div>' +
+        '<div class="field">' +
+          '<label>Description <span class="muted">(optional)</span></label>' +
+          '<textarea class="input" id="issue-description" rows="3" placeholder="What is wrong? Any details."></textarea>' +
+        '</div>' +
+        '<div class="scanned-inline-actions">' +
+          '<button class="btn btn-primary btn-sm" type="button" id="issue-confirm">Report</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" id="issue-cancel">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    target.hidden = false;
+
+    document.getElementById("issue-cancel").addEventListener("click", function () {
+      target.hidden = true;
+      target.innerHTML = "";
+    });
+
+    document.getElementById("issue-confirm").addEventListener("click", function () {
+      var summary = document.getElementById("issue-summary").value.trim();
+      if (summary.length < 5) {
+        if (window.NBTE && window.NBTE.Toast) {
+          window.NBTE.Toast.warn("Give the issue a summary", "At least 5 characters.");
+        }
+        return;
+      }
+      var description = document.getElementById("issue-description").value;
+      var form = new FormData();
+      form.append("summary", summary);
+      form.append("description", description);
+      form.append("csrfmiddlewaretoken", getCsrf());
+
+      fetch(a.actions.report_url, {
+        method: "POST",
+        body: form,
+        credentials: "same-origin",
+        headers: { "X-CSRFToken": getCsrf(), "X-Requested-With": "XMLHttpRequest" },
+      }).then(function (r) {
+        if (r.ok || r.redirected) {
+          refreshCard(a.tag);
+        } else {
+          throw new Error("Report failed");
+        }
+      }).catch(function () {
+        if (window.NBTE && window.NBTE.Toast) {
+          window.NBTE.Toast.error("Could not report issue", "Please try again or use the detail page.");
+        }
+      });
+    });
+  }
+
+  function refreshCard(tag) {
+    fetchAsset(tag).then(function (a) {
+      renderAssetCard(a);
+      if (window.NBTE && window.NBTE.Toast) {
+        window.NBTE.Toast.success("Updated", a.tag + " — " + a.state_display);
+      }
+    });
+  }
+
+  /* ============================================================
+     Lookup by tag (from camera, manual input, or recent list)
+     ============================================================ */
+  function lookupTag(raw) {
+    var tag = extractTag(raw);
+    if (!tag) return;
+    if (tag === lastScanned) return;
+    lastScanned = tag;
+    fetchAsset(tag)
+      .then(function (a) {
+        renderAssetCard(a);
+        scanResultBox.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (navigator.vibrate) navigator.vibrate(30);
+      })
+      .catch(function () {
+        showNotFound(tag);
+      });
+  }
+
+  /* ============================================================
+     Camera scanning with html5-qrcode
+     ============================================================ */
+  function startCamera() {
+    if (scanning) return;
+    if (typeof Html5Qrcode === "undefined") {
+      cameraFallback.hidden = false;
+      cameraWrap.hidden = false;
+      return;
+    }
+    cameraWrap.hidden = false;
+    cameraFallback.hidden = true;
+    scanning = true;
+
+    try {
+      qrScanner = new Html5Qrcode("qr-reader", { verbose: false });
+    } catch (e) {
+      cameraFallback.hidden = false;
+      scanning = false;
+      return;
+    }
+
+    qrScanner.start(
+      { facingMode: "environment" },
+      { fps: 12, qrbox: { width: 240, height: 240 } },
+      function (decodedText) {
+        // On successful scan — stop, look up, show.
+        lookupTag(decodedText);
+        stopCamera();
+      },
+      function () { /* per-frame errors ignored */ }
+    ).catch(function () {
+      cameraFallback.hidden = false;
+      scanning = false;
+    });
+  }
+
+  function stopCamera() {
+    if (!qrScanner || !scanning) {
+      cameraWrap.hidden = true;
+      return;
+    }
+    qrScanner.stop().then(function () {
+      qrScanner.clear();
+      qrScanner = null;
+      scanning = false;
+      cameraWrap.hidden = true;
+    }).catch(function () {
+      scanning = false;
+      cameraWrap.hidden = true;
+    });
+  }
+
+  openCameraBtn.addEventListener("click", startCamera);
+  closeCameraBtn.addEventListener("click", stopCamera);
+
+  /* ============================================================
+     Manual input — Enter submits, live suggestions after 2 chars
+     ============================================================ */
+  manualForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = input.value.trim();
+    if (!v) return;
+    lookupTag(v);
+    input.value = "";
+    suggestions.hidden = true;
+    suggestions.innerHTML = "";
+  });
+
+  var suggestTimer = null;
+  input.addEventListener("input", function () {
+    var q = input.value.trim();
+    if (suggestTimer) clearTimeout(suggestTimer);
+    if (q.length < 2) {
+      suggestions.hidden = true;
+      suggestions.innerHTML = "";
+      return;
+    }
+    suggestTimer = setTimeout(function () {
+      fetch(lookupUrl + "?q=" + encodeURIComponent(q), {
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var results = data.results || [];
+          if (!results.length) {
+            suggestions.hidden = true;
+            suggestions.innerHTML = "";
+            return;
+          }
+          suggestions.innerHTML = results.map(function (r) {
+            return '<button type="button" class="scan-suggestion" data-suggestion-tag="' + escapeHtml(r.tag) + '">' +
+              '<div class="scan-suggestion-tag">' + escapeHtml(r.tag) + '</div>' +
+              '<div class="scan-suggestion-body">' +
+                '<strong>' + escapeHtml(r.label) + '</strong>' +
+                '<span class="muted">' + escapeHtml(r.category) +
+                  (r.custodian ? ' · ' + escapeHtml(r.custodian) : '') +
+                '</span>' +
+              '</div></button>';
+          }).join("");
+          suggestions.hidden = false;
+          suggestions.querySelectorAll("[data-suggestion-tag]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              lookupTag(btn.getAttribute("data-suggestion-tag"));
+              input.value = "";
+              suggestions.hidden = true;
+              suggestions.innerHTML = "";
+            });
+          });
+        })
+        .catch(function () {});
+    }, 180);
+  });
+
+  // Recent list items — quick lookup
+  document.querySelectorAll("[data-quick-tag]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      lookupTag(btn.getAttribute("data-quick-tag"));
+    });
+  });
+
+  /* ============================================================
+     Focus the input so USB scanners "just work"
+     ============================================================ */
+  input.focus();
+
+  // Re-focus after any click that isn't on a form/button, so a scanner
+  // always has a target.
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("button, a, input, textarea, select, form")) return;
+    if (!scanning) input.focus();
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,48 @@
+<a href="{% url 'portal:event_detail' event.pk %}"
+   class="portal-card {% if event.is_cancelled %}priority-urgent{% endif %} {% if event.is_draft %}is-non-live{% endif %}">
+  <div class="portal-card-image">
+    {% if event.image %}
+      <img src="{{ event.image_thumb_url }}"
+           onerror="this.onerror=null;this.src='{{ event.image.url }}';"
+           alt="" loading="lazy">
+    {% else %}
+      <div class="portal-card-image-placeholder"
+           style="--accent: {{ event.category.color }}; height: 100%;">
+        <span class="portal-card-image-icon">{{ event.category.name|slice:":1" }}</span>
+      </div>
+    {% endif %}
+
+    {% if event.is_draft %}
+      <span class="portal-draft-tag portal-draft-tag-draft">Draft</span>
+    {% elif event.is_cancelled %}
+      <span class="portal-draft-tag portal-draft-tag-cancelled">Cancelled</span>
+    {% endif %}
+  </div>
+
+  <div class="portal-card-body">
+    <div class="portal-card-head">
+      <span class="portal-card-cat" style="--accent: {{ event.category.color }};">
+        {{ event.category.name }}
+      </span>
+      <span class="portal-status portal-status-{{ event.status }}">
+        {{ event.status|capfirst }}
+      </span>
+    </div>
+
+    <h3 class="portal-card-title">{{ event.title }}</h3>
+
+    {% if event.card_summary %}
+      <p class="portal-card-summary">{{ event.card_summary }}</p>
+    {% endif %}
+
+    <div class="portal-card-foot">
+      <span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        {{ event.starts_at|date:"M j · H:i" }}
+      </span>
+      {% if event.location_name %}
+        <span>{{ event.location_name|truncatechars:22 }}</span>
+      {% endif %}
+    </div>
+  </div>
+</a>

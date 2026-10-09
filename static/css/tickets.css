@@ -1,0 +1,1547 @@
+/* ==========================================================================
+   NBTE ICT — Tickets module styles
+   All styling for the tickets app lives here. No inline styles in templates.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Design tokens (local to tickets; fall back to global if undefined)
+   -------------------------------------------------------------------------- */
+:root {
+  --tk-radius: 14px;
+  --tk-radius-sm: 10px;
+  --tk-radius-pill: 999px;
+
+  --tk-border: var(--divider, #e5e7eb);
+  --tk-bg: var(--bg-elevated, #ffffff);
+  --tk-bg-subtle: var(--bg-subtle, #f8fafc);
+  --tk-fg: var(--fg, #0f172a);
+  --tk-fg-muted: var(--fg-muted, #475569);
+  --tk-fg-subtle: var(--fg-subtle, #64748b);
+
+  --tk-accent: #1F6B3E;
+  --tk-accent-soft: rgba(31, 107, 62, 0.08);
+
+  /* State palette */
+  --tk-state-new: #3b82f6;
+  --tk-state-new-soft: rgba(59, 130, 246, 0.12);
+  --tk-state-assigned: #6366f1;
+  --tk-state-assigned-soft: rgba(99, 102, 241, 0.12);
+  --tk-state-in_progress: #06b6d4;
+  --tk-state-in_progress-soft: rgba(6, 182, 212, 0.12);
+  --tk-state-awaiting_response: #f59e0b;
+  --tk-state-awaiting_response-soft: rgba(245, 158, 11, 0.14);
+  --tk-state-escalated: #ef4444;
+  --tk-state-escalated-soft: rgba(239, 68, 68, 0.14);
+  --tk-state-resolved: #10b981;
+  --tk-state-resolved-soft: rgba(16, 185, 129, 0.14);
+  --tk-state-closed: #64748b;
+  --tk-state-closed-soft: rgba(100, 116, 139, 0.12);
+  --tk-state-reopened: #f97316;
+  --tk-state-reopened-soft: rgba(249, 115, 22, 0.14);
+  --tk-state-cancelled: #94a3b8;
+  --tk-state-cancelled-soft: rgba(148, 163, 184, 0.12);
+
+  /* Priority palette */
+  --tk-prio-urgent: #dc2626;
+  --tk-prio-urgent-soft: rgba(220, 38, 38, 0.12);
+  --tk-prio-high: #ea580c;
+  --tk-prio-high-soft: rgba(234, 88, 12, 0.12);
+  --tk-prio-normal: #475569;
+  --tk-prio-normal-soft: rgba(71, 85, 105, 0.10);
+  --tk-prio-low: #94a3b8;
+  --tk-prio-low-soft: rgba(148, 163, 184, 0.12);
+
+  /* SLA palette */
+  --tk-sla-ok: #10b981;
+  --tk-sla-warn: #f59e0b;
+  --tk-sla-danger: #ef4444;
+}
+
+[data-theme="dark"] {
+  --tk-border: rgba(255, 255, 255, 0.08);
+  --tk-bg: #131a26;
+  --tk-bg-subtle: #0e141e;
+  --tk-fg: #e5e7eb;
+  --tk-fg-muted: #94a3b8;
+  --tk-fg-subtle: #64748b;
+}
+
+/* --------------------------------------------------------------------------
+   2. Page scaffolding
+   -------------------------------------------------------------------------- */
+.tk-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 4px 0 40px;
+}
+
+.tk-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.tk-page-head h1 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+  color: var(--tk-fg);
+}
+.tk-page-head p {
+  margin: 0;
+  color: var(--tk-fg-subtle);
+  font-size: 14px;
+}
+.tk-page-head-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* --------------------------------------------------------------------------
+   3. Chips: state, priority, category
+   -------------------------------------------------------------------------- */
+.tk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--tk-radius-pill);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.tk-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* State chips */
+.tk-chip-state-new               { background: var(--tk-state-new-soft);               color: var(--tk-state-new); }
+.tk-chip-state-assigned          { background: var(--tk-state-assigned-soft);          color: var(--tk-state-assigned); }
+.tk-chip-state-in_progress       { background: var(--tk-state-in_progress-soft);       color: var(--tk-state-in_progress); }
+.tk-chip-state-awaiting_response { background: var(--tk-state-awaiting_response-soft); color: var(--tk-state-awaiting_response); }
+.tk-chip-state-escalated         { background: var(--tk-state-escalated-soft);         color: var(--tk-state-escalated); }
+.tk-chip-state-resolved          { background: var(--tk-state-resolved-soft);          color: var(--tk-state-resolved); }
+.tk-chip-state-closed            { background: var(--tk-state-closed-soft);            color: var(--tk-state-closed); }
+.tk-chip-state-reopened          { background: var(--tk-state-reopened-soft);          color: var(--tk-state-reopened); }
+.tk-chip-state-cancelled         { background: var(--tk-state-cancelled-soft);         color: var(--tk-state-cancelled); text-decoration: line-through; }
+
+/* Priority chips */
+.tk-chip-prio-urgent { background: var(--tk-prio-urgent-soft); color: var(--tk-prio-urgent); }
+.tk-chip-prio-high   { background: var(--tk-prio-high-soft);   color: var(--tk-prio-high); }
+.tk-chip-prio-normal { background: var(--tk-prio-normal-soft); color: var(--tk-prio-normal); }
+.tk-chip-prio-low    { background: var(--tk-prio-low-soft);    color: var(--tk-prio-low); }
+
+/* Category chip */
+.tk-chip-cat {
+  background: var(--tk-bg-subtle);
+  color: var(--tk-fg-muted);
+  border-color: var(--tk-border);
+}
+
+/* SLA chip */
+.tk-chip-sla-ok     { background: rgba(16, 185, 129, 0.10); color: var(--tk-sla-ok); }
+.tk-chip-sla-warn   { background: rgba(245, 158, 11, 0.14); color: var(--tk-sla-warn); }
+.tk-chip-sla-danger { background: rgba(239, 68, 68, 0.14);  color: var(--tk-sla-danger); }
+
+/* Reference — monospace, tight */
+.tk-ref {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tk-fg-muted);
+  letter-spacing: -0.01em;
+}
+
+/* --------------------------------------------------------------------------
+   4. Filter bar
+   -------------------------------------------------------------------------- */
+.tk-filters {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  background: var(--tk-bg);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius);
+}
+.tk-filters .tk-search {
+  flex: 1 1 240px;
+  height: 38px;
+  padding: 0 14px;
+  font-size: 13.5px;
+  border-radius: var(--tk-radius-sm);
+  border: 1px solid var(--tk-border);
+  background: var(--tk-bg-subtle);
+  color: var(--tk-fg);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.tk-filters .tk-search:focus {
+  outline: none;
+  border-color: var(--tk-accent);
+  background: var(--tk-bg);
+}
+.tk-filters select {
+  height: 38px;
+  padding: 0 34px 0 12px;
+  font-size: 13.5px;
+  border-radius: var(--tk-radius-sm);
+  border: 1px solid var(--tk-border);
+  background: var(--tk-bg-subtle);
+  color: var(--tk-fg);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.tk-filters select:focus {
+  outline: none;
+  border-color: var(--tk-accent);
+  background: var(--tk-bg);
+}
+.tk-filters .tk-filter-reset {
+  height: 38px;
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: var(--tk-radius-sm);
+  color: var(--tk-fg-subtle);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.tk-filters .tk-filter-reset:hover {
+  color: var(--tk-fg);
+  background: var(--tk-bg-subtle);
+}
+
+/* Tab row above the filters */
+.tk-tabs {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--tk-border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tk-tabs::-webkit-scrollbar { display: none; }
+.tk-tab {
+  padding: 10px 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--tk-fg-subtle);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.tk-tab:hover { color: var(--tk-fg); }
+.tk-tab.is-active {
+  color: var(--tk-accent);
+  border-bottom-color: var(--tk-accent);
+  font-weight: 600;
+}
+.tk-tab-count {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: var(--tk-radius-pill);
+  background: var(--tk-bg-subtle);
+  color: var(--tk-fg-subtle);
+}
+.tk-tab.is-active .tk-tab-count {
+  background: var(--tk-accent-soft);
+  color: var(--tk-accent);
+}
+
+/* --------------------------------------------------------------------------
+   5. Ticket cards (list view)
+   -------------------------------------------------------------------------- */
+.tk-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.tk-card {
+  display: grid;
+  grid-template-columns: 84px 1fr auto;
+  gap: 16px;
+  padding: 16px 18px;
+  background: var(--tk-bg);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius);
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+.tk-card:hover {
+  border-color: color-mix(in oklab, var(--tk-accent) 40%, var(--tk-border));
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+}
+.tk-card:active { transform: translateY(1px); }
+
+/* Left accent bar per state */
+.tk-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--tk-state-new);
+}
+.tk-card[data-state="new"]               ::before { background: var(--tk-state-new); }
+.tk-card[data-state="assigned"]          ::before { background: var(--tk-state-assigned); }
+.tk-card[data-state="in_progress"]       ::before { background: var(--tk-state-in_progress); }
+.tk-card[data-state="awaiting_response"] ::before { background: var(--tk-state-awaiting_response); }
+.tk-card[data-state="escalated"]         ::before { background: var(--tk-state-escalated); }
+.tk-card[data-state="resolved"]          ::before { background: var(--tk-state-resolved); }
+.tk-card[data-state="closed"]            ::before { background: var(--tk-state-closed); }
+.tk-card[data-state="reopened"]          ::before { background: var(--tk-state-reopened); }
+.tk-card[data-state="cancelled"]         ::before { background: var(--tk-state-cancelled); }
+.tk-card[data-state="new"]::before               { background: var(--tk-state-new); }
+.tk-card[data-state="assigned"]::before          { background: var(--tk-state-assigned); }
+.tk-card[data-state="in_progress"]::before       { background: var(--tk-state-in_progress); }
+.tk-card[data-state="awaiting_response"]::before { background: var(--tk-state-awaiting_response); }
+.tk-card[data-state="escalated"]::before         { background: var(--tk-state-escalated); }
+.tk-card[data-state="resolved"]::before          { background: var(--tk-state-resolved); }
+.tk-card[data-state="closed"]::before            { background: var(--tk-state-closed); }
+.tk-card[data-state="reopened"]::before          { background: var(--tk-state-reopened); }
+.tk-card[data-state="cancelled"]::before         { background: var(--tk-state-cancelled); }
+
+.tk-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  padding-left: 4px;
+}
+.tk-card-left .tk-chip { font-size: 10.5px; padding: 2px 8px; }
+
+.tk-card-body { min-width: 0; }
+.tk-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tk-fg);
+  margin: 0 0 6px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.tk-card-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--tk-fg-subtle);
+  align-items: center;
+}
+.tk-card-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+.tk-card-meta-item svg { flex-shrink: 0; opacity: 0.7; }
+
+.tk-card-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 130px;
+}
+
+/* SLA bar in card */
+.tk-sla-bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--tk-border);
+  overflow: hidden;
+  position: relative;
+}
+.tk-sla-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--tk-sla-ok);
+  transition: width 0.3s ease, background 0.3s ease;
+}
+.tk-sla-bar[data-level="warn"] .tk-sla-bar-fill { background: var(--tk-sla-warn); }
+.tk-sla-bar[data-level="danger"] .tk-sla-bar-fill { background: var(--tk-sla-danger); }
+.tk-sla-label {
+  font-size: 10.5px;
+  color: var(--tk-fg-subtle);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  margin-top: 4px;
+  text-align: right;
+}
+
+/* --------------------------------------------------------------------------
+   6. Empty state
+   -------------------------------------------------------------------------- */
+.tk-empty {
+  padding: 60px 20px;
+  text-align: center;
+  background: var(--tk-bg);
+  border: 1px dashed var(--tk-border);
+  border-radius: var(--tk-radius);
+}
+.tk-empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--tk-bg-subtle);
+  color: var(--tk-fg-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.tk-empty h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: var(--tk-fg);
+}
+.tk-empty p {
+  font-size: 13.5px;
+  color: var(--tk-fg-subtle);
+  margin: 0 0 20px;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* --------------------------------------------------------------------------
+   7. Pagination
+   -------------------------------------------------------------------------- */
+.tk-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 24px;
+}
+.tk-pagination a,
+.tk-pagination span {
+  padding: 7px 12px;
+  font-size: 13px;
+  border-radius: var(--tk-radius-sm);
+  text-decoration: none;
+  color: var(--tk-fg-muted);
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.tk-pagination a:hover {
+  background: var(--tk-bg-subtle);
+  color: var(--tk-fg);
+  border-color: var(--tk-border);
+}
+.tk-pagination .is-current {
+  background: var(--tk-accent);
+  color: #fff;
+  font-weight: 600;
+}
+.tk-pagination .is-disabled {
+  color: var(--tk-fg-subtle);
+  opacity: 0.5;
+}
+
+/* --------------------------------------------------------------------------
+   8. Detail page
+   -------------------------------------------------------------------------- */
+.tk-detail {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Hero */
+.tk-hero {
+  padding: 26px 28px;
+  background: var(--tk-bg);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius);
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.tk-hero::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--tk-state-new);
+}
+.tk-hero[data-state="new"]::before               { background: var(--tk-state-new); }
+.tk-hero[data-state="assigned"]::before          { background: var(--tk-state-assigned); }
+.tk-hero[data-state="in_progress"]::before       { background: var(--tk-state-in_progress); }
+.tk-hero[data-state="awaiting_response"]::before { background: var(--tk-state-awaiting_response); }
+.tk-hero[data-state="escalated"]::before         { background: var(--tk-state-escalated); }
+.tk-hero[data-state="resolved"]::before          { background: var(--tk-state-resolved); }
+.tk-hero[data-state="closed"]::before            { background: var(--tk-state-closed); }
+.tk-hero[data-state="reopened"]::before          { background: var(--tk-state-reopened); }
+.tk-hero[data-state="cancelled"]::before         { background: var(--tk-state-cancelled); }
+
+.tk-hero-top {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.tk-hero-ref {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tk-fg-subtle);
+  letter-spacing: 0.02em;
+  padding: 3px 10px;
+  background: var(--tk-bg-subtle);
+  border-radius: var(--tk-radius-pill);
+}
+.tk-hero h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--tk-fg);
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  margin: 0 0 14px;
+}
+.tk-hero-meta {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--tk-fg-subtle);
+  align-items: center;
+}
+.tk-hero-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tk-hero-meta-item svg { opacity: 0.7; }
+.tk-hero-meta-item strong { color: var(--tk-fg); font-weight: 600; }
+
+/* Grid layout */
+.tk-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .tk-detail-grid { grid-template-columns: 1fr; }
+}
+
+/* Main content blocks */
+.tk-block {
+  background: var(--tk-bg);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius);
+  padding: 22px 24px;
+  margin-bottom: 16px;
+}
+.tk-block:last-child { margin-bottom: 0; }
+
+.tk-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--tk-fg-subtle);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tk-block-title svg { opacity: 0.6; }
+
+.tk-body {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--tk-fg);
+  white-space: pre-wrap;
+}
+
+/* Resolution block */
+.tk-resolution {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: rgba(16, 185, 129, 0.06);
+  border-left: 3px solid var(--tk-state-resolved);
+  border-radius: 0 var(--tk-radius-sm) var(--tk-radius-sm) 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--tk-fg);
+}
+.tk-resolution strong {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--tk-state-resolved);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   9. Timeline (feed)
+   -------------------------------------------------------------------------- */
+.tk-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+.tk-tl-item {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 12px;
+  padding-bottom: 20px;
+  position: relative;
+}
+.tk-tl-item:last-child { padding-bottom: 0; }
+.tk-tl-item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 30px;
+  bottom: 0;
+  width: 2px;
+  background: var(--tk-border);
+}
+
+.tk-tl-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tk-bg-subtle);
+  color: var(--tk-fg-subtle);
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  border: 2px solid var(--tk-bg);
+}
+.tk-tl-icon svg { width: 15px; height: 15px; }
+
+.tk-tl-item[data-kind="created"]              .tk-tl-icon { background: var(--tk-state-new-soft);               color: var(--tk-state-new); }
+.tk-tl-item[data-kind="assigned"]             .tk-tl-icon,
+.tk-tl-item[data-kind="reassigned"]           .tk-tl-icon { background: var(--tk-state-assigned-soft);          color: var(--tk-state-assigned); }
+.tk-tl-item[data-kind="in_progress"]          .tk-tl-icon { background: var(--tk-state-in_progress-soft);       color: var(--tk-state-in_progress); }
+.tk-tl-item[data-kind="awaiting_response"]    .tk-tl-icon { background: var(--tk-state-awaiting_response-soft); color: var(--tk-state-awaiting_response); }
+.tk-tl-item[data-kind="escalated"]            .tk-tl-icon { background: var(--tk-state-escalated-soft);         color: var(--tk-state-escalated); }
+.tk-tl-item[data-kind="resolved"]             .tk-tl-icon { background: var(--tk-state-resolved-soft);          color: var(--tk-state-resolved); }
+.tk-tl-item[data-kind="closed"]               .tk-tl-icon { background: var(--tk-state-closed-soft);            color: var(--tk-state-closed); }
+.tk-tl-item[data-kind="reopened"]             .tk-tl-icon { background: var(--tk-state-reopened-soft);          color: var(--tk-state-reopened); }
+.tk-tl-item[data-kind="cancelled"]            .tk-tl-icon { background: var(--tk-state-cancelled-soft);         color: var(--tk-state-cancelled); }
+.tk-tl-item[data-kind="commented"]            .tk-tl-icon { background: rgba(139, 92, 246, 0.12);              color: #8b5cf6; }
+.tk-tl-item[data-kind="internal_note"]        .tk-tl-icon { background: rgba(245, 158, 11, 0.14);              color: #f59e0b; }
+.tk-tl-item[data-kind="attached"]             .tk-tl-icon { background: rgba(236, 72, 153, 0.12);              color: #ec4899; }
+.tk-tl-item[data-kind="comment_deleted"]      .tk-tl-icon,
+.tk-tl-item[data-kind="attachment_deleted"]   .tk-tl-icon { background: rgba(239, 68, 68, 0.10);               color: #ef4444; }
+
+.tk-tl-body {
+  padding-top: 4px;
+  min-width: 0;
+}
+.tk-tl-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+.tk-tl-kind {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tk-fg);
+}
+.tk-tl-time {
+  font-size: 11.5px;
+  color: var(--tk-fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.tk-tl-msg {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--tk-fg-muted);
+  word-wrap: break-word;
+}
+.tk-tl-actor {
+  font-size: 12px;
+  color: var(--tk-fg-subtle);
+  margin-top: 4px;
+}
+.tk-tl-empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--tk-fg-subtle);
+}
+
+/* --------------------------------------------------------------------------
+   10. Comments
+   -------------------------------------------------------------------------- */
+.tk-comment {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--tk-border);
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+}
+.tk-comment:last-child { border-bottom: 0; padding-bottom: 0; }
+.tk-comment:first-child { padding-top: 0; }
+
+.tk-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1F6B3E, #2d8a56);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+.tk-avatar-internal {
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+}
+
+.tk-comment-body {
+  min-width: 0;
+}
+.tk-comment-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+.tk-comment-author {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--tk-fg);
+}
+.tk-comment-time {
+  font-size: 11.5px;
+  color: var(--tk-fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.tk-comment-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--tk-fg);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.tk-comment.is-internal {
+  background: rgba(245, 158, 11, 0.04);
+  padding: 14px 14px 14px 12px;
+  margin: 0 -14px 0 -12px;
+  border-radius: var(--tk-radius-sm);
+  border-bottom: 0;
+  margin-bottom: 10px;
+}
+.tk-comment.is-internal .tk-comment-text {
+  color: var(--tk-fg-muted);
+  font-style: italic;
+}
+
+.tk-comment-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.tk-comment:hover .tk-comment-actions { opacity: 1; }
+
+.tk-icon-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--tk-fg-subtle);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.tk-icon-btn:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.18);
+}
+.tk-icon-btn:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 1px;
+}
+
+/* Comment composer */
+.tk-composer {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--tk-border);
+}
+.tk-composer textarea {
+  width: 100%;
+  min-height: 84px;
+  max-height: 260px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--tk-fg);
+  background: var(--tk-bg-subtle);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius-sm);
+  resize: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.tk-composer textarea:focus {
+  outline: none;
+  background: var(--tk-bg);
+  border-color: var(--tk-accent);
+}
+.tk-composer-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 10px;
+}
+.tk-composer-hint {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--tk-fg-subtle);
+}
+.tk-composer-internal {
+  background: rgba(245, 158, 11, 0.06);
+  border-left: 3px solid var(--tk-state-awaiting_response);
+  padding: 14px 16px;
+  border-radius: 0 var(--tk-radius-sm) var(--tk-radius-sm) 0;
+}
+
+/* --------------------------------------------------------------------------
+   11. Sidebar
+   -------------------------------------------------------------------------- */
+.tk-side {
+  position: sticky;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tk-side-card {
+  background: var(--tk-bg);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius);
+  padding: 18px 20px;
+}
+.tk-side-card-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--tk-fg-subtle);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+/* Status card */
+.tk-status-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  font-size: 13px;
+}
+.tk-status-grid dt {
+  color: var(--tk-fg-subtle);
+  font-weight: 500;
+}
+.tk-status-grid dd {
+  margin: 0;
+  color: var(--tk-fg);
+  font-weight: 500;
+  text-align: right;
+}
+.tk-status-grid dd strong { font-weight: 600; }
+
+/* SLA display in sidebar */
+.tk-sla-mini {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--tk-border);
+}
+.tk-sla-mini-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+.tk-sla-mini-row > span:first-child {
+  color: var(--tk-fg-subtle);
+  font-weight: 500;
+}
+.tk-sla-mini-row > span:last-child {
+  color: var(--tk-fg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tk-sla-mini-row.is-warn > span:last-child { color: var(--tk-sla-warn); }
+.tk-sla-mini-row.is-danger > span:last-child { color: var(--tk-sla-danger); }
+
+/* Action card */
+.tk-action-section {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--tk-border);
+}
+.tk-action-section:last-child { padding-bottom: 0; border-bottom: 0; }
+.tk-action-section:first-child { padding-top: 0; }
+.tk-action-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tk-fg-muted);
+  margin-bottom: 8px;
+  display: block;
+}
+.tk-action-section form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tk-action-section input[type="text"],
+.tk-action-section input[type="search"],
+.tk-action-section textarea,
+.tk-action-section select {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--tk-fg);
+  background: var(--tk-bg-subtle);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius-sm);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.tk-action-section textarea { resize: vertical; min-height: 60px; line-height: 1.5; }
+.tk-action-section input:focus,
+.tk-action-section textarea:focus,
+.tk-action-section select:focus {
+  outline: none;
+  background: var(--tk-bg);
+  border-color: var(--tk-accent);
+}
+
+/* Two-column grid for close-rating + comment */
+.tk-action-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+/* Star rating — CSS-side polish (JS in tickets.js makes it interactive) */
+.tk-stars {
+  display: inline-flex;
+  gap: 3px;
+  font-size: 18px;
+  color: var(--tk-border);
+  user-select: none;
+  cursor: pointer;
+}
+.tk-stars .is-filled { color: #f59e0b; }
+.tk-stars .tk-star { transition: color 0.1s ease, transform 0.1s ease; }
+.tk-stars .tk-star:hover { transform: scale(1.12); }
+
+/* Button variants inside actions */
+.tk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: var(--tk-radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  text-decoration: none;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.tk-btn:active { transform: translateY(1px); }
+.tk-btn-primary {
+  background: var(--tk-accent);
+  color: #fff;
+}
+.tk-btn-primary:hover { background: color-mix(in oklab, var(--tk-accent) 88%, black); }
+.tk-btn-ghost {
+  background: transparent;
+  color: var(--tk-fg-muted);
+  border-color: var(--tk-border);
+}
+.tk-btn-ghost:hover { background: var(--tk-bg-subtle); color: var(--tk-fg); }
+.tk-btn-danger {
+  background: transparent;
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.25);
+}
+.tk-btn-danger:hover { background: rgba(220, 38, 38, 0.08); border-color: #dc2626; }
+.tk-btn-full { width: 100%; }
+
+/* --------------------------------------------------------------------------
+   12. Attachments
+   -------------------------------------------------------------------------- */
+.tk-attachments {
+  display: grid;
+  gap: 8px;
+}
+.tk-attachment {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--tk-bg-subtle);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius-sm);
+  transition: background 0.15s ease;
+}
+.tk-attachment:hover { background: var(--tk-bg); }
+.tk-attachment-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--tk-radius-sm);
+  background: rgba(31, 107, 62, 0.08);
+  color: var(--tk-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tk-attachment-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--tk-fg);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+.tk-attachment-name:hover { color: var(--tk-accent); }
+.tk-attachment-meta {
+  font-size: 11.5px;
+  color: var(--tk-fg-subtle);
+  margin-top: 2px;
+}
+
+.tk-upload {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--tk-bg-subtle);
+  border: 1px dashed var(--tk-border);
+  border-radius: var(--tk-radius-sm);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.tk-upload input[type="file"] {
+  font-size: 12.5px;
+  color: var(--tk-fg-muted);
+}
+
+/* --------------------------------------------------------------------------
+   13. Category picker (create_pick.html)
+   -------------------------------------------------------------------------- */
+.tk-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 8px;
+}
+.tk-cat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px;
+  background: var(--tk-bg);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+.tk-cat-card:hover {
+  border-color: color-mix(in oklab, var(--tk-accent) 45%, var(--tk-border));
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.07);
+  transform: translateY(-1px);
+}
+.tk-cat-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--tk-accent-soft);
+  color: var(--tk-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tk-cat-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tk-fg);
+  margin: 0;
+}
+.tk-cat-card-desc {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--tk-fg-subtle);
+  margin: 0;
+  flex: 1;
+}
+.tk-cat-card-route {
+  font-size: 12px;
+  color: var(--tk-fg-subtle);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-top: 8px;
+  border-top: 1px solid var(--tk-border);
+}
+.tk-cat-card-route strong { color: var(--tk-fg-muted); font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   14. Create form
+   -------------------------------------------------------------------------- */
+.tk-form {
+  max-width: 720px;
+  background: var(--tk-bg);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius);
+  padding: 26px 28px;
+}
+.tk-form-section {
+  padding-bottom: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--tk-border);
+}
+.tk-form-section:last-of-type { border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }
+
+.tk-field {
+  display: block;
+  margin-bottom: 18px;
+}
+.tk-field:last-child { margin-bottom: 0; }
+.tk-field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tk-fg);
+  margin-bottom: 6px;
+}
+.tk-field-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--tk-fg-subtle);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+.tk-field-required { color: #dc2626; margin-left: 2px; }
+
+.tk-field input[type="text"],
+.tk-field input[type="search"],
+.tk-field textarea,
+.tk-field select {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--tk-fg);
+  background: var(--tk-bg-subtle);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius-sm);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.tk-field textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+.tk-field input:focus,
+.tk-field textarea:focus,
+.tk-field select:focus {
+  outline: none;
+  background: var(--tk-bg);
+  border-color: var(--tk-accent);
+}
+.tk-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 600px) {
+  .tk-field-row { grid-template-columns: 1fr; }
+}
+.tk-field-error {
+  display: block;
+  font-size: 12.5px;
+  color: #dc2626;
+  margin-top: 5px;
+}
+
+.tk-form-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------------
+   15. Dashboard widget
+   -------------------------------------------------------------------------- */
+.tk-widget {
+  background: var(--tk-bg);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius);
+  margin: 20px 0;
+  overflow: hidden;
+}
+.tk-widget-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--tk-border);
+}
+.tk-widget-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--tk-fg);
+  margin: 0;
+}
+.tk-widget-link {
+  font-size: 12.5px;
+  color: var(--tk-fg-subtle);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.tk-widget-link:hover { color: var(--tk-accent); }
+
+.tk-widget-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+@media (max-width: 720px) {
+  .tk-widget-cols { grid-template-columns: 1fr; }
+  .tk-widget-col + .tk-widget-col { border-left: 0; border-top: 1px solid var(--tk-border); }
+}
+
+.tk-widget-col {
+  display: flex;
+  flex-direction: column;
+}
+.tk-widget-col + .tk-widget-col {
+  border-left: 1px solid var(--tk-border);
+}
+.tk-widget-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tk-fg-subtle);
+  background: var(--tk-bg-subtle);
+  border-bottom: 1px solid var(--tk-border);
+}
+.tk-widget-col-count {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: var(--tk-radius-pill);
+  background: var(--tk-bg);
+  border: 1px solid var(--tk-border);
+  color: var(--tk-fg-subtle);
+}
+.tk-widget-col-count.is-active {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.tk-widget-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+.tk-widget-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--tk-border);
+  text-decoration: none;
+  color: var(--tk-fg);
+  font-size: 13px;
+  transition: background 0.12s ease;
+}
+.tk-widget-item:hover { background: var(--tk-bg-subtle); }
+.tk-widget-list > li:last-child .tk-widget-item { border-bottom: 0; }
+.tk-widget-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.tk-widget-empty {
+  padding: 22px 20px;
+  font-size: 13px;
+  color: var(--tk-fg-subtle);
+  text-align: center;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tk-widget-foot {
+  padding: 10px 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--tk-fg-subtle);
+  text-decoration: none;
+  border-top: 1px solid var(--tk-border);
+  background: var(--tk-bg-subtle);
+  text-align: center;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.tk-widget-foot:hover { color: var(--tk-accent); background: var(--tk-bg); }
+
+/* --------------------------------------------------------------------------
+   16. HTMX polish
+   -------------------------------------------------------------------------- */
+.tk-list-container.htmx-request {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out;
+}
+
+/* New activity pulse on the timeline when SSE pushes an update */
+.tk-tl-item.is-new {
+  animation: tk-tl-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes tk-tl-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --------------------------------------------------------------------------
+   17. Confirm modal (used in detail.html)
+   -------------------------------------------------------------------------- */
+.tk-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: tk-fade-in 0.15s ease-out;
+}
+.tk-modal-overlay[hidden] { display: none; }
+@keyframes tk-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes tk-modal-pop {
+  from { transform: scale(0.96) translateY(6px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+.tk-modal {
+  background: var(--tk-bg);
+  border-radius: var(--tk-radius);
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25), 0 4px 12px rgba(15, 23, 42, 0.12);
+  padding: 22px;
+  animation: tk-modal-pop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid var(--tk-border);
+}
+.tk-modal-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.tk-modal-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.10);
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tk-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--tk-fg);
+  margin: 6px 0 0;
+}
+.tk-modal-body {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--tk-fg-muted);
+  margin-bottom: 18px;
+}
+.tk-modal-warning {
+  font-size: 12px;
+  color: #dc2626;
+  font-weight: 500;
+  margin-top: 8px;
+}
+.tk-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --------------------------------------------------------------------------
+   18. Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  .tk-card {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .tk-card-right {
+    flex-direction: row;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .tk-sla-bar { min-width: 120px; }
+  .tk-hero { padding: 20px; }
+  .tk-hero h1 { font-size: 18px; }
+  .tk-block { padding: 18px; }
+  .tk-form { padding: 20px; }
+}
+
+/* --------------------------------------------------------------------------
+   Sidebar highlight (sign-off card)
+   -------------------------------------------------------------------------- */
+.tk-side-card-highlight {
+  border-color: var(--tk-state-awaiting_response);
+  background: linear-gradient(180deg,
+    rgba(245, 158, 11, 0.05) 0%,
+    var(--tk-bg) 60%);
+  position: relative;
+}
+.tk-side-card-highlight::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--tk-state-awaiting_response);
+  border-top-left-radius: var(--tk-radius);
+  border-bottom-left-radius: var(--tk-radius);
+}
+
+/* --------------------------------------------------------------------------
+   Collection info inside the resolution block
+   -------------------------------------------------------------------------- */
+.tk-collection {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(16, 185, 129, 0.30);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.tk-collection strong { color: var(--tk-state-resolved); margin-right: 4px; }
+
+.tk-resolution-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--tk-fg-subtle);
+  line-height: 1.55;
+}
+
+/* --------------------------------------------------------------------------
+   Form banner
+   -------------------------------------------------------------------------- */
+.tk-form-banner {
+  padding: 12px 16px;
+  border-radius: var(--tk-radius-sm);
+  margin-bottom: 20px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.tk-form-banner-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 3px solid #ef4444;
+  color: #dc2626;
+}
+
+/* --------------------------------------------------------------------------
+   Asset manual-entry visibility
+   -------------------------------------------------------------------------- */
+.tk-field[data-asset-manual-wrap] { transition: opacity 0.15s ease; }
+.tk-field[data-asset-manual-wrap].is-hidden {
+  opacity: 0.4;
+  pointer-events: none;
+}
+

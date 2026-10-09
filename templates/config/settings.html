@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<p class="muted">Business-rule values only. Secrets and site identity live in environment variables.</p>
+
+<h2>Email delivery today</h2>
+<table>
+  <tr><th>Provider</th><th>Sent</th><th>Daily limit</th></tr>
+  {% for q in quota %}<tr><td>{{ q.provider }}</td><td>{{ q.used }}</td><td>{{ q.limit }}</td></tr>{% endfor %}
+</table>
+<form method="post" action="{% url 'config:test_email' %}" class="inline">{% csrf_token %}
+  <button class="btn" type="submit">Send test email to me</button>
+</form>
+
+{% for group, items in grouped %}
+<h2>{{ group }}</h2>
+<table>
+  <tr><th>Setting</th><th>Scope</th><th>Value</th><th></th></tr>
+  {% for e in items %}
+  <tr>
+    <td><code>{{ e.key }}</code><br><span class="muted">{{ e.description }}</span></td>
+    <td>{{ e.scope }}</td>
+    <form method="post" action="{% url 'config:save' e.pk %}">{% csrf_token %}
+      <td><input type="text" name="value" value="{{ e.value }}"> <span class="muted">{{ e.get_value_type_display }}</span></td>
+      <td><button class="btn" type="submit">Save</button></td>
+    </form>
+  </tr>
+  {% endfor %}
+</table>
+{% empty %}
+<p>No settings registered yet. Run <code>python manage.py seed_config</code>.</p>
+{% endfor %}
+{% endblock %}

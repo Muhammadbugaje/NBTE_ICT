@@ -1,0 +1,44 @@
+{% comment %}
+Rank-aware assignee picker.
+Usage:
+    {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_task=task %}
+    {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_category_code=category.code picker_initial_ids=current_ids %}
+{% endcomment %}
+<div class="tsk-picker"
+     data-assignee-picker
+     data-name="{{ picker_name|default:'assignees' }}"
+     {% if picker_task %}data-task-id="{{ picker_task.pk }}"{% endif %}
+     {% if picker_category_code %}data-category-code="{{ picker_category_code }}"{% endif %}
+     data-initial-ids="{{ picker_initial_ids|default:'' }}">
+
+  <div class="tsk-picker-chips" data-picker-chips></div>
+
+  <button type="button" class="tsk-picker-trigger" data-picker-trigger
+          aria-haspopup="listbox" aria-expanded="false">
+    <span class="tsk-picker-trigger-icon" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </span>
+    <span class="tsk-picker-trigger-label" data-picker-label>Add people…</span>
+    <svg class="tsk-picker-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+
+  <div class="tsk-picker-panel" data-picker-panel hidden>
+    <div class="tsk-picker-search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" data-picker-search placeholder="Search by name, role, or department…" autocomplete="off">
+    </div>
+
+    <div class="tsk-picker-list" data-picker-list role="listbox"></div>
+
+    <div class="tsk-picker-state" data-picker-state>
+      <span class="tsk-picker-loading">Click to load eligible people…</span>
+    </div>
+
+    <div class="tsk-picker-foot">
+      <button type="button" class="tsk-picker-link" data-picker-clear>Clear all</button>
+      <button type="button" class="tsk-btn tsk-btn-primary tsk-btn-sm" data-picker-close>Done</button>
+    </div>
+  </div>
+
+  <div data-picker-hidden-inputs hidden></div>
+</div>

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New category{% else %}Edit {{ cat.name }}{% endif %}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="wf-page wf-page-narrow">
+  {% include "manage/workflow/_tabs.html" %}
+
+  <a href="{% url 'workflow_manage:category_list' %}" class="wf-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    All categories
+  </a>
+
+  <header class="wf-hero">
+    <div class="wf-hero-inner">
+      <div class="wf-hero-icon wf-hero-icon-purple">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </div>
+      <div>
+        <h1>{% if mode == "create" %}New category{% else %}Edit category{% endif %}</h1>
+        <p>Group related request types under one theme.</p>
+      </div>
+    </div>
+  </header>
+
+  <form method="post" class="wf-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+    <section class="wf-section">
+      <div class="wf-field-row">
+        <div class="wf-field">
+          <label for="{{ form.name.id_for_label }}">Name</label>
+          {{ form.name }}{{ form.name.errors }}
+        </div>
+        <div class="wf-field">
+          <label for="{{ form.code.id_for_label }}">Code</label>
+          {{ form.code }}{{ form.code.errors }}
+          <span class="wf-hint">Lowercase, no spaces.</span>
+        </div>
+      </div>
+      <div class="wf-field">
+        <label for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}{{ form.description.errors }}
+      </div>
+      <div class="wf-field-row">
+        <div class="wf-field">
+          <label for="{{ form.icon.id_for_label }}">Icon hint <span class="wf-muted">(optional)</span></label>
+          {{ form.icon }}{{ form.icon.errors }}
+        </div>
+        <div class="wf-field">
+          <label for="{{ form.sort_order.id_for_label }}">Sort order</label>
+          {{ form.sort_order }}{{ form.sort_order.errors }}
+        </div>
+      </div>
+      <label class="wf-check">
+        {{ form.is_active }}
+        <span>Active</span>
+      </label>
+    </section>
+
+    <div class="wf-form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if mode == "create" %}Create category{% else %}Save changes{% endif %}
+      </button>
+      <a href="{% url 'workflow_manage:category_list' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
