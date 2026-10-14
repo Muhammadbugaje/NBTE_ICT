@@ -129,6 +129,20 @@ class ContactMessage(TimeStampedModel):
     message = models.TextField()
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=255, blank=True)
+    handling_department = models.ForeignKey(
+        "staff.Department",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="public_contact_messages",
+    )
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_contact_messages",
+    )
     is_read = models.BooleanField(default=False, db_index=True)
     is_handled = models.BooleanField(default=False, db_index=True)
     handled_by = models.ForeignKey(
@@ -142,6 +156,52 @@ class ContactMessage(TimeStampedModel):
         ordering = ["-created_at"]
         verbose_name = "contact message"
         verbose_name_plural = "contact messages"
+        permissions = [
+            (
+                "can_handle_contact_messages",
+                "Can view and handle public contact messages",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.name} <{self.email}> · {self.subject or '(no subject)'}"
+
+
+class ContactMessageActivity(TimeStampedModel):
+    ACTION_RECEIVED = "received"
+    ACTION_ASSIGNED = "assigned"
+    ACTION_READ = "read"
+    ACTION_HANDLED = "handled"
+    ACTION_REOPENED = "reopened"
+    ACTION_NOTE = "note"
+    ACTION_CHOICES = [
+        (ACTION_RECEIVED, "Received"),
+        (ACTION_ASSIGNED, "Assignment changed"),
+        (ACTION_READ, "Marked as read"),
+        (ACTION_HANDLED, "Marked as handled"),
+        (ACTION_REOPENED, "Reopened"),
+        (ACTION_NOTE, "Internal note"),
+    ]
+
+    AUDITED = True
+
+    contact_message = models.ForeignKey(
+        ContactMessage,
+        on_delete=models.CASCADE,
+        related_name="activities",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    action = models.CharField(max_length=16, choices=ACTION_CHOICES, db_index=True)
+    details = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+
+    def __str__(self):
+        return f"{self.get_action_display()} · {self.contact_message_id}"

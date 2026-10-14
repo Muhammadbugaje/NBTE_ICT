@@ -148,8 +148,8 @@ def _generate_tag_on_save(asset):
 @admin.register(AssetAssignment)
 class AssetAssignmentAdmin(admin.ModelAdmin):
     list_display = ("asset", "assigned_to", "assigned_by", "assigned_at",
-                    "returned_at", "is_open_display")
-    list_filter = ("assigned_at", "returned_at")
+                    "expected_return_at", "returned_at", "is_open_display")
+    list_filter = ("assigned_at", "expected_return_at", "returned_at")
     search_fields = ("asset__asset_tag", "assigned_to__email",
                      "assigned_to__first_name", "assigned_to__last_name")
     autocomplete_fields = ("asset", "assigned_to", "assigned_by", "returned_to")

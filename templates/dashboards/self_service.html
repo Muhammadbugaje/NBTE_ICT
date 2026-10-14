@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% load static %}
+{% load dash_extras %}
+
+{% block title %}My workspace · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}My workspace{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/dashboards-self-service.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<main class="dash-page ss-page">
+
+  <header class="ss-hero">
+    <div class="ss-hero-identity">
+      <div class="ss-hero-avatar">
+        {% if staff_profile and staff_profile.photo %}
+          <img src="{{ staff_profile.photo_thumb_url }}" alt="">
+        {% else %}
+          <span>{{ request.user.first_name|slice:":1"|upper }}{{ request.user.last_name|slice:":1"|upper }}</span>
+        {% endif %}
+      </div>
+      <div class="ss-hero-text">
+        <p class="ss-hero-eyebrow">Your workspace</p>
+        <h1>{{ request.user.get_full_name|default:request.user.email }}</h1>
+        <p class="ss-hero-meta">
+          {% if staff_profile.designation %}<span>{{ staff_profile.designation }}</span>{% endif %}
+          {% if staff_profile.department %}
+            {% if staff_profile.designation %}<span class="ss-dot">·</span>{% endif %}
+            <span>{{ staff_profile.department.name }}</span>
+          {% elif request.user.department %}
+            <span>{{ request.user.department.name }}</span>
+          {% endif %}
+          {% if staff_profile.state %}
+            <span class="ss-dot">·</span>
+            <span class="ss-state">{{ staff_profile.state.name }}</span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+    <div class="ss-hero-actions">
+      <a href="{% url 'accounts:profile' %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        View profile
+      </a>
+      <a href="{% url 'workflow:raise' %}" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New request
+      </a>
+    </div>
+  </header>
+
+  {% if pending_approvals %}
+    <section class="ss-section ss-approvals" aria-labelledby="ss-approvals-title">
+      <header class="ss-section-head">
+        <div class="ss-section-head-text">
+          <span class="ss-section-kicker ss-kicker-warn">
+            <span class="ss-kicker-dot"></span>
+            Action needed
+          </span>
+          <h2 id="ss-approvals-title">Pending my approval</h2>
+          <p>
+            {{ pending_approvals|length }} request{{ pending_approvals|length|pluralize }}
+            waiting at your step.
+          </p>
+        </div>
+        <a href="{% url 'workflow:awaiting_action' %}" class="btn btn-ghost btn-sm">
+          View all
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </header>
+
+      <ul class="ss-approval-list">
+        {% for approval in pending_approvals %}
+          <li>
+            <a href="{% url 'workflow:detail' approval.pk %}" class="ss-approval-row">
+              <span class="ss-approval-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </span>
+              <span class="ss-approval-body">
+                <span class="ss-approval-title">{{ approval.subject }}</span>
+                <span class="ss-approval-meta">
+                  <span class="ss-approval-ref">{{ approval.reference }}</span>
+                  <span class="ss-dot">·</span>
+                  <span>{{ approval.requester.get_full_name|default:approval.requester.email }}</span>
+                  {% if approval.active_step %}
+                    <span class="ss-dot">·</span>
+                    <span>{{ approval.active_step.name }}</span>
+                  {% endif %}
+                </span>
+              </span>
+              <span class="ss-approval-priority ss-priority-{{ approval.priority }}">
+                {{ approval.get_priority_display }}
+              </span>
+              <svg class="ss-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if leave_data %}
+    <section class="ss-section ss-leave" aria-labelledby="ss-leave-title">
+      <header class="ss-section-head ss-leave-head">
+        <div class="ss-section-head-text">
+          <span class="ss-section-kicker">Annual leave</span>
+          <h2 id="ss-leave-title">
+            {% if leave_data.current %}You're currently on leave
+            {% else %}Leave balance{% endif %}
+          </h2>
+          {% if leave_data.current %}
+            <p>
+              {{ leave_data.current.start_date|date:"M j, Y" }} –
+              {{ leave_data.current.end_date|date:"M j, Y" }}
+              · returning {{ leave_data.resumption_date|date:"D, M j" }}
+            </p>
+          {% elif leave_data.upcoming %}
+            <p>
+              Upcoming: {{ leave_data.upcoming.start_date|date:"M j, Y" }} –
+              {{ leave_data.upcoming.end_date|date:"M j, Y" }}
+              · return {{ leave_data.resumption_date|date:"D, M j" }}
+            </p>
+          {% else %}
+            <p>Weekdays counted; configured holidays excluded.</p>
+          {% endif %}
+        </div>
+        <div class="ss-leave-actions">
+          {% if leave_data.request_url %}
+            <a href="{{ leave_data.request_url }}" class="btn btn-primary btn-sm">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Request leave
+            </a>
+          {% endif %}
+          <a href="{% url 'workflow:my_requests' %}" class="btn btn-ghost btn-sm">My requests</a>
+        </div>
+      </header>
+
+      <div class="ss-leave-body">
+        {% if leave_data.balance.is_set %}
+          <div class="ss-leave-balance">
+            <div class="ss-leave-balance-top">
+              <div class="ss-leave-balance-figure">
+                <span class="ss-leave-balance-value">
+                  {{ leave_data.balance.remaining|floatformat:"-2" }}
+                </span>
+                <span class="ss-leave-balance-unit">days available</span>
+              </div>
+              <div class="ss-leave-balance-caption">
+                {{ leave_data.balance.used|floatformat:"-2" }} used of
+                {{ leave_data.balance.entitlement|floatformat:"-2" }} entitled
+              </div>
+            </div>
+            <div class="ss-leave-bar" role="img"
+                 aria-label="Percent of entitlement used">
+              <span class="ss-leave-bar-fill {{ leave_data.balance.used|pct_class:leave_data.balance.entitlement }}"></span>
+            </div>
+          </div>
+
+          <div class="ss-leave-stats">
+            <div class="ss-leave-stat">
+              <span class="ss-leave-stat-label">Entitled</span>
+              <span class="ss-leave-stat-value">
+                {{ leave_data.balance.entitlement|floatformat:"-2" }}
+              </span>
+              <span class="ss-leave-stat-unit">days</span>
+            </div>
+            <div class="ss-leave-stat">
+              <span class="ss-leave-stat-label">Used</span>
+              <span class="ss-leave-stat-value">
+                {{ leave_data.balance.used|floatformat:"-2" }}
+              </span>
+              <span class="ss-leave-stat-unit">days</span>
+            </div>
+            <div class="ss-leave-stat">
+              <span class="ss-leave-stat-label">Pending</span>
+              <span class="ss-leave-stat-value">
+                {{ leave_data.balance.pending|floatformat:"-2" }}
+              </span>
+              <span class="ss-leave-stat-unit">days</span>
+            </div>
+            <div class="ss-leave-stat ss-leave-stat-accent">
+              <span class="ss-leave-stat-label">Available</span>
+              <span class="ss-leave-stat-value">
+                {{ leave_data.balance.remaining|floatformat:"-2" }}
+              </span>
+              <span class="ss-leave-stat-unit">days</span>
+            </div>
+          </div>
+        {% else %}
+          <div class="ss-leave-unset">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 8v4"/>
+              <path d="M12 16h.01"/>
+            </svg>
+            <div>
+              <strong>No entitlement on record</strong>
+              <p>Ask HR to set your annual leave allowance.</p>
+            </div>
+          </div>
+        {% endif %}
+
+        {% if leave_data.recent %}
+          <div class="ss-leave-recent">
+            <h3 class="ss-leave-recent-title">Recent leave requests</h3>
+            <ul class="ss-leave-recent-list">
+              {% for application in leave_data.recent %}
+                <li>
+                  <a href="{% url 'workflow:detail' application.request_id %}" class="ss-leave-recent-row">
+                    <span class="ss-leave-recent-dates">
+                      {{ application.start_date|date:"M j" }} – {{ application.end_date|date:"M j, Y" }}
+                    </span>
+                    <span class="ss-leave-recent-meta">
+                      <span class="ss-leave-recent-ref">{{ application.request.reference }}</span>
+                      <span class="ss-dot">·</span>
+                      <span>{{ application.request.get_status_display }}</span>
+                    </span>
+                    <svg class="ss-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if widgets %}
+    <section class="ss-widgets" aria-label="Your work and services">
+      {% for widget in widgets %}
+        <article class="ss-widget ss-widget--{{ widget.key }}">
+          <header class="ss-widget-head">
+            <div class="ss-widget-head-left">
+              <span class="ss-widget-icon ss-widget-icon--{{ widget.key }}">
+                {% if widget.key == "tickets" %}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/></svg>
+                {% elif widget.key == "tasks" %}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                {% elif widget.key == "requests" %}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                {% elif widget.key == "assets" %}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                {% else %}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>
+                {% endif %}
+              </span>
+              <div class="ss-widget-head-text">
+                <h2>{{ widget.title }}</h2>
+                <p class="ss-widget-count">
+                  <strong>{{ widget.count }}</strong>
+                  {{ widget.count_label }}
+                </p>
+              </div>
+            </div>
+            <a href="{{ widget.url }}" class="ss-widget-open" aria-label="Open {{ widget.title }}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </a>
+          </header>
+
+          <div class="ss-widget-body">
+            {% for item in widget.items %}
+              {% if widget.key == "tickets" %}
+                <a href="{% url 'tickets:detail' item.pk %}" class="ss-row">
+                  <span class="ss-row-main">
+                    <span class="ss-row-title">{{ item.subject }}</span>
+                    <span class="ss-row-meta">
+                      <span class="ss-row-ref">{{ item.reference }}</span>
+                      {% if item.category %}
+                        <span class="ss-dot">·</span>
+                        <span>{{ item.category.name }}</span>
+                      {% endif %}
+                    </span>
+                  </span>
+                  <span class="ss-row-trailing ss-state ss-state-{{ item.state }}">
+                    {{ item.get_state_display }}
+                  </span>
+                </a>
+              {% elif widget.key == "tasks" %}
+                <a href="{% url 'tasks:detail' item.pk %}" class="ss-row">
+                  <span class="ss-row-main">
+                    <span class="ss-row-title">{{ item.title }}</span>
+                    <span class="ss-row-meta">
+                      <span class="ss-row-ref">{{ item.reference }}</span>
+                      {% if item.due_date %}
+                        <span class="ss-dot">·</span>
+                        <span>due {{ item.due_date|date:"M j" }}</span>
+                      {% endif %}
+                    </span>
+                  </span>
+                  <span class="ss-row-trailing ss-state ss-state-{{ item.state }}">
+                    {{ item.get_state_display }}
+                  </span>
+                </a>
+              {% elif widget.key == "requests" %}
+                <a href="{% url 'workflow:detail' item.pk %}" class="ss-row">
+                  <span class="ss-row-main">
+                    <span class="ss-row-title">{{ item.subject }}</span>
+                    <span class="ss-row-meta">
+                      <span class="ss-row-ref">{{ item.reference }}</span>
+                      {% if item.request_type %}
+                        <span class="ss-dot">·</span>
+                        <span>{{ item.request_type.name }}</span>
+                      {% endif %}
+                    </span>
+                  </span>
+                  <span class="ss-row-trailing ss-state ss-state-{{ item.status }}">
+                    {{ item.get_status_display }}
+                  </span>
+                </a>
+              {% elif widget.key == "assets" %}
+                <a href="{% url 'assets:detail' item.asset.asset_tag %}" class="ss-row">
+                  <span class="ss-row-main">
+                    <span class="ss-row-title">{{ item.asset.display_name }}</span>
+                    <span class="ss-row-meta">
+                      <span class="ss-row-ref">{{ item.asset.asset_tag }}</span>
+                      <span class="ss-dot">·</span>
+                      <span>since {{ item.assigned_at|date:"M j, Y" }}</span>
+                    </span>
+                  </span>
+                  <span class="ss-row-trailing ss-state">
+                    In custody
+                  </span>
+                </a>
+              {% endif %}
+            {% empty %}
+              <div class="ss-widget-empty">
+                <p>Nothing active here right now.</p>
+              </div>
+            {% endfor %}
+          </div>
+        </article>
+      {% endfor %}
+    </section>
+  {% else %}
+    <section class="ss-section">
+      <div class="ss-empty">
+        <div class="ss-empty-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
+        </div>
+        <h3>Your workspace is ready</h3>
+        <p>Personal work and service links will appear here as the modules you use are enabled.</p>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if perms.leave.manage_leave_entitlements %}
+    <a href="{% url 'leave:management' %}" class="ss-manage-link">
+      <span class="ss-manage-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/></svg>
+      </span>
+      <span class="ss-manage-label">Open leave management</span>
+      <svg class="ss-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+  {% endif %}
+
+</main>
+{% endblock %}

@@ -549,6 +549,28 @@ def type_update(request, pk):
 
 
 @login_required
+def type_delete(request, pk):
+    _require_manage(request.user)
+    rt = get_object_or_404(RequestType, pk=pk)
+
+    if request.method == "POST":
+        if rt.requests.exists():
+            messages.error(
+                request,
+                "This request type is still in use by one or more requests. "
+                "Delete those first.",
+            )
+            return redirect("workflow_manage:type_list")
+
+        name = rt.name
+        rt.delete()
+        messages.success(request, f"Type “{name}” deleted.")
+        return redirect("workflow_manage:type_list")
+
+    return render(request, "manage/workflow/type_confirm_delete.html", {"rt": rt})
+
+
+@login_required
 def type_create(request):
     _require_manage(request.user)
     if request.method == "POST":
@@ -612,6 +634,28 @@ def category_update(request, pk):
     return render(request, "manage/workflow/category_form.html", {
         "form": form, "cat": cat, "mode": "update",
     })
+
+
+@login_required
+def category_delete(request, pk):
+    _require_manage(request.user)
+    cat = get_object_or_404(RequestCategory, pk=pk)
+
+    if request.method == "POST":
+        if cat.request_types.exists():
+            messages.error(
+                request,
+                "This category is still used by request types. "
+                "Reassign or remove those first.",
+            )
+            return redirect("workflow_manage:category_list")
+
+        name = cat.name
+        cat.delete()
+        messages.success(request, f"Category “{name}” deleted.")
+        return redirect("workflow_manage:category_list")
+
+    return render(request, "manage/workflow/category_confirm_delete.html", {"cat": cat})
 
 
 # ---------------------------------------------------------------------------

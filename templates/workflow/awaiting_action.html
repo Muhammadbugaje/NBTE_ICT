@@ -1,91 +1,229 @@
 {% extends "base.html" %}
 {% load static %}
-{% load list_tags %}
 
 {% block title %}Awaiting my action · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Awaiting my action{% endblock %}
 
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/awaiting-action.css' %}?v=1">
+{% endblock %}
+
 {% block content %}
-<div class="wf-page-head">
-  <div>
-    <h1>Awaiting my action</h1>
-    <p>{{ total }} request{{ total|pluralize }} currently sit at your step.</p>
-  </div>
-</div>
+<div class="aa-page">
 
-<form method="get"
-      class="wf-filters"
-      hx-get="{% url 'workflow:awaiting_action' %}"
-      hx-target="#wf-list-container" hx-select="#wf-list-container"
-      hx-swap="outerHTML" hx-push-url="true"
-      hx-indicator="#wf-list-container"
-      hx-trigger="submit from:form, keyup changed delay:400ms from:input[name=q]">
-  <input type="search" name="q" value="{{ q }}"
-         placeholder="Search by subject or reference…"
-         class="input wf-filter-search" autocomplete="off">
-  {% if q %}
-    <a href="{% url 'workflow:awaiting_action' %}" class="btn btn-ghost btn-sm">Reset</a>
-  {% endif %}
-</form>
+  <header class="aa-header">
+    <h1 class="aa-header__title">Awaiting my action</h1>
+    <p class="aa-header__sub">
+      {% if total %}
+        {{ total }} request{{ total|pluralize }} currently sit at your step.
+      {% else %}
+        Nothing sits at your step right now.
+      {% endif %}
+    </p>
+  </header>
 
-<div id="wf-list-container" class="wf-list-container">
-  {% if page.object_list %}
-    <div class="wf-table-wrap">
-      <table class="wf-table">
-        <thead>
-          <tr>
-            <th>Ref</th>
-            <th>Subject</th>
-            <th>Current step</th>
-            <th>Priority</th>
-            <th>Raised</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for req in page.object_list %}
-            <tr onclick="window.location='{% url 'workflow:detail' req.pk %}'" style="cursor:pointer;">
-              <td><strong>{{ req.reference|slice:"-5:" }}</strong></td>
-              <td>
-                <div class="wf-table-title">{{ req.subject }}</div>
-                <div class="wf-table-sub">
+  <form method="get"
+        class="aa-filters"
+        role="search"
+        hx-get="{% url 'workflow:awaiting_action' %}"
+        hx-target="#wf-list-container"
+        hx-select="#wf-list-container"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+        hx-indicator="#wf-list-container"
+        hx-trigger="submit from:form, keyup changed delay:400ms from:input[name=q]">
+
+    <label class="aa-search" for="aa-q">
+      <svg class="aa-search__icon" width="16" height="16" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+
+      <input id="aa-q"
+             type="search"
+             name="q"
+             value="{{ q }}"
+             placeholder="Search by subject or reference…"
+             class="aa-search__input"
+             autocomplete="off"
+             spellcheck="false">
+
+      {% if q %}
+        <a href="{% url 'workflow:awaiting_action' %}"
+           class="aa-search__clear"
+           aria-label="Clear search"
+           hx-get="{% url 'workflow:awaiting_action' %}"
+           hx-target="#wf-list-container"
+           hx-select="#wf-list-container"
+           hx-swap="outerHTML"
+           hx-push-url="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.4"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </a>
+      {% endif %}
+    </label>
+  </form>
+
+  <div id="wf-list-container" class="aa-list-container">
+
+    {% if page.object_list %}
+      <ul class="aa-list">
+        {% for req in page.object_list %}
+          <li class="aa-item">
+            <a href="{% url 'workflow:detail' req.pk %}" class="aa-item__link">
+
+              <span class="aa-item__ref" aria-label="Reference">
+                #{{ req.reference|slice:"-5:" }}
+              </span>
+
+              <span class="aa-item__main">
+                <span class="aa-item__subject">{{ req.subject }}</span>
+                <span class="aa-item__meta">
                   {{ req.requester.get_full_name|default:req.requester.email }}
-                  {% if req.receiving_department %} → {{ req.receiving_department.name }}{% endif %}
-                </div>
-              </td>
-              <td>{{ req.active_step.name|default:"—" }}</td>
-              <td><span class="badge badge-priority-{{ req.priority }}">{{ req.get_priority_display }}</span></td>
-              <td class="muted">{{ req.created_at|timesince }} ago</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+                  {% if req.receiving_department %}
+                    <span class="aa-item__meta-sep" aria-hidden="true">·</span>
+                    {{ req.receiving_department.name }}
+                  {% endif %}
+                </span>
+              </span>
 
-    {% if page.has_other_pages %}
-      <nav class="pagination">
-        {% if page.has_previous %}
-          <a href="?q={{ q|urlencode }}&page={{ page.previous_page_number }}"
-             hx-get="?q={{ q|urlencode }}&page={{ page.previous_page_number }}"
-             hx-target="#wf-list-container" hx-select="#wf-list-container"
-             hx-swap="outerHTML" hx-push-url="true">« Prev</a>
-        {% else %}<span class="disabled">« Prev</span>{% endif %}
-        <span class="current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
-        {% if page.has_next %}
-          <a href="?q={{ q|urlencode }}&page={{ page.next_page_number }}"
-             hx-get="?q={{ q|urlencode }}&page={{ page.next_page_number }}"
-             hx-target="#wf-list-container" hx-select="#wf-list-container"
-             hx-swap="outerHTML" hx-push-url="true">Next »</a>
-        {% else %}<span class="disabled">Next »</span>{% endif %}
-      </nav>
-    {% endif %}
-  {% else %}
-    <div class="wf-empty">
-      <div class="wf-empty-icon">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span class="aa-item__step">
+                <span class="aa-item__step-label">Step</span>
+                {{ req.active_step.name|default:"—" }}
+              </span>
+
+              <span class="aa-item__priority">
+                <span class="badge badge-priority-{{ req.priority }}">
+                  {{ req.get_priority_display }}
+                </span>
+              </span>
+
+              <span class="aa-item__age">
+                {{ req.created_at|timesince }} ago
+              </span>
+
+              <svg class="aa-item__chev" width="16" height="16"
+                   viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.2" stroke-linecap="round"
+                   stroke-linejoin="round" aria-hidden="true">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if page.has_other_pages %}
+        <nav class="aa-pagination" aria-label="Pagination">
+          {% if page.has_previous %}
+            <a class="aa-pagination__link"
+               href="?q={{ q|urlencode }}&page={{ page.previous_page_number }}"
+               hx-get="?q={{ q|urlencode }}&page={{ page.previous_page_number }}"
+               hx-target="#wf-list-container"
+               hx-select="#wf-list-container"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               aria-label="Previous page">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              <span>Previous</span>
+            </a>
+          {% else %}
+            <span class="aa-pagination__link is-disabled" aria-disabled="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              <span>Previous</span>
+            </span>
+          {% endif %}
+
+          <span class="aa-pagination__status" aria-current="page">
+            Page {{ page.number }} of {{ page.paginator.num_pages }}
+          </span>
+
+          {% if page.has_next %}
+            <a class="aa-pagination__link"
+               href="?q={{ q|urlencode }}&page={{ page.next_page_number }}"
+               hx-get="?q={{ q|urlencode }}&page={{ page.next_page_number }}"
+               hx-target="#wf-list-container"
+               hx-select="#wf-list-container"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               aria-label="Next page">
+              <span>Next</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </a>
+          {% else %}
+            <span class="aa-pagination__link is-disabled" aria-disabled="true">
+              <span>Next</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+          {% endif %}
+        </nav>
+      {% endif %}
+
+    {% elif q %}
+      <div class="aa-empty">
+        <div class="aa-empty__icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </div>
+        <h3 class="aa-empty__title">No matches for “{{ q }}”</h3>
+        <p class="aa-empty__body">
+          Try a different search term, or clear the search to see everything awaiting you.
+        </p>
+        <a href="{% url 'workflow:awaiting_action' %}"
+           class="btn btn-ghost"
+           hx-get="{% url 'workflow:awaiting_action' %}"
+           hx-target="#wf-list-container"
+           hx-select="#wf-list-container"
+           hx-swap="outerHTML"
+           hx-push-url="true">
+          Clear search
+        </a>
       </div>
-      <h3>Nothing awaiting your action</h3>
-      <p>You're all caught up.</p>
-    </div>
-  {% endif %}
+
+    {% else %}
+      <div class="aa-empty">
+        <div class="aa-empty__icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+        <h3 class="aa-empty__title">Nothing awaiting your action</h3>
+        <p class="aa-empty__body">
+          When a request reaches your approval step, it will appear here.
+          You’re all caught up.
+        </p>
+      </div>
+    {% endif %}
+
+  </div>
 </div>
 {% endblock %}

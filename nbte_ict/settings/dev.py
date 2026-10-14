@@ -1,10 +1,11 @@
-"""Local development: SQLite, console email, in-process cache.
+"""Local development: SQLite, console Django fallback mail, in-process cache.
 
 Also supports phone/live-device testing through an ngrok tunnel:
   - ALLOWED_HOSTS accepts any *.ngrok-free.app / *.ngrok-free.dev subdomain
   - CSRF_TRUSTED_ORIGINS accepts the same over HTTPS
   - SECURE_PROXY_SSL_HEADER lets request.is_secure() work behind ngrok's TLS
     termination, so secure-only cookies and redirects behave correctly.
+Transactional email uses the Brevo-first provider engine configured in base.py.
 """
 import os
 
@@ -57,7 +58,6 @@ CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"
 # Email
 # ---------------------------------------------------------------------------
 # Temporary passwords are printed to the runserver console in dev.
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "NBTE ICT <no-reply@localhost>")
 SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000")
 

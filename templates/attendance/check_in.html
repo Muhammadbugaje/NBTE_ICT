@@ -5,10 +5,64 @@
 {% block page_title %}Check in{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=1">
-{% endblock %}
-{% block extra_js %}
-  <script src="{% static 'js/attendance.js' %}?v=1" defer></script>
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=2">
+  <style>
+    /* Diagnostic panel — monospace, only shown on failure */
+    .att-diagnostic {
+      position: relative;
+      margin-top: var(--space-4, 16px);
+      padding: var(--space-4, 16px);
+      border: 1px solid var(--border, #E2E8F0);
+      border-radius: var(--radius-md, 12px);
+      background: var(--bg-sunken, #F1F5F9);
+      font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+      font-size: 11.5px;
+      line-height: 1.6;
+      color: var(--fg, #0B1220);
+      white-space: pre-wrap;
+      word-break: break-word;
+      text-align: left;
+      max-height: 380px;
+      overflow: auto;
+    }
+    .att-diagnostic[hidden] { display: none !important; }
+
+    .att-diagnostic-copy {
+      position: sticky;
+      top: 0;
+      float: right;
+      margin-left: var(--space-3, 12px);
+      padding: 4px 10px;
+      font-family: var(--font-sans, system-ui, sans-serif);
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: var(--radius-sm, 8px);
+      background: var(--bg-elevated, #FFF);
+      border: 1px solid var(--border, #E2E8F0);
+      color: var(--fg, #0B1220);
+      cursor: pointer;
+    }
+    .att-diagnostic-copy:hover { background: var(--bg-subtle, #F8FAFC); }
+
+    .att-manual-link {
+      display: block;
+      margin-top: var(--space-3, 12px);
+      padding: var(--space-2, 8px);
+      text-align: center;
+      font-size: var(--text-xs, 0.8125rem);
+      color: var(--fg-muted, #64748B);
+      text-decoration: none;
+      transition: color 140ms ease;
+    }
+    .att-manual-link:hover {
+      color: var(--fg, #0B1220);
+      text-decoration: underline;
+    }
+
+    /* Ring state colours */
+    .att-distance-ring.in-range #att-ring-progress { stroke: var(--accent, #1F6B3E); }
+    .att-distance-ring.out-of-range #att-ring-progress { stroke: var(--danger, #B91C1C); }
+  </style>
 {% endblock %}
 
 {% block content %}
@@ -18,7 +72,11 @@
      data-home-url="{% url 'attendance:home' %}">
 
   <a class="att-back" href="{% url 'attendance:home' %}">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="19" y1="12" x2="5" y2="12"/>
+      <polyline points="12 19 5 12 12 5"/>
+    </svg>
     Back
   </a>
 
@@ -26,27 +84,45 @@
     <section class="att-checkin-card is-muted">
       <h1>Not a working day</h1>
       <p>Today isn't a working day for you. See you on the next working day.</p>
-      <a class="att-btn att-btn-primary att-btn-full" href="{% url 'attendance:home' %}">Back to attendance</a>
+      <a class="att-btn att-btn-primary att-btn-full" href="{% url 'attendance:home' %}">
+        Back to attendance
+      </a>
     </section>
 
-  {% elif today_record %}
+  {% elif today_record and today_record.status != 'on_leave' %}
     <section class="att-checkin-card is-success">
       <div class="att-checkin-icon att-checkin-icon-success">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
       </div>
       <h1>Already checked in</h1>
       <p>
         You checked in at
         <strong>{{ today_record.check_in_at|time:"H:i" }}</strong>
-        {% if today_record.location %} at <strong>{{ today_record.location.name }}</strong>{% endif %}.
+        {% if today_record.location %}
+          at <strong>{{ today_record.location.name }}</strong>
+        {% endif %}.
       </p>
       <a class="att-btn att-btn-primary att-btn-full" href="{% url 'attendance:home' %}">Done</a>
     </section>
 
   {% else %}
     <section class="att-checkin-card">
-      <div class="att-checkin-icon" id="att-checkin-icon">
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      {% if today_record and today_record.status == 'on_leave' %}
+        <p class="att-leave-checkin-note">
+          You’re on approved leave today. If you are working, you can still check in;
+          your approved leave dates will remain unchanged.
+        </p>
+      {% endif %}
+
+      <div class="att-checkin-icon" id="att-checkin-icon" aria-hidden="true">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+          <circle cx="12" cy="10" r="3"/>
+        </svg>
       </div>
 
       <h1 id="att-checkin-title">Locating you…</h1>
@@ -57,9 +133,11 @@
       {# Distance ring #}
       <div class="att-distance-ring" id="att-distance-ring" hidden>
         <svg viewBox="0 0 120 120" width="140" height="140" role="img" aria-label="Distance to office">
-          <circle cx="60" cy="60" r="54" fill="none" stroke="var(--att-border)" stroke-width="6"/>
+          <circle cx="60" cy="60" r="54" fill="none"
+                  stroke="var(--att-border, var(--border))" stroke-width="6"/>
           <circle id="att-ring-progress" cx="60" cy="60" r="54" fill="none"
-                  stroke="var(--att-accent)" stroke-width="6" stroke-linecap="round"
+                  stroke="var(--att-accent, var(--accent))" stroke-width="6"
+                  stroke-linecap="round"
                   stroke-dasharray="339.292" stroke-dashoffset="339.292"
                   transform="rotate(-90 60 60)"/>
         </svg>
@@ -95,6 +173,15 @@
       </button>
 
       <p class="att-checkin-hint" id="att-hint"></p>
+
+      {% url 'attendance:check_in_manual' as manual_url %}
+      {% if manual_url %}
+        <a href="{{ manual_url }}" class="att-manual-link">
+          GPS not working? Check in manually
+        </a>
+      {% endif %}
+
+      <div class="att-diagnostic" id="att-diagnostic" hidden aria-live="polite"></div>
     </section>
 
     {# Locations list #}
@@ -105,7 +192,9 @@
           {% for loc in my_locations %}
             <li>
               <strong>{{ loc.name }}</strong>
-              <span>{{ loc.radius_meters }}m{% if loc.gps_offset_meters %} + {{ loc.gps_offset_meters }}m offset{% endif %}</span>
+              <span>
+                {{ loc.radius_meters }}m{% if loc.gps_offset_meters %} + {{ loc.gps_offset_meters }}m offset{% endif %}
+              </span>
             </li>
           {% endfor %}
         </ul>
@@ -113,4 +202,441 @@
     {% endif %}
   {% endif %}
 </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var root = document.querySelector(".att-checkin-page");
+  if (!root) return;
+
+  // ---- Config (from data-* attributes) ----
+  var URLS = {
+    checkIn: root.dataset.checkInUrl,
+    preview: root.dataset.previewUrl,
+    home:    root.dataset.homeUrl,
+  };
+
+  // ---- DOM refs (match the real template IDs) ----
+  var titleEl     = document.getElementById("att-checkin-title");
+  var messageEl   = document.getElementById("att-checkin-message");
+  var ringEl      = document.getElementById("att-distance-ring");
+  var ringFill    = document.getElementById("att-ring-progress");
+  var distanceNum = document.getElementById("att-distance-number");
+  var detailsEl   = document.getElementById("att-checkin-details");
+  var nearestEl   = document.getElementById("att-nearest-location");
+  var radiusEl    = document.getElementById("att-effective-radius");
+  var submitBtn   = document.getElementById("att-submit");
+  var retryBtn    = document.getElementById("att-retry");
+  var hintEl      = document.getElementById("att-hint");
+  var diagEl      = document.getElementById("att-diagnostic");
+
+  // If we're not on the interactive card (already checked in / not a working day), stop.
+  if (!titleEl || !submitBtn) return;
+
+  var RING_CIRCUMFERENCE = 339.292;
+  var lastFix = null;   // { lat, lng, accuracy }
+
+  // ============================================================
+  //  Small helpers
+  // ============================================================
+  function setTitle(text)   { titleEl.textContent = text; }
+  function setMessage(text) { messageEl.textContent = text; }
+  function setHint(text)    { if (hintEl) hintEl.textContent = text || ""; }
+
+  function showRing() { if (ringEl) ringEl.hidden = false; }
+  function hideRing() { if (ringEl) ringEl.hidden = true; }
+  function showDetails() { if (detailsEl) detailsEl.hidden = false; }
+  function hideDetails() { if (detailsEl) detailsEl.hidden = true; }
+
+  function setRingFill(distance, radius, inRange) {
+    if (!ringFill) return;
+    var pct = Math.max(0, Math.min(1, radius > 0 ? distance / radius : 0));
+    ringFill.style.strokeDashoffset = String(RING_CIRCUMFERENCE * pct);
+    if (ringEl) {
+      ringEl.classList.toggle("in-range", !!inRange);
+      ringEl.classList.toggle("out-of-range", !inRange);
+    }
+  }
+
+  function setDistanceNumber(metres) {
+    if (distanceNum) distanceNum.textContent = String(Math.round(metres));
+  }
+
+  function showRetry() { if (retryBtn) retryBtn.hidden = false; }
+  function hideRetry() { if (retryBtn) retryBtn.hidden = true; }
+
+  function enableSubmit()  { if (submitBtn) submitBtn.disabled = false; }
+  function disableSubmit() { if (submitBtn) submitBtn.disabled = true; }
+
+  // ============================================================
+  //  Diagnostic panel
+  // ============================================================
+  function envSnapshot() {
+    var ua = navigator.userAgent;
+    var os = "unknown";
+    if (/Mac OS X/.test(ua)) os = "macOS";
+    else if (/Windows/.test(ua)) os = "Windows";
+    else if (/Linux/.test(ua)) os = "Linux";
+    else if (/Android/.test(ua)) os = "Android";
+    else if (/iPhone|iPad|iPod/.test(ua)) os = "iOS";
+
+    var browser = "unknown";
+    if (/Edg\//.test(ua)) browser = "Edge";
+    else if (/Chrome\//.test(ua)) browser = "Chrome";
+    else if (/Firefox\//.test(ua)) browser = "Firefox";
+    else if (/Safari\//.test(ua)) browser = "Safari";
+
+    return {
+      os: os,
+      browser: browser,
+      isSecure: window.isSecureContext,
+      origin: location.origin,
+      hasGeo: !!navigator.geolocation,
+    };
+  }
+
+  function permissionState() {
+    return new Promise(function (resolve) {
+      if (!navigator.permissions || !navigator.permissions.query) {
+        resolve("unsupported"); return;
+      }
+      navigator.permissions.query({ name: "geolocation" })
+        .then(function (p) { resolve(p.state); })
+        .catch(function ()  { resolve("error"); });
+    });
+  }
+
+  function buildDiagnostic(err, extra) {
+    var env = envSnapshot();
+    var codeName = ({ 1: "PERMISSION_DENIED",
+                      2: "POSITION_UNAVAILABLE",
+                      3: "TIMEOUT" })[err && err.code] || "UNKNOWN";
+
+    var lines = [];
+    lines.push("─── CHECK-IN DIAGNOSTIC ───");
+    lines.push("");
+    lines.push("OS:              " + env.os);
+    lines.push("Browser:         " + env.browser);
+    lines.push("Secure context:  " + env.isSecure);
+    lines.push("Origin:          " + env.origin);
+    lines.push("Geolocation API: " + (env.hasGeo ? "present" : "MISSING"));
+    lines.push("");
+    lines.push("Error code:      " + (err && err.code !== undefined ? err.code : "—") + " (" + codeName + ")");
+    lines.push("Error message:   " + ((err && err.message) || "(browser did not provide one)"));
+    if (extra) {
+      lines.push("");
+      lines.push("Context:         " + extra);
+    }
+    if (lastFix) {
+      lines.push("");
+      lines.push("Last fix:");
+      lines.push("  lat:      " + lastFix.lat);
+      lines.push("  lng:      " + lastFix.lng);
+      lines.push("  accuracy: " + Math.round(lastFix.accuracy) + " m");
+    }
+    lines.push("");
+    lines.push("Next step:");
+    if (err && err.code === 1) {
+      lines.push("  The browser blocked location for this site.");
+      lines.push("  Safari: Settings → Websites → Location → allow this site.");
+      lines.push("  Chrome: click the padlock in the address bar → Location → Allow.");
+    } else if (err && err.code === 2) {
+      lines.push("  The OS couldn't determine a position. On macOS:");
+      lines.push("  System Settings → Privacy & Security → Location Services → ON.");
+      lines.push("  Enable the browser in the list below. Turn off VPN / Private Relay.");
+      lines.push("  Make sure WiFi is ON (even if you're on Ethernet). Quit and reopen the browser.");
+    } else if (err && err.code === 3) {
+      lines.push("  Timed out. Move near a window, check WiFi, then try again.");
+    } else if (!env.hasGeo) {
+      lines.push("  This browser has no Geolocation API. Use the manual check-in link.");
+    } else if (err && err.code === -2) {
+      lines.push("  Coordinates were captured but the server rejected the check-in.");
+      lines.push("  You may be outside every approved location, or there is no location configured.");
+    } else if (err && err.code === -3) {
+      lines.push("  Could not reach the server. Check your connection, then retry.");
+    } else {
+      lines.push("  Unknown failure. Copy this panel and send it to ICT.");
+    }
+    lines.push("");
+    lines.push("Raw userAgent:");
+    lines.push("  " + navigator.userAgent);
+    return lines.join("\n");
+  }
+
+  function showDiagnostic(err, extra) {
+    if (!diagEl) return;
+    // Reset any previous copy button.
+    diagEl.textContent = "";
+    var copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "att-diagnostic-copy";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", function () {
+      var text = diagEl.textContent || "";
+      var done = function () {
+        copy.textContent = "Copied";
+        setTimeout(function () { copy.textContent = "Copy"; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {
+          // Fallback: select all
+          var range = document.createRange();
+          range.selectNodeContents(diagEl);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
+      } else {
+        var range = document.createRange();
+        range.selectNodeContents(diagEl);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
+
+    var text = document.createElement("span");
+    text.textContent = buildDiagnostic(err, extra);
+    diagEl.appendChild(copy);
+    diagEl.appendChild(text);
+    diagEl.hidden = false;
+  }
+
+  function hideDiagnostic() {
+    if (!diagEl) return;
+    diagEl.hidden = true;
+    diagEl.textContent = "";
+  }
+
+  // ============================================================
+  //  Geolocation — two-stage (high accuracy → low accuracy)
+  // ============================================================
+  function getPosition() {
+    return new Promise(function (resolve, reject) {
+      if (!navigator.geolocation) {
+        reject({ code: -1, message: "navigator.geolocation is undefined." });
+        return;
+      }
+
+      function lowAccuracy(priorErr) {
+        setMessage("Trying with lower accuracy…");
+        navigator.geolocation.getCurrentPosition(
+          resolve,
+          function (err) {
+            try { err.priorError = priorErr; } catch (_) {}
+            reject(err);
+          },
+          { enableHighAccuracy: false, timeout: 20000, maximumAge: 30000 }
+        );
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        resolve,
+        function (err) {
+          if (err && (err.code === 2 || err.code === 3)) {
+            lowAccuracy(err);
+          } else {
+            reject(err);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      );
+    });
+  }
+
+  // ============================================================
+  //  CSRF helper
+  // ============================================================
+  function getCsrf() {
+    var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    var el = document.querySelector("input[name='csrfmiddlewaretoken']");
+    return el ? el.value : "";
+  }
+
+  // ============================================================
+  //  API calls
+  // ============================================================
+  function previewLocation(lat, lng) {
+    var url = URLS.preview + "?lat=" + encodeURIComponent(lat) +
+              "&lng=" + encodeURIComponent(lng);
+    return fetch(url, {
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    }).then(function (r) { return r.json(); });
+  }
+
+  function postCheckIn(lat, lng) {
+    return fetch(URLS.checkIn, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCsrf(),
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ lat: lat, lng: lng }),
+    }).then(function (r) {
+      return r.json().then(function (body) { return { ok: r.ok, body: body }; });
+    });
+  }
+
+  // ============================================================
+  //  State handlers
+  // ============================================================
+  function stateLocating() {
+    setTitle("Locating you…");
+    setMessage("We'll use your current location to confirm you're at the office.");
+    hideRing();
+    hideDetails();
+    hideRetry();
+    disableSubmit();
+    setHint("");
+    hideDiagnostic();
+    if (submitBtn) submitBtn.textContent = "Check in";
+  }
+
+  function stateInRange(data) {
+    setTitle("You're in range");
+    setMessage("Confirm to check in.");
+    showRing();
+    showDetails();
+    setDistanceNumber(data.distance_meters || 0);
+    setRingFill(data.distance_meters || 0, data.effective_radius_meters || 0, true);
+    if (nearestEl) nearestEl.textContent = data.location || "—";
+    if (radiusEl)  radiusEl.textContent  = (data.effective_radius_meters || 0) + " m";
+    setHint("Accuracy: " + Math.round(lastFix ? lastFix.accuracy : 0) + " m");
+    enableSubmit();
+  }
+
+  function stateOutOfRange(data) {
+    setTitle("Outside the approved area");
+    setMessage(
+      "You're " + Math.round(data.distance_meters || 0) + " m from " +
+      (data.location || "the nearest approved location") + ". " +
+      "Move closer and try again, or check in manually below."
+    );
+    showRing();
+    showDetails();
+    setDistanceNumber(data.distance_meters || 0);
+    setRingFill(data.distance_meters || 0, data.effective_radius_meters || 0, false);
+    if (nearestEl) nearestEl.textContent = data.location || "—";
+    if (radiusEl)  radiusEl.textContent  = (data.effective_radius_meters || 0) + " m";
+    setHint("");
+    disableSubmit();
+    showRetry();
+  }
+
+  function stateError(err, extra) {
+    setTitle("Location unavailable");
+    setMessage("We couldn't get your position.");
+    hideRing();
+    hideDetails();
+    disableSubmit();
+    showRetry();
+    showDiagnostic(err, extra);
+  }
+
+  function stateSuccess(payload) {
+    setTitle("Checked in");
+    setMessage(payload.message || "You're checked in.");
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Checked in";
+    }
+    hideRetry();
+    hideDiagnostic();
+    setTimeout(function () {
+      window.location.href = URLS.home;
+    }, 900);
+  }
+
+  // ============================================================
+  //  Main flow
+  // ============================================================
+  function run() {
+    stateLocating();
+
+    permissionState().then(function (state) {
+      if (state === "denied") {
+        stateError(
+          { code: 1, message: "Permission state reads as 'denied' before the request." },
+          "permission query returned 'denied'"
+        );
+        return;
+      }
+
+      getPosition().then(function (pos) {
+        lastFix = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        };
+        setMessage("Confirming you're at an approved location…");
+
+        previewLocation(lastFix.lat, lastFix.lng)
+          .then(function (data) {
+            if (data && data.in_range) {
+              stateInRange(data);
+            } else {
+              stateOutOfRange(data || {});
+            }
+          })
+          .catch(function () {
+            // Preview failed but we still have a fix — let the user try submitting.
+            setTitle("Ready to check in");
+            setMessage("We couldn't confirm the distance, but you can still try.");
+            enableSubmit();
+            setHint("Accuracy: " + Math.round(lastFix.accuracy) + " m");
+          });
+      }).catch(function (err) {
+        var extra = err && err.priorError
+          ? "first attempt: code=" + err.priorError.code +
+            " msg=" + (err.priorError.message || "—")
+          : null;
+        stateError(err, extra);
+      });
+    });
+  }
+
+  // ============================================================
+  //  Submit handler
+  // ============================================================
+  if (submitBtn) {
+    submitBtn.addEventListener("click", function () {
+      if (!lastFix) return;
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting…";
+      setHint("");
+
+      postCheckIn(lastFix.lat, lastFix.lng)
+        .then(function (r) {
+          if (r.ok && r.body && r.body.ok) {
+            stateSuccess(r.body);
+          } else {
+            var msg = (r.body && r.body.message) || "Check-in was rejected.";
+            stateError(
+              { code: -2, message: msg },
+              "server rejected the check-in request"
+            );
+          }
+        })
+        .catch(function () {
+          stateError(
+            { code: -3, message: "Network or CSRF error talking to the server." },
+            null
+          );
+        });
+    });
+  }
+
+  if (retryBtn) {
+    retryBtn.addEventListener("click", run);
+  }
+
+  // Kick off on page load.
+  run();
+})();
+</script>
 {% endblock %}

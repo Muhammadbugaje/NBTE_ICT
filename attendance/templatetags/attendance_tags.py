@@ -193,7 +193,15 @@ def attendance_dashboard_widget(context):
         # Are there active locations for this user?
         locs = list(AttendanceLocation.objects.filter(is_active=True))
         applicable = [l for l in locs if l.applies_to_department(user.department_id)]
-        can_check_in = bool(user.department_id and applicable and working and rec is None)
+        can_check_in = bool(
+            user.department_id
+            and applicable
+            and working
+            and (
+                rec is None
+                or rec.status == AttendanceRecord.ON_LEAVE
+            )
+        )
 
         ctx.update({
             "visible": True,

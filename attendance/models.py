@@ -140,6 +140,7 @@ class AttendanceRecord(TimeStampedModel):
     ABSENT = "absent"
     EXCUSED = "excused"
     HOLIDAY = "holiday"
+    ON_LEAVE = "on_leave"
 
     STATUS_CHOICES = [
         (PRESENT, "Present"),
@@ -147,6 +148,7 @@ class AttendanceRecord(TimeStampedModel):
         (ABSENT, "Absent"),
         (EXCUSED, "Excused"),
         (HOLIDAY, "Holiday"),
+        (ON_LEAVE, "On approved leave"),
     ]
 
     STATUSES_PRESENT = {PRESENT, LATE}
@@ -155,11 +157,15 @@ class AttendanceRecord(TimeStampedModel):
     SOURCE_GPS = "gps"
     SOURCE_EXCEL = "excel"
     SOURCE_MANUAL = "manual"
+    SOURCE_AUTO = "auto"
+    SOURCE_LEAVE = "leave"
 
     SOURCE_CHOICES = [
         (SOURCE_GPS, "GPS check-in"),
         (SOURCE_EXCEL, "Excel upload"),
         (SOURCE_MANUAL, "Manual entry"),
+        (SOURCE_AUTO, "Automatic"),
+        (SOURCE_LEAVE, "Approved leave"),
     ]
 
     # ---- Identity -------------------------------------------------------
@@ -207,6 +213,13 @@ class AttendanceRecord(TimeStampedModel):
         related_name="+",
         help_text="Who created this record, if it wasn't the user themselves.",
     )
+    leave_application = models.ForeignKey(
+        "leave.LeaveApplication",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="attendance_records",
+    )
     notes = models.TextField(blank=True)
 
     class Meta:
@@ -229,3 +242,62 @@ class AttendanceRecord(TimeStampedModel):
     @property
     def is_absent(self):
         return self.status in self.STATUSES_ABSENT
+
+
+# ===========================================================================
+# Rotating check-in codes
+# ===========================================================================
+class LocationCheckInCode(TimeStampedModel):
+    """A short rotating code that proves a staff member is physically at
+    the office when using the manual check-in flow.
+
+    One row per (location, window_start). Windows are computed from the
+    configured rotation cadence. Codes only exist during the location's
+    working hours (plus a configurable grace window).
+    """
+
+    AUDITED = True
+
+    location = models.ForeignKey(
+        AttendanceLocation,
+        on_delete=models.CASCADE,
+        related_name="check_in_codes",
+    )
+    code = models.CharField(max_length=12, db_index=True)
+    window_start = models.DateTimeField(db_index=True)
+    window_end = models.DateTimeField()
+    generated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    class Meta:
+        unique_together = ("location", "window_start")
+        ordering = ["-window_start"]
+        indexes = [
+            models.Index(fields=["location", "window_end"]),
+            models.Index(fields=["code", "window_end"]),
+        ]
+        verbose_name = "Location check-in code"
+        verbose_name_plural = "Location check-in codes"
+        permissions = [
+            ("view_location_codes",
+             "Can view the live check-in codes for all office locations"),
+        ]
+
+    def __str__(self):
+        return f"{self.location.name} — {self.code} ({self.window_start:%H:%M})"
+
+    @property
+    def is_live(self):
+        from django.utils import timezone as _tz
+        return self.window_end > _tz.now()
+
+    @property
+    def seconds_remaining(self):
+        from django.utils import timezone as _tz
+        delta = (self.window_end - _tz.now()).total_seconds()
+        return max(0, int(delta))
+

@@ -1,9 +1,10 @@
 /* ==========================================================================
-   NBTE ICT — Global JS (v19)
+   NBTE ICT — Global JS (v20)
+   Changes in v20:
+     - Added initSidebarActiveScroll(): scrolls .app-nav so the currently
+       active item is visible on page load.
    Changes in v19:
-     - Toast dedup window raised to 5 minutes (was 60 seconds). Combined with
-       the new server-side DrainHtmxMessagesMiddleware, this eliminates the
-       "stale toasts on every full-page navigation" problem.
+     - Toast dedup window raised to 5 minutes (was 60 seconds).
    Changes in v18:
      - Added ThreadScroll: threads auto-scroll to newest message on load.
    Changes in v17:
@@ -20,9 +21,6 @@
 (function () {
   "use strict";
 
-  /* ------------------------------------------------------------------
-     Utility
-     ------------------------------------------------------------------ */
   function safeCall(label, fn) {
     try { fn(); }
     catch (e) { console.error("[NBTE] " + label + " failed", e); }
@@ -157,10 +155,6 @@
 
   var Toast = {
     stack: null,
-
-    /* 5-minute dedup window. Longer than before because the server-side
-       middleware already prevents accumulation; this is now a belt-and-
-       braces catch for any source we didn't anticipate. */
     DEDUP_MS: 5 * 60 * 1000,
     DEDUP_KEY: "nbte-toast-sigs",
 
@@ -179,7 +173,6 @@
       var duration = opts.duration === undefined ? 5000 : Number(opts.duration);
       if (isNaN(duration)) duration = 5000;
 
-      // ---- Dedup ----
       var sig = type + "|" + (title || "") + "|" + (message || "");
       var sigs = {};
       try { sigs = JSON.parse(sessionStorage.getItem(this.DEDUP_KEY) || "{}") || {}; } catch (e) {}
@@ -191,7 +184,6 @@
       sigs[sig] = now;
       try { sessionStorage.setItem(this.DEDUP_KEY, JSON.stringify(sigs)); } catch (e) {}
 
-      // ---- Build the toast ----
       var stack = this.ensureStack();
       var el = document.createElement("div");
       el.className = "toast toast-" + type;
@@ -510,24 +502,9 @@
   }
 
   /* ============================================================
-     SIDEBAR — rail collapse
+     SIDEBAR — mobile drawer only (no desktop collapse)
      ============================================================ */
   var Sidebar = {
-    KEY: "nbte-sidebar-collapsed",
-    toggle: function () {
-      var shell = document.querySelector(".app-shell");
-      if (!shell) return;
-      var collapsed = shell.classList.toggle("sidebar-collapsed");
-      try { localStorage.setItem(this.KEY, collapsed ? "1" : "0"); } catch (e) {}
-    },
-    restore: function () {
-      try {
-        if (localStorage.getItem(this.KEY) === "1") {
-          var shell = document.querySelector(".app-shell");
-          if (shell) shell.classList.add("sidebar-collapsed");
-        }
-      } catch (e) {}
-    },
     toggleMobile: function () {
       var shell = document.querySelector(".app-shell");
       if (!shell) return;
@@ -594,25 +571,50 @@
         setGroupOpen(group, !isOpen, true);
       });
     });
+  }
 
-    var shell = document.querySelector(".app-shell");
-    if (!shell) return;
+  /* ============================================================
+     SIDEBAR ACTIVE SCROLL
+     Scroll .app-nav so the currently active item is visible on
+     page load. Silent no-op if nothing is active, or if the item
+     is already fully visible.
+     ============================================================ */
+  function initSidebarActiveScroll() {
+    var nav = document.querySelector(".app-nav");
+    if (!nav) return;
 
-    var observer = new MutationObserver(function (mutations) {
-      mutations.forEach(function (m) {
-        if (m.attributeName !== "class") return;
-        if (shell.classList.contains("sidebar-collapsed")) return;
-        var state = readGroupState();
-        document.querySelectorAll(".app-nav-group").forEach(function (group) {
-          var key = group.getAttribute("data-group");
-          if (!key) return;
-          if (Object.prototype.hasOwnProperty.call(state, key)) {
-            setGroupOpen(group, state[key], false);
-          }
-        });
-      });
-    });
-    observer.observe(shell, { attributes: true, attributeFilter: ["class"] });
+    var active = nav.querySelector(".app-nav-item.active");
+    if (!active) return;
+
+    function run() {
+      var navRect    = nav.getBoundingClientRect();
+      var activeRect = active.getBoundingClientRect();
+
+      // Already fully visible? Do nothing.
+      if (activeRect.top >= navRect.top && activeRect.bottom <= navRect.bottom) {
+        return;
+      }
+
+      // Centre the active item in the nav viewport.
+      var targetScroll =
+        nav.scrollTop
+        + (activeRect.top - navRect.top)
+        - (navRect.height / 2 - activeRect.height / 2);
+
+      // Clamp to valid scroll range.
+      var maxScroll = nav.scrollHeight - nav.clientHeight;
+      if (targetScroll < 0) targetScroll = 0;
+      if (targetScroll > maxScroll) targetScroll = maxScroll;
+
+      // Instant so the user never sees the sidebar animate on load.
+      // (CSS scroll-behavior: smooth only affects explicit smooth requests.)
+      nav.scrollTo({ top: targetScroll, behavior: "auto" });
+    }
+
+    // Two passes: once after initial layout, once a beat later in
+    // case a late font or icon changed the row heights.
+    requestAnimationFrame(run);
+    setTimeout(run, 120);
   }
 
   /* ============================================================
@@ -908,38 +910,39 @@
     });
   }
 
-// In app.js — add a module Confirmation
-var Confirmation = {
-  init: function () {
-    document.addEventListener("click", function (e) {
-      var opener = e.target.closest("[data-confirm-open]");
-      if (opener) {
-        var modal = document.getElementById(opener.getAttribute("data-confirm-open"));
-        if (modal) {
-          modal.hidden = false;
-          document.body.style.overflow = "hidden";
-          return;
+  /* ============================================================
+     CONFIRMATION MODAL (data-confirm-open / data-confirm-close)
+     ============================================================ */
+  var Confirmation = {
+    init: function () {
+      document.addEventListener("click", function (e) {
+        var opener = e.target.closest("[data-confirm-open]");
+        if (opener) {
+          var modal = document.getElementById(opener.getAttribute("data-confirm-open"));
+          if (modal) {
+            modal.hidden = false;
+            document.body.style.overflow = "hidden";
+            return;
+          }
         }
-      }
-      var closer = e.target.closest("[data-confirm-close]");
-      if (closer) {
-        var m = closer.closest("[data-confirm-modal]");
-        if (m) {
+        var closer = e.target.closest("[data-confirm-close]");
+        if (closer) {
+          var m = closer.closest("[data-confirm-modal]");
+          if (m) {
+            m.hidden = true;
+            document.body.style.overflow = "";
+          }
+        }
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape") return;
+        document.querySelectorAll("[data-confirm-modal]:not([hidden])").forEach(function (m) {
           m.hidden = true;
           document.body.style.overflow = "";
-        }
-      }
-    });
-    document.addEventListener("keydown", function (e) {
-      if (e.key !== "Escape") return;
-      document.querySelectorAll("[data-confirm-modal]:not([hidden])").forEach(function (m) {
-        m.hidden = true;
-        document.body.style.overflow = "";
+        });
       });
-    });
-  }
-};
-
+    }
+  };
 
   /* ============================================================
      BOOT
@@ -953,8 +956,8 @@ var Confirmation = {
     safeCall("sticky nav", initStickyNav);
     safeCall("smooth scroll", initSmoothScroll);
     safeCall("dropdown init", function () { Dropdown.init(); });
-    safeCall("sidebar restore", function () { Sidebar.restore(); });
     safeCall("sidebar groups", initSidebarGroups);
+    safeCall("sidebar active scroll", initSidebarActiveScroll);
     safeCall("server messages", initServerMessages);
     safeCall("csrf refresh", initCSRFRefresh);
     safeCall("password reveals", initPasswordReveals);

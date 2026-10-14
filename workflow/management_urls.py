@@ -34,11 +34,13 @@ urlpatterns = [
     path("types/",            v.type_list,    name="type_list"),
     path("types/new/",        v.type_create,  name="type_create"),
     path("types/<int:pk>/edit/",  v.type_update, name="type_update"),
+    path("types/<int:pk>/delete/", v.type_delete, name="type_delete"),
 
     # Categories
     path("categories/",            v.category_list,    name="category_list"),
     path("categories/new/",        v.category_create,  name="category_create"),
     path("categories/<int:pk>/edit/",  v.category_update, name="category_update"),
+    path("categories/<int:pk>/delete/", v.category_delete, name="category_delete"),
 
     # Reference
     path("roles/",  v.role_reference,  name="roles"),

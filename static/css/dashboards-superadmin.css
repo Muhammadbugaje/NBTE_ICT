@@ -1,0 +1,451 @@
+/* ==========================================================================
+   NBTE ICT — Super Admin dashboard (scoped overrides)
+
+   Loaded only by templates/dashboards/superadmin.html, AFTER
+   dashboards.css. Adds SA-specific polish on top of the shared
+   .dash-* system without touching the base rules.
+
+   Every selector is scoped under `.dash-sa` so nothing here can
+   affect other role dashboards.
+   ========================================================================== */
+
+.dash-sa {
+  --sa-sunken:    var(--bg-sunken, #F8FAFC);
+  --sa-border:    var(--border,    #E2E8F0);
+  --sa-divider:   var(--divider,   #F1F5F9);
+  --sa-fg:        var(--fg,        #0F172A);
+  --sa-fg-muted:  var(--fg-muted,  #64748B);
+  --sa-fg-subtle: var(--fg-subtle, #94A3B8);
+  --sa-accent:    #1F6B3E;
+  --sa-radius:    16px;
+  --sa-radius-sm: 12px;
+}
+
+/* ==========================================================================
+   HERO
+   ========================================================================== */
+.dash-sa .dash-hero {
+  background:
+    linear-gradient(135deg,
+      rgba(31, 107, 62, 0.08) 0%,
+      rgba(31, 107, 62, 0.00) 55%);
+  border: 1px solid var(--sa-border);
+  border-radius: var(--sa-radius);
+  padding: 22px 24px;
+  margin-bottom: 18px;
+}
+
+.dash-sa .dash-hero-inner { gap: 16px; }
+
+.dash-sa .dash-hero h1 {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 4px;
+}
+
+.dash-sa .dash-hero-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--sa-fg-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.dash-sa .dash-hero-sub .dot {
+  color: var(--sa-fg-subtle);
+  font-weight: 700;
+}
+
+/* Hero action buttons — quieter than page primaries */
+.dash-sa .dash-hero-actions {
+  gap: 6px;
+}
+
+.dash-sa .dash-hero-actions .btn {
+  height: 34px;
+  padding-inline: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .dash-sa .dash-hero { padding: 18px 16px; }
+
+  .dash-sa .dash-hero-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .dash-sa .dash-hero-actions .btn {
+    flex: 1 1 calc(50% - 3px);
+    justify-content: center;
+  }
+}
+
+/* ==========================================================================
+   ALERTS
+   ========================================================================== */
+.dash-sa .dash-alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dash-sa .dash-alert {
+  display: flex;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--sa-radius-sm);
+  border: 1px solid transparent;
+}
+
+.dash-sa .dash-alert-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.dash-sa .dash-alert-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.dash-sa .dash-alert-body strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--sa-fg);
+  letter-spacing: -0.005em;
+  margin-bottom: 3px;
+}
+
+.dash-sa .dash-alert-body span,
+.dash-sa .dash-alert-body a {
+  display: inline;
+  font-size: 12.5px;
+  color: var(--sa-fg-muted);
+  line-height: 1.5;
+}
+
+.dash-sa .dash-alert-body a {
+  color: var(--sa-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dash-sa .dash-alert-danger {
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.22);
+}
+
+.dash-sa .dash-alert-danger .dash-alert-icon {
+  background: rgba(220, 38, 38, 0.14);
+  color: #B91C1C;
+}
+
+.dash-sa .dash-alert-warn {
+  background: rgba(245, 158, 11, 0.07);
+  border-color: rgba(245, 158, 11, 0.22);
+}
+
+.dash-sa .dash-alert-warn .dash-alert-icon {
+  background: rgba(245, 158, 11, 0.14);
+  color: #B45309;
+}
+
+/* ==========================================================================
+   KPI TILES
+   ========================================================================== */
+.dash-sa .dash-kpi {
+  transition:
+    transform var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--duration-fast, 140ms) ease;
+}
+
+.dash-sa .dash-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.dash-sa .dash-kpi-num { font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   SYSTEM HEALTH
+   ========================================================================== */
+.dash-sa .dash-health {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.dash-sa .dash-health-item {
+  position: relative;
+  padding: 14px 16px;
+  border-radius: var(--sa-radius-sm);
+  background: var(--sa-sunken);
+  border: 1px solid var(--sa-border);
+}
+
+.dash-sa .dash-health-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sa-fg-subtle);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dash-sa .dash-health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+  box-shadow: 0 0 0 2px var(--sa-sunken);
+}
+
+.dash-sa .dash-health-value {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--sa-fg);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.dash-sa .dash-health-sub {
+  font-size: 11.5px;
+  color: var(--sa-fg-muted);
+  margin-top: 4px;
+}
+
+.dash-sa .dash-health-ok    .dash-health-label { color: #059669; }
+.dash-sa .dash-health-ok    .dash-health-value { color: #047857; }
+.dash-sa .dash-health-warn  .dash-health-label { color: #B45309; }
+.dash-sa .dash-health-warn  .dash-health-value { color: #B45309; }
+.dash-sa .dash-health-error .dash-health-label { color: #B91C1C; }
+.dash-sa .dash-health-error .dash-health-value { color: #B91C1C; }
+
+/* ==========================================================================
+   AUDIT LIST
+   ========================================================================== */
+.dash-sa .dash-audit-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) 130px;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  align-items: center;
+  transition: background 120ms ease;
+}
+
+.dash-sa .dash-audit-row + .dash-audit-row {
+  border-top: 1px solid var(--sa-divider);
+}
+
+.dash-sa .dash-audit-row:hover { background: var(--sa-sunken); }
+
+.dash-sa .dash-audit-when {
+  color: var(--sa-fg-subtle);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dash-sa .dash-item-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dash-sa .dash-item-body strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sa-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-sa .dash-audit-actor {
+  font-size: 11.5px;
+  color: var(--sa-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-sa .dash-audit-action {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--sa-sunken);
+  color: var(--sa-fg-muted);
+  justify-self: end;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   USERS BY ROLE
+   ========================================================================== */
+.dash-sa .dash-role-row {
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dash-sa .dash-role-row + .dash-role-row {
+  border-top: 1px solid var(--sa-divider);
+}
+
+.dash-sa .dash-role-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.dash-sa .dash-role-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sa-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-sa .dash-role-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sa-fg);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.dash-sa .dash-role-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--sa-sunken);
+  overflow: hidden;
+}
+
+.dash-sa .dash-role-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1F6B3E, #2D8A56);
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ==========================================================================
+   TABLE
+   ========================================================================== */
+.dash-sa .admin-table tbody tr:hover {
+  background: var(--sa-sunken);
+}
+
+/* ==========================================================================
+   EMPTY STATES
+   ========================================================================== */
+.dash-sa .dash-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--sa-fg-muted);
+  border-style: dashed;
+  background: var(--sa-sunken);
+}
+
+.dash-sa .dash-empty-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--sa-sunken);
+  color: var(--sa-fg-subtle);
+  display: inline-grid;
+  place-items: center;
+  margin: 0 auto 12px;
+}
+
+.dash-sa .dash-empty p {
+  margin: 0;
+  font-size: 13px;
+  max-width: 40ch;
+  margin-inline: auto;
+}
+
+/* ==========================================================================
+   DARK THEME
+   ========================================================================== */
+[data-theme="dark"] .dash-sa .dash-health-item {
+  background: #1A2434;
+  border-color: #2A3346;
+}
+
+[data-theme="dark"] .dash-sa .dash-audit-action {
+  background: #1A2434;
+  color: #CBD5E1;
+}
+
+[data-theme="dark"] .dash-sa .dash-audit-row:hover {
+  background: #1A2434;
+}
+
+[data-theme="dark"] .dash-sa .dash-role-bar {
+  background: #1A2434;
+}
+
+[data-theme="dark"] .dash-sa .dash-empty {
+  background: #1A2434;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .dash-sa .dash-empty-icon {
+  background: #1A2434;
+  color: #64748B;
+}
+
+[data-theme="dark"] .dash-sa .dash-kpi:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .dash-sa .dash-health-dot {
+  box-shadow: 0 0 0 2px #1A2434;
+}
+
+/* ==========================================================================
+   MOBILE
+   ========================================================================== */
+@media (max-width: 720px) {
+  .dash-sa .dash-audit-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 12px 4px;
+  }
+
+  .dash-sa .dash-audit-action { justify-self: start; }
+  .dash-sa .dash-audit-when   { font-size: 11px; }
+}
+
+/* ==========================================================================
+   Super-admin hero icon + legend dot colours.
+   These were inline styles; moved here so templates stay clean.
+   ========================================================================== */
+.dash-sa .dash-hero-icon-sa { background: #334155; }
+
+.dash-sa .dash-chart-legend i.dash-legend-pending   { background: #F59E0B; }
+.dash-sa .dash-chart-legend i.dash-legend-inflight  { background: #0369A1; }
+.dash-sa .dash-chart-legend i.dash-legend-completed { background: #1F6B3E; }

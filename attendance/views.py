@@ -87,8 +87,7 @@ def _backfill_absent_range(users, start, end, actor=None):
     Rules:
       - Only days strictly BEFORE today are touched.
       - Only working days are touched.
-      - A day already having ANY record (present/late/absent/excused/
-        holiday) is left alone.
+      - A day already having ANY record (including approved leave) is left alone.
       - Won't create records for days before a user's `date_joined`.
 
     Idempotent — safe to call on every page load.
@@ -416,6 +415,7 @@ def my_attendance(request):
     late    = recent.filter(status=AttendanceRecord.LATE).count()
     absent  = recent.filter(status=AttendanceRecord.ABSENT).count()
     excused = recent.filter(status=AttendanceRecord.EXCUSED).count()
+    on_leave = recent.filter(status=AttendanceRecord.ON_LEAVE).count()
     counted = present + late + absent + excused
     present_pct = round((present / counted) * 100) if counted else 0
 
@@ -424,6 +424,7 @@ def my_attendance(request):
         "late": late,
         "absent": absent,
         "excused": excused,
+        "on_leave": on_leave,
         "present_pct": present_pct,
     }
 
@@ -540,7 +541,7 @@ def department_report(request):
     for u in staff:
         user_records = by_user.get(u.pk, {})
 
-        present = late = absent = excused = holiday = 0
+        present = late = absent = excused = holiday = on_leave = 0
         for rec in user_records.values():
             if rec.status == AttendanceRecord.PRESENT:
                 present += 1
@@ -552,6 +553,8 @@ def department_report(request):
                 excused += 1
             elif rec.status == AttendanceRecord.HOLIDAY:
                 holiday += 1
+            elif rec.status == AttendanceRecord.ON_LEAVE:
+                on_leave += 1
 
         cells = []
         if month:
@@ -572,7 +575,7 @@ def department_report(request):
                         "status": rec.status,
                     })
 
-        total_expected = working_days_total - holiday or 1
+        total_expected = working_days_total - holiday - on_leave or 1
         pct = round(((present + late) / total_expected) * 100) if total_expected else 0
 
         rows.append({
@@ -583,6 +586,7 @@ def department_report(request):
             "absent": absent,
             "excused": excused,
             "holiday": holiday,
+            "on_leave": on_leave,
             "pct": pct,
         })
 
@@ -756,6 +760,13 @@ def manual_edit(request, pk):
     )
     if not allowed:
         raise PermissionDenied("You cannot edit this record.")
+    if record.status == AttendanceRecord.ON_LEAVE:
+        messages.error(
+            request,
+            "Approved leave attendance is managed through the leave request. "
+            "Use GPS check-in if you worked that day.",
+        )
+        return redirect(request.META.get("HTTP_REFERER", "attendance:home"))
 
     form = ManualEditForm(request.POST)
     if not form.is_valid():
@@ -1348,7 +1359,7 @@ def all_departments_report(request):
     flat = []
     for u in all_users:
         user_recs = by_user.get(u.pk, {})
-        present = late = absent = excused = holiday = 0
+        present = late = absent = excused = holiday = on_leave = 0
         for rec in user_recs.values():
             s = rec.status
             if s == AttendanceRecord.PRESENT:
@@ -1361,7 +1372,9 @@ def all_departments_report(request):
                 excused += 1
             elif s == AttendanceRecord.HOLIDAY:
                 holiday += 1
-        total_expected = working_days_total - holiday or 1
+            elif s == AttendanceRecord.ON_LEAVE:
+                on_leave += 1
+        total_expected = working_days_total - holiday - on_leave or 1
         pct = round(((present + late) / total_expected) * 100) if total_expected else 0
         flat.append({
             "user": u,
@@ -1370,6 +1383,7 @@ def all_departments_report(request):
             "absent": absent,
             "excused": excused,
             "holiday": holiday,
+            "on_leave": on_leave,
             "pct": pct,
         })
 
@@ -1384,6 +1398,7 @@ def all_departments_report(request):
             "absent":  sum(r["absent"]  for r in dept_rows),
             "excused": sum(r["excused"] for r in dept_rows),
             "holiday": sum(r["holiday"] for r in dept_rows),
+            "on_leave": sum(r["on_leave"] for r in dept_rows),
         }
         denom = agg["present"] + agg["late"] + agg["absent"] + agg["excused"] or 1
         agg_pct = round(((agg["present"] + agg["late"]) / denom) * 100)
@@ -1401,6 +1416,7 @@ def all_departments_report(request):
         "late":    sum(r["late"]    for r in flat),
         "absent":  sum(r["absent"]  for r in flat),
         "excused": sum(r["excused"] for r in flat),
+        "on_leave": sum(r["on_leave"] for r in flat),
     }
     grand_denom = totals["present"] + totals["late"] + totals["absent"] + totals["excused"] or 1
     totals["pct"] = round(((totals["present"] + totals["late"]) / grand_denom) * 100)
@@ -1519,7 +1535,7 @@ def export_all_excel(request):
     )
     center = Alignment(horizontal="center", vertical="center")
 
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=8)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=9)
     c = ws.cell(row=1, column=1,
                 value=f"ICT Directorate — attendance for {period_label}")
     c.font = Font(bold=True, size=12, color="1F6B3E")
@@ -1527,7 +1543,7 @@ def export_all_excel(request):
     ws.row_dimensions[1].height = 22
 
     headers = ["Department", "Email", "Name",
-               "Present", "Late", "Absent", "Excused", "Attendance %"]
+               "Present", "Late", "Absent", "Excused", "On leave", "Attendance %"]
     for i, h in enumerate(headers, start=1):
         cell = ws.cell(row=3, column=i, value=h)
         cell.fill = header_fill
@@ -1554,7 +1570,7 @@ def export_all_excel(request):
 
         for u in dept_users:
             user_recs = by_user.get(u.pk, {})
-            present = late = absent = excused = 0
+            present = late = absent = excused = on_leave = 0
             for rec in user_recs.values():
                 s = rec.status
                 if s == AttendanceRecord.PRESENT:
@@ -1565,11 +1581,13 @@ def export_all_excel(request):
                     absent += 1
                 elif s == AttendanceRecord.EXCUSED:
                     excused += 1
-            pct = round(((present + late) / (working_days_total or 1)) * 100)
+                elif s == AttendanceRecord.ON_LEAVE:
+                    on_leave += 1
+            pct = round(((present + late) / (working_days_total - on_leave or 1)) * 100)
 
             row_vals = [
                 dept.name, u.email, u.get_full_name() or u.email,
-                present, late, absent, excused, pct,
+                present, late, absent, excused, on_leave, pct,
             ]
             for col_idx, val in enumerate(row_vals, start=1):
                 cell = ws.cell(row=r_idx, column=col_idx, value=val)
@@ -1598,3 +1616,177 @@ def export_all_excel(request):
     )
     resp["Content-Disposition"] = f'attachment; filename="{filename}"'
     return resp
+
+# ===========================================================================
+# Location codes (privileged)
+# ===========================================================================
+def _can_view_location_codes(user):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return user.has_perm("attendance.view_location_codes")
+
+
+@login_required
+def location_codes_view(request):
+    """Live view of every location's current check-in code."""
+    if not _can_view_location_codes(request.user):
+        raise PermissionDenied("You don't have permission to view location codes.")
+
+    from . import codes as code_service
+
+    now = timezone.now()
+    locations = AttendanceLocation.objects.filter(is_active=True).order_by("name")
+
+    rows = []
+    for loc in locations:
+        row = code_service.get_current_code(loc, now=now)
+        rows.append({
+            "location": loc,
+            "code_row": row,
+            "is_open": row is not None,
+            "seconds_remaining": row.seconds_remaining if row else 0,
+            "window_end": row.window_end if row else None,
+        })
+
+    return render(request, "attendance/location_codes.html", {
+        "rows": rows,
+        "rotation_minutes": code_service.rotation_minutes(),
+        "seconds_until_rotation": code_service.seconds_until_next_rotation(now),
+        "generated_at": now,
+    })
+
+
+@login_required
+@require_GET
+def location_codes_api(request):
+    """JSON feed of live codes; polled by the codes page."""
+    if not _can_view_location_codes(request.user):
+        return JsonResponse({"ok": False, "error": "Forbidden."}, status=403)
+
+    from . import codes as code_service
+
+    now = timezone.now()
+    locations = AttendanceLocation.objects.filter(is_active=True).order_by("name")
+
+    payload = []
+    for loc in locations:
+        row = code_service.get_current_code(loc, now=now)
+        payload.append({
+            "location_id": loc.pk,
+            "location": loc.name,
+            "code": row.code if row else None,
+            "is_open": row is not None,
+            "seconds_remaining": row.seconds_remaining if row else 0,
+            "window_end_iso": row.window_end.isoformat() if row else None,
+        })
+
+    return JsonResponse({
+        "ok": True,
+        "now": now.isoformat(),
+        "seconds_until_rotation": code_service.seconds_until_next_rotation(now),
+        "codes": payload,
+    })
+
+
+# ===========================================================================
+# Manual check-in (code-based)
+# ===========================================================================
+@login_required
+def check_in_manual(request):
+    """Staff enter the rotating office code to record attendance."""
+    from . import codes as code_service
+    from .forms import ManualCodeCheckInForm
+
+    today = timezone.localdate()
+
+    if not code_service.manual_checkin_enabled():
+        messages.info(
+            request,
+            "Manual check-in is currently disabled. Please use GPS check-in.",
+        )
+        return redirect("attendance:check_in")
+
+    existing = AttendanceRecord.objects.filter(
+        user=request.user, date=today,
+    ).first()
+    if existing is not None and existing.status != AttendanceRecord.ON_LEAVE:
+        messages.info(request, "You already have an attendance record for today.")
+        return redirect("attendance:home")
+
+    # Early exit for approved leave — friendlier than letting mark_status
+    # raise. Covers the case where the record was created by the leave
+    # sync *after* the check above but before the POST is processed.
+    if existing is not None and existing.status == AttendanceRecord.ON_LEAVE:
+        messages.error(
+            request,
+            "You can't sign attendance because you're on approved leave today.",
+        )
+        return redirect("attendance:home")
+
+    if request.method == "POST":
+        form = ManualCodeCheckInForm(request.POST)
+        if not form.is_valid():
+            for err in form.errors.get("code", []):
+                messages.error(request, err)
+        else:
+            try:
+                location, code_row = code_service.verify_check_in_code(
+                    request.user, form.cleaned_data["code"],
+                )
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+                location = None
+
+            if location is not None:
+                status = services._status_for_check_in(
+                    location, timezone.localtime(),
+                )
+                try:
+                    services.mark_status(
+                        request.user, today, status,
+                        source=AttendanceRecord.SOURCE_MANUAL,
+                        actor=request.user,
+                        location=location,
+                        check_in_at=timezone.now(),
+                        notes=f"Manual check-in via location code · {location.name}",
+                    )
+                except ValidationError as exc:
+                    # mark_status refuses to touch a day that's flagged
+                    # ON_LEAVE. Translate that into plain English.
+                    msgs = getattr(exc, "messages", None) or [str(exc)]
+                    joined = " ".join(msgs)
+                    if "approved leave" in joined.lower():
+                        messages.error(
+                            request,
+                            "You can't sign attendance because you're on "
+                            "approved leave today.",
+                        )
+                    else:
+                        messages.error(request, joined)
+                    return redirect("attendance:home")
+
+                messages.success(
+                    request,
+                    f"Checked in via {location.name}. "
+                    + ("You're on time." if status == AttendanceRecord.PRESENT
+                       else "Recorded as late."),
+                )
+                return redirect("attendance:home")
+            elif form.is_valid():
+                # Invalid code, form itself was fine.
+                messages.error(
+                    request,
+                    "That code isn't valid right now. Ask the office contact "
+                    "for the current code and try again.",
+                )
+    else:
+        form = ManualCodeCheckInForm()
+
+    return render(request, "attendance/check_in_manual.html", {
+        "form": form,
+        "today": today,
+        "attempts_remaining": code_service.attempts_remaining(request.user),
+        "rotation_minutes": code_service.rotation_minutes(),
+    })

@@ -5,28 +5,164 @@ from urllib.parse import quote
 
 from django.apps import apps
 from django.conf import settings
-from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required, permission_required
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
-from django.db import connection
+from django.core.paginator import Paginator
+from django.db import connection, transaction
+from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from notifications.models import Notification
-
+from core.models import ContactMessage, ContactMessageActivity
+from core.cache import get_or_set_context, safe_context, TTL_MEDIUM, TTL_SHORT
 from . import audit
-from .forms import ContactForm
+from .forms import ContactAssignmentForm, ContactForm, ContactNoteForm
 from .restricted import RestrictedFileModel
 
 
 # ---------------------------------------------------------------------------
 # Public
 # ---------------------------------------------------------------------------
-def landing(request):
-    """Public landing page — no login required."""
-    return render(request, "public/landing.html")
+import logging  # make sure this is at the top of the file
 
+logger = logging.getLogger(__name__)
+
+
+def landing(request):
+    """Public landing page — real portal data, no view-level caching.
+
+    Leadership is cached inside `public.services`. Everything else is
+    fetched fresh on each request: the queries are cheap and, more
+    importantly, a five-minute cache was hiding newly-published content.
+
+    Scope note: anonymous visitors only see records whose `visibility` is
+    PUBLIC. Signed-in users additionally see STAFF and own-department
+    records (same as inside the portal).
+    """
+    from public import services as public_services
+    from portal import services as portal_services
+
+    is_authed = request.user.is_authenticated
+    data_user = request.user if is_authed else None
+    ctx = {"is_authed": is_authed}
+    from staff.models import Department
+    ctx["contact_departments"] = Department.objects.filter(
+        is_active=True
+    ).order_by("name")
+
+    # ---- Governance (cached at the services layer) ----------------------
+    try:
+        ctx["leadership_more"] = public_services.featured_leadership(limit=6)
+    except Exception:
+        logger.exception("landing: leadership_more failed")
+        ctx["leadership_more"] = []
+    try:
+        ctx["leadership_count"] = len(public_services.all_leadership())
+    except Exception:
+        ctx["leadership_count"] = 0
+
+    # ---- Announcements ---------------------------------------------------
+    try:
+        ctx["announcements"] = list(
+            portal_services.live_announcements(user=data_user)[:3]
+        )
+    except Exception:
+        logger.exception("landing: announcements failed")
+        ctx["announcements"] = []
+
+    # ---- Events: try upcoming, then ongoing, then past ------------------
+    events = []
+    events_phase = None
+    for phase in ("upcoming", "ongoing", "past"):
+        try:
+            events = list(portal_services.live_events(user=data_user, when=phase)[:3])
+        except Exception:
+            logger.exception("landing: events (%s) failed", phase)
+            events = []
+        if events:
+            events_phase = phase
+            break
+    ctx["events"] = events
+    ctx["events_phase"] = events_phase
+
+    # ---- Gallery ---------------------------------------------------------
+    try:
+        albums = list(portal_services.featured_albums(limit=6, user=data_user))
+        if not albums:
+            albums = list(portal_services.live_albums(user=data_user)[:6])
+        ctx["gallery_albums"] = albums
+    except Exception:
+        logger.exception("landing: gallery failed")
+        ctx["gallery_albums"] = []
+
+    # ---- Documents -------------------------------------------------------
+    try:
+        docs = list(portal_services.featured_public_documents(limit=3))
+        if not docs:
+            docs = list(portal_services.published_documents(user=data_user)[:3])
+        ctx["documents"] = docs
+    except Exception:
+        logger.exception("landing: documents failed")
+        ctx["documents"] = []
+
+    # ---- Awards ----------------------------------------------------------
+    try:
+        awards = list(
+            portal_services.live_awards(user=data_user, featured_only=True)[:2]
+        )
+        if not awards:
+            awards = list(portal_services.live_awards(user=data_user)[:2])
+        ctx["awards"] = awards
+    except Exception:
+        logger.exception("landing: awards failed")
+        ctx["awards"] = []
+
+    # ---- Quick links for signed-in users --------------------------------
+    if is_authed:
+        ctx["quick_links"] = _landing_quick_links(request.user)
+
+    return render(request, "public/landing.html", ctx)
+
+
+def leadership_page(request):
+    """Public leadership page — full portrait grid grouped by section."""
+    from public import services as public_services
+
+    ctx = public_services.leadership_page_context()
+    ctx["is_authed"] = request.user.is_authenticated
+    return render(request, "public/leadership.html", ctx)
+
+
+def _landing_quick_links(user):
+    """Quick links shown on the public landing page for signed-in users.
+    URL failures degrade to an empty card (never a 500)."""
+    from django.urls import NoReverseMatch, reverse
+
+    specs = [
+        ("workflow",  "My requests",  "Raise, track, and approve",   "workflow:my_requests",         "indigo"),
+        ("awaiting",  "Awaiting me",  "Requests needing your action", "workflow:awaiting_action",     "amber"),
+        ("tickets",   "Helpdesk",     "Raise and track IT tickets",   "tickets:list",                 "green"),
+        ("tasks",     "My tasks",     "Work assigned to you",         "tasks:assigned_to_me",         "blue"),
+        ("attendance","Attendance",   "Check in and see your record", "attendance:home",              "teal"),
+        ("messages",  "Messages",     "Inbox and threads",            "messaging:inbox",              "rose"),
+    ]
+
+    cards = []
+    for key, label, hint, url_name, accent in specs:
+        try:
+            url = reverse(url_name)
+        except NoReverseMatch:
+            continue
+        cards.append({
+            "key": key, "label": label, "hint": hint,
+            "url": url, "accent": accent,
+        })
+    return cards
 
 def _module_cards(user):
     """Every card shown on the home dashboard. Each has a real URL where the
@@ -337,60 +473,62 @@ def user_scope_tickets(user):
 # ---------------------------------------------------------------------------
 @login_required
 def home(request):
-    """Signed-in landing page.
-
-    Widgets are role-aware and empty-state-aware:
-      - KPI tiles reflect data across modules the user can access
-      - Recent activity panels pull from Messaging and Notifications
-      - Quick actions and system status only appear for the roles that need them
-
-    As new modules land (tickets, assets, requests), add their widgets here
-    rather than building separate dashboards.
-    """
+    """Signed-in landing page. Cached for 2 minutes."""
     user = request.user
-    ctx = {}
 
-    # --- KPI tiles --------------------------------------------------------
-    ctx["unread_messages"] = _count_unread_messages(user)
-    ctx["unread_notifications"] = Notification.objects.filter(
-        recipient=user, is_read=False
-    ).count()
+    # --- Home context (cached per user) -----------------------------------
+    def _build_home():
+        ctx = {}
 
-    ctx["show_staff_widget"] = user.has_perm("staff.view_staff")
-    if ctx["show_staff_widget"]:
-        ctx["staff_count"] = _staff_count_for(user)
-        # Label reads differently for users scoped to one department vs. those
-        # with cross-department rights.
-        if user.is_superuser or user.has_perm("accounts.access_all_departments"):
-            ctx["staff_label"] = "Staff in directory"
-        else:
-            ctx["staff_label"] = "Staff in your department"
+        ctx["unread_messages"] = _count_unread_messages(user)
+        ctx["unread_notifications"] = Notification.objects.filter(
+            recipient=user, is_read=False,
+        ).count()
 
-    # --- Recent activity --------------------------------------------------
-    ctx["recent_threads"] = _recent_threads(user, limit=4)
-    ctx["recent_notifications"] = (
-        Notification.objects.filter(recipient=user)
-        .select_related("actor")[:5]
+        ctx["show_staff_widget"] = user.has_perm("staff.view_staff")
+        if ctx["show_staff_widget"]:
+            ctx["staff_count"] = _staff_count_for(user)
+            if user.is_superuser or user.has_perm("accounts.access_all_departments"):
+                ctx["staff_label"] = "Staff in directory"
+            else:
+                ctx["staff_label"] = "Staff in your department"
+
+        ctx["recent_threads"] = _recent_threads(user, limit=4)
+        ctx["recent_notifications"] = list(
+            Notification.objects
+            .filter(recipient=user)
+            .select_related("actor")
+            .values(
+                "pk", "title", "body", "level", "is_read",
+                "created_at", "url", "actor__first_name", "actor__last_name",
+            )[:5]
+        )
+
+        try:
+            ctx["user_staff"] = user.staff_profile
+        except Exception:
+            ctx["user_staff"] = None
+
+        ctx["can_import"] = user.has_perm("config.change_configentry")
+        ctx["can_view_settings"] = user.has_perm("config.change_configentry")
+        ctx["module_cards"] = _module_cards(user)
+        ctx["dashboard"] = _dashboard_for(user)
+
+        if user.is_superuser or user.has_perm("config.view_configentry"):
+            ctx["system_health"] = _quick_health()
+
+        return ctx
+
+    ctx = safe_context(
+        "home", ["ctx"], _build_home,
+        ttl=TTL_MEDIUM, user=user, default={},
     )
-
-    # --- Profile widget ---------------------------------------------------
-    try:
-        ctx["user_staff"] = user.staff_profile
-    except Exception:
-        ctx["user_staff"] = None
-
-    # --- Quick actions ----------------------------------------------------
-    ctx["can_import"] = user.has_perm("config.change_configentry")
-    ctx["can_view_settings"] = user.has_perm("config.change_configentry")
-
-    ctx["module_cards"] = _module_cards(user)
-    ctx["dashboard"] = _dashboard_for(user)
-
-    # --- System status (admins only) -------------------------------------
-    if user.is_superuser or user.has_perm("config.view_configentry"):
-        ctx["system_health"] = _quick_health()
+    if not ctx:
+        # Fallback — build fresh, without caching, if the cache path failed.
+        ctx = _build_home()
 
     return render(request, "core/home.html", ctx)
+
 
 
 def _count_unread_messages(user):
@@ -525,18 +663,30 @@ def contact_submit(request):
     msg = form.save(commit=False)
     msg.ip_address = _client_ip(request)
     msg.user_agent = (request.META.get("HTTP_USER_AGENT", "") or "")[:255]
-    msg.save()
+    with transaction.atomic():
+        msg.save()
+        ContactMessageActivity.objects.create(
+            contact_message=msg,
+            action=ContactMessageActivity.ACTION_RECEIVED,
+            details="Submitted through the public contact form.",
+        )
 
     try:
         from core.email_utils import send_templated_email
         from django.conf import settings as _s
+        from django.urls import reverse
         to_email = getattr(_s, "CONTACT_NOTIFY_EMAIL", None) or getattr(_s, "DEFAULT_FROM_EMAIL", None)
         if to_email:
             send_templated_email(
                 subject=f"[Contact] {msg.subject or msg.name}",
                 recipients=[to_email],
                 template_name="emails/contact_notify.html",
-                context={"message": msg},
+                context={
+                    "message": msg,
+                    "inbox_url": request.build_absolute_uri(
+                        reverse("core:contact_detail", kwargs={"pk": msg.pk})
+                    ),
+                },
                 category="general",
             )
     except Exception:
@@ -547,3 +697,192 @@ def contact_submit(request):
         "ok": True,
         "message": "Thanks — we've received your message and will get back to you shortly.",
     })
+
+
+CONTACT_FILTERS = (
+    ("all", "All messages"),
+    ("new", "New / unread"),
+    ("assigned_to_me", "Assigned to me"),
+    ("handled", "Handled"),
+    ("unassigned", "Unassigned"),
+)
+
+
+def _contact_messages_for(user):
+    queryset = ContactMessage.objects.select_related(
+        "handling_department", "assigned_to", "handled_by"
+    )
+    if user.is_superuser or user.has_perm("accounts.access_all_departments"):
+        return queryset
+    if user.department_id:
+        return queryset.filter(
+            Q(handling_department__isnull=True)
+            | Q(handling_department_id=user.department_id)
+        )
+    return queryset.filter(handling_department__isnull=True)
+
+
+def _contact_message_for_handler(request, pk):
+    return get_object_or_404(_contact_messages_for(request.user), pk=pk)
+
+
+@login_required
+@permission_required("core.can_handle_contact_messages", raise_exception=True)
+def contact_inbox(request):
+    queryset = _contact_messages_for(request.user)
+    query = (request.GET.get("q") or "").strip()
+    if query:
+        queryset = queryset.filter(
+            Q(name__icontains=query)
+            | Q(email__icontains=query)
+            | Q(subject__icontains=query)
+            | Q(message__icontains=query)
+        )
+
+    status_filter = request.GET.get("status", "all")
+    if status_filter == "new":
+        queryset = queryset.filter(is_read=False)
+    elif status_filter == "assigned_to_me":
+        queryset = queryset.filter(assigned_to=request.user)
+    elif status_filter == "handled":
+        queryset = queryset.filter(is_handled=True)
+    elif status_filter == "unassigned":
+        queryset = queryset.filter(assigned_to__isnull=True, is_handled=False)
+    elif status_filter != "all":
+        status_filter = "all"
+
+    page = Paginator(queryset.order_by("-created_at", "-pk"), 25).get_page(
+        request.GET.get("page")
+    )
+    return render(request, "core/contact_inbox.html", {
+        "page": page,
+        "q": query,
+        "status_filter": status_filter,
+        "status_choices": CONTACT_FILTERS,
+        "filters_active": bool(query or status_filter != "all"),
+    })
+
+
+@login_required
+@permission_required("core.can_handle_contact_messages", raise_exception=True)
+def contact_detail(request, pk):
+    contact_message = _contact_message_for_handler(request, pk)
+    return render(request, "core/contact_detail.html", {
+        "contact_message": contact_message,
+        "assignment_form": ContactAssignmentForm(
+            contact_message=contact_message
+        ),
+        "note_form": ContactNoteForm(),
+        "activities": contact_message.activities.select_related("actor"),
+    })
+
+
+@login_required
+@permission_required("core.can_handle_contact_messages", raise_exception=True)
+@require_POST
+def contact_assign(request, pk):
+    contact_message = _contact_message_for_handler(request, pk)
+    form = ContactAssignmentForm(
+        contact_message=contact_message,
+        data=request.POST,
+    )
+    if not form.is_valid():
+        messages.error(request, "Choose an authorized staff handler or leave unassigned.")
+        return redirect("core:contact_detail", pk=contact_message.pk)
+
+    handler = form.cleaned_data["assigned_to"]
+    if contact_message.assigned_to_id != getattr(handler, "pk", None):
+        old_handler = contact_message.assigned_to
+        with transaction.atomic():
+            contact_message.assigned_to = handler
+            contact_message.save(update_fields=["assigned_to", "updated_at"])
+            ContactMessageActivity.objects.create(
+                contact_message=contact_message,
+                actor=request.user,
+                action=ContactMessageActivity.ACTION_ASSIGNED,
+                details=(
+                    f"Assigned to {handler.get_full_name() or handler.email}."
+                    if handler else
+                    f"Unassigned from {old_handler.get_full_name() or old_handler.email}."
+                    if old_handler else
+                    "Message left unassigned."
+                ),
+            )
+    messages.success(request, "Contact message assignment updated.")
+    return redirect("core:contact_detail", pk=contact_message.pk)
+
+
+@login_required
+@permission_required("core.can_handle_contact_messages", raise_exception=True)
+@require_POST
+def contact_mark_read(request, pk):
+    contact_message = _contact_message_for_handler(request, pk)
+    if not contact_message.is_read:
+        with transaction.atomic():
+            contact_message.is_read = True
+            contact_message.save(update_fields=["is_read", "updated_at"])
+            ContactMessageActivity.objects.create(
+                contact_message=contact_message,
+                actor=request.user,
+                action=ContactMessageActivity.ACTION_READ,
+            )
+    messages.success(request, "Contact message marked as read.")
+    return redirect("core:contact_detail", pk=contact_message.pk)
+
+
+@login_required
+@permission_required("core.can_handle_contact_messages", raise_exception=True)
+@require_POST
+def contact_update_status(request, pk):
+    contact_message = _contact_message_for_handler(request, pk)
+    action = request.POST.get("action")
+    if action == "handled":
+        contact_message.is_handled = True
+        contact_message.handled_by = request.user
+        contact_message.handled_at = timezone.now()
+        activity_action = ContactMessageActivity.ACTION_HANDLED
+        success_message = "Contact message marked as handled."
+        activity_details = "Marked as handled."
+    elif action == "reopen":
+        contact_message.is_handled = False
+        contact_message.handled_by = None
+        contact_message.handled_at = None
+        activity_action = ContactMessageActivity.ACTION_REOPENED
+        success_message = "Contact message reopened."
+        activity_details = "Reopened for follow-up."
+    else:
+        messages.error(request, "Choose a valid contact-message status.")
+        return redirect("core:contact_detail", pk=contact_message.pk)
+
+    with transaction.atomic():
+        contact_message.save(update_fields=[
+            "is_handled", "handled_by", "handled_at", "updated_at",
+        ])
+        ContactMessageActivity.objects.create(
+            contact_message=contact_message,
+            actor=request.user,
+            action=activity_action,
+            details=activity_details,
+        )
+    messages.success(request, success_message)
+    return redirect("core:contact_detail", pk=contact_message.pk)
+
+
+@login_required
+@permission_required("core.can_handle_contact_messages", raise_exception=True)
+@require_POST
+def contact_add_note(request, pk):
+    contact_message = _contact_message_for_handler(request, pk)
+    form = ContactNoteForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Enter an internal note of at least three characters.")
+        return redirect("core:contact_detail", pk=contact_message.pk)
+
+    ContactMessageActivity.objects.create(
+        contact_message=contact_message,
+        actor=request.user,
+        action=ContactMessageActivity.ACTION_NOTE,
+        details=form.cleaned_data["details"],
+    )
+    messages.success(request, "Internal note added.")
+    return redirect("core:contact_detail", pk=contact_message.pk)

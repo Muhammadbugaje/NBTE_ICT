@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Annual leave entitlements · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Annual leave entitlements{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=4">
+{% endblock %}
+
+{% block content %}
+<main class="dash-page leave-entitlements-page">
+  <header class="dash-hero">
+    <div class="dash-hero-inner">
+      <div class="dash-hero-icon" aria-hidden="true">AL</div>
+      <div>
+        <h1>Annual leave entitlements</h1>
+        <p class="dash-hero-sub">Set an individual exception for a calendar year. Otherwise the staff member’s annual allowance is calculated from their system role.</p>
+      </div>
+    </div>
+    <div class="leave-management-actions">
+      {% if perms.config.change_configentry %}
+        <a href="{% url 'config:settings' %}#settings-leave-policy-title" class="btn btn-ghost">Role defaults in Settings</a>
+      {% endif %}
+      <a href="{% url 'leave:management' %}" class="btn btn-ghost">Leave management</a>
+    </div>
+  </header>
+
+  <form method="get" class="leave-year-filter">
+    <label for="leave-year">Calendar year</label>
+    <input id="leave-year" class="input" type="number" name="year" min="1900" max="9999" value="{{ year }}" required>
+    <button class="btn btn-primary btn-sm" type="submit">View year</button>
+  </form>
+  <p class="leave-policy-note">
+    Leave this field blank to use the role default. Enter a value only to override that person’s allowance for this year; save it blank to remove an existing override.
+    Balance use is calculated from approved annual-leave requests on weekdays, excluding configured holidays.
+  </p>
+
+  {% if rows %}
+    <div class="leave-entitlement-list">
+      {% for row in rows %}
+        <section class="leave-entitlement-row">
+          <div class="leave-entitlement-person">
+            <strong>{{ row.staff.full_name }}</strong>
+            <span>{{ row.staff.employee_no }}{% if row.staff.department %} · {{ row.staff.department.name }}{% endif %}</span>
+            <span class="leave-entitlement-source">
+              {% if row.entitlement %}
+                Individual override: {{ row.entitlement.days|floatformat:"-2" }} days
+              {% elif row.role_entitlement is not None %}
+                {{ row.staff.user.role.name }} default: {{ row.role_entitlement|floatformat:"-2" }} days
+              {% else %}
+                {{ row.staff.user.role.name|default:"No system role" }} default is not configured
+              {% endif %}
+            </span>
+          </div>
+          <form method="post" action="{% url 'leave:entitlements' %}?year={{ year }}" class="leave-entitlement-form">
+            {% csrf_token %}
+            {{ row.form.staff_id }}
+            {{ row.form.year }}
+            <label for="{{ row.form.days.id_for_label }}">Override days</label>
+            {{ row.form.days }}
+            <small class="leave-entitlement-hint">Blank uses role default</small>
+            <button class="btn btn-primary btn-sm" type="submit">
+              {% if row.entitlement %}Save override{% else %}Set override{% endif %}
+            </button>
+          </form>
+        </section>
+      {% endfor %}
+    </div>
+  {% else %}
+    {% include "partials/empty_state.html" with title="No linked staff in your scope" body="Staff accounts in the departments you manage will appear here." only %}
+  {% endif %}
+</main>
+{% endblock %}

@@ -85,6 +85,7 @@
           {% elif today_record.status == 'late' %}Checked in — recorded as late
           {% elif today_record.status == 'absent' %}Marked absent today
           {% elif today_record.status == 'excused' %}Excused today
+          {% elif today_record.status == 'on_leave' %}You’re on approved leave today
           {% else %}{{ today_record.get_status_display }}{% endif %}
         </h2>
         <p>
@@ -107,6 +108,9 @@
           My attendance
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
+        {% if today_record.status == 'on_leave' and has_department and my_dept_locations %}
+          <a class="att-btn att-btn-primary" href="{% url 'attendance:check_in' %}">Check in anyway</a>
+        {% endif %}
       </div>
     </section>
   {% else %}
@@ -168,6 +172,11 @@
     <div class="att-stat {% if stats.absent > 0 %}is-danger{% endif %}">
       <div class="att-stat-value">{{ stats.absent }}</div>
       <div class="att-stat-label">Absent</div>
+      <div class="att-stat-sub">last 30 days</div>
+    </div>
+    <div class="att-stat">
+      <div class="att-stat-value">{{ stats.on_leave }}</div>
+      <div class="att-stat-label">On leave</div>
       <div class="att-stat-sub">last 30 days</div>
     </div>
   </div>

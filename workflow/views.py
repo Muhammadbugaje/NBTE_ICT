@@ -8,11 +8,14 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+from urllib.parse import urlencode
+
 
 from core.sorting import apply_sort
 
@@ -142,42 +145,154 @@ def my_requests(request):
         "counts": _request_counts(scope="mine", user=request.user),
     })
 
+
+
+
 @login_required
 def awaiting_action(request):
-    """Requests where I'm the currently-resolved approver."""
-    open_requests = (
-        Request.objects
-        .exclude(status__in=Request.CLOSED_STATUSES)
-        .select_related("requester", "request_type", "receiving_department")
-        .order_by("-created_at")
+    """Show the user's permission-scoped, cross-module action queue."""
+    from urllib.parse import urlencode
+
+    from dashboards.action_queue import (
+        AGE_FILTERS,
+        PRIORITY_ORDER,
+        SOURCE_LABELS,
+        build_action_queue,
     )
-    mine = []
-    for req in open_requests:
-        step = services._resolve_current_step(req)
-        if step is None:
-            continue
-        actor = services.resolve_approver(step, req)
-        if actor and actor.pk == request.user.pk:
-            req.active_step = step
-            mine.append(req)
 
-    q = (request.GET.get("q") or "").strip()
-    if q:
-        q_lower = q.lower()
-        mine = [
-            r for r in mine
-            if q_lower in (r.subject or "").lower()
-            or q_lower in (r.reference or "").lower()
-        ]
+    items, filters = build_action_queue(
+        request.user,
+        source=request.GET.get("source", "all"),
+        priority=request.GET.get("priority", "all"),
+        age=request.GET.get("age", "all"),
+        query=request.GET.get("q", "").strip(),
+    )
+    page = Paginator(items, PER_PAGE).get_page(request.GET.get("page"))
 
-    paginator = Paginator(mine, PER_PAGE)
-    page = paginator.get_page(request.GET.get("page"))
+    # `build_action_queue` returns filters as a plain dict. Read it as such.
+    # (`filters["query"]` on a dict; `filters.query` on an object — we support
+    # both so this view doesn't break if the queue service changes shape later.)
+    def _f(name, default=""):
+        if isinstance(filters, dict):
+            return filters.get(name, default)
+        return getattr(filters, name, default)
 
-    return render(request, "workflow/awaiting_action.html", {
-        "page": page,
-        "total": len(mine),
-        "q": q,
+    filter_query    = _f("query", "")
+    filter_source   = _f("source", "all")
+    filter_priority = _f("priority", "all")
+    filter_age      = _f("age", "all")
+
+    has_active_filters = any([
+        filter_query,
+        filter_source != "all",
+        filter_priority != "all",
+        filter_age != "all",
+    ])
+
+    querystring = urlencode({
+        key: value
+        for key, value in {
+            "q":        filter_query,
+            "source":   filter_source,
+            "priority": filter_priority,
+            "age":      filter_age,
+        }.items()
+        if value and value != "all"
     })
+
+    def _as_items(collection):
+        """
+        Normalise a mapping OR an iterable into a list of (value, label) pairs.
+
+        Dict         →  [("urgent", "Urgent"), ...]
+        List[str]    →  [("urgent", "Urgent"), ...]   # title-cased
+        List[tuple]  →  unchanged
+        """
+        if hasattr(collection, "items"):
+            return list(collection.items())
+        result = []
+        for entry in collection:
+            if isinstance(entry, (list, tuple)) and len(entry) == 2:
+                result.append(tuple(entry))
+            else:
+                result.append(
+                    (str(entry), str(entry).replace("-", " ").title())
+                )
+        return result
+
+    return render(request, "dashboards/awaiting_action.html", {
+        "page":               page,
+        "total":              len(items),
+        "filters":            filters,
+        "source_options":     _as_items(SOURCE_LABELS),
+        "priority_options":   _as_items(PRIORITY_ORDER),
+        "age_options":        _as_items(AGE_FILTERS),
+        "has_active_filters": has_active_filters,
+        "querystring":        querystring,
+    })
+
+@login_required
+@require_POST
+def bulk_awaiting_action(request):
+    """Run bulk decisions through the regular workflow service layer."""
+    from dashboards.action_queue import get_bulk_actionable_requests
+
+    action = request.POST.get("bulk_action", "")
+    comment = (request.POST.get("comment") or "").strip()
+    raw_ids = request.POST.getlist("request_ids")
+    try:
+        request_ids = list(dict.fromkeys(int(value) for value in raw_ids))
+    except (TypeError, ValueError):
+        messages.error(request, "The selected request list is invalid.")
+        return redirect("workflow:awaiting_action")
+
+    if action not in {"approve", "return"}:
+        messages.error(request, "Choose approve or return for the selected requests.")
+        return redirect("workflow:awaiting_action")
+    if not request_ids:
+        messages.error(request, "Select at least one approval request.")
+        return redirect("workflow:awaiting_action")
+    if len(request_ids) > 50:
+        messages.error(request, "Select no more than 50 requests at a time.")
+        return redirect("workflow:awaiting_action")
+    if action == "return" and not comment:
+        messages.error(request, "A comment is required when returning requests.")
+        return redirect("workflow:awaiting_action")
+
+    actionable = get_bulk_actionable_requests(request.user, request_ids)
+    if len(actionable) != len(request_ids):
+        messages.error(
+            request,
+            "One or more selected requests are no longer available for this action.",
+        )
+        return redirect("workflow:awaiting_action")
+
+    completed = []
+    failed = []
+    for request_id in request_ids:
+        req = actionable[request_id]
+        try:
+            if action == "approve":
+                services.approve_step(req, request.user, comment=comment)
+            else:
+                services.return_to_requester(req, request.user, comment=comment)
+        except (PermissionDenied, ValidationError):
+            failed.append(req.reference)
+        else:
+            completed.append(req.reference)
+
+    if completed:
+        verb = "approved" if action == "approve" else "returned to their requesters"
+        messages.success(
+            request,
+            f"{len(completed)} request{'s' if len(completed) != 1 else ''} {verb}.",
+        )
+    if failed:
+        messages.error(
+            request,
+            "Could not process: " + ", ".join(failed) + ". Review their current status.",
+        )
+    return redirect("workflow:awaiting_action")
 
 
 @login_required
@@ -353,7 +468,9 @@ def assigned_to_me(request):
         qs = qs.filter(Q(subject__icontains=q) | Q(reference__icontains=q))
 
     status_filter = request.GET.get("status", "all")
-    if status_filter in dict(Request.STATUS_CHOICES):
+    if status_filter not in dict(Request.STATUS_CHOICES):
+        status_filter = "all"
+    else:
         qs = qs.filter(status=status_filter)
 
     qs, sort_key, sort_dir = apply_sort(
@@ -415,14 +532,21 @@ def raise_request_view(request, type_code=None):
         if form.is_valid():
             form_data = extract_form_data(form, request_type)
             try:
-                req = services.raise_request(
-                    requester=request.user,
-                    request_type=request_type,
-                    subject=form.cleaned_data["subject"],
-                    body=form.cleaned_data["body"],
-                    priority=form.cleaned_data["priority"],
-                    form_data=form_data,
-                )
+                if request_type.code == "annual-leave":
+                    from leave.services import validate_application
+                    validate_application(request.user, form_data)
+                with transaction.atomic():
+                    req = services.raise_request(
+                        requester=request.user,
+                        request_type=request_type,
+                        subject=form.cleaned_data["subject"],
+                        body=form.cleaned_data["body"],
+                        priority=form.cleaned_data["priority"],
+                        form_data=form_data,
+                    )
+                    if request_type.code == "annual-leave":
+                        from leave.services import sync_application
+                        sync_application(req, form_data)
             except ValidationError as exc:
                 messages.error(request, "; ".join(exc.messages))
             else:
@@ -460,6 +584,10 @@ def detail(request, pk):
     req = _require_view(request, pk)
     current_step = services._resolve_current_step(req)
     current_actor = services.resolve_approver(current_step, req) if current_step else None
+    leave_summary = None
+    if req.request_type.code == "annual-leave":
+        from leave.services import request_summary
+        leave_summary = request_summary(req)
 
     # What can the current user do here?
     can_act = bool(current_actor and current_actor.pk == request.user.pk)
@@ -477,6 +605,7 @@ def detail(request, pk):
 
     ctx = {
         "req": req,
+        "leave_summary": leave_summary,
         "current_step": current_step,
         "current_actor": current_actor,
         "can_act": can_act,
@@ -719,19 +848,26 @@ def resubmit(request, pk):
 
     form_data = extract_form_data(form, req.request_type)
     try:
-        services.resubmit(
-            req, request.user,
-            subject=form.cleaned_data["subject"],
-            body=form.cleaned_data["body"],
-            comment=form.cleaned_data.get("comment") or "",
-            form_data=form_data,
-        )
-        if form.cleaned_data.get("file"):
-            services.add_attachment(
+        if req.request_type.code == "annual-leave":
+            from leave.services import validate_application
+            validate_application(request.user, form_data)
+        with transaction.atomic():
+            services.resubmit(
                 req, request.user,
-                file=form.cleaned_data["file"],
-                description=form.cleaned_data.get("file_description") or "",
+                subject=form.cleaned_data["subject"],
+                body=form.cleaned_data["body"],
+                comment=form.cleaned_data.get("comment") or "",
+                form_data=form_data,
             )
+            if req.request_type.code == "annual-leave":
+                from leave.services import sync_application
+                sync_application(req, form_data)
+            if form.cleaned_data.get("file"):
+                services.add_attachment(
+                    req, request.user,
+                    file=form.cleaned_data["file"],
+                    description=form.cleaned_data.get("file_description") or "",
+                )
     except (PermissionDenied, ValidationError) as exc:
         messages.error(request, "; ".join(getattr(exc, "messages", [str(exc)])))
     else:

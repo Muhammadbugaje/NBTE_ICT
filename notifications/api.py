@@ -1,4 +1,5 @@
 """What other apps call. Never sends in the request/response cycle (doc 31 §6)."""
+import logging
 import math
 from datetime import timedelta
 
@@ -12,6 +13,8 @@ import config
 
 from .models import EmailLog, EmailSendSlot
 from .tasks import send_email_task
+
+logger = logging.getLogger(__name__)
 
 
 def _next_slot():
@@ -43,6 +46,10 @@ def queue_email(subject, recipients, template_name, context=None, category="gene
         subject=subject[:255], recipients=recipients, recipient_text=", ".join(recipients),
         category=category, user=user, scheduled_for=planned,
         body_html="" if category in EmailLog.sensitive_categories() else html,
+    )
+    logger.info(
+        "Email queued log_id=%s category=%s recipient_count=%s scheduled_for=%s",
+        log.pk, category, len(recipients), planned.isoformat(),
     )
     # Only enqueue once the surrounding transaction (if any) has committed.
     transaction.on_commit(lambda: send_email_task.apply_async(

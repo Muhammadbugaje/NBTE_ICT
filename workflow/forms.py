@@ -1,4 +1,6 @@
 """Forms for the workflow app."""
+from datetime import date
+
 from django import forms
 
 from accounts.models import User
@@ -563,7 +565,10 @@ def extract_form_data(form, request_type):
     for defn in definitions:
         key = defn["key"]
         if key in form.cleaned_data:
-            out[key] = form.cleaned_data[key]
+            value = form.cleaned_data[key]
+            if defn.get("type") == "date" and isinstance(value, date):
+                value = value.isoformat()
+            out[key] = value
     return out
     
     

@@ -82,6 +82,11 @@ class AssetForm(forms.ModelForm):
 class AssignAssetForm(forms.Form):
     """Assign an asset to a user."""
 
+    expected_return_at = forms.DateField(
+        required=False,
+        label="Expected return date",
+        widget=forms.DateInput(attrs={"class": "input", "type": "date"}),
+    )
     assigned_to = forms.ModelChoiceField(
         queryset=User.objects.none(),
         empty_label="— Select a user —",

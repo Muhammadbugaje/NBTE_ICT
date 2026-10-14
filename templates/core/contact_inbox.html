@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Public contact inbox · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Public contact inbox{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/contact-inbox.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<main class="contact-page">
+  <header class="contact-page-head">
+    <div>
+      <p class="contact-eyebrow">External enquiries</p>
+      <h1>Public contact inbox</h1>
+      <p>Review and route messages sent from the public NBTE homepage.</p>
+    </div>
+    <span class="contact-count">{{ page.paginator.count }} message{{ page.paginator.count|pluralize }}</span>
+  </header>
+
+  <form method="get" class="contact-filter-bar">
+    <label class="contact-search">
+      <span class="sr-only">Search sender, subject or message</span>
+      <input class="input" type="search" name="q" value="{{ q }}" placeholder="Search sender, subject or message">
+    </label>
+    <label class="contact-filter">
+      <span class="sr-only">Filter messages</span>
+      <select class="input" name="status">
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-primary" type="submit">Apply filters</button>
+    {% if filters_active %}
+      <a class="btn btn-ghost" href="{% url 'core:contact_inbox' %}">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if page.object_list %}
+    <div class="contact-message-list">
+      {% for item in page.object_list %}
+        <a class="contact-message-row {% if not item.is_read %}is-unread{% endif %}" href="{% url 'core:contact_detail' item.pk %}">
+          <span class="contact-message-status" aria-hidden="true"></span>
+          <span class="contact-message-main">
+            <span class="contact-message-title">{{ item.subject|default:"No subject" }}</span>
+            <span class="contact-message-meta">
+              {{ item.name }} · {{ item.email }}
+              {% if item.handling_department %} · {{ item.handling_department.name }}{% else %} · General enquiry{% endif %}
+            </span>
+            <span class="contact-message-preview">{{ item.message|truncatechars:150 }}</span>
+          </span>
+          <span class="contact-message-trailing">
+            <time datetime="{{ item.created_at|date:'c' }}">{{ item.created_at|date:"M j, Y · H:i" }}</time>
+            {% if item.is_handled %}
+              <span class="contact-badge is-handled">Handled</span>
+            {% elif item.assigned_to %}
+              <span class="contact-badge">Assigned to {{ item.assigned_to.get_full_name|default:item.assigned_to.email }}</span>
+            {% else %}
+              <span class="contact-badge is-unassigned">Unassigned</span>
+            {% endif %}
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+  {% elif filters_active %}
+    {% include "partials/empty_state.html" with title="No matching messages" body="Try another search term or clear the filters to see all public enquiries." only %}
+  {% else %}
+    {% include "partials/empty_state.html" with title="Your inbox is clear" body="Messages submitted through the public homepage will appear here." only %}
+  {% endif %}
+
+  {% if page.has_other_pages %}
+    <nav class="contact-pagination" aria-label="Contact inbox pages">
+      {% if page.has_previous %}
+        <a class="btn btn-ghost btn-sm" href="?q={{ q|urlencode }}&amp;status={{ status_filter|urlencode }}&amp;page={{ page.previous_page_number }}">Previous</a>
+      {% endif %}
+      <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}
+        <a class="btn btn-ghost btn-sm" href="?q={{ q|urlencode }}&amp;status={{ status_filter|urlencode }}&amp;page={{ page.next_page_number }}">Next</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+</main>
+{% endblock %}

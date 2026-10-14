@@ -161,7 +161,6 @@ from core.dates import at_local_date, ensure_aware, shift_cutoff
 def _status_for_check_in(location, moment):
     """Return AttendanceRecord.PRESENT or .LATE for a check-in at `moment`."""
     moment = ensure_aware(moment)
-
     start_time = getattr(location, "work_start_time", None)
     if not start_time:
         return AttendanceRecord.PRESENT
@@ -171,7 +170,6 @@ def _status_for_check_in(location, moment):
         or getattr(location, "grace_period_minutes", None)
         or 0
     )
-
     cutoff = shift_cutoff(
         moment, start_time,
         grace_minutes=int(grace),
@@ -206,8 +204,12 @@ def check_in_user(user, lat, lng, now=None):
     if not is_working_day(today):
         return CheckInResult(ok=False, message="Today is not a working day.")
 
-    existing = AttendanceRecord.objects.filter(user=user, date=today).first()
-    if existing is not None:
+    existing = (
+        AttendanceRecord.objects.select_for_update()
+        .filter(user=user, date=today)
+        .first()
+    )
+    if existing is not None and existing.status != AttendanceRecord.ON_LEAVE:
         return CheckInResult(
             ok=False,
             status=existing.status,
@@ -233,26 +235,43 @@ def check_in_user(user, lat, lng, now=None):
 
     status = _status_for_check_in(location, timezone.localtime(now))
 
-    try:
-        rec = AttendanceRecord.objects.create(
-            user=user,
-            date=today,
-            status=status,
-            check_in_at=now,
-            latitude=lat,
-            longitude=lng,
-            distance_meters=distance,
-            location=location,
-            source=AttendanceRecord.SOURCE_GPS,
-        )
-    except IntegrityError:
-        rec = AttendanceRecord.objects.get(user=user, date=today)
-        return CheckInResult(
-            ok=False,
-            status=rec.status,
-            record=rec,
-            message="You already checked in today.",
-        )
+    if existing is not None:
+        rec = existing
+        rec.status = status
+        rec.check_in_at = now
+        rec.latitude = lat
+        rec.longitude = lng
+        rec.distance_meters = distance
+        rec.location = location
+        rec.source = AttendanceRecord.SOURCE_GPS
+        rec.leave_application = None
+        rec.notes = "Checked in during approved annual leave."
+        rec.save(update_fields=[
+            "status", "check_in_at", "latitude", "longitude",
+            "distance_meters", "location", "source", "leave_application",
+            "notes", "updated_at",
+        ])
+    else:
+        try:
+            rec = AttendanceRecord.objects.create(
+                user=user,
+                date=today,
+                status=status,
+                check_in_at=now,
+                latitude=lat,
+                longitude=lng,
+                distance_meters=distance,
+                location=location,
+                source=AttendanceRecord.SOURCE_GPS,
+            )
+        except IntegrityError:
+            rec = AttendanceRecord.objects.get(user=user, date=today)
+            return CheckInResult(
+                ok=False,
+                status=rec.status,
+                record=rec,
+                message="You already checked in today.",
+            )
 
     log(user, today, f"Check-in via {location.name} at {distance}m", kind="check_in")
 
@@ -286,6 +305,17 @@ def mark_status(user, d, status, *, source=AttendanceRecord.SOURCE_MANUAL,
     """Upsert a record for (user, date). Used by manual edit + Excel upload."""
     if status not in dict(AttendanceRecord.STATUS_CHOICES):
         raise ValidationError(f"Unknown status: {status}")
+    if status == AttendanceRecord.ON_LEAVE and source != AttendanceRecord.SOURCE_LEAVE:
+        raise ValidationError("Approved leave attendance is managed from leave requests.")
+    existing = AttendanceRecord.objects.filter(user=user, date=d).first()
+    if (
+        existing is not None
+        and existing.status == AttendanceRecord.ON_LEAVE
+        and source != AttendanceRecord.SOURCE_GPS
+    ):
+        raise ValidationError(
+            "Attendance for an approved leave day cannot be changed manually."
+        )
 
     rec, created = AttendanceRecord.objects.update_or_create(
         user=user,
@@ -485,6 +515,7 @@ _CELL_TO_STATUS = {
     "EXCUSED": AttendanceRecord.EXCUSED,
     "H": AttendanceRecord.HOLIDAY,
     "HOLIDAY": AttendanceRecord.HOLIDAY,
+    "LV": AttendanceRecord.ON_LEAVE,
 }
 
 
@@ -509,6 +540,12 @@ def apply_matrix(parsed, actor, overwrite=True):
                     f"Row {row.row_number} day {day_num}: unrecognised value '{raw}'."
                 )
                 continue
+            if status == AttendanceRecord.ON_LEAVE:
+                result.skipped += 1
+                result.errors.append(
+                    f"Row {row.row_number} day {day_num}: approved leave status is system-managed."
+                )
+                continue
             try:
                 d = date_cls(parsed.year, parsed.month, day_num)
             except ValueError:
@@ -517,6 +554,12 @@ def apply_matrix(parsed, actor, overwrite=True):
                 continue
 
             existing = AttendanceRecord.objects.filter(user=row.user, date=d).first()
+            if existing is not None and existing.status == AttendanceRecord.ON_LEAVE:
+                result.skipped += 1
+                result.errors.append(
+                    f"Row {row.row_number} day {day_num}: approved leave attendance was not changed."
+                )
+                continue
             if existing is not None and not overwrite:
                 result.skipped += 1
                 continue
@@ -558,7 +601,7 @@ def attendance_stats(user, days=30):
 
     by_date = {r.date: r for r in records}
 
-    present = late = absent = excused = holiday = 0
+    present = late = absent = excused = holiday = on_leave = 0
     for d in working_days:
         r = by_date.get(d)
         if r is None:
@@ -573,6 +616,8 @@ def attendance_stats(user, days=30):
             excused += 1
         elif r.status == AttendanceRecord.HOLIDAY:
             holiday += 1
+        elif r.status == AttendanceRecord.ON_LEAVE:
+            on_leave += 1
 
     streak = 0
     cursor = end
@@ -587,7 +632,7 @@ def attendance_stats(user, days=30):
         else:
             break
 
-    denom = total_expected - holiday or 1
+    denom = total_expected - holiday - on_leave or 1
     pct = round(((present + late) / denom) * 100) if total_expected else 0
 
     return {
@@ -600,6 +645,7 @@ def attendance_stats(user, days=30):
         "absent": absent,
         "excused": excused,
         "holiday": holiday,
+        "on_leave": on_leave,
         "present_pct": pct,
         "streak": streak,
         "records": list(records),
@@ -690,6 +736,8 @@ def to_matrix(records, month, year):
                 row.append("E")
             elif r.status == AttendanceRecord.HOLIDAY:
                 row.append("H")
+            elif r.status == AttendanceRecord.ON_LEAVE:
+                row.append("LV")
         matrix.append(row)
     return matrix
 

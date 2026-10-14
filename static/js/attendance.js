@@ -70,16 +70,34 @@
       if (retryBtn) retryBtn.hidden = true;
       if (hintEl) hintEl.textContent = "";
 
-      if (!navigator.geolocation) {
-        onError({ code: -1, message: "Your browser doesn't support location services." });
+      if (window.isSecureContext === false) {
+        onError({
+          code: -2,
+          message: "Location access requires HTTPS or localhost. Open the secure site, then allow location access in your browser and device settings."
+        });
         return;
       }
 
-      navigator.geolocation.getCurrentPosition(
-        onSuccess,
-        onError,
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      );
+      if (!navigator.geolocation) {
+        onError({
+          code: -1,
+          message: "This browser can't access location here. Use HTTPS or localhost and check your browser's site permissions."
+        });
+        return;
+      }
+
+      try {
+        navigator.geolocation.getCurrentPosition(
+          onSuccess,
+          onError,
+          { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 }
+        );
+      } catch (error) {
+        console.warn("[attendance] geolocation request failed", error);
+        onError({
+          message: "Location access is blocked. Use HTTPS or localhost, then allow this site in your browser and device settings."
+        });
+      }
     }
 
     function onSuccess(pos) {
@@ -91,7 +109,14 @@
                             + "&lng=" + encodeURIComponent(currentPosition.lng);
 
       fetch(url, { credentials: "same-origin", headers: { "Accept": "application/json" } })
-        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          return r.json().catch(function () {
+            throw new Error(r.ok ? "Could not verify your location." : "The attendance service returned an invalid response.");
+          }).then(function (data) {
+            if (!r.ok) throw new Error(data.error || data.message || "Could not verify your location.");
+            return data;
+          });
+        })
         .then(function (data) {
           if (!data.ok) throw new Error(data.error || "Preview failed.");
           if (ringWrap) ringWrap.hidden = false;
@@ -134,9 +159,13 @@
     function onError(err) {
       setIcon("is-error");
       var msg = "We couldn't get your location.";
-      if (err && err.code === 1) msg = "You denied location access. Enable it in your browser settings and try again.";
-      else if (err && err.code === 2) msg = "Your device can't determine your position right now.";
-      else if (err && err.code === 3) msg = "Locating you took too long. Try again.";
+      if (err && err.code === 1) {
+        msg = "You denied location access. Enable it in your browser settings and try again. On macOS, also allow your browser in System Settings → Privacy & Security → Location Services.";
+      }
+      else if (err && err.code === 2) {
+        msg = "Your device can't determine your position right now. Check that Location Services are enabled for this browser and your device.";
+      }
+      else if (err && err.code === 3) msg = "Locating you took too long. Check that Location Services are enabled for this browser and try again.";
       else if (err && err.message) msg = err.message;
       if (titleEl) titleEl.textContent = "Location unavailable";
       if (msgEl) msgEl.textContent = msg;
@@ -174,7 +203,8 @@
           } else {
             setIcon("is-error");
             if (titleEl) titleEl.textContent = "Couldn't check you in";
-            if (msgEl) msgEl.textContent = (res.data && res.data.error) || "Try again.";
+            if (msgEl) msgEl.textContent =
+              (res.data && (res.data.error || res.data.message)) || "Try again.";
             if (submitBtn) {
               submitBtn.disabled = false;
               submitBtn.textContent = "Check in";

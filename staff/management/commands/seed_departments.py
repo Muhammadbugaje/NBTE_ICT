@@ -2,9 +2,11 @@ from django.core.management.base import BaseCommand
 
 from staff.models import Department
 
-# ICT is the owning department. Add the other NBTE departments in /admin/
-# (or extend this list) - codes are stable handles, names can change.
-DEPARTMENTS = [("ICT", "ict", 0)]
+# Codes are stable handles used by workflow routing; names can change.
+DEPARTMENTS = [
+    ("ICT", "ict", 0),
+    ("Human Resources", "hr", 10),
+]
 
 
 class Command(BaseCommand):

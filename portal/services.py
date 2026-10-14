@@ -446,20 +446,36 @@ def awards_for_staff(staff, *, user=None):
 # ============================================================================
 # HOLIDAYS & ABSENCE
 # ============================================================================
-def live_holidays(*, user=None, from_date=None, to_date=None):
+def live_holidays(*, user=None, from_date=None, to_date=None, include_recurring=False):
     today = timezone.localdate()
     from_date = from_date or date(today.year, 1, 1)
     to_date   = to_date   or date(today.year, 12, 31)
 
-    base = Holiday.objects.select_related("department")
+    base = Holiday.objects.filter(is_active=True).select_related("department")
     if user and user.is_superuser:
         scoped = base
     elif user is None or not user.is_authenticated:
         scoped = base.filter(visibility=Scope.PUBLIC)
     else:
-        scoped = base.filter(scope_filter(user)).distinct()
+        holiday_scope = (
+            Q(visibility=Scope.PUBLIC) | Q(visibility=Scope.STAFF)
+        )
+        if user.department_id:
+            holiday_scope |= Q(
+                visibility=Scope.DEPARTMENT,
+                department_id=user.department_id,
+            )
+        group_ids = user.groups.values_list("pk", flat=True)
+        holiday_scope |= Q(visibility=Scope.ROLE, roles__in=group_ids)
+        scoped = base.filter(holiday_scope).distinct()
 
-    scoped = scoped.filter(date_start__lte=to_date, date_end__gte=from_date)
+    if include_recurring:
+        scoped = scoped.filter(
+            Q(is_recurring=True)
+            | Q(date_start__lte=to_date, date_end__gte=from_date)
+        )
+    else:
+        scoped = scoped.filter(date_start__lte=to_date, date_end__gte=from_date)
     return scoped.order_by("date_start", "name")
 
 

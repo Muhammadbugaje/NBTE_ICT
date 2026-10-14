@@ -5,12 +5,11 @@
 {% block page_title %}{{ thread.display_title|default:"Thread" }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=7">
 {% endblock %}
 
 {% block content %}
-<div class="msg-page msg-page-thread">
-
+<div class="msg-page msg-page-thread" data-messaging-thread>
   <a href="{% if thread_is_archived %}{% url 'messaging:archived' %}{% else %}{% url 'messaging:inbox' %}{% endif %}" class="msg-back">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
     {% if thread_is_archived %}Archived{% else %}Inbox{% endif %}
@@ -31,63 +30,159 @@
       </div>
     </div>
 
-    {% if thread_is_archived %}
-      <form method="post" action="{% url 'messaging:unarchive' thread.pk %}">
+    <div class="msg-thread-tools">
+      {% if thread_is_archived %}
+        <form method="post" action="{% url 'messaging:unarchive' thread.pk %}">
+          {% csrf_token %}
+          <button class="btn btn-primary btn-sm" type="submit" title="Restore to inbox" aria-label="Restore to inbox">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4 3 10 9 10"/><path d="M5.5 15a8 8 0 1 0 2.2-8.8L3 10"/></svg>
+            <span class="msg-action-label">Unarchive</span>
+          </button>
+        </form>
+      {% else %}
+        <form method="post" action="{% url 'messaging:archive' thread.pk %}">
+          {% csrf_token %}
+          <button class="btn btn-ghost btn-sm" type="submit" title="Archive this thread" aria-label="Archive this thread">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+            <span class="msg-action-label">Archive</span>
+          </button>
+        </form>
+      {% endif %}
+      <form method="post" action="{% url 'messaging:delete_chat' thread.pk %}" data-confirm="Remove this chat from your inbox? Other participants will keep their copy." data-confirm-title="Remove this chat?" data-confirm-action="Remove chat">
         {% csrf_token %}
-        <button class="btn btn-primary btn-sm" type="submit" title="Restore to inbox">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-          Unarchive
+        <button class="btn btn-ghost btn-sm msg-delete-chat" type="submit" title="Delete this chat for you" aria-label="Delete this chat for you">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
+          <span class="msg-action-label">Delete chat</span>
         </button>
       </form>
-    {% else %}
-      <form method="post" action="{% url 'messaging:archive' thread.pk %}">
-        {% csrf_token %}
-        <button class="btn btn-ghost btn-sm" type="submit" title="Archive this thread">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-          Archive
-        </button>
-      </form>
-    {% endif %}
+    </div>
   </header>
 
+  {% for error in thread_errors %}
+    <div class="msg-inline-error" role="alert">{{ error }}</div>
+  {% endfor %}
+
   <div class="msg-thread" data-thread>
-    {% for m in messages %}
+    {% for m in thread_messages %}
       {% if m.is_system %}
-        <div class="msg-system-note">
-          <span>{{ m.body }}</span>
-        </div>
+        <div class="msg-system-note"><span>{{ m.body }}</span></div>
       {% else %}
-        <article class="msg-bubble {% if m.sender_id == request.user.pk %}is-mine{% else %}is-theirs{% endif %}">
-          <span class="msg-avatar msg-avatar-sm msg-avatar-{% cycle 'c5' 'c0' 'c3' 'c7' 'c2' 'c4' 'c6' 'c1' %}">
-            {{ m.sender.first_name|slice:":1"|upper }}{{ m.sender.last_name|slice:":1"|upper }}
-          </span>
+        <article class="msg-bubble {% if m.sender_id == request.user.pk %}is-mine{% else %}is-theirs{% endif %}{% if m.is_deleted_for_everyone %} is-deleted{% endif %}" data-message>
+          {% if m.sender %}
+            <span class="msg-avatar msg-avatar-sm msg-avatar-{% cycle 'c5' 'c0' 'c3' 'c7' 'c2' 'c4' 'c6' 'c1' %}">
+              {{ m.sender.first_name|slice:":1"|upper }}{{ m.sender.last_name|slice:":1"|upper }}
+            </span>
+          {% else %}
+            <span class="msg-avatar msg-avatar-sm msg-avatar-c7">?</span>
+          {% endif %}
           <div class="msg-bubble-body">
             <div class="msg-bubble-head">
               <strong>
-                {% if m.sender_id == request.user.pk %}You{% else %}
-                  {{ m.sender.get_full_name|default:m.sender.email|default:"System" }}
+                {% if m.sender_id == request.user.pk %}
+                  You
+                {% elif m.sender %}
+                  {{ m.sender.get_full_name|default:m.sender.email }}
+                {% else %}
+                  System
                 {% endif %}
               </strong>
               <time title="{{ m.sent_at|date:'M j, Y · H:i' }}">{{ m.sent_at|timesince }} ago</time>
             </div>
-            <div class="msg-bubble-text">{{ m.body|linebreaksbr }}</div>
+
+            {% if m.reply_preview %}
+              <div class="msg-reply-quote">
+                <strong>{{ m.reply_sender }}</strong>
+                <span>{{ m.reply_preview|truncatechars:180 }}</span>
+              </div>
+            {% endif %}
+
+            <div class="msg-bubble-text" data-message-text>{{ m.body|linebreaksbr }}</div>
+            {% if m.edited_at %}<small class="msg-edited-label">Edited</small>{% endif %}
+
+            {% if not m.is_deleted_for_everyone and m.attachments.all %}
+              <div class="msg-attachments">
+                {% for attachment in m.attachments.all %}
+                  <a class="msg-attachment" href="{{ attachment.download_url }}">
+                    <span class="msg-attachment-icon" aria-hidden="true">↧</span>
+                    <span class="msg-attachment-info">
+                      <strong>{{ attachment.original_name|default:"Attachment" }}</strong>
+                      <small>{{ attachment.file.size|filesizeformat }}</small>
+                    </span>
+                  </a>
+                {% endfor %}
+              </div>
+            {% endif %}
+
+            <div class="msg-bubble-meta">
+              {% if m.sender_id == request.user.pk and m.seen_by_someone %}
+                <span class="msg-seen-label">Seen</span>
+              {% endif %}
+              {% if not m.is_deleted_for_everyone %}
+              <details class="msg-message-actions" data-message-menu>
+                <summary aria-label="Message actions" title="Reply or manage message">•••</summary>
+                <div class="msg-message-actions-menu">
+                  <button type="button" data-reply-to="{{ m.pk }}">Reply</button>
+                  {% if m.sender_id == request.user.pk and m.can_change_for_everyone %}
+                    <button type="button" data-edit-message>Edit</button>
+                  {% endif %}
+                  <form method="post" action="{% url 'messaging:delete_message' thread.pk m.pk %}" data-confirm="This message will be removed from your view. Other participants will still see it." data-confirm-title="Delete this message for you?" data-confirm-action="Delete for me">
+                    {% csrf_token %}
+                    <input type="hidden" name="scope" value="me">
+                    <button type="submit">Delete for me</button>
+                  </form>
+                  {% if m.sender_id == request.user.pk and m.can_change_for_everyone %}
+                    <form method="post" action="{% url 'messaging:delete_message' thread.pk m.pk %}" data-confirm="This permanently removes the message for everyone in this chat. This action cannot be undone." data-confirm-title="Delete message for everyone?" data-confirm-action="Delete for everyone">
+                      {% csrf_token %}
+                      <input type="hidden" name="scope" value="everyone">
+                      <button type="submit" class="is-danger">Delete for everyone</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </details>
+              {% endif %}
+            </div>
+
+            {% if m.sender_id == request.user.pk and m.can_change_for_everyone %}
+              <form method="post" action="{% url 'messaging:edit_message' thread.pk m.pk %}" class="msg-edit-form" data-edit-form hidden>
+                {% csrf_token %}
+                <textarea name="body" rows="3" required>{{ m.body }}</textarea>
+                <div>
+                  <button type="submit" class="btn btn-primary btn-sm">Save edit</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-cancel-edit>Cancel</button>
+                </div>
+              </form>
+            {% endif %}
           </div>
         </article>
       {% endif %}
+    {% empty %}
+      <p class="msg-empty-thread">No messages in this conversation yet.</p>
     {% endfor %}
   </div>
 
-  <form method="post" action="{% url 'messaging:reply' thread.pk %}" class="msg-reply" data-reply-form>
+  <form method="post" action="{% url 'messaging:reply' thread.pk %}" class="msg-reply" data-reply-form enctype="multipart/form-data">
     {% csrf_token %}
+    <input type="hidden" name="reply_to" value="" data-reply-to-field>
     <div class="msg-reply-inner">
-      <textarea class="msg-reply-input" name="body" rows="3"
-                placeholder="Write a reply…" required
-                data-reply-body></textarea>
+      <div class="msg-reply-reference" data-reply-reference hidden>
+        <span data-reply-reference-text></span>
+        <button type="button" data-clear-reply aria-label="Cancel reply">×</button>
+      </div>
+      <textarea class="msg-reply-input" name="body" rows="1"
+                placeholder="Write a reply…" data-reply-body></textarea>
+      <div class="msg-attachment-picker">
+        <label class="msg-attach-button">
+          <input type="file" name="attachments" multiple data-message-files>
+          <span aria-hidden="true">＋</span>
+          <span class="msg-action-label">Attach files</span>
+        </label>
+        <span data-attachment-summary>Up to 5 MB total · files expire after 30 days</span>
+      </div>
       <div class="msg-reply-foot">
-        <span class="muted msg-reply-hint">Press Cmd/Ctrl + Enter to send</span>
-        <button class="btn btn-primary" type="submit">
+        <span class="muted msg-reply-hint">Enter for a new line · Cmd/Ctrl + Enter to send</span>
+        <button class="btn btn-primary" type="submit" data-send-button aria-label="Send message">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Send reply
+          <span class="msg-action-label" data-send-label>Send</span>
         </button>
       </div>
     </div>
@@ -96,17 +191,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-(function () {
-  var body = document.querySelector('[data-reply-body]');
-  if (!body) return;
-  body.addEventListener('keydown', function (e) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      document.querySelector('[data-reply-form]').requestSubmit();
-    }
-  });
-  body.focus();
-})();
-</script>
+<script src="{% static 'js/messaging.js' %}?v=4" defer></script>
 {% endblock %}

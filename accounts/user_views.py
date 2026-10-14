@@ -107,7 +107,7 @@ def user_reset_password(request, pk):
 
         sent = _send_reset_email(request, user, new_password, force_change)
         if sent:
-            messages.success(request, f"Password reset — credentials emailed to {user.email}.")
+            messages.success(request, f"Password reset — credentials email queued for {user.email}.")
         else:
             messages.warning(
                 request,
@@ -120,13 +120,11 @@ def user_reset_password(request, pk):
 
 
 def _send_reset_email(request, user, new_password, force_change):
-    """Try harder to actually deliver this. Returns True on success."""
+    """Queue credentials through the configured provider engine."""
     login_url = request.build_absolute_uri("/accounts/login/")
-
-    # ---- Attempt 1: project helper (preferred)
     try:
         from core.email_utils import send_templated_email
-        send_templated_email(
+        email_log = send_templated_email(
             subject="Your NBTE ICT password has been reset",
             recipients=[user.email],
             template_name="emails/password_reset_by_admin.html",
@@ -136,39 +134,20 @@ def _send_reset_email(request, user, new_password, force_change):
                 "force_change": force_change,
                 "login_url": login_url,
             },
-            category="general",
+            category="credentials",
         )
-        logger.info("Password-reset email sent to %s via send_templated_email", user.email)
+        if email_log is None:
+            logger.error("Password-reset credentials email could not be queued.")
+            return False
+        logger.info("Password-reset credentials email queued log_id=%s", email_log.pk)
         return True
-    except ImportError:
-        logger.warning("core.email_utils.send_templated_email not found; falling back to send_mail")
-    except Exception:
-        logger.exception("send_templated_email failed for %s", user.email)
+    except Exception as exc:
+        from notifications.engine import safe_error_message
 
-    # ---- Attempt 2: plain Django send_mail
-    try:
-        from django.core.mail import send_mail
-        from django.conf import settings
-        body = (
-            f"Hi {user.get_full_name() or user.email},\n\n"
-            f"Your NBTE ICT account password has been reset.\n\n"
-            f"Temporary password: {new_password}\n\n"
-            + ("You will be asked to change this the next time you sign in.\n\n"
-               if force_change else "")
-            + f"Sign in at: {login_url}\n\n"
-            "If you did not request this, contact your administrator."
+        logger.error(
+            "Password-reset credentials email could not be queued: %s",
+            safe_error_message(exc),
         )
-        send_mail(
-            subject="Your NBTE ICT password has been reset",
-            message=body,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
-        logger.info("Password-reset email sent to %s via send_mail fallback", user.email)
-        return True
-    except Exception:
-        logger.exception("send_mail fallback also failed for %s", user.email)
         return False
 
 

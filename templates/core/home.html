@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% load static %}
+{% load dash_extras %}
 
 {% block title %}Home · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Home{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/home.css' %}?v=6">
+  <link rel="stylesheet" href="{% static 'css/home.css' %}?v=7">
 {% endblock %}
 
 {% block content %}
@@ -273,14 +274,14 @@
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
             <div>
-              <h3 class="home-card-title" style="margin-bottom:2px;">Complete your profile</h3>
-              <span class="muted" style="font-size:var(--text-xs);">{{ request.user.profile_percent }}% · {{ threshold }}% needed</span>
+              <h3 class="home-nudge-title">Complete your profile</h3>
+              <span class="home-nudge-sub">{{ request.user.profile_percent }}% · {{ threshold }}% needed</span>
             </div>
           </div>
           <div class="home-nudge-bar">
-            <div class="home-nudge-bar-fill" style="width: {{ request.user.profile_percent }}%;"></div>
+            <div class="home-nudge-bar-fill {{ request.user.profile_percent|pct_class:100 }}"></div>
           </div>
-          <a href="{% url 'accounts:profile' %}" class="btn btn-primary btn-sm" style="width:100%;margin-top:var(--space-3);">Finish setup</a>
+          <a href="{% url 'accounts:profile' %}" class="btn btn-primary btn-sm home-nudge-cta">Finish setup</a>
         </div>
       {% endif %}
 
@@ -292,7 +293,9 @@
           <div class="home-profile-info">
             <strong>{{ request.user.get_full_name|default:request.user.email }}</strong>
             <span class="muted">{{ request.user.email }}</span>
-            {% if request.user.role %}<span class="badge badge-primary" style="margin-top:var(--space-2);align-self:flex-start;">{{ request.user.role.name }}</span>{% endif %}
+            {% if request.user.role %}
+              <span class="badge badge-primary home-profile-badge">{{ request.user.role.name }}</span>
+            {% endif %}
           </div>
         </div>
         <div class="home-card-actions">

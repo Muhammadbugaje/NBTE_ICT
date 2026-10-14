@@ -5,7 +5,7 @@
 {% block page_title %}New message{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=7">
 {% endblock %}
 
 {% block content %}
@@ -23,7 +23,7 @@
     </div>
   </header>
 
-  <form method="post" action="{% url 'messaging:compose_send' %}" class="msg-compose-form" data-compose-form>
+  <form method="post" action="{% url 'messaging:compose_send' %}" class="msg-compose-form" data-compose-form enctype="multipart/form-data">
     {% csrf_token %}
 
     {# ---------- Recipients picker ---------- #}
@@ -96,10 +96,17 @@
       </div>
     </div>
 
+    <div class="msg-field msg-compose-attachments">
+      <label class="msg-label" for="compose-attachments">Attachments</label>
+      <input class="msg-input" id="compose-attachments" type="file" name="attachments"
+             multiple data-message-files>
+      <span class="msg-hint" data-attachment-summary>Up to 5 MB total · files expire after 30 days</span>
+    </div>
+
     <div class="msg-actions">
       <button class="btn btn-primary" type="submit">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        Send message
+        <span data-send-label>Send message</span>
       </button>
       <a href="{% url 'messaging:inbox' %}" class="btn btn-ghost">Cancel</a>
     </div>
@@ -108,6 +115,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/messaging.js' %}?v=4" defer></script>
 <script>
 (function () {
   var root = document.querySelector('[data-picker]');

@@ -49,7 +49,10 @@ class UploadMatrixForm(forms.Form):
 
 class ManualEditForm(forms.Form):
     status = forms.ChoiceField(
-        choices=AttendanceRecord.STATUS_CHOICES,
+        choices=[
+            choice for choice in AttendanceRecord.STATUS_CHOICES
+            if choice[0] != AttendanceRecord.ON_LEAVE
+        ],
         widget=forms.Select(attrs={"class": "input"}),
     )
     notes = forms.CharField(
@@ -88,3 +91,23 @@ class ReportFilterForm(forms.Form):
         if department is not None:
             qs = qs.filter(department=department)
         self.fields["user"].queryset = qs.order_by("first_name", "last_name", "email")
+
+
+class ManualCodeCheckInForm(forms.Form):
+    code = forms.CharField(
+        max_length=12,
+        required=True,
+        widget=forms.TextInput(attrs={
+            "class": "input",
+            "autocomplete": "off",
+            "autocapitalize": "characters",
+            "spellcheck": "false",
+            "inputmode": "text",
+            "placeholder": "Enter the 6-character code",
+            "data-code-input": "",
+        }),
+    )
+
+    def clean_code(self):
+        return (self.cleaned_data.get("code") or "").strip().upper().replace(" ", "")
+

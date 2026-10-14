@@ -30,6 +30,12 @@ def _render(request, template, key, title, ctx):
     return render(request, template, ctx)
 
 
+@login_required
+def self_service(request):
+    ctx = services.self_service_context(request.user)
+    return render(request, "dashboards/self_service.html", ctx)
+
+
 # --------------------------------------------------------------------------
 # Director
 # --------------------------------------------------------------------------
@@ -252,7 +258,6 @@ def export_audit_log(request):
             break
 
     return response
-
 
 
 

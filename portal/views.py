@@ -1,4 +1,3 @@
-
 """Portal views — announcements, documents, awards, holidays, gallery."""
 from __future__ import annotations
 
@@ -10,7 +9,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied
 from django.db import models
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -39,6 +38,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+
 def _is_htmx(request):
     return request.headers.get("HX-Request", "").lower() == "true"
 
@@ -52,6 +52,7 @@ def _render(request, full_template, partial_template, ctx):
 # ============================================================================
 # LANDING + HOW-TO
 # ============================================================================
+@login_required
 def portal_home(request):
     return render(request, "portal/home.html", {
         "announcements": services.dashboard_announcements(request.user, limit=6),
@@ -67,14 +68,11 @@ def how_to(request):
 # ============================================================================
 # ANNOUNCEMENTS
 # ============================================================================
+@login_required
 def announcement_list(request):
     """Announcement list with Live / Mine / Drafts tabs."""
     show = (request.GET.get("show") or "live").strip()
     if show not in ("live", "mine", "drafts"):
-        show = "live"
-
-    # Anonymous visitors only get the live view.
-    if not request.user.is_authenticated and show != "live":
         show = "live"
 
     # ---- Choose base queryset ----
@@ -101,10 +99,8 @@ def announcement_list(request):
     # ---- Tab counts ----
     counts = {
         "live":   services.live_announcements(user=request.user).count(),
-        "mine":   services.announcements_by_author(request.user, request.user).count()
-                  if request.user.is_authenticated else 0,
-        "drafts": services.drafts_visible_to(request.user).count()
-                  if request.user.is_authenticated else 0,
+        "mine":   services.announcements_by_author(request.user, request.user).count(),
+        "drafts": services.drafts_visible_to(request.user).count(),
     }
 
     ctx = {
@@ -123,6 +119,7 @@ def announcement_list(request):
                    ctx)
 
 
+@login_required
 def announcement_detail(request, pk):
     ann = get_object_or_404(
         Announcement.objects.select_related("author", "department", "category")
@@ -227,15 +224,13 @@ def announcement_toggle_pin(request, pk):
 # ============================================================================
 # EVENTS
 # ============================================================================
+@login_required
 def event_list(request):
     when = (request.GET.get("when") or "upcoming").strip()
     if when not in ("upcoming", "ongoing", "past", "all"):
         when = "upcoming"
     show = (request.GET.get("show") or "live").strip()
     if show not in ("live", "mine", "drafts"):
-        show = "live"
-
-    if not request.user.is_authenticated and show != "live":
         show = "live"
 
     # ---- Base queryset per tab ----
@@ -261,10 +256,8 @@ def event_list(request):
 
     counts = {
         "live":   services.live_events(user=request.user, when=None).count(),
-        "mine":   services.events_by_organizer(request.user, request.user).count()
-                  if request.user.is_authenticated else 0,
-        "drafts": services.draft_events_visible_to(request.user).count()
-                  if request.user.is_authenticated else 0,
+        "mine":   services.events_by_organizer(request.user, request.user).count(),
+        "drafts": services.draft_events_visible_to(request.user).count(),
     }
 
     ctx = {
@@ -288,6 +281,7 @@ def event_list(request):
                    ctx)
 
 
+@login_required
 def event_detail(request, pk):
     ev = get_object_or_404(
         Event.objects.select_related("organizer", "department", "category"),
@@ -295,10 +289,8 @@ def event_detail(request, pk):
     )
     if not services.is_event_visible_to(ev, request.user):
         raise Http404("Event not found")
-    my_rsvp = None
-    if request.user.is_authenticated:
-        att = ev.attendees.filter(user=request.user).first()
-        my_rsvp = att.rsvp if att else None
+    att = ev.attendees.filter(user=request.user).first()
+    my_rsvp = att.rsvp if att else None
     return render(request, "portal/events/detail.html", {
         "event": ev,
         "my_rsvp": my_rsvp,
@@ -379,6 +371,7 @@ def event_rsvp(request, pk):
     return redirect("portal:event_detail", pk=ev.pk)
 
 
+@login_required
 def event_ics(request, pk):
     ev = get_object_or_404(Event, pk=pk)
     if not services.is_event_visible_to(ev, request.user):
@@ -499,8 +492,8 @@ def reminder_dismiss(request, pk):
     from .models import ReminderRecipient
     ReminderRecipient.objects.filter(reminder=rem, user=request.user).update(is_read=True)
     return HttpResponse(status=204)
-    
-    
+
+
 import mimetypes
 from urllib.parse import quote
 
@@ -517,11 +510,10 @@ from .models import Document, DocumentCategory, DocumentDownloadLog, DocumentVer
 # ============================================================================
 # DOCUMENTS
 # ============================================================================
+@login_required
 def document_list(request):
     show = (request.GET.get("show") or "live").strip()
     if show not in ("live", "mine", "drafts", "archived"):
-        show = "live"
-    if not request.user.is_authenticated and show != "live":
         show = "live"
 
     if show == "mine":
@@ -543,12 +535,9 @@ def document_list(request):
 
     counts = {
         "live":     services.published_documents(user=request.user).count(),
-        "mine":     services.documents_owned_by(request.user, request.user).count()
-                    if request.user.is_authenticated else 0,
-        "drafts":   services.drafts_visible_to_documents(request.user).count()
-                    if request.user.is_authenticated else 0,
-        "archived": services.archived_documents(request.user).count()
-                    if request.user.is_authenticated else 0,
+        "mine":     services.documents_owned_by(request.user, request.user).count(),
+        "drafts":   services.drafts_visible_to_documents(request.user).count(),
+        "archived": services.archived_documents(request.user).count(),
     }
 
     ctx = {
@@ -566,6 +555,7 @@ def document_list(request):
                    ctx)
 
 
+@login_required
 def document_detail(request, pk):
     doc = get_object_or_404(
         Document.objects
@@ -778,6 +768,7 @@ def document_download(request, pk, version_pk=None):
     resp["Cache-Control"] = "private, no-store"
     return resp
 
+
 def _log_download(doc, version, request, is_external):
     if not doc.download_tracking_enabled:
         return
@@ -831,7 +822,7 @@ def _notify_document_published(doc, actor):
 
 
 # ============================================================================
-# PUBLIC DOCUMENTS (no login required)
+# PUBLIC DOCUMENTS (intentionally no login required)
 # ============================================================================
 def public_document_list(request):
     qs = services.published_documents(user=None)
@@ -847,12 +838,13 @@ def public_document_list(request):
         "categories": DocumentCategory.objects.filter(is_active=True),
         "active_category": cat,
         "search_q": q,
-    })    
-    
-    
+    })
+
+
 # ============================================================================
 # AWARDS
 # ============================================================================
+@login_required
 def awards_list(request):
     """Awards timeline — visible to the current viewer."""
     qs = services.live_awards(user=request.user)
@@ -890,6 +882,7 @@ def awards_list(request):
     return render(request, "portal/awards/list.html", ctx)
 
 
+@login_required
 def award_detail(request, pk):
     award = get_object_or_404(Award, pk=pk)
     if not award.can_be_viewed_by(request.user):
@@ -951,6 +944,7 @@ def award_delete(request, pk):
 # ============================================================================
 # HOLIDAYS
 # ============================================================================
+@login_required
 def holidays_list(request):
     """Holiday calendar."""
     year_param = request.GET.get("year")
@@ -1042,11 +1036,13 @@ def absence_today(request):
     return render(request, "portal/holidays/_absence.html", {
         "absent_staff": staff,
         "today": timezone.localdate(),
-    })    
-    
+    })
+
+
 # ============================================================================
 # GALLERY
 # ============================================================================
+@login_required
 def gallery_list(request):
     qs = services.live_albums(user=request.user)
 
@@ -1071,6 +1067,7 @@ def gallery_list(request):
     return render(request, "portal/gallery/list.html", ctx)
 
 
+@login_required
 def gallery_detail(request, pk):
     album = get_object_or_404(GalleryAlbum, pk=pk)
     if not album.can_be_viewed_by(request.user):
@@ -1208,8 +1205,9 @@ def _can_manage_gallery(user, album=None):
         return True
     if album and album.owner_id == user.pk:
         return True
-    return False    
-    
+    return False
+
+
 # ============================================================================
 # CATEGORY QUICK-CREATE (modal endpoint)
 # ============================================================================
@@ -1268,8 +1266,9 @@ def category_quick_create(request, kind):
         "pk": obj.pk,
         "name": obj.name,
         "created": True,
-    })    
-    
+    })
+
+
 @login_required
 @permission_required("portal.manage_gallery", raise_exception=True)
 @require_POST
@@ -1285,9 +1284,4 @@ def gallery_items_bulk_delete(request, pk):
     count = qs.count()
     qs.delete()
     messages.success(request, f"{count} item{'s' if count != 1 else ''} removed.")
-    return redirect("portal:gallery_detail", pk=album.pk)    
-    
-    
-    
-    
-    
+    return redirect("portal:gallery_detail", pk=album.pk)

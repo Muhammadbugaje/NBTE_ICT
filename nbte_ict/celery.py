@@ -66,6 +66,10 @@ app.conf.beat_schedule = {
         "task": "portal.document_review_reminders",
         "schedule": 86400.0,  # once a day
     },      
+    "messaging.delete-expired-attachments": {
+        "task": "messaging.delete_expired_attachments",
+        "schedule": 86400.0,
+    },
       
     # End-of-day auto-absent. Adjust hour to match your workday end.
     "attendance-auto-mark-absent": {

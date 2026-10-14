@@ -38,6 +38,7 @@ CATEGORIES = [
     ("fleet", "Fleet & Vehicles", "car", 20),
     ("facilities", "Facilities", "building", 30),
     ("hr", "Human Resources", "users", 40),
+    ("leave", "Leave", "calendar", 45),
     ("finance", "Finance", "credit-card", 50),
     ("general", "General", "folder", 100),
 ]
@@ -213,6 +214,15 @@ FLEET_TRIP_SCHEMA = {
     ]
 }
 
+ANNUAL_LEAVE_SCHEMA = {
+    "fields": [
+        {"key": "start_date", "label": "First day of leave",
+         "type": "date", "required": True},
+        {"key": "end_date", "label": "Last day of leave",
+         "type": "date", "required": True},
+    ]
+}
+
 FLEET_MAINTENANCE_SCHEMA = {
     "fields": [
         {"key": "asset", "label": "Which vehicle?",
@@ -293,6 +303,10 @@ REQUEST_TYPES = [
      {"is_cross_department": True, "form_schema": FACILITIES_REPAIR_SCHEMA}),
     ("facilities-ac", "Air conditioner issue", "facilities", "ict", "ict-fulfillment",
      {"is_cross_department": True, "form_schema": FACILITIES_AC_SCHEMA}),
+
+    # ---- Human resources ----
+    ("annual-leave", "Annual leave application", "leave", "hr", "internal-4-step",
+     {"requires_hr_approval": True, "form_schema": ANNUAL_LEAVE_SCHEMA}),
 ]
 
 
@@ -307,11 +321,18 @@ class Command(BaseCommand):
 
         # --- categories -------------------------------------------------
         for code, name, icon, sort in CATEGORIES:
-            cat, created = RequestCategory.objects.update_or_create(
-                code=code,
-                defaults={"name": name, "icon": icon, "sort_order": sort,
-                          "is_active": True},
-            )
+            cat = RequestCategory.objects.filter(code=code).first()
+            created = cat is None
+            if cat is None:
+                cat = RequestCategory.objects.filter(name=name).first()
+            if cat is None:
+                cat = RequestCategory(code=code, name=name)
+            cat.code = code
+            cat.name = name
+            cat.icon = icon
+            cat.sort_order = sort
+            cat.is_active = True
+            cat.save()
             self.stdout.write(f"{'created' if created else 'exists '} category {code}")
 
         # --- chains -----------------------------------------------------

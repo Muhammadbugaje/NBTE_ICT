@@ -1,34 +1,181 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Settings{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/settings.css' %}?v=2">
+{% endblock %}
 {% block content %}
-<h1>Settings</h1>
-<p class="muted">Business-rule values only. Secrets and site identity live in environment variables.</p>
+<div class="settings-page">
+  <header class="settings-hero">
+    <span class="settings-eyebrow">System configuration</span>
+    <h1>Settings</h1>
+    <p>Manage operational rules for your workspace. Secrets and site identity remain protected in environment configuration.</p>
+  </header>
 
-<h2>Email delivery today</h2>
-<table>
-  <tr><th>Provider</th><th>Sent</th><th>Daily limit</th></tr>
-  {% for q in quota %}<tr><td>{{ q.provider }}</td><td>{{ q.used }}</td><td>{{ q.limit }}</td></tr>{% endfor %}
-</table>
-<form method="post" action="{% url 'config:test_email' %}" class="inline">{% csrf_token %}
-  <button class="btn" type="submit">Send test email to me</button>
-</form>
+  <section class="settings-section settings-delivery" aria-labelledby="settings-delivery-title">
+    <div class="settings-section-head">
+      <div>
+        <span class="settings-kicker">Delivery health</span>
+        <h2 id="settings-delivery-title">Email usage today</h2>
+        <p>
+          All categories try Brevo first, with Gmail as a fallback if configured.
+          Test sends are recorded here and in the server logs.
+        </p>
+        <p class="settings-email-route">
+          Current route:
+          {% if email_provider_order %}
+            {% for provider in email_provider_order %}<strong>{{ provider }}</strong>{% if not forloop.last %} &rarr; {% endif %}{% endfor %}
+          {% else %}
+            <strong>No email provider is ready</strong>
+          {% endif %}
+        </p>
+        <p class="settings-email-route">
+          Sender domain:
+          {% if email_sender_domain %}
+            <strong>{{ email_sender_domain }}</strong> — confirm this sender is verified in Brevo.
+          {% else %}
+            <strong>Not configured</strong>
+          {% endif %}
+        </p>
+      </div>
+      <form method="post" action="{% url 'config:test_email' %}">
+        {% csrf_token %}
+        <button class="btn btn-primary" type="submit">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+          Send test email
+        </button>
+      </form>
+    </div>
+    <div class="settings-quota-grid">
+      {% for q in quota %}
+        <article class="settings-quota-card">
+          <span class="settings-quota-provider">{{ q.provider }}</span>
+          <div class="settings-quota-numbers">
+            <strong>{{ q.used }}</strong>
+            <span>of {{ q.limit }} sent</span>
+          </div>
+          <div class="settings-quota-track" role="img" aria-label="{{ q.used }} of {{ q.limit }} messages used">
+            <span style="--quota-used: {% if q.limit %}{% widthratio q.used q.limit 100 %}{% else %}0{% endif %}%"></span>
+          </div>
+        </article>
+      {% empty %}
+        <p class="settings-muted">No email providers are configured.</p>
+      {% endfor %}
+    </div>
+    <div class="settings-test-history">
+      <h3>Recent test sends</h3>
+      <div class="settings-table-wrap">
+        <table class="settings-table">
+          <thead>
+            <tr><th scope="col">Time</th><th scope="col">Result</th><th scope="col">Provider</th><th scope="col">Attempts</th><th scope="col">Details</th></tr>
+          </thead>
+          <tbody>
+            {% for test in recent_email_tests %}
+              <tr>
+                <td>{{ test.created_at|date:"M j, Y H:i" }}</td>
+                <td><span class="settings-scope">{% if test.status == "sent" %}Accepted{% else %}{{ test.get_status_display }}{% endif %}</span></td>
+                <td>{{ test.provider|default:"—" }}</td>
+                  <td>{{ test.attempts }}</td>
+                  <td>
+                    {% for attempt in test.attempt_trail %}
+                      <span>{{ attempt.provider }}: {% if attempt.ok %}accepted{% else %}failed{% endif %}</span>{% if attempt.error %}<small>{{ attempt.error|truncatechars:120 }}</small>{% endif %}{% if not forloop.last %}<br>{% endif %}
+                    {% empty %}
+                      {% if test.last_error %}{{ test.last_error|truncatechars:160 }}{% else %}No provider attempted{% endif %}
+                    {% endfor %}
+                  </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="settings-muted">No settings-page email tests have been run yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 
-{% for group, items in grouped %}
-<h2>{{ group }}</h2>
-<table>
-  <tr><th>Setting</th><th>Scope</th><th>Value</th><th></th></tr>
-  {% for e in items %}
-  <tr>
-    <td><code>{{ e.key }}</code><br><span class="muted">{{ e.description }}</span></td>
-    <td>{{ e.scope }}</td>
-    <form method="post" action="{% url 'config:save' e.pk %}">{% csrf_token %}
-      <td><input type="text" name="value" value="{{ e.value }}"> <span class="muted">{{ e.get_value_type_display }}</span></td>
-      <td><button class="btn" type="submit">Save</button></td>
+  <section class="settings-section settings-leave-policy" aria-labelledby="settings-leave-policy-title">
+    <header class="settings-section-head">
+      <div>
+        <span class="settings-kicker">Leave policy</span>
+        <h2 id="settings-leave-policy-title">Annual leave days by role</h2>
+        <p>Set the default annual allowance for each system role. Roles and ranking levels are loaded from the role directory automatically; a person-specific override takes precedence.</p>
+      </div>
+      <span class="settings-group-count">{{ leave_roles|length }} role{{ leave_roles|length|pluralize }}</span>
+    </header>
+    {% if leave_role_entitlement_error %}
+      <p class="settings-policy-error" role="alert">{{ leave_role_entitlement_error }}</p>
+    {% endif %}
+    <form method="post" action="{% url 'config:save_leave_role_entitlements' %}" class="settings-role-policy-form">
+      {% csrf_token %}
+      <div class="settings-role-policy-grid">
+        {% for row in leave_role_entitlement_rows %}
+          <div class="settings-role-policy-card">
+            <div class="settings-role-policy-info">
+              <strong>{{ row.role.name }}</strong>
+              <span>{{ row.role.code }} · Rank {{ row.role.rank }}</span>
+            </div>
+            <label for="{{ row.field.id_for_label }}" class="settings-role-policy-input">
+              <span>Days per year</span>
+              {{ row.field }}
+            </label>
+          </div>
+        {% empty %}
+          <p class="settings-muted">Create system roles to configure role-based leave defaults.</p>
+        {% endfor %}
+      </div>
+      <div class="settings-role-policy-footer">
+        <p>Leave a role blank if no default is set. Existing individual overrides remain unchanged.</p>
+        <button class="btn btn-primary" type="submit">Save role defaults</button>
+      </div>
     </form>
-  </tr>
-  {% endfor %}
-</table>
-{% empty %}
-<p>No settings registered yet. Run <code>python manage.py seed_config</code>.</p>
-{% endfor %}
+  </section>
+
+  <div class="settings-groups">
+    {% for group, items in grouped %}
+      <section class="settings-section settings-group">
+        <header class="settings-section-head settings-group-head">
+          <div>
+            <span class="settings-kicker">Configuration group</span>
+            <h2>{{ group }}</h2>
+          </div>
+          <span class="settings-group-count">{{ items|length }} setting{{ items|length|pluralize }}</span>
+        </header>
+        <div class="settings-table-wrap">
+          <table class="settings-table">
+            <thead>
+              <tr><th scope="col">Setting</th><th scope="col">Scope</th><th scope="col">Value</th></tr>
+            </thead>
+            <tbody>
+              {% for e in items %}
+                <tr>
+                  <td class="settings-description">
+                    <code>{{ e.key }}</code>
+                    {% if e.description %}<span>{{ e.description }}</span>{% endif %}
+                  </td>
+                  <td><span class="settings-scope">{{ e.scope|default:"Global" }}</span></td>
+                  <td>
+                    <form method="post" action="{% url 'config:save' e.pk %}" class="settings-edit-form">
+                      {% csrf_token %}
+                      <label class="visually-hidden" for="setting-{{ e.pk }}">{{ e.key }} value</label>
+                      <input id="setting-{{ e.pk }}" type="text" name="value" value="{{ e.value }}">
+                      <span class="settings-value-type">{{ e.get_value_type_display }}</span>
+                      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% empty %}
+      <div class="settings-empty">
+        <h2>No settings registered yet</h2>
+        <p>Seed the available business rules to begin configuring the system.</p>
+        <code>python manage.py seed_config</code>
+      </div>
+    {% endfor %}
+  </div>
+</div>
 {% endblock %}

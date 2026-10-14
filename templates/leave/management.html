@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Leave management · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Leave management{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=4">
+{% endblock %}
+
+{% block content %}
+<main class="dash-page leave-management-page">
+  <header class="dash-hero">
+    <div class="dash-hero-inner">
+      <div class="dash-hero-icon" aria-hidden="true">AL</div>
+      <div>
+        <h1>Leave management</h1>
+        <p class="dash-hero-sub">Review leave activity within your authorised staff scope. Decisions remain in the request workflow.</p>
+      </div>
+    </div>
+    <div class="leave-management-actions">
+      <a href="{% url 'leave:entitlements' %}?year={{ year }}" class="btn btn-primary">Individual overrides</a>
+      {% if perms.config.change_configentry %}
+        <a href="{% url 'config:settings' %}#settings-leave-policy-title" class="btn btn-ghost">Role defaults</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <section class="leave-management-stats" aria-label="Leave overview">
+    <article><span>Staff in scope</span><strong>{{ stats.staff }}</strong></article>
+    <article><span>Currently on leave</span><strong>{{ stats.on_leave }}</strong></article>
+    <article><span>Upcoming approved</span><strong>{{ stats.upcoming }}</strong></article>
+    <article><span>Awaiting workflow</span><strong>{{ stats.awaiting }}</strong></article>
+    <article><span>Total entitled days · {{ year }}</span><strong>{{ stats.entitled_days|floatformat:"-2" }}</strong></article>
+  </section>
+
+  <form method="get" class="leave-management-filters">
+    <label>
+      <span>Search staff or request</span>
+      <input class="input" type="search" name="q" value="{{ search }}" placeholder="Name, staff number, reference">
+    </label>
+    <label>
+      <span>Year</span>
+      <input class="input" type="number" name="year" min="1900" max="9999" value="{{ year }}">
+    </label>
+    <label>
+      <span>Request status</span>
+      <select class="input" name="status">
+        <option value="">All statuses</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-primary btn-sm" type="submit">Apply filters</button>
+    {% if search or status or year != current_year %}
+      <a class="btn btn-ghost btn-sm" href="{% url 'leave:management' %}">Clear</a>
+    {% endif %}
+  </form>
+
+  <p class="leave-policy-note">Role defaults are configured in Settings; individual overrides take precedence. Opening an application takes you to its workflow record. Use the normal approval actions there; this overview does not bypass approvals.</p>
+
+  <div class="leave-management-list">
+    {% for application in applications %}
+      <a class="leave-management-row" href="{% url 'workflow:detail' application.request_id %}">
+        <span class="leave-management-person">
+          <strong>{{ application.staff.full_name }}</strong>
+          <small>{{ application.staff.employee_no }}{% if application.staff.department %} · {{ application.staff.department.name }}{% endif %}</small>
+        </span>
+        <span class="leave-management-dates">
+          <strong>{{ application.start_date|date:"M j" }}–{{ application.end_date|date:"M j, Y" }}</strong>
+          <small>{{ application.request.reference }} · {{ application.request.subject }}</small>
+        </span>
+        <span class="leave-management-status">{{ application.request.get_status_display }}</span>
+        <span class="leave-management-open">View request →</span>
+      </a>
+    {% empty %}
+      {% include "partials/empty_state.html" with title="No leave applications found" body="Try another year or status, or check that staff have submitted annual-leave requests." only %}
+    {% endfor %}
+  </div>
+
+  {% if applications.has_other_pages %}
+    <nav class="leave-management-pagination" aria-label="Leave application pages">
+      <span>Page {{ applications.number }} of {{ applications.paginator.num_pages }}</span>
+      <div>
+        {% if applications.has_previous %}
+          <a class="btn btn-ghost btn-sm" href="?q={{ search|urlencode }}&year={{ year }}&status={{ status|urlencode }}&page={{ applications.previous_page_number }}">Previous</a>
+        {% endif %}
+        {% if applications.has_next %}
+          <a class="btn btn-ghost btn-sm" href="?q={{ search|urlencode }}&year={{ year }}&status={{ status|urlencode }}&page={{ applications.next_page_number }}">Next</a>
+        {% endif %}
+      </div>
+    </nav>
+  {% endif %}
+</main>
+{% endblock %}

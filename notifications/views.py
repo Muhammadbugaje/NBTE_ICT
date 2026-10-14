@@ -46,7 +46,7 @@ def _unread_count(user):
     return Notification.objects.filter(recipient=user, is_read=False).count()
 
 
-def _trigger_and_redirect(request, fallback="notifications:list"):
+def _trigger_and_redirect(request, fallback="notifications:list", notification=None):
     """Return the right response for a mark-read style action.
 
       HTMX           → 204, fires `notificationCountChanged` on <body>
@@ -55,17 +55,23 @@ def _trigger_and_redirect(request, fallback="notifications:list"):
     """
     user = request.user
     unread = _unread_count(user)
+    payload = {"unread": unread}
+    if notification is not None:
+        payload.update({
+            "id": notification.pk,
+            "is_read": notification.is_read,
+        })
 
     if _is_htmx(request):
         resp = HttpResponse(status=204)
         # Fires on document.body — the bell JS and any listener picks it up.
         resp["HX-Trigger"] = json.dumps({
-            "notificationCountChanged": {"unread": unread}
+            "notificationCountChanged": payload
         })
         return resp
 
     if _wants_json(request):
-        return JsonResponse({"ok": True, "unread": unread})
+        return JsonResponse({"ok": True, **payload})
 
     return redirect(reverse(fallback))
 
@@ -157,7 +163,7 @@ def list_view(request):
 def mark_read(request, pk):
     n = get_object_or_404(Notification, pk=pk, recipient=request.user)
     n.mark_read()
-    return _trigger_and_redirect(request)
+    return _trigger_and_redirect(request, notification=n)
 
 
 @login_required
@@ -165,7 +171,7 @@ def mark_read(request, pk):
 def mark_unread(request, pk):
     n = get_object_or_404(Notification, pk=pk, recipient=request.user)
     n.mark_unread()
-    return _trigger_and_redirect(request)
+    return _trigger_and_redirect(request, notification=n)
 
 
 @login_required

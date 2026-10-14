@@ -5,11 +5,11 @@
 {% block page_title %}Archived messages{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=7">
 {% endblock %}
 
 {% block content %}
-<div class="msg-page">
+<div class="msg-page" data-message-list="archive">
 
   <a href="{% url 'messaging:inbox' %}" class="msg-back">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
@@ -27,9 +27,28 @@
   </header>
 
   {% if threads %}
+    <div class="msg-list-controls" data-message-filters>
+      <label class="msg-list-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="msg-visually-hidden">Search archived conversations</span>
+        <input type="search" placeholder="Search archived conversations…" autocomplete="off" data-message-search>
+      </label>
+      <label class="msg-list-filter">
+        <span class="msg-visually-hidden">Filter archived conversations</span>
+        <select data-message-state>
+          <option value="all">All conversations</option>
+          <option value="unread">Unread</option>
+          <option value="read">Read</option>
+        </select>
+      </label>
+      <span class="msg-list-result-count" data-filter-count aria-live="polite"></span>
+    </div>
+  {% endif %}
+
+  {% if threads %}
     <div class="msg-thread-list">
       {% for t in threads %}
-        <div class="msg-thread-row-wrap">
+        <div class="msg-thread-row-wrap" data-message-thread data-message-unread="{% if t.unread %}true{% else %}false{% endif %}">
           <a href="{% url 'messaging:thread' t.pk %}" class="msg-thread-row-link">
             <span class="msg-avatar msg-avatar-md msg-avatar-{% cycle 'c3' 'c4' 'c5' 'c6' 'c7' 'c0' 'c1' 'c2' %}">
               {{ t.display_title|slice:":1"|upper }}
@@ -41,7 +60,7 @@
               </div>
               <div class="msg-thread-preview">
                 {% if t.last_msg %}
-                  <span class="msg-thread-sender">{{ t.last_msg.sender.get_full_name|default:t.last_msg.sender.email|default:"System" }}:</span>
+                  <span class="msg-thread-sender">{% if t.last_msg.sender %}{{ t.last_msg.sender.get_full_name|default:t.last_msg.sender.email }}{% else %}System{% endif %}:</span>
                   {{ t.last_msg.body|truncatechars:90 }}
                 {% else %}
                   <em class="muted">No messages yet</em>
@@ -53,7 +72,7 @@
 
           <form method="post" action="{% url 'messaging:unarchive' t.pk %}" class="msg-thread-row-actions">
             {% csrf_token %}
-            <button type="submit" class="btn btn-ghost btn-sm" title="Restore to inbox">
+            <button type="submit" class="btn btn-ghost btn-sm" title="Restore to inbox" aria-label="Restore to inbox">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
               Unarchive
             </button>
@@ -61,6 +80,7 @@
         </div>
       {% endfor %}
     </div>
+    <p class="msg-filter-empty" data-filter-empty hidden>No archived conversations match these filters.</p>
   {% else %}
     <div class="msg-empty">
       <div class="msg-empty-icon">
@@ -72,4 +92,8 @@
     </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/messaging.js' %}?v=4" defer></script>
 {% endblock %}

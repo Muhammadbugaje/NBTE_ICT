@@ -10,6 +10,7 @@ urlpatterns = [
     path("", views.my_requests, name="my_requests"),
     path("new/", views.raise_request_view, name="raise"),
     path("new/<slug:type_code>/", views.raise_request_view, name="raise_type"),
+    path("awaiting/bulk/", views.bulk_awaiting_action, name="bulk_awaiting_action"),
     path("awaiting/", views.awaiting_action, name="awaiting_action"),
     path("incoming/", views.incoming, name="incoming"),
     path("assigned/", views.assigned_to_me, name="assigned_to_me"),

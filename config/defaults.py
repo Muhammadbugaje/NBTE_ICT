@@ -56,14 +56,14 @@ DEFAULTS = [
 
     # --- Email delivery engine -----------------------------------------
     ("email.provider_override", "auto", "str", "Email",
-     "auto = category-based order with failover; or force 'brevo' / 'gmail' as first choice."),
+     "auto = Brevo first for every category; force a provider only for emergency routing."),
     ("email.brevo_daily_limit", "300", "int", "Email",
      "Emails per day before failing over from Brevo."),
     ("email.gmail_daily_limit", "500", "int", "Email",
      "Emails per day before failing over from Gmail."),
     ("email.critical_categories",
      '["credentials", "reset", "task", "approval", "test"]', "json", "Email",
-     "Email categories that try Brevo first; others try Gmail first."),
+     "Legacy setting; all categories now use the same Brevo-first provider order."),
     ("email.sensitive_categories",
      '["credentials", "reset"]', "json", "Email",
      "Categories whose email BODIES are never stored in the log."),
@@ -88,6 +88,11 @@ DEFAULTS = [
      "directors (rank 100..998) route straight to the receiving director, "
      "skipping that department's junior steps. ES and superusers always get "
      "the full receiving chain."),
+
+    # --- Leave ----------------------------------------------------------
+    ("leave.entitlement_by_role", "{}", "json", "Leave",
+     "Default annual leave days by system role. Configure role values in the "
+     "role entitlement section above the settings registry."),
     
     # --- Tickets --------------------------------------------------------
     ("tickets.sla.default_response_seconds", "3600", "int", "Tickets",
@@ -168,6 +173,36 @@ DEFAULTS = [
     ("attendance.report_timezone", "Africa/Lagos", "str", "Attendance",
      "Timezone used to interpret check-in times and day boundaries."),   
     
-    
+
+    ("attendance.manual_checkin_enabled", "true", "bool", "Attendance",
+     "Master switch for the code-based manual check-in flow. Turn off to "
+     "force everyone through GPS check-in."),
+    ("attendance.manual_code_length", "6", "int", "Attendance",
+     "Number of characters in each rotating office code. Between 4 and 12."),
+    ("attendance.manual_code_rotation_minutes", "30", "int", "Attendance",
+     "How often office codes rotate, in minutes. Lower means tighter "
+     "security but more coordination with the office contact."),
+    ("attendance.manual_code_grace_minutes_before_open", "30", "int", "Attendance",
+     "Minutes before the location's work_start_time when codes are already "
+     "valid — for early arrivals and morning setup."),
+    ("attendance.manual_code_grace_minutes_after_close", "30", "int", "Attendance",
+     "Minutes after the location's work_end_time when codes are still "
+     "valid — for late finishes and shift handover."),
+    ("attendance.manual_code_max_attempts_per_hour", "10", "int", "Attendance",
+     "Maximum failed code attempts per user per hour before they're locked "
+     "out until the next hour."),
+
+
+    # --- File management ----------------------------------------------
+    ("files.orphan_scan_enabled", "true", "bool", "Files",
+     "Allow the settings page to scan for orphaned media files."),
+    ("files.orphan_purge_min_age_days", "30", "int", "Files",
+     "Minimum age (in days) before an orphaned file can be deleted "
+     "from the settings page. Prevents accidental deletion of files "
+     "from a recent upload that hasn't committed yet."),
+    ("files.orphan_scan_max_files", "5000", "int", "Files",
+     "Maximum number of files to enumerate in a single scan. "
+     "Guards against very large media roots."),
+
     
 ]

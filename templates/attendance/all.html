@@ -129,6 +129,11 @@
       <div class="att-stat-sub">total this period</div>
     </div>
     <div class="att-stat">
+      <div class="att-stat-value">{{ totals.on_leave }}</div>
+      <div class="att-stat-label">On leave</div>
+      <div class="att-stat-sub">total this period</div>
+    </div>
+    <div class="att-stat">
       <div class="att-stat-value {% if totals.pct >= 90 %}att-good{% elif totals.pct >= 75 %}att-warn{% else %}att-bad{% endif %}">
         {{ totals.pct }}%
       </div>
@@ -193,6 +198,7 @@
             <th class="is-num">Late</th>
             <th class="is-num">Absent</th>
             <th class="is-num">Excused</th>
+            <th class="is-num">On leave</th>
             <th class="is-num">Attendance</th>
             <th>Trend</th>
           </tr>
@@ -201,7 +207,7 @@
           {% for g in grouped %}
             {# ---- Department group header ---- #}
             <tr class="att-group-row">
-              <td colspan="7">
+              <td colspan="8">
                 <div class="att-group-head">
                   <div class="att-group-title">
                     <div class="att-matrix-avatar">{{ g.department.name|slice:":1"|upper }}</div>
@@ -216,6 +222,7 @@
                     <span>P <strong>{{ g.aggregate.present }}</strong></span>
                     <span>L <strong>{{ g.aggregate.late }}</strong></span>
                     <span>A <strong>{{ g.aggregate.absent }}</strong></span>
+                    <span>LV <strong>{{ g.aggregate.on_leave }}</strong></span>
                     <span>% <strong>{{ g.aggregate_pct }}%</strong></span>
                   </div>
                   <a class="att-btn att-btn-ghost"
@@ -244,6 +251,7 @@
                 <td class="is-num">{% if row.late %}<span class="att-matrix-late">{{ row.late }}</span>{% else %}—{% endif %}</td>
                 <td class="is-num">{% if row.absent %}<span class="att-matrix-absent">{{ row.absent }}</span>{% else %}—{% endif %}</td>
                 <td class="is-num">{% if row.excused %}{{ row.excused }}{% else %}—{% endif %}</td>
+                <td class="is-num">{% if row.on_leave %}{{ row.on_leave }}{% else %}—{% endif %}</td>
                 <td class="is-num">
                   <span class="att-pct {% if row.pct >= 90 %}is-good{% elif row.pct >= 75 %}is-warn{% else %}is-bad{% endif %}">
                     {{ row.pct }}%

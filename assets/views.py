@@ -249,7 +249,17 @@ def asset_assign(request, asset_tag):
         raise PermissionDenied("You cannot assign this asset.")
     form = AssignAssetForm(request.POST, asset=asset, user=request.user)
     if not form.is_valid():
-        messages.error(request, "Please select a valid user.")
+        errors = [
+            f"{form.fields[field].label}: {error}"
+            for field, field_errors in form.errors.items()
+            for error in field_errors
+            if field in form.fields
+        ]
+        messages.error(
+            request,
+            "Could not assign the asset. "
+            + (" ".join(errors) if errors else "Please correct the form and try again."),
+        )
         return redirect("assets:detail", asset_tag=asset.asset_tag)
     try:
         services.assign_asset(
@@ -259,6 +269,7 @@ def asset_assign(request, asset_tag):
             condition=form.cleaned_data["condition_on_assign"],
             location=form.cleaned_data.get("location_on_assign") or "",
             notes=form.cleaned_data.get("notes") or "",
+            expected_return_at=form.cleaned_data.get("expected_return_at"),
         )
     except (PermissionDenied, ValidationError) as exc:
         messages.error(request, "; ".join(getattr(exc, "messages", [str(exc)])))
@@ -625,5 +636,3 @@ def asset_json(request, asset_tag):
             "print_url": reverse("assets:print_labels") + "?tags=" + asset.asset_tag,
         },
     })
-
-

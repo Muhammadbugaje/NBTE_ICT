@@ -1013,3 +1013,133 @@ def audit_log_context(user, *, page=1, action=None, actor_id=None,
         "can_filter_department": user.is_superuser or user.has_perm("accounts.access_all_departments"),
         "audit_available": model is not None,
     }
+
+
+def self_service_context(user):
+    """Build a personal dashboard from records owned or assigned to the user."""
+    from django.urls import NoReverseMatch, reverse
+
+    def module_url(app_label, url_name):
+        if not apps.is_installed(app_label):
+            return None
+        try:
+            return reverse(url_name)
+        except NoReverseMatch:
+            return None
+
+    from staff.models import Staff
+
+    staff = (
+        Staff.objects
+        .filter(user=user, is_deleted=False)
+        .select_related("department", "state")
+        .first()
+    )
+
+    widgets = []
+    leave_data = None
+    tickets_url = module_url("tickets", "tickets:my_tickets")
+    if tickets_url:
+        from tickets.models import Ticket
+
+        tickets = Ticket.objects.filter(raised_by=user)
+        widgets.append({
+            "key": "tickets",
+            "title": "My tickets",
+            "url": tickets_url,
+            "count": tickets.filter(state__in=Ticket.OPEN_STATES).count(),
+            "count_label": "open",
+            "items": list(
+                tickets.select_related("category")
+                .order_by("-updated_at")[:4]
+            ),
+        })
+
+    tasks_url = module_url("tasks", "tasks:assigned_to_me")
+    if tasks_url:
+        from tasks.models import Task
+
+        tasks = (
+            Task.objects
+            .filter(assignee_rows__user=user)
+            .exclude(state__in=Task.CLOSED_STATES)
+            .select_related("category")
+            .distinct()
+        )
+        widgets.append({
+            "key": "tasks",
+            "title": "My tasks",
+            "url": tasks_url,
+            "count": tasks.count(),
+            "count_label": "open",
+            "items": list(tasks.order_by("due_date", "-updated_at")[:4]),
+        })
+
+    requests_url = module_url("workflow", "workflow:my_requests")
+    if requests_url:
+        from workflow.models import Request
+
+        requests = (
+            Request.objects
+            .filter(requester=user)
+            .select_related("request_type")
+        )
+        if apps.is_installed("leave"):
+            from leave.services import dashboard_data
+            leave_data = dashboard_data(user)
+        widgets.append({
+            "key": "requests",
+            "title": "My leave & requests",
+            "url": requests_url,
+            "count": requests.exclude(status__in=Request.CLOSED_STATUSES).count(),
+            "count_label": "active",
+            "leave": leave_data,
+            "items": list(requests.order_by("-updated_at")[:4]),
+        })
+
+    assets_url = module_url("assets", "assets:my_assets")
+    if assets_url:
+        from assets.models import AssetAssignment
+
+        assignments = (
+            AssetAssignment.objects
+            .filter(assigned_to=user, returned_at__isnull=True)
+            .select_related("asset", "asset__category")
+        )
+        widgets.append({
+            "key": "assets",
+            "title": "My assets",
+            "url": assets_url,
+            "count": assignments.count(),
+            "count_label": "in your custody",
+            "items": list(assignments[:4]),
+        })
+
+    pending_approvals = []
+    if apps.is_installed("workflow"):
+        from workflow import services as workflow_services
+        from workflow.models import Request
+
+        approvals = (
+            Request.objects
+            .filter(status__in=(Request.AWAITING, Request.AWAITING_RECEIVING))
+            .select_related(
+                "requester", "request_type", "receiving_department", "current_step"
+            )
+            .order_by("-created_at")
+        )
+        for approval in approvals:
+            step = workflow_services._resolve_current_step(approval)
+            if step is None:
+                continue
+            approver = workflow_services.resolve_approver(step, approval)
+            if approver and approver.pk == user.pk:
+                approval.active_step = step
+                pending_approvals.append(approval)
+
+    return {
+        "staff_profile": staff,
+        "widgets": widgets,
+        "leave_data": leave_data,
+        "pending_approvals": pending_approvals[:5],
+    }

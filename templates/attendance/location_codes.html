@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Location codes · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Location codes{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=6">
+{% endblock %}
+
+{% block content %}
+<div class="att-codes-page"
+     data-codes-api-url="{% url 'attendance:location_codes_api' %}"
+     data-seconds-until-rotation="{{ seconds_until_rotation|default:0 }}">
+
+  <header class="att-codes-header">
+    <div>
+      <span class="att-codes-eyebrow">Live codes</span>
+      <h1>Office check-in codes</h1>
+      <p>
+        Each office displays its current code. Staff ask the office contact
+        for the code, then use it on the manual check-in page.
+      </p>
+    </div>
+    <div class="att-codes-rotation" aria-live="polite">
+      <span class="att-codes-rotation-label">Next rotation in</span>
+      <strong id="att-codes-countdown">—</strong>
+      <span class="att-codes-rotation-unit">s</span>
+    </div>
+  </header>
+
+  {% if rows %}
+    <div class="att-codes-grid" id="att-codes-grid">
+      {% for row in rows %}
+        <article class="att-code-card-item{% if not row.is_open %} is-closed{% endif %}"
+                 data-location-id="{{ row.location.pk }}">
+
+          <header class="att-code-card-head">
+            <div class="att-code-card-title">
+              <span class="att-code-card-name">{{ row.location.name }}</span>
+              <span class="att-code-card-dept">
+                {% for d in row.location.departments.all %}
+                  {{ d.name }}{% if not forloop.last %}, {% endif %}
+                {% empty %}
+                  All departments
+                {% endfor %}
+              </span>
+            </div>
+
+            {% if row.is_open %}
+              <span class="att-code-pill att-code-pill-open" data-code-pill>
+                <span class="att-code-pill-dot"></span> Live
+              </span>
+            {% else %}
+              <span class="att-code-pill att-code-pill-closed" data-code-pill>
+                Closed
+              </span>
+            {% endif %}
+          </header>
+
+          <div class="att-code-card-code" data-code-slot>
+            {% if row.is_open %}
+              <span data-code-value>{{ row.code_row.code }}</span>
+            {% else %}
+              <span class="att-code-card-off">Codes inactive</span>
+            {% endif %}
+          </div>
+
+          <footer class="att-code-card-foot">
+            <div class="att-code-card-timer{% if not row.is_open %} is-muted{% endif %}"
+                 data-code-timer>
+              {% if row.is_open %}
+                <span class="att-code-card-timer-label">Rotates in</span>
+                <strong data-code-countdown>{{ row.seconds_remaining }}s</strong>
+              {% else %}
+                <span class="att-code-card-timer-label">Working hours</span>
+                <strong>{{ row.location.work_start_time|time:"H:i" }} – {{ row.location.work_end_time|time:"H:i" }}</strong>
+              {% endif %}
+            </div>
+            <div class="att-code-card-radius">
+              {{ row.location.radius_meters }}m{% if row.location.gps_offset_meters %} + {{ row.location.gps_offset_meters }}m{% endif %}
+            </div>
+          </footer>
+
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <section class="att-empty">
+      <div class="att-empty-icon" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <h3>No active locations</h3>
+      <p>Add attendance locations in Django admin and codes will appear here.</p>
+    </section>
+  {% endif %}
+
+  <p class="att-codes-footnote">
+    Codes are generated on demand and expire automatically. Staff should
+    never share a code outside their office.
+  </p>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Guard: page must exist ----------
+  var page = document.querySelector(".att-codes-page");
+  if (!page) return;
+
+  var apiUrl = page.getAttribute("data-codes-api-url");
+  if (!apiUrl) return;
+
+  // ---------- State ----------
+  var POLL_INTERVAL_MS = 5000;
+  var initialRotation = parseInt(
+    page.getAttribute("data-seconds-until-rotation"), 10
+  );
+  var secondsUntilRotation = (isNaN(initialRotation) || initialRotation < 0)
+    ? 0 : initialRotation;
+
+  var topCountdown = document.getElementById("att-codes-countdown");
+
+  // ---------- Helpers ----------
+  function updateTopCountdown() {
+    if (!topCountdown) return;
+    topCountdown.textContent = String(Math.max(0, secondsUntilRotation));
+  }
+
+  function tickLocalCountdowns() {
+    var els = document.querySelectorAll("[data-code-countdown]");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var current = parseInt(el.textContent, 10);
+      if (isNaN(current)) continue;
+      var next = current > 0 ? current - 1 : 0;
+      el.textContent = next + "s";
+    }
+  }
+
+  function restartFlash(el) {
+    if (!el) return;
+    el.classList.remove("att-code-flash");
+    // Restart CSS animation on the next paint.
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(function () {
+        el.classList.add("att-code-flash");
+      });
+    } else {
+      el.classList.add("att-code-flash");
+    }
+  }
+
+  // ---------- Apply a single location's update ----------
+  function applyCodeUpdate(item) {
+    if (!item || !item.location_id) return;
+
+    var selector = '.att-code-card-item[data-location-id="' +
+                   String(item.location_id) + '"]';
+    var card = document.querySelector(selector);
+    if (!card) return;
+
+    var codeSlot = card.querySelector("[data-code-slot]");
+    var pill = card.querySelector("[data-code-pill]");
+    var timer = card.querySelector("[data-code-timer]");
+
+    if (item.is_open && item.code) {
+      // Card is live.
+      card.classList.remove("is-closed");
+
+      // ---- Code text ----
+      if (codeSlot) {
+        var currentValueEl = codeSlot.querySelector("[data-code-value]");
+        var currentText = currentValueEl ? currentValueEl.textContent : "";
+
+        if (currentText !== item.code) {
+          // Rebuild cleanly instead of replacing innerHTML wholesale.
+          while (codeSlot.firstChild) codeSlot.removeChild(codeSlot.firstChild);
+
+          var newSpan = document.createElement("span");
+          newSpan.setAttribute("data-code-value", "");
+          newSpan.textContent = item.code;
+          codeSlot.appendChild(newSpan);
+
+          restartFlash(codeSlot);
+        }
+      }
+
+      // ---- Pill ----
+      if (pill) {
+        pill.className = "att-code-pill att-code-pill-open";
+        // Rebuild pill content with the dot + label.
+        while (pill.firstChild) pill.removeChild(pill.firstChild);
+        var dot = document.createElement("span");
+        dot.className = "att-code-pill-dot";
+        pill.appendChild(dot);
+        pill.appendChild(document.createTextNode(" Live"));
+      }
+
+      // ---- Timer ----
+      if (timer) {
+        timer.classList.remove("is-muted");
+        var labelEl = timer.querySelector(".att-code-card-timer-label");
+
+        if (!labelEl || labelEl.textContent.trim() !== "Rotates in") {
+          // Rebuild the whole timer block for a "was closed, now open" transition.
+          while (timer.firstChild) timer.removeChild(timer.firstChild);
+
+          var newLabel = document.createElement("span");
+          newLabel.className = "att-code-card-timer-label";
+          newLabel.textContent = "Rotates in";
+
+          var newCount = document.createElement("strong");
+          newCount.setAttribute("data-code-countdown", "");
+          newCount.textContent = String(item.seconds_remaining || 0) + "s";
+
+          timer.appendChild(newLabel);
+          timer.appendChild(newCount);
+        } else {
+          var countEl = timer.querySelector("[data-code-countdown]");
+          if (countEl) {
+            countEl.textContent = String(item.seconds_remaining || 0) + "s";
+          }
+        }
+      }
+    } else {
+      // Card is closed.
+      card.classList.add("is-closed");
+
+      if (codeSlot) {
+        while (codeSlot.firstChild) codeSlot.removeChild(codeSlot.firstChild);
+        var offSpan = document.createElement("span");
+        offSpan.className = "att-code-card-off";
+        offSpan.textContent = "Codes inactive";
+        codeSlot.appendChild(offSpan);
+      }
+
+      if (pill) {
+        pill.className = "att-code-pill att-code-pill-closed";
+        while (pill.firstChild) pill.removeChild(pill.firstChild);
+        pill.appendChild(document.createTextNode("Closed"));
+      }
+
+      if (timer) {
+        timer.classList.add("is-muted");
+        while (timer.firstChild) timer.removeChild(timer.firstChild);
+
+        var closedLabel = document.createElement("span");
+        closedLabel.className = "att-code-card-timer-label";
+        closedLabel.textContent = "Working hours";
+
+        var closedValue = document.createElement("strong");
+        closedValue.textContent = "—";
+
+        timer.appendChild(closedLabel);
+        timer.appendChild(closedValue);
+      }
+    }
+  }
+
+  // ---------- Polling ----------
+  var pollInFlight = false;
+
+  function pollOnce() {
+    if (pollInFlight) return;
+    pollInFlight = true;
+
+    fetch(apiUrl, {
+      credentials: "same-origin",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json"
+      }
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.json();
+      })
+      .then(function (data) {
+        if (!data || !data.ok) return;
+        if (!Array.isArray(data.codes)) return;
+
+        if (typeof data.seconds_until_rotation === "number" &&
+            data.seconds_until_rotation >= 0) {
+          secondsUntilRotation = data.seconds_until_rotation;
+          updateTopCountdown();
+        }
+
+        for (var i = 0; i < data.codes.length; i++) {
+          applyCodeUpdate(data.codes[i]);
+        }
+      })
+      .catch(function () {
+        // Silent — the next scheduled poll will retry.
+      })
+      .then(function () {
+        pollInFlight = false;
+      });
+  }
+
+  // ---------- Boot ----------
+  updateTopCountdown();
+
+  // Local tick: 1s, so counters feel live between polls.
+  setInterval(function () {
+    if (secondsUntilRotation > 0) {
+      secondsUntilRotation -= 1;
+    }
+    updateTopCountdown();
+    tickLocalCountdowns();
+  }, 1000);
+
+  // First poll immediately, then on an interval.
+  pollOnce();
+  setInterval(pollOnce, POLL_INTERVAL_MS);
+
+  // Refresh when the tab becomes visible again.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) pollOnce();
+  });
+})();
+</script>
+{% endblock %}

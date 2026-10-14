@@ -23,10 +23,34 @@ def _set(key, value, vtype="str"):
 # ---------------- routing by category (same idea as NAMETS) ----------------
 @pytest.mark.parametrize("category,first", [
     ("credentials", "brevo"), ("reset", "brevo"), ("task", "brevo"), ("approval", "brevo"),
-    ("general", "gmail"), ("announcement", "gmail"),
+    ("general", "brevo"), ("announcement", "brevo"),
 ])
-def test_critical_tries_brevo_first_everything_else_gmail_first(providers, category, first):
+def test_all_categories_try_brevo_first(providers, category, first):
     assert engine.send("s", ["a@x.org"], "<p>x</p>", category=category) == first
+
+
+def test_general_mail_falls_back_to_gmail_when_brevo_fails(providers, settings):
+    settings.EMAIL_PROVIDERS["brevo"] = {"BACKEND": "notifications.tests.FailingBackend"}
+    trail = []
+    assert engine.send("s", ["a@x.org"], "<p>x</p>", category="general", trail=trail) == "gmail"
+    assert [(item["provider"], item["ok"]) for item in trail] == [
+        ("brevo", False), ("gmail", True),
+    ]
+
+
+def test_synchronous_mail_adapter_uses_the_shared_brevo_first_engine(providers):
+    from core.emails import send as send_sync
+
+    provider = send_sync(
+        subject="Workflow update",
+        to="a@x.org",
+        text_body="Status updated",
+        html_body="<p>Status updated</p>",
+        reply_to="reply@x.org",
+    )
+
+    assert provider == "brevo"
+    assert Tagging.sent[-1] == ("brevo", ["a@x.org"])
 
 
 def test_quota_still_applies_to_critical_mail_no_bypass(providers):
@@ -39,10 +63,10 @@ def test_general_mail_falls_back_to_brevo_when_gmail_is_exhausted(providers):
     assert engine.send("s", ["a@x.org"], "<p>x</p>", category="general") == "brevo"
 
 
-def test_critical_category_list_is_editable(providers):
+def test_legacy_critical_category_list_does_not_change_provider_order(providers):
     _set("email.critical_categories", '["newsletter"]', "json")
     assert engine.send("s", ["a@x.org"], "<p>x</p>", category="newsletter") == "brevo"
-    assert engine.send("s", ["a@x.org"], "<p>x</p>", category="credentials") == "gmail"
+    assert engine.send("s", ["a@x.org"], "<p>x</p>", category="credentials") == "brevo"
 
 
 def test_manual_override_pins_first_choice_for_any_category_and_still_fails_over(providers, settings):

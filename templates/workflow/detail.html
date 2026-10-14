@@ -88,6 +88,37 @@
   </div>
 </header>
 
+{% if leave_summary %}
+  <section class="wf-leave-review" aria-labelledby="leave-review-title">
+    <div>
+      <h2 id="leave-review-title">Annual leave balance review</h2>
+      <p>
+        This application requests
+        <strong>{{ leave_summary.requested_days|floatformat:"-2" }} working days</strong>.
+        Pending requests are not deducted until approved.
+      </p>
+    </div>
+    <div class="wf-leave-review-years">
+      {% for period in leave_summary.years %}
+        <div class="wf-leave-review-year {% if period.is_over_balance %}is-over-balance{% endif %}">
+          <strong>{{ period.year }}</strong>
+          {% if period.is_set %}
+            <span>{{ period.requested_days|floatformat:"-2" }} requested · {{ period.remaining|floatformat:"-2" }} available</span>
+          {% else %}
+            <span>No entitlement recorded for {{ period.year }}; HR must set it before balance can be assessed.</span>
+          {% endif %}
+          {% if period.is_over_balance %}
+            <span class="wf-leave-review-warning">
+              {{ period.over_balance_days|floatformat:"-2" }} days over balance.
+              HR may approve this exception.
+            </span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
 <div class="wf-detail-grid">
 
   {# ===================== MAIN ===================== #}
@@ -243,11 +274,13 @@
                 <span class="wf-comment-time">{{ c.created_at|date:"M j, Y · H:i" }}</span>
                 {% if not req.is_closed and request.user|can_delete_content:c.author %}
                   <div class="wf-comment-actions">
-                    <form method="post" id="del-comment-{{ c.pk }}" action="{% url 'workflow:delete_comment' req.pk c.pk %}" style="display:none;">{% csrf_token %}</form>
-                    <button type="button" class="wf-icon-btn" title="Delete comment"
-                            data-delete-trigger data-form-id="del-comment-{{ c.pk }}"
-                            data-modal-title="Delete comment?"
-                            data-modal-message="This comment by {{ c.author.get_full_name|default:c.author.email }} will be permanently removed.">
+                    <form hidden method="post" id="del-comment-{{ c.pk }}" action="{% url 'workflow:delete_comment' req.pk c.pk %}"
+                          data-confirm="Delete this comment?"
+                          data-confirm-title="Delete comment?"
+                          data-confirm-body="This comment by {{ c.author.get_full_name|default:c.author.email }} will be permanently removed."
+                          data-confirm-label="Delete comment"
+                          data-confirm-tone="danger">{% csrf_token %}</form>
+                    <button type="submit" form="del-comment-{{ c.pk }}" class="wf-icon-btn" title="Delete comment">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                     </button>
                   </div>
@@ -301,11 +334,13 @@
             </div>
             {% if not req.is_closed and request.user|can_delete_content:a.uploaded_by %}
               <div>
-                <form method="post" id="del-attachment-{{ a.pk }}" action="{% url 'workflow:delete_attachment' req.pk a.pk %}" style="display:none;">{% csrf_token %}</form>
-                <button type="button" class="wf-icon-btn" title="Delete attachment"
-                        data-delete-trigger data-form-id="del-attachment-{{ a.pk }}"
-                        data-modal-title="Delete attachment?"
-                        data-modal-message="'{{ a.original_name }}' will be permanently removed from storage.">
+                <form hidden method="post" id="del-attachment-{{ a.pk }}" action="{% url 'workflow:delete_attachment' req.pk a.pk %}"
+                      data-confirm="Delete this attachment?"
+                      data-confirm-title="Delete attachment?"
+                      data-confirm-body="'{{ a.original_name }}' will be permanently removed from storage."
+                      data-confirm-label="Delete attachment"
+                      data-confirm-tone="danger">{% csrf_token %}</form>
+                <button type="submit" form="del-attachment-{{ a.pk }}" class="wf-icon-btn" title="Delete attachment">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                 </button>
               </div>
@@ -484,13 +519,15 @@
       <div class="wf-side-card">
         <h3 class="wf-side-card-title">Cancel request</h3>
         <div class="wf-side-action">
-          <form method="post" id="cancel-request-form" action="{% url 'workflow:cancel' req.pk %}">
+          <form method="post" id="cancel-request-form" action="{% url 'workflow:cancel' req.pk %}"
+                data-confirm="Cancel this request?"
+                data-confirm-title="Cancel this request?"
+                data-confirm-body="The request will be withdrawn. The record stays for audit."
+                data-confirm-label="Cancel request"
+                data-confirm-tone="danger">
             {% csrf_token %}{{ cancel_form.comment }}
           </form>
-          <button type="button" class="btn btn-ghost btn-sm"
-                  data-delete-trigger data-form-id="cancel-request-form"
-                  data-modal-title="Cancel this request?"
-                  data-modal-message="The request will be withdrawn. The record stays for audit.">
+          <button type="submit" form="cancel-request-form" class="btn btn-ghost btn-sm">
             Cancel request
           </button>
         </div>
@@ -508,7 +545,12 @@
           <p style="font-size:12.5px;color:var(--wf-fg-muted);margin:0 0 10px;line-height:1.55;">
             Permanently remove this request. Logged and notified.
           </p>
-          <form method="post" id="delete-request-form" action="{% url 'workflow:delete' req.pk %}">
+          <form method="post" id="delete-request-form" action="{% url 'workflow:delete' req.pk %}"
+                data-confirm="Delete this request?"
+                data-confirm-title="Delete this request?"
+                data-confirm-body="This request will be permanently removed and everyone involved will be notified."
+                data-confirm-label="Delete request"
+                data-confirm-tone="danger">
             {% csrf_token %}
             <label style="display:block;font-size:12px;font-weight:600;color:var(--wf-fg-muted);margin-bottom:5px;">Reason</label>
             <textarea name="reason" rows="2" maxlength="500" required placeholder="Why is this being deleted?"
@@ -517,10 +559,8 @@
             <input type="text" name="confirm" placeholder="DELETE" autocomplete="off" required
                    style="width:100%;padding:8px 10px;font-family:inherit;font-size:13px;background:var(--wf-bg-subtle);border:1px solid var(--wf-border);border-radius:var(--wf-radius-sm);color:var(--wf-fg);">
           </form>
-          <button type="button" class="btn btn-danger btn-sm" style="margin-top:10px;width:100%;"
-                  data-delete-trigger data-form-id="delete-request-form"
-                  data-modal-title="Delete this request?"
-                  data-modal-message="This request will be permanently removed and everyone involved will be notified.">
+          <button type="submit" form="delete-request-form"
+                  class="btn btn-danger btn-sm" style="margin-top:10px;width:100%;">
             Delete request
           </button>
         </div>
@@ -532,61 +572,4 @@
 {# ---------- SSE stream ---------- #}
 <div hidden data-sse-stream="{% url 'workflow:request_stream' req.pk %}?since={{ timeline_last_pk|default:0 }}"></div>
 
-{# ---------- Confirm modal ---------- #}
-<div id="wf-confirm-modal" class="wf-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wf-modal-title" hidden>
-  <div class="wf-modal">
-    <div class="wf-modal-head">
-      <div class="wf-modal-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      </div>
-      <h3 class="wf-modal-title" id="wf-modal-title">Confirm</h3>
-    </div>
-    <div class="wf-modal-body">
-      <p id="wf-modal-message" style="margin:0;">Are you sure?</p>
-      <p class="wf-modal-warning">This action cannot be undone.</p>
-    </div>
-    <div class="wf-modal-actions">
-      <button type="button" class="btn btn-ghost btn-sm" data-modal-cancel>Cancel</button>
-      <button type="button" class="btn btn-danger btn-sm" data-modal-confirm>Confirm</button>
-    </div>
-  </div>
-</div>
-
-<script>
-(function () {
-  var modal = document.getElementById('wf-confirm-modal');
-  if (!modal) return;
-  var titleEl = document.getElementById('wf-modal-title');
-  var msgEl = document.getElementById('wf-modal-message');
-  var confirmBtn = modal.querySelector('[data-modal-confirm]');
-  var cancelBtn = modal.querySelector('[data-modal-cancel]');
-  var pendingFormId = null;
-
-  function open(title, message, formId) {
-    titleEl.textContent = title || 'Confirm';
-    msgEl.textContent = message || 'Are you sure?';
-    pendingFormId = formId;
-    modal.hidden = false;
-    document.body.style.overflow = 'hidden';
-    setTimeout(function () { cancelBtn.focus(); }, 20);
-  }
-  function close() {
-    modal.hidden = true;
-    document.body.style.overflow = '';
-    pendingFormId = null;
-  }
-  document.querySelectorAll('[data-delete-trigger]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      open(btn.getAttribute('data-modal-title'), btn.getAttribute('data-modal-message'), btn.getAttribute('data-form-id'));
-    });
-  });
-  confirmBtn.addEventListener('click', function () {
-    if (pendingFormId) { var f = document.getElementById(pendingFormId); if (f) f.submit(); }
-    close();
-  });
-  cancelBtn.addEventListener('click', close);
-  modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
-  document.addEventListener('keydown', function (e) { if (!modal.hidden && e.key === 'Escape') close(); });
-})();
-</script>
 {% endblock %}

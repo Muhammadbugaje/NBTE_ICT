@@ -49,8 +49,14 @@ CELERY_TASK_ALWAYS_EAGER = False
 USE_X_ACCEL_REDIRECT = os.environ.get("USE_X_ACCEL_REDIRECT", "True") == "True"
 DEFAULT_FROM_EMAIL = _require("DEFAULT_FROM_EMAIL")
 
-# Refuse to start in prod without at least one email provider configured.
-_require_one_of("BREVO_API_KEY", "GMAIL_USER")
+# Refuse to start in prod without at least one complete email provider.
+if not os.environ.get("BREVO_API_KEY") and not (
+    os.environ.get("GMAIL_USER") and os.environ.get("GMAIL_APP_PASSWORD")
+):
+    raise ImproperlyConfigured(
+        "Configure BREVO_API_KEY or both GMAIL_USER and GMAIL_APP_PASSWORD "
+        "for production email delivery."
+    )
 
 # --- Security ----------------------------------------------------------------
 SESSION_COOKIE_SECURE = True

@@ -30,7 +30,9 @@ INSTALLED_APPS = [
     "tasks",
     "portal",
     "attendance",
-    "dashboards"
+    "dashboards",
+    "leave",
+    "public",
 ]
 
 MIDDLEWARE = [
@@ -62,7 +64,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.site",
                 "core.context_processors.sidebar_counts",
-                "config.context_processors.site_info", 
+                "config.context_processors.site_info",
             ],
         },
     },
@@ -72,7 +74,7 @@ AUTH_USER_MODEL = "accounts.User"
 AUTHENTICATION_BACKENDS = ["accounts.backends.RolePermissionBackend"]
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "core:home"
-LOGOUT_REDIRECT_URL = "core:landing"  # ← changed from "login" (send to public landing)
+LOGOUT_REDIRECT_URL = "core:landing"
 
 PDF_LOGO_PATH = BASE_DIR / "static" / "img" / "NBTE_logo.png"
 
@@ -98,8 +100,20 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 25 * 1024 * 1024
 
 # --- File storage (doc 34 §2.1) ----------------------------------------------
 MEDIA_URL = "/media/"
-MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media"))
-PROTECTED_MEDIA_ROOT = Path(os.environ.get("PROTECTED_MEDIA_ROOT", BASE_DIR / "protected_media"))
+
+# `or` (not a default arg) so an empty env value falls back to the safe
+# location instead of becoming Path(".") — the project root.
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT") or (BASE_DIR / "media"))
+PROTECTED_MEDIA_ROOT = Path(os.environ.get("PROTECTED_MEDIA_ROOT") or (BASE_DIR / "protected_media"))
+
+# Sanity guard: if MEDIA_ROOT ever resolves to the project root again,
+# fail loudly instead of silently scanning over source code.
+if MEDIA_ROOT.resolve() == BASE_DIR.resolve():
+    raise RuntimeError(
+        f"MEDIA_ROOT resolved to BASE_DIR ({MEDIA_ROOT}). Refusing to start. "
+        "Set MEDIA_ROOT in .env to a subfolder such as 'media'."
+    )
+
 STORAGES = {
     "default": {"BACKEND": "core.storage.PublicMediaStorage"},
     "restricted": {"BACKEND": "core.storage.RestrictedMediaStorage"},
@@ -121,37 +135,159 @@ CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TASK_EAGER_PROPAGATES = False
 CELERY_TASK_TRACK_STARTED = True
 
-# --- Email delivery engine (doc 30 §5.4) -------------------------------------
-# Two providers, tried in order: Brevo (API), then Gmail (SMTP).
-# Read by core.emails.send() — not by Django's EMAIL_BACKEND, so ticket and
-# transactional emails behave identically in every environment.
+# =============================================================================
+# Email delivery engine (doc 30 §5.4)
+# =============================================================================
+# Provider order (tried top-to-bottom by notifications.engine):
+#   1. brevo_smtp  — Brevo SMTP relay over port 587 (preferred)
+#   2. brevo       — Brevo HTTP API via django-anymail (fallback 1)
+#   3. gmail       — Gmail SMTP app-password (fallback 2)
 #
-# Credentials come from environment variables only. See .env.example.
+# The engine reads EMAIL_PROVIDERS and iterates the configured keys in the
+# order returned by provider_order(). Override at runtime with the
+# config-registry key "email.provider_override" if needed.
+#
+# Every credential comes from environment variables only. See .env.example.
+
 ANYMAIL = {
     "BREVO_API_KEY": os.environ.get("BREVO_API_KEY", ""),
 }
 
+# Django's own default backend — used only by code that bypasses the engine
+# (e.g. a direct `django.core.mail.send_mail()` call). Points at Brevo SMTP
+# so those calls also go through the working transport.
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.smtp.EmailBackend",
+)
+
+# Shared SMTP credentials — used by both `brevo_smtp` and any direct Django send.
+BREVO_SMTP_HOST = os.environ.get("BREVO_SMTP_HOST", "smtp-relay.brevo.com")
+BREVO_SMTP_PORT = int(os.environ.get("BREVO_SMTP_PORT", "587"))
+BREVO_SMTP_LOGIN = os.environ.get("BREVO_SMTP_LOGIN", "")
+BREVO_SMTP_KEY = os.environ.get("BREVO_SMTP_KEY", "")
+
+# Django's top-level SMTP settings — only consulted when EMAIL_BACKEND is
+# Django's smtp backend and no per-provider OPTIONS are supplied.
+EMAIL_HOST = BREVO_SMTP_HOST
+EMAIL_PORT = BREVO_SMTP_PORT
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False
+EMAIL_HOST_USER = BREVO_SMTP_LOGIN
+EMAIL_HOST_PASSWORD = BREVO_SMTP_KEY
+EMAIL_TIMEOUT = 20
+
 EMAIL_PROVIDERS = {
+    # --- 1. Brevo SMTP relay (preferred) -------------------------------------
+    "brevo_smtp": {
+        "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+        "OPTIONS": {
+            "host": BREVO_SMTP_HOST,
+            "port": BREVO_SMTP_PORT,
+            "use_tls": True,
+            "use_ssl": False,
+            "username": BREVO_SMTP_LOGIN,
+            "password": BREVO_SMTP_KEY,
+            "timeout": 20,
+        },
+    },
+    # --- 2. Brevo HTTP API via anymail ---------------------------------------
     "brevo": {
         "BACKEND": "anymail.backends.brevo.EmailBackend",
         "OPTIONS": {},
     },
+    # --- 3. Gmail SMTP app-password ------------------------------------------
     "gmail": {
         "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
         "OPTIONS": {
             "host": "smtp.gmail.com",
             "port": 587,
             "use_tls": True,
+            "use_ssl": False,
             "username": os.environ.get("GMAIL_USER", ""),
             "password": os.environ.get("GMAIL_APP_PASSWORD", ""),
+            "timeout": 20,
         },
     },
 }
 
 # --- Email branding ----------------------------------------------------------
-# Default logo URL for email templates. Can be overridden via the config
-# registry key `email.logo_url` from the admin UI.
 EMAIL_LOGO_URL = os.environ.get(
     "EMAIL_LOGO_URL",
     "https://res.cloudinary.com/viepz5yp/image/upload/v1791034670/NBTE_logo.png",
 )
+
+# Email diagnostics are written to the process console.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "email": {
+            "format": "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        },
+    },
+    "handlers": {
+        "email_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "email",
+        },
+    },
+    "loggers": {
+        "notifications.engine": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "notifications.api": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "notifications.tasks": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "config.views": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "core.emails": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "accounts.user_views": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "core.email_utils": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # --- File lifecycle (moved INSIDE `loggers`) ---------------------
+        "core.files": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "core.files_register": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "core.apps": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "core.media_scanner": {
+            "handlers": ["email_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}

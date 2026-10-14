@@ -1,0 +1,576 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Files · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Files{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/files.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="files-page">
+
+  <header class="files-hero">
+    <div>
+      <span class="files-eyebrow">Storage</span>
+      <h1>File management</h1>
+      <p>
+        See how much disk your media uses, scan for orphaned files left behind
+        by deletions, and clean up safely. Deletions here are permanent.
+      </p>
+    </div>
+  </header>
+
+  {# ---------- STATS ---------- #}
+  <section class="files-stats">
+    <article class="files-stat">
+      <span class="files-stat-label">Total files</span>
+      <strong class="files-stat-value">{{ stats.total_files }}</strong>
+      <span class="files-stat-sub">{{ stats.total_bytes_h }} on disk</span>
+    </article>
+    <article class="files-stat">
+      <span class="files-stat-label">Public media</span>
+      <strong class="files-stat-value">{{ stats.public_files }}</strong>
+      <span class="files-stat-sub">{{ stats.public_bytes_h }}</span>
+    </article>
+    <article class="files-stat">
+      <span class="files-stat-label">Protected media</span>
+      <strong class="files-stat-value">{{ stats.protected_files }}</strong>
+      <span class="files-stat-sub">{{ stats.protected_bytes_h }}</span>
+    </article>
+    <article class="files-stat">
+      <span class="files-stat-label">Orphans found</span>
+      <strong class="files-stat-value">
+        {% if scan %}{{ scan.orphans|length }}{% else %}—{% endif %}
+      </strong>
+      <span class="files-stat-sub">
+        {% if scan %}{{ scan.orphan_bytes_h }} reclaimable{% else %}run a scan{% endif %}
+      </span>
+    </article>
+  </section>
+
+  {# ---------- FOLDER BREAKDOWN ---------- #}
+  {% if folders %}
+    <section class="files-section">
+      <header class="files-section-head">
+        <h2>Breakdown by folder</h2>
+        <p>Top-level media folders, sorted by size.</p>
+      </header>
+      <div class="files-folders">
+        {% for f in folders %}
+          <div class="files-folder">
+            <span class="files-folder-name">{{ f.label }}</span>
+            <span class="files-folder-count">
+              {{ f.count }} file{{ f.count|pluralize }}
+            </span>
+            <span class="files-folder-size">{{ f.size_h }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {# ---------- ACTIONS ---------- #}
+  <section class="files-section">
+    <header class="files-section-head">
+      <h2>Scan for orphaned files</h2>
+      <p>
+        Orphaned files have no database reference — usually leftovers from
+        deletions. The scan reads every file under
+        <code>media/</code> and <code>protected_media/</code> and matches it
+        against every registered file field.
+      </p>
+      {% if max_files %}
+        <p class="files-note">
+          Scan limit: <strong>{{ max_files }}</strong> files.
+        </p>
+      {% endif %}
+    </header>
+
+    <form method="post"
+          action="{% url 'config:files_scan' %}"
+          data-scan-form
+          data-scan-stream-url="{% url 'config:files_scan_stream' %}"
+          class="files-actions">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary" data-scan-button>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <span data-scan-label>{% if scan %}Re-scan{% else %}Run scan{% endif %}</span>
+      </button>
+
+      {% if scan and scan.orphans %}
+        <button type="submit" form="purge-form" class="btn btn-ghost">
+          Auto-purge ({{ purge_min_age_days }}d+ old)
+        </button>
+      {% endif %}
+    </form>
+
+    <form id="purge-form" method="post" action="{% url 'config:files_purge' %}" hidden>
+      {% csrf_token %}
+    </form>
+
+    {# ---------- LIVE PROGRESS ---------- #}
+    <div class="files-scan-progress" data-scan-progress hidden>
+      <div class="files-scan-phase" data-scan-phase>Starting…</div>
+
+      <div class="files-scan-bar">
+        <div class="files-scan-bar-fill" data-scan-bar style="width: 0%;"></div>
+      </div>
+
+      <div class="files-scan-meta">
+        <span>
+          <strong data-scan-scanned>0</strong>
+          <span data-scan-of></span>
+          files scanned
+        </span>
+        <span>
+          <strong data-scan-found>0</strong>
+          orphan<span data-scan-found-suffix></span>
+        </span>
+        <span class="files-scan-current" data-scan-current></span>
+      </div>
+    </div>
+  </section>
+
+  {# ---------- ORPHAN RESULTS ---------- #}
+  <section class="files-section" data-scan-results-section
+           {% if not scan %}hidden{% endif %}>
+    <header class="files-section-head">
+      <h2>
+        {% if scan %}
+          {% if scan.orphans %}
+            {{ scan.orphans|length }} orphan{{ scan.orphans|length|pluralize }}
+            — {{ scan.orphan_bytes_h }}
+          {% else %}
+            No orphaned files
+          {% endif %}
+        {% else %}
+          <span data-scan-results-heading hidden></span>
+        {% endif %}
+      </h2>
+      {% if scan and scan.scanned_at %}
+        <p class="files-note">Scanned {{ scan.scanned_at|date:"M j, Y · H:i" }}.</p>
+      {% endif %}
+      {% if scan and scan.truncated %}
+        <p class="files-note files-note-warn">
+          Scan hit the file limit — results are partial.
+        </p>
+      {% endif %}
+    </header>
+
+    <div data-scan-results-empty {% if scan and scan.orphans %}hidden{% endif %}>
+      {% if scan and not scan.orphans %}
+        <div class="files-empty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <h3>Everything is accounted for</h3>
+          <p>Every file on disk is referenced by a database record.</p>
+        </div>
+      {% elif not scan %}
+        <div class="files-empty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          <h3>No scan yet</h3>
+          <p>Click "Run scan" above to check the media folders for orphaned files.</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <form method="post"
+          action="{% url 'config:files_delete_selected' %}"
+          data-scan-results-form
+          {% if not scan or not scan.orphans %}hidden{% endif %}>
+      {% csrf_token %}
+      <div class="files-table-wrap">
+        <table class="files-table">
+          <thead>
+            <tr>
+              <th class="files-cell-check"><input type="checkbox" data-check-all></th>
+              <th>File</th>
+              <th>Kind</th>
+              <th class="files-cell-num">Size</th>
+              <th>Age</th>
+            </tr>
+          </thead>
+          <tbody data-scan-results-body>
+            {% if scan %}
+              {% for o in scan.orphans %}
+                <tr>
+                  <td class="files-cell-check">
+                    <input type="checkbox" name="rel" value="{{ o.rel }}" data-check-row>
+                    <input type="hidden" name="kind" value="{{ o.kind }}">
+                  </td>
+                  <td class="files-cell-file">
+                    <code>{{ o.rel }}</code>
+                    {% if o.is_variant %}<span class="files-tag">variant</span>{% endif %}
+                  </td>
+                  <td>
+                    <span class="files-pill files-pill-{{ o.kind }}">
+                      {{ o.kind }}
+                    </span>
+                  </td>
+                  <td class="files-cell-num">{{ o.size_h }}</td>
+                  <td class="files-cell-age">{{ o.age_h }}</td>
+                </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="files-bulk-bar">
+        <span data-selected-count>0</span> selected
+        <button type="submit" class="btn btn-danger">
+          Delete selected
+        </button>
+      </div>
+    </form>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ==============================================================
+  //  Checkbox selection
+  // ==============================================================
+  function initCheckboxes() {
+    var master = document.querySelector("[data-check-all]");
+    if (!master) return;
+
+    var counter = document.querySelector("[data-selected-count]");
+    var body = document.querySelector("[data-scan-results-body]");
+    if (!body) return;
+
+    function rows() {
+      return Array.prototype.slice.call(
+        body.querySelectorAll("[data-check-row]")
+      );
+    }
+
+    function refresh() {
+      var list = rows();
+      var selected = list.filter(function (r) { return r.checked; }).length;
+      if (counter) counter.textContent = String(selected);
+      if (master) {
+        master.indeterminate = selected > 0 && selected < list.length;
+        master.checked = list.length > 0 && selected === list.length;
+      }
+    }
+
+    master.addEventListener("change", function () {
+      rows().forEach(function (r) { r.checked = master.checked; });
+      refresh();
+    });
+
+    body.addEventListener("change", function (e) {
+      if (e.target.matches("[data-check-row]")) refresh();
+    });
+
+    refresh();
+
+    window.__filesRefreshCount = refresh;
+  }
+
+  // ==============================================================
+  //  Streaming scan
+  // ==============================================================
+  function initScan() {
+    var form = document.querySelector("[data-scan-form]");
+    if (!form) return;
+
+    var streamUrl = form.getAttribute("data-scan-stream-url");
+    var button = form.querySelector("[data-scan-button]");
+    var label = form.querySelector("[data-scan-label]");
+
+    var progress = document.querySelector("[data-scan-progress]");
+    var phaseEl = document.querySelector("[data-scan-phase]");
+    var bar = document.querySelector("[data-scan-bar]");
+    var scannedEl = document.querySelector("[data-scan-scanned]");
+    var ofEl = document.querySelector("[data-scan-of]");
+    var foundEl = document.querySelector("[data-scan-found]");
+    var foundSuffixEl = document.querySelector("[data-scan-found-suffix]");
+    var currentEl = document.querySelector("[data-scan-current]");
+
+    var resultsSection = document.querySelector("[data-scan-results-section]");
+    var resultsEmpty = document.querySelector("[data-scan-results-empty]");
+    var resultsForm = document.querySelector("[data-scan-results-form]");
+    var resultsBody = document.querySelector("[data-scan-results-body]");
+    var resultsHeading = document.querySelector("[data-scan-results-heading]");
+
+    var foundCount = 0;
+    var total = 0;
+    var es = null;
+
+    function setPhase(text) {
+      if (phaseEl) phaseEl.textContent = text;
+    }
+
+    function setBar(pct) {
+      if (!bar) return;
+      bar.style.width = Math.max(0, Math.min(100, pct)) + "%";
+    }
+
+    function setScanned(n, ofTotal) {
+      if (scannedEl) scannedEl.textContent = String(n);
+      if (ofEl) ofEl.textContent = ofTotal ? ("of " + ofTotal) : "";
+    }
+
+    function setFound(n) {
+      foundCount = n;
+      if (foundEl) foundEl.textContent = String(n);
+      if (foundSuffixEl) foundSuffixEl.textContent = (n === 1 ? "" : "s");
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function makeRow(o) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        '<td class="files-cell-check">' +
+          '<input type="checkbox" name="rel" value="' + escapeHtml(o.rel) + '" data-check-row>' +
+          '<input type="hidden" name="kind" value="' + escapeHtml(o.kind) + '">' +
+        '</td>' +
+        '<td class="files-cell-file">' +
+          '<code>' + escapeHtml(o.rel) + '</code>' +
+          (o.is_variant ? '<span class="files-tag">variant</span>' : '') +
+        '</td>' +
+        '<td><span class="files-pill files-pill-' + escapeHtml(o.kind) + '">' +
+          escapeHtml(o.kind) + '</span></td>' +
+        '<td class="files-cell-num">' + escapeHtml(o.size_h || '') + '</td>' +
+        '<td class="files-cell-age">' + escapeHtml(o.age_h || '') + '</td>';
+      return tr;
+    }
+
+    function resetUI() {
+      foundCount = 0;
+      total = 0;
+      setFound(0);
+      setScanned(0, 0);
+      setBar(0);
+      if (currentEl) currentEl.textContent = "";
+      if (resultsBody) resultsBody.innerHTML = "";
+      if (resultsForm) resultsForm.hidden = true;
+      if (resultsEmpty) resultsEmpty.hidden = true;
+      if (resultsSection) resultsSection.hidden = false;
+    }
+
+    function disableButton(disabled) {
+      if (button) button.disabled = disabled;
+      if (label) label.textContent = disabled ? "Scanning…" : "Re-scan";
+    }
+
+    function finishOk(summary) {
+      if (label) label.textContent = "Re-scan";
+      if (button) button.disabled = false;
+      setPhase("Scan complete.");
+      setBar(100);
+
+      if (summary) {
+        if (resultsHeading) {
+          if (summary.orphan_count === 0) {
+            resultsHeading.textContent = "No orphaned files";
+          } else {
+            resultsHeading.textContent =
+              summary.orphan_count + " orphan" +
+              (summary.orphan_count === 1 ? "" : "s") +
+              " — " + (summary.orphan_bytes_h || "");
+          }
+          resultsHeading.hidden = false;
+        }
+      }
+
+      if (foundCount > 0) {
+        if (resultsForm) resultsForm.hidden = false;
+      } else if (resultsEmpty) {
+        resultsEmpty.hidden = false;
+        resultsEmpty.innerHTML =
+          '<div class="files-empty">' +
+            '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" ' +
+            'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
+            'stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>' +
+            '<polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+            '<h3>Everything is accounted for</h3>' +
+            '<p>Every file on disk is referenced by a database record.</p>' +
+          '</div>';
+      }
+
+      if (window.__filesRefreshCount) window.__filesRefreshCount();
+    }
+
+    function startScan() {
+      if (es) { try { es.close(); } catch (e) {} es = null; }
+      resetUI();
+      disableButton(true);
+
+      es = new EventSource(streamUrl);
+
+      es.addEventListener("phase", function (e) {
+        var data = JSON.parse(e.data);
+        if (data.phase === "counting") setPhase("Counting files…");
+        else if (data.phase === "indexing") setPhase("Building reference index…");
+        else if (data.phase === "scanning") setPhase("Scanning files…");
+      });
+
+      es.addEventListener("counted", function (e) {
+        var data = JSON.parse(e.data);
+        total = data.total || 0;
+        setScanned(0, total);
+      });
+
+      es.addEventListener("indexed", function (e) {
+        var data = JSON.parse(e.data);
+        setPhase("Scanning " + total + " files… (" + data.refs + " in use)");
+      });
+
+      es.addEventListener("progress", function (e) {
+        var data = JSON.parse(e.data);
+        setScanned(data.scanned, data.total);
+        if (data.total > 0) {
+          setBar((data.scanned / data.total) * 100);
+        }
+        if (currentEl) currentEl.textContent = data.current || "";
+      });
+
+      es.addEventListener("found", function (e) {
+        var data = JSON.parse(e.data);
+        foundCount += 1;
+        setFound(foundCount);
+        setScanned(data.scanned, data.total);
+        if (data.total > 0) {
+          setBar((data.scanned / data.total) * 100);
+        }
+        if (currentEl) currentEl.textContent = data.orphan.rel || "";
+
+        if (resultsEmpty) resultsEmpty.hidden = true;
+        if (resultsForm) resultsForm.hidden = false;
+        if (resultsBody) {
+          resultsBody.appendChild(makeRow(data.orphan));
+        }
+        if (window.__filesRefreshCount) window.__filesRefreshCount();
+      });
+
+      es.addEventListener("done", function (e) {
+        var data = JSON.parse(e.data);
+        try { es.close(); } catch (err) {}
+        es = null;
+        finishOk(data.summary);
+      });
+
+      es.addEventListener("error", function (e) {
+        try { es.close(); } catch (err) {}
+        es = null;
+        if (label) label.textContent = "Re-scan";
+        if (button) button.disabled = false;
+        var msg = "Scan failed.";
+        try {
+          var data = JSON.parse(e.data || "{}");
+          if (data.message) msg = data.message;
+        } catch (err) {}
+        setPhase("Error: " + msg);
+      });
+    }
+
+    form.addEventListener("submit", function (e) {
+      if (typeof EventSource === "undefined") return;
+      e.preventDefault();
+      startScan();
+    });
+
+    window.addEventListener("beforeunload", function () {
+      if (es) { try { es.close(); } catch (err) {} }
+    });
+  }
+
+  // ==============================================================
+  //  Confirmation for destructive actions
+  // ==============================================================
+  function initDeleteConfirmations() {
+    if (typeof NBTEConfirm === "undefined" || !NBTEConfirm.open) return;
+
+    function wire(form, buildOptions) {
+      if (!form) return;
+      form.addEventListener("submit", function (e) {
+        if (form.dataset.confirmed === "1") {
+          delete form.dataset.confirmed;
+          return;
+        }
+        e.preventDefault();
+
+        var opts = buildOptions();
+        if (!opts) {
+          form.dataset.confirmed = "1";
+          form.submit();
+          return;
+        }
+
+        NBTEConfirm.open(opts).then(function (ok) {
+          if (!ok) return;
+          form.dataset.confirmed = "1";
+          form.submit();
+        });
+      });
+    }
+
+    // Manual delete — count ticks, show the number in the modal.
+    var resultsForm = document.querySelector("[data-scan-results-form]");
+    wire(resultsForm, function () {
+      var ticks = resultsForm.querySelectorAll("[data-check-row]:checked");
+      var n = ticks.length;
+      if (n === 0) return null;
+
+      return {
+        title: "Delete " + n + " file" + (n === 1 ? "" : "s") + "?",
+        body:
+          "This permanently removes " +
+          (n === 1 ? "the selected file" : "the selected files") +
+          " from disk. It cannot be undone.",
+        confirmLabel: "Delete",
+        cancelLabel: "Keep them",
+        tone: "danger",
+      };
+    });
+
+    // Auto-purge — mention the threshold in the modal.
+    var purgeForm = document.getElementById("purge-form");
+    wire(purgeForm, function () {
+      var trigger = document.querySelector('[form="purge-form"]');
+      if (!trigger) return null;
+      var label = (trigger.textContent || "").trim();
+      return {
+        title: "Auto-purge orphaned files?",
+        body:
+          "Every orphaned file older than the configured threshold will " +
+          "be permanently deleted from disk. " +
+          (label ? "(" + label + ")" : ""),
+        confirmLabel: "Purge",
+        cancelLabel: "Cancel",
+        tone: "danger",
+      };
+    });
+  }
+
+  function init() {
+    var boot = function () {
+      initCheckboxes();
+      initScan();
+      initDeleteConfirmations();
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot);
+    } else {
+      boot();
+    }
+  }
+
+  init();
+})();
+</script>
+{% endblock %}

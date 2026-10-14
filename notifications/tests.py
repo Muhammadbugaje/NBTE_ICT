@@ -1,7 +1,7 @@
 import pytest
 from django.core import mail
 from django.core.mail.backends.base import BaseEmailBackend
-from django.test import Client
+from django.test import Client, override_settings
 from unittest import mock
 
 import config
@@ -19,6 +19,11 @@ pytestmark = pytest.mark.django_db
 class FailingBackend(BaseEmailBackend):
     def send_messages(self, messages):
         raise ConnectionError("provider down")
+
+
+class ZeroSentBackend(BaseEmailBackend):
+    def send_messages(self, messages):
+        return 0
 
 
 class Tagging(BaseEmailBackend):
@@ -86,6 +91,17 @@ def test_fails_over_on_provider_error_and_releases_quota(providers, settings):
     assert engine.used_today("gmail") == 1
 
 
+def test_fails_over_when_provider_reports_zero_messages_and_releases_quota(providers, settings):
+    settings.EMAIL_PROVIDERS["brevo"] = {"BACKEND": "notifications.tests.ZeroSentBackend"}
+    trail = []
+
+    assert send("s", ["a@x.org"], "<p>x</p>", trail=trail) == "gmail"
+    assert engine.used_today("brevo") == 0
+    assert engine.used_today("gmail") == 1
+    assert trail[0]["ok"] is False
+    assert "returned 0 sent messages" in trail[0]["error"]
+
+
 def test_manual_override_pins_gmail_first(providers):
     _set("email.provider_override", "gmail")
     assert send("s", ["a@x.org"], "<p>x</p>") == "gmail"
@@ -112,6 +128,35 @@ def test_all_failing_raises_all_providers_failed(providers, settings):
         send("s", ["a@x.org"], "<p>x</p>")
 
 
+def test_no_configured_provider_fails_clearly_without_retrying_backends(settings):
+    settings.ANYMAIL = {"BREVO_API_KEY": ""}
+    settings.EMAIL_PROVIDERS = {
+        "brevo": {"BACKEND": "anymail.backends.brevo.EmailBackend", "OPTIONS": {}},
+        "gmail": {
+            "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "OPTIONS": {
+                "host": "smtp.gmail.com",
+                "username": "staff@example.org",
+                "password": "",
+            },
+        },
+    }
+
+    assert engine.provider_order("general") == []
+    with pytest.raises(engine.NoEmailProviderConfigured, match="No email provider is configured"):
+        engine.send("s", ["a@x.org"], "<p>x</p>")
+    assert EmailQuotaTracker.objects.count() == 0
+
+
+def test_console_backend_is_not_treated_as_a_delivery_provider(settings):
+    settings.EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    settings.EMAIL_PROVIDERS = {"brevo": {}, "gmail": {}}
+
+    assert engine.provider_order("general") == []
+    with pytest.raises(engine.NoEmailProviderConfigured):
+        engine.send("s", ["a@x.org"], "<p>x</p>")
+
+
 def test_quota_row_is_per_day(providers):
     from datetime import timedelta
     send("s", ["a@x.org"], "<p>x</p>")
@@ -133,6 +178,19 @@ def test_queue_email_defers_until_commit_and_log_has_no_body(django_capture_on_c
     assert "SECRET-PW" not in repr(log.__dict__)  # body never stored
 
 
+def test_delivery_error_diagnostics_redact_provider_secrets(settings):
+    settings.ANYMAIL = {"BREVO_API_KEY": "test-brevo-secret"}
+    settings.EMAIL_PROVIDERS["gmail"]["OPTIONS"]["password"] = "test-gmail-secret"
+
+    message = engine.safe_error_message(
+        RuntimeError("test-brevo-secret test-gmail-secret rejected")
+    )
+
+    assert "test-brevo-secret" not in message
+    assert "test-gmail-secret" not in message
+    assert "[redacted]" in message
+
+
 def test_task_marks_failed_after_retries_when_nothing_can_send(providers, settings, django_capture_on_commit_callbacks):
     settings.EMAIL_PROVIDERS = {p: {"BACKEND": "notifications.tests.FailingBackend"} for p in ("brevo", "gmail")}
     with django_capture_on_commit_callbacks(execute=True):
@@ -149,6 +207,10 @@ def test_send_templated_email_never_raises(django_capture_on_commit_callbacks):
 
 
 # ---------------- password reset ----------------
+@override_settings(EMAIL_PROVIDERS={
+    "brevo": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend", "OPTIONS": {}},
+    "gmail": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend", "OPTIONS": {}},
+})
 def test_password_reset_full_flow_clears_force_change(django_capture_on_commit_callbacks):
     import re
     u = User.objects.create_user("r@x.org", "Old-Passw0rd-1", first_name="R")  # must_change_password=True
@@ -217,10 +279,33 @@ def test_settings_edit_takes_effect_immediately_and_validates():
 
 
 def test_settings_test_email_reports_provider(providers):
+    from notifications.models import EmailLog
+
     c, u = _admin_client()
     r = c.post("/settings/test-email/", follow=True)
-    assert b"via brevo" in r.content
+    assert b"accepted by brevo" in r.content
     assert Tagging.sent[-1] == ("brevo", [u.email])
+    log = EmailLog.objects.get(category="test", user=u)
+    assert (log.status, log.provider, log.attempts) == ("sent", "brevo", 1)
+    assert log.attempt_trail[0]["provider"] == "brevo"
+    assert b"Recent test sends" in c.get("/settings/").content
+
+
+def test_settings_test_email_logs_brevo_failure_and_gmail_fallback(providers, settings):
+    from notifications.models import EmailLog
+
+    settings.EMAIL_PROVIDERS["brevo"] = {"BACKEND": "notifications.tests.FailingBackend"}
+    c, u = _admin_client()
+
+    r = c.post("/settings/test-email/", follow=True)
+
+    assert b"accepted by gmail" in r.content
+    log = EmailLog.objects.get(category="test", user=u)
+    assert log.provider == "gmail"
+    assert [(item["provider"], item["ok"]) for item in log.attempt_trail] == [
+        ("brevo", False), ("gmail", True),
+    ]
+    assert b"brevo: failed" in c.get("/settings/").content
 
 
 def test_health_public_minimal_and_detailed_for_admins():

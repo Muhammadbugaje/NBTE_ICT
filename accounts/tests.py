@@ -1,8 +1,10 @@
+from unittest import mock
+
 import pytest
 from django.contrib.auth.models import Permission
 from django.core import mail
 from django.core.management import call_command
-from django.test import Client
+from django.test import Client, RequestFactory
 
 from accounts.models import Role, User, UserPermissionOverride
 from accounts.services import provision_user
@@ -31,6 +33,18 @@ def test_admin_set_password_is_used(django_capture_on_commit_callbacks):
         u = provision_user("n2@x.org", "N", "Two", temporary_password="Chosen-By-Admin-9")
     assert u.check_password("Chosen-By-Admin-9")
     assert "Chosen-By-Admin-9" in mail.outbox[0].body
+
+
+def test_admin_password_reset_reports_queue_failure():
+    from accounts.user_views import _send_reset_email
+
+    user = User.objects.create_user("reset@x.org", "Pass-word-123")
+    request = RequestFactory().post("/", HTTP_HOST="testserver")
+    with mock.patch("core.email_utils.send_templated_email", return_value=None) as queue, \
+            mock.patch("django.core.mail.send_mail") as fallback:
+        assert _send_reset_email(request, user, "Temporary-Pass-42", True) is False
+    assert queue.call_args.kwargs["category"] == "credentials"
+    fallback.assert_not_called()
 
 
 def test_first_login_forces_password_change_then_releases():

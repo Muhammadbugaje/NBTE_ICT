@@ -131,7 +131,7 @@ class PortalPasswordResetForm(PasswordResetForm):
 
         from core.email_utils import send_templated_email
 
-        path = reverse("password_reset_confirm",
+        path = reverse("accounts:password_reset_confirm",
                        kwargs={"uidb64": context["uid"], "token": context["token"]})
         send_templated_email(
             subject=f"Reset your {settings.SITE_NAME} password",

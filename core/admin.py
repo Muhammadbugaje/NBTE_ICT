@@ -22,14 +22,18 @@ class AuditLogEntryAdmin(admin.ModelAdmin):
 
 @admin.register(ContactMessage)
 class ContactMessageAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "name", "email", "subject_short", "is_read", "is_handled")
-    list_filter = ("is_read", "is_handled", "created_at")
+    list_display = (
+        "created_at", "name", "email", "subject_short",
+        "handling_department", "assigned_to", "is_read", "is_handled",
+    )
+    list_filter = ("handling_department", "is_read", "is_handled", "created_at")
     search_fields = ("name", "email", "subject", "message")
     readonly_fields = ("name", "email", "subject", "message", "ip_address", "user_agent", "created_at", "updated_at")
     fieldsets = (
         ("From", {"fields": ("name", "email", "subject")}),
         ("Message", {"fields": ("message",)}),
         ("Metadata", {"fields": ("ip_address", "user_agent", "created_at", "updated_at")}),
+        ("Routing", {"fields": ("handling_department", "assigned_to")}),
         ("Handling", {"fields": ("is_read", "is_handled", "handled_by", "handled_at", "notes")}),
     )
 

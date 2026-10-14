@@ -116,6 +116,11 @@
                 <div class="asset-timeline-head">
                   <strong>{{ a.assigned_to.get_full_name|default:a.assigned_to.email }}</strong>
                   {% if a.is_open %}<span class="badge badge-success">Currently held</span>{% endif %}
+                  {% if a.is_open and a.expected_return_at %}
+                    <span class="badge {% if a.is_overdue %}badge-warn{% endif %}">
+                      Due {{ a.expected_return_at|date:"M j, Y" }}
+                    </span>
+                  {% endif %}
                 </div>
                 <div class="asset-timeline-meta">
                   Assigned by {{ a.assigned_by.get_full_name|default:a.assigned_by.email }}
@@ -260,6 +265,10 @@
           <form method="post" action="{% url 'assets:assign' asset.asset_tag %}" style="display:flex;flex-direction:column;gap:8px;">
             {% csrf_token %}
             {{ assign_form.assigned_to }}
+            <label class="wf-side-action-label" for="{{ assign_form.expected_return_at.id_for_label }}">
+              {{ assign_form.expected_return_at.label }}
+            </label>
+            {{ assign_form.expected_return_at }}
             <label class="wf-side-action-label">Condition on assign</label>
             {{ assign_form.condition_on_assign }}
             {{ assign_form.location_on_assign }}

@@ -13,6 +13,7 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import TimeStampedModel
+from core.restricted import RestrictedFileModel
 
 
 class Thread(TimeStampedModel):
@@ -76,13 +77,17 @@ class Thread(TimeStampedModel):
         participant = self.participants.filter(user=user).first()
         if not participant:
             return 0
-        qs = self.messages.exclude(sender=user)
+        qs = self.messages.exclude(sender=user).filter(is_deleted_for_everyone=False)
+        qs = qs.exclude(hidden_for__user=user).distinct()
         if participant.last_read_at:
             qs = qs.filter(sent_at__gt=participant.last_read_at)
         return qs.count()
 
-    def last_message(self):
-        return self.messages.order_by("-sent_at").first()
+    def last_message(self, user=None):
+        qs = self.messages.filter(is_deleted_for_everyone=False)
+        if user is not None:
+            qs = qs.exclude(hidden_for__user=user).distinct()
+        return qs.order_by("-sent_at", "-id").first()
 
 
 class ThreadParticipant(models.Model):
@@ -91,6 +96,7 @@ class ThreadParticipant(models.Model):
     joined_at = models.DateTimeField(default=timezone.now)
     last_read_at = models.DateTimeField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+    is_deleted = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("thread", "user")
@@ -109,12 +115,87 @@ class Message(models.Model):
     body = models.TextField()
     sent_at = models.DateTimeField(default=timezone.now, db_index=True)
     is_system = models.BooleanField(default=False, help_text="Auto-generated (not typed by a human).")
+    reply_to = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="replies",
+    )
+    edited_at = models.DateTimeField(null=True, blank=True)
+    is_deleted_for_everyone = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["sent_at", "id"]
 
     def __str__(self):
         return f"[{self.thread_id}] {self.sender}: {self.body[:40]}"
+
+
+class MessageDeletion(models.Model):
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name="hidden_for",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="hidden_messages",
+    )
+    deleted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user"],
+                name="messaging_unique_message_hidden_per_user",
+            ),
+        ]
+
+
+class MessageRead(models.Model):
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name="read_receipts",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="message_read_receipts",
+    )
+    read_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user"],
+                name="messaging_unique_message_read_per_user",
+            ),
+        ]
+
+
+def attachment_expiry():
+    from datetime import timedelta
+
+    return timezone.now() + timedelta(days=30)
+
+
+class MessageAttachment(RestrictedFileModel):
+    MEDIA_SUBDIR = "messaging/attachments"
+
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name="attachments",
+    )
+    expires_at = models.DateTimeField(default=attachment_expiry, db_index=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def can_download(self, user):
+        if (
+            not user.is_authenticated
+            or self.is_deleted
+            or self.expires_at <= timezone.now()
+            or self.message.is_deleted_for_everyone
+            or self.message.hidden_for.filter(user=user).exists()
+        ):
+            return False
+        return self.message.thread.participants.filter(
+            user=user, is_deleted=False,
+        ).exists()
 
 
 def start_thread(*, creator, participants, subject="", initial_body="", thread_type=None):

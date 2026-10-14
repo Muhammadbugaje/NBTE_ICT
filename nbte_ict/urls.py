@@ -15,6 +15,7 @@ urlpatterns = [
     path("tickets/", include("tickets.urls")),
     path("tasks/", include("tasks.urls")),
     path("dashboards/", include("dashboards.urls")),
+    path("leave/", include("leave.urls")),
     path("attendance/", include("attendance.urls")),
     path("staff/", include("staff.urls", namespace="staff")),
     path("portal/", include("portal.urls", namespace="portal")),

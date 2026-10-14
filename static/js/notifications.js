@@ -82,7 +82,7 @@
 
     var html = "";
     data.items.forEach(function (n) {
-      var cls = "notif-item notif-level-" + (n.level || "info") + (n.is_read ? "" : " unread");
+      var cls = "notif-item notif-level-" + (n.level || "info") + (n.is_read ? "" : " is-unread");
       var href = "/notifications/" + n.id + "/open/";
       html += '<a class="' + cls + '" href="' + href + '">';
       html += '<span class="notif-item-icon">' + iconFor(n.level) + "</span>";

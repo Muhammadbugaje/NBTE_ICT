@@ -53,10 +53,18 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
           Edit
         </a>
-        <button type="button" class="btn btn-ghost btn-danger" data-confirm-open="delete-album-modal">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-          Delete
-        </button>
+        <form method="post" action="{% url 'portal:gallery_album_delete' album.pk %}"
+              data-confirm="Delete this album?"
+              data-confirm-title="Delete this album?"
+              data-confirm-body="The album and its items will be soft-deleted and can be restored by an administrator."
+              data-confirm-label="Delete album"
+              data-confirm-tone="danger">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-danger">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+            Delete
+          </button>
+        </form>
       </div>
     {% endif %}
   </header>
@@ -97,13 +105,17 @@
                 {% if item.credit %}<div class="gal-tile-credit">© {{ item.credit }}</div>{% endif %}
               </div>
               {% if can_manage %}
-                <button type="button"
-                        class="gal-tile-del"
-                        data-confirm-open="delete-item-{{ item.pk }}"
-                        title="Remove this item"
-                        aria-label="Remove this item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                </button>
+                <form method="post" action="{% url 'portal:gallery_item_delete' item.pk %}"
+                      data-confirm="Remove this item?"
+                      data-confirm-title="Remove this item?"
+                      data-confirm-body="This item will be soft-deleted from the album and preserved for audit."
+                      data-confirm-label="Remove item"
+                      data-confirm-tone="danger">
+                  {% csrf_token %}
+                  <button type="submit" class="gal-tile-del" title="Remove this item" aria-label="Remove this item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                  </button>
+                </form>
               {% endif %}
             </figcaption>
           {% endif %}
@@ -127,28 +139,16 @@
         </div>
       </div>
 
-      {# ---------- BULK DELETE CONFIRM MODAL ---------- #}
-      <div class="confirm-modal" id="gal-bulk-modal" data-confirm-modal hidden>
-        <div class="confirm-backdrop" data-confirm-close></div>
-        <div class="confirm-panel">
-          <div class="confirm-icon confirm-icon-danger">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-          </div>
-          <h3>Delete selected items?</h3>
-          <p class="confirm-sub">
-            <span id="gal-bulk-modal-count">0</span> item<span id="gal-bulk-modal-plural">s</span> will be removed from this album.
-          </p>
-          <p class="confirm-note">Soft delete — preserved for audit and can be restored by an admin.</p>
-          <form method="post" action="{% url 'portal:gallery_items_bulk_delete' album.pk %}" id="gal-bulk-form">
-            {% csrf_token %}
-            <div id="gal-bulk-form-inputs"></div>
-            <div class="confirm-actions">
-              <button type="button" class="btn btn-ghost" data-confirm-close>Cancel</button>
-              <button type="submit" class="btn btn-danger">Delete</button>
-            </div>
-          </form>
-        </div>
-      </div>
+      <form method="post" action="{% url 'portal:gallery_items_bulk_delete' album.pk %}"
+            id="gal-bulk-form" hidden
+            data-confirm="Delete the selected items?"
+            data-confirm-title="Delete selected items?"
+            data-confirm-body="Selected items will be soft-deleted and preserved for audit."
+            data-confirm-label="Delete selected"
+            data-confirm-tone="danger">
+        {% csrf_token %}
+        <div id="gal-bulk-form-inputs"></div>
+      </form>
     {% endif %}
 
     {# ---------- LIGHTBOX ---------- #}
@@ -195,48 +195,6 @@
     </div>
   {% endif %}
 
-  {# ---------- Album delete modal ---------- #}
-  {% if can_manage %}
-    <div class="confirm-modal" id="delete-album-modal" data-confirm-modal hidden>
-      <div class="confirm-backdrop" data-confirm-close></div>
-      <div class="confirm-panel">
-        <div class="confirm-icon confirm-icon-danger">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        </div>
-        <h3>Delete this album?</h3>
-        <p class="confirm-sub">{{ album.title }}</p>
-        <p class="confirm-note">This is a soft delete — the album and its items are kept for audit and can be restored by an admin.</p>
-        <form method="post" action="{% url 'portal:gallery_album_delete' album.pk %}" class="confirm-actions">
-          {% csrf_token %}
-          <button type="button" class="btn btn-ghost" data-confirm-close>Cancel</button>
-          <button type="submit" class="btn btn-danger">Delete album</button>
-        </form>
-      </div>
-    </div>
-  {% endif %}
-
-  {# ---------- Per-item delete modals ---------- #}
-  {% if can_manage %}
-    {% for item in items %}
-      <div class="confirm-modal" id="delete-item-{{ item.pk }}" data-confirm-modal hidden>
-        <div class="confirm-backdrop" data-confirm-close></div>
-        <div class="confirm-panel">
-          <div class="confirm-icon confirm-icon-danger">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-          </div>
-          <h3>Remove this item?</h3>
-          {% if item.caption %}<p class="confirm-sub">{{ item.caption }}</p>{% endif %}
-          <p class="confirm-note">It will be soft-deleted from the album but preserved for audit.</p>
-          <form method="post" action="{% url 'portal:gallery_item_delete' item.pk %}" class="confirm-actions">
-            {% csrf_token %}
-            <button type="button" class="btn btn-ghost" data-confirm-close>Cancel</button>
-            <button type="submit" class="btn btn-danger">Remove item</button>
-          </form>
-        </div>
-      </div>
-    {% endfor %}
-  {% endif %}
-
 </div>
 {% endblock %}
 
@@ -244,38 +202,10 @@
 <script src="{% static 'js/gallery-lightbox.js' %}?v=1" defer></script>
 <script>
 /* ==========================================================================
-   GALLERY — Select mode + bulk delete + confirm-modal opener
+   GALLERY — Select mode + bulk delete
    ========================================================================== */
 (function () {
   "use strict";
-
-  /* ---------- Confirm modal open/close ---------- */
-  document.addEventListener("click", function (e) {
-    var opener = e.target.closest("[data-confirm-open]");
-    if (opener) {
-      var modal = document.getElementById(opener.getAttribute("data-confirm-open"));
-      if (modal) {
-        modal.hidden = false;
-        document.body.style.overflow = "hidden";
-      }
-      return;
-    }
-    var closer = e.target.closest("[data-confirm-close]");
-    if (closer) {
-      var m = closer.closest("[data-confirm-modal]");
-      if (m) {
-        m.hidden = true;
-        document.body.style.overflow = "";
-      }
-    }
-  });
-  document.addEventListener("keydown", function (e) {
-    if (e.key !== "Escape") return;
-    document.querySelectorAll("[data-confirm-modal]:not([hidden])").forEach(function (m) {
-      m.hidden = true;
-      document.body.style.overflow = "";
-    });
-  });
 
   /* ---------- Select mode + bulk delete ---------- */
   var root = document.querySelector("[data-gallery-root]");
@@ -288,11 +218,8 @@
   var bulkCount = document.getElementById("gal-bulkbar-count");
   var bulkDeleteBtn = document.getElementById("gal-bulk-delete");
   var bulkCancelBtn = document.getElementById("gal-bulk-cancel");
-  var bulkModal = document.getElementById("gal-bulk-modal");
   var bulkForm = document.getElementById("gal-bulk-form");
   var bulkInputs = document.getElementById("gal-bulk-form-inputs");
-  var bulkModalCount = document.getElementById("gal-bulk-modal-count");
-  var bulkModalPlural = document.getElementById("gal-bulk-plural");
 
   var selectMode = false;
   var selected = new Set();
@@ -349,7 +276,7 @@
     // Clicking anywhere else on the tile while in select mode → toggle
     tile.addEventListener("click", function (e) {
       if (!selectMode) return;
-      if (e.target.closest(".gal-tile-del")) return; // leave delete-alone
+      if (e.target.closest(".gal-tile-del")) return;
       e.preventDefault();
       e.stopPropagation();
       cb.checked = !cb.checked;
@@ -361,7 +288,7 @@
 
   if (bulkDeleteBtn) {
     bulkDeleteBtn.addEventListener("click", function () {
-      if (!selected.size) return;
+      if (!selected.size || !bulkForm || !bulkInputs) return;
       bulkInputs.innerHTML = "";
       selected.forEach(function (id) {
         var inp = document.createElement("input");
@@ -370,12 +297,10 @@
         inp.value = id;
         bulkInputs.appendChild(inp);
       });
-      if (bulkModalCount) bulkModalCount.textContent = selected.size;
-      if (bulkModalPlural) bulkModalPlural.textContent = selected.size === 1 ? "" : "s";
-      if (bulkModal) {
-        bulkModal.hidden = false;
-        document.body.style.overflow = "hidden";
-      }
+      var itemLabel = selected.size === 1 ? "item" : "items";
+      bulkForm.dataset.confirm = "Delete " + selected.size + " selected " + itemLabel + "?";
+      bulkForm.dataset.confirmBody = "This will soft-delete " + selected.size + " selected " + itemLabel + " from the album. They will be preserved for audit.";
+      bulkForm.requestSubmit();
     });
   }
 })();

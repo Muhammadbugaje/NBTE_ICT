@@ -236,6 +236,12 @@ class AssetAssignment(TimeStampedModel):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+",
     )
     assigned_at = models.DateTimeField(default=timezone.now, db_index=True)
+    expected_return_at = models.DateField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Expected return date agreed when the asset is assigned.",
+    )
 
     returned_at = models.DateTimeField(null=True, blank=True, db_index=True)
     returned_to = models.ForeignKey(
@@ -256,6 +262,9 @@ class AssetAssignment(TimeStampedModel):
 
     class Meta:
         ordering = ["-assigned_at", "-id"]
+        indexes = [
+            models.Index(fields=["returned_at", "expected_return_at"]),
+        ]
 
     def __str__(self):
         return f"{self.asset.asset_tag} → {self.assigned_to_id} ({'open' if self.is_open else 'closed'})"
@@ -263,6 +272,14 @@ class AssetAssignment(TimeStampedModel):
     @property
     def is_open(self):
         return self.returned_at is None
+
+    @property
+    def is_overdue(self):
+        return bool(
+            self.is_open
+            and self.expected_return_at
+            and self.expected_return_at < timezone.localdate()
+        )
 
     @property
     def duration_days(self):

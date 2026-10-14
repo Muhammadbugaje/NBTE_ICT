@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Awaiting my action · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Awaiting my action{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/action-queue.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<main class="action-queue-page">
+
+  <header class="action-queue-hero">
+    <div>
+      <h1>Awaiting my action</h1>
+      <p class="action-queue-subtitle">
+        {% if total %}
+          {{ total }} item{{ total|pluralize }} across messages, approvals,
+          overdue assets, and escalations.
+        {% else %}
+          Messages, approvals, overdue assets, and escalations, in one queue.
+        {% endif %}
+      </p>
+    </div>
+    {% if total %}
+      <div class="action-queue-total" aria-label="{{ total }} open items">
+        <strong>{{ total }}</strong>
+        <span>open</span>
+      </div>
+    {% endif %}
+  </header>
+
+  <form method="get" class="action-queue-filters" role="search">
+    <label class="action-queue-search">
+      <span>Search</span>
+      <span class="action-queue-search-field">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>
+        </svg>
+        <input class="input" type="search" name="q" value="{{ filters.query }}"
+               placeholder="Subject, name or reference" autocomplete="off" spellcheck="false">
+        {% if filters.query %}
+          <a href="?{% if filters.source != 'all' %}source={{ filters.source }}&{% endif %}{% if filters.priority != 'all' %}priority={{ filters.priority }}&{% endif %}{% if filters.age != 'all' %}age={{ filters.age }}{% endif %}"
+             aria-label="Clear search">Clear</a>
+        {% endif %}
+      </span>
+    </label>
+
+    <label>
+      <span>Source</span>
+      <select class="input" name="source">
+        <option value="all" {% if filters.source == "all" %}selected{% endif %}>All sources</option>
+        {% for key, label in source_options %}
+          <option value="{{ key }}" {% if filters.source == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      <span>Priority</span>
+      <select class="input" name="priority">
+        <option value="all" {% if filters.priority == "all" %}selected{% endif %}>All priorities</option>
+        {% for key, label in priority_options %}
+          <option value="{{ key }}" {% if filters.priority == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      <span>Age</span>
+      <select class="input" name="age">
+        <option value="all" {% if filters.age == "all" %}selected{% endif %}>Any age</option>
+        {% for key, label in age_options %}
+          <option value="{{ key }}" {% if filters.age == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <button class="btn btn-primary" type="submit">Apply</button>
+    {% if has_active_filters %}
+      <a class="btn btn-ghost" href="{% url 'workflow:awaiting_action' %}">Clear all</a>
+    {% endif %}
+  </form>
+
+  <form method="post" action="{% url 'workflow:bulk_awaiting_action' %}"
+        class="action-queue-bulk-form"
+        data-confirm="The selected workflow requests will be processed using your current approval permissions."
+        data-confirm-title="Process selected requests?"
+        data-confirm-label="Continue">
+    {% csrf_token %}
+
+    {% if page.object_list %}
+      <div class="action-queue-list" aria-label="Action items" aria-live="polite">
+        {% for item in page.object_list %}
+          <article class="action-queue-item{% if item.source == 'request' %} action-queue-item--request{% endif %}">
+
+            {% if item.selectable %}
+              <label class="action-queue-select" title="Select for a bulk workflow action">
+                <input type="checkbox" name="request_ids" value="{{ item.object_id }}">
+                <span class="sr-only">Select request {{ item.reference }}</span>
+              </label>
+            {% else %}
+              <span class="action-queue-select action-queue-select--empty" aria-hidden="true"></span>
+            {% endif %}
+
+            <a class="action-queue-item-main" href="{{ item.url }}">
+              <span class="action-queue-item-topline">
+                <span class="action-queue-source action-queue-source--{{ item.source }}">{{ item.source_label }}</span>
+                {% if item.request_type %}
+                  <span class="action-queue-item-type">{{ item.request_type }}</span>
+                {% endif %}
+                {% if item.priority == "urgent" %}
+                  <span class="badge badge-danger">Urgent</span>
+                {% elif item.priority == "high" %}
+                  <span class="badge badge-warn">High</span>
+                {% elif item.priority == "low" %}
+                  <span class="badge">Low</span>
+                {% endif %}
+              </span>
+
+              <strong class="action-queue-item-title">{{ item.title }}</strong>
+
+              {% if item.source == "request" %}
+                <span class="action-queue-item-reference">{{ item.reference }}</span>
+                <span class="action-queue-item-detail">
+                  <span>{{ item.requester }}</span>
+                  {% if item.department %}<span>{{ item.department }}</span>{% endif %}
+                  <span class="action-queue-step"><span>Step</span>{{ item.step }}</span>
+                </span>
+              {% else %}
+                <span class="action-queue-item-reference">{{ item.reference }}</span>
+                <span class="action-queue-item-detail">{{ item.detail }}</span>
+              {% endif %}
+            </a>
+
+            <div class="action-queue-item-age">
+              {% if item.source == "asset" %}
+                <strong>{{ item.age_days }} day{{ item.age_days|pluralize }} overdue</strong>
+              {% else %}
+                <strong>{{ item.age_days }} day{{ item.age_days|pluralize }} waiting</strong>
+              {% endif %}
+              <span>{{ item.timestamp|date:"M j, Y" }}</span>
+            </div>
+
+            <svg class="action-queue-item-chevron" width="17" height="17" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+          </article>
+        {% endfor %}
+      </div>
+
+      {% if page.has_other_pages %}
+        <nav class="action-queue-pagination" aria-label="Action queue pages">
+          {% if page.has_previous %}
+            <a class="btn btn-ghost btn-sm"
+               href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page.previous_page_number }}">
+              Previous
+            </a>
+          {% else %}
+            <span class="btn btn-ghost btn-sm is-disabled" aria-disabled="true">Previous</span>
+          {% endif %}
+
+          <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+
+          {% if page.has_next %}
+            <a class="btn btn-ghost btn-sm"
+               href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page.next_page_number }}">
+              Next
+            </a>
+          {% else %}
+            <span class="btn btn-ghost btn-sm is-disabled" aria-disabled="true">Next</span>
+          {% endif %}
+        </nav>
+      {% endif %}
+
+    {% elif has_active_filters %}
+      <section class="action-queue-empty">
+        <span class="action-queue-empty-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>
+          </svg>
+        </span>
+        <h2>No items match these filters</h2>
+        <p>
+          {% if filters.query %}
+            Nothing matched “{{ filters.query }}”. Try a different search or clear the filters.
+          {% else %}
+            Try adjusting the source, priority, or age filters.
+          {% endif %}
+        </p>
+        <a class="btn btn-ghost" href="{% url 'workflow:awaiting_action' %}">Clear all filters</a>
+      </section>
+
+    {% else %}
+      <section class="action-queue-empty">
+        <span class="action-queue-empty-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"/>
+          </svg>
+        </span>
+        <h2>You’re all caught up</h2>
+        <p>Nothing needs your attention right now. New items will appear here when they do.</p>
+      </section>
+    {% endif %}
+
+    <div class="action-queue-bulk-bar" id="action-queue-bulk-bar" hidden>
+      <span>
+        <strong id="action-queue-selected-count">0</strong>
+        request<span id="action-queue-selected-suffix"></span> selected
+      </span>
+      <label class="action-queue-comment">
+        <span>Shared comment <small>required when returning</small></span>
+        <textarea class="input" name="comment" rows="1" maxlength="2000"
+                  placeholder="Approval note, or explain what needs to change"></textarea>
+      </label>
+      <div class="action-queue-bulk-actions">
+        <button class="btn btn-primary" type="submit" name="bulk_action" value="approve" disabled>
+          Approve
+        </button>
+        <button class="btn btn-ghost" type="submit" name="bulk_action" value="return" disabled>
+          Return
+        </button>
+      </div>
+    </div>
+  </form>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/action-queue.js' %}?v=2" defer></script>
+{% endblock %}

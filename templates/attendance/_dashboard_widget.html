@@ -48,6 +48,7 @@
               {% elif today.status == 'late' %}Checked in — recorded as late
               {% elif today.status == 'absent' %}Marked absent today
               {% elif today.status == 'excused' %}Excused today
+              {% elif today.status == 'on_leave' %}On approved leave today
               {% else %}{{ today.get_status_display }}{% endif %}
             </strong>
             <span>
@@ -57,6 +58,9 @@
           </div>
         </div>
         <span class="att-pill att-pill-{{ today.status }}">{{ today.get_status_display }}</span>
+        {% if can_check_in and today.status == 'on_leave' %}
+          <a class="att-btn att-btn-primary att-dash-widget-cta" href="{% url 'attendance:check_in' %}">Check in anyway</a>
+        {% endif %}
 
       {% else %}
         <div class="att-dash-widget-status">

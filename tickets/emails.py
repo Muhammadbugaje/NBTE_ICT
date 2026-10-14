@@ -2,8 +2,8 @@
 
 Thin wrapper over `core.emails.send()` — sends the resolution notification
 to the raiser via the project's real email pipeline (Brevo primary, Gmail
-fallback). Never prints to the console; failures are logged and skipped so
-a bad email never blocks a ticket from being resolved.
+fallback). Provider outcomes are logged without recipient addresses; failures
+are skipped so a bad email never blocks a ticket from being resolved.
 """
 import logging
 

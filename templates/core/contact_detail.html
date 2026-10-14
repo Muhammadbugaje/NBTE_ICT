@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ contact_message.subject|default:"Public enquiry" }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Public contact message{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/contact-inbox.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<main class="contact-page contact-detail-page">
+  <a class="btn btn-ghost btn-sm contact-back" href="{% url 'core:contact_inbox' %}">← Back to inbox</a>
+
+  <header class="contact-detail-head">
+    <div>
+      <p class="contact-eyebrow">
+        {% if contact_message.is_handled %}Handled{% elif contact_message.is_read %}Read{% else %}New · unread{% endif %}
+        {% if contact_message.handling_department %} · {{ contact_message.handling_department.name }}{% else %} · General enquiry{% endif %}
+      </p>
+      <h1>{{ contact_message.subject|default:"No subject" }}</h1>
+      <p class="contact-detail-sender">
+        {{ contact_message.name }} · <a href="mailto:{{ contact_message.email }}">{{ contact_message.email }}</a>
+      </p>
+      <time datetime="{{ contact_message.created_at|date:'c' }}">Received {{ contact_message.created_at|date:"M j, Y · H:i" }}</time>
+    </div>
+    {% if not contact_message.is_read %}
+      <form method="post" action="{% url 'core:contact_mark_read' contact_message.pk %}">
+        {% csrf_token %}
+        <button class="btn btn-ghost" type="submit">Mark as read</button>
+      </form>
+    {% endif %}
+  </header>
+
+  <div class="contact-detail-grid">
+    <div class="contact-detail-main">
+      <section class="contact-panel">
+        <h2>Message</h2>
+        <div class="contact-original-message">{{ contact_message.message|linebreaksbr }}</div>
+      </section>
+
+      <section class="contact-panel">
+        <div class="contact-panel-head">
+          <div>
+            <h2>Internal handling history</h2>
+            <p>Staff-only activity and notes. Nothing in this history is shown to the sender.</p>
+          </div>
+        </div>
+        {% if activities %}
+          <ol class="contact-activity-list">
+            {% for activity in activities %}
+              <li class="contact-activity-item {% if activity.action == 'note' %}is-note{% endif %}">
+                <div class="contact-activity-meta">
+                  <strong>{{ activity.get_action_display }}</strong>
+                  <time datetime="{{ activity.created_at|date:'c' }}">{{ activity.created_at|date:"M j, Y · H:i" }}</time>
+                </div>
+                <p>
+                  {% if activity.actor %}{{ activity.actor.get_full_name|default:activity.actor.email }}{% else %}Public form{% endif %}
+                  {% if activity.details %} · {{ activity.details|linebreaksbr }}{% endif %}
+                </p>
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="contact-empty-history">No handling activity has been recorded.</p>
+        {% endif %}
+      </section>
+
+      <section class="contact-panel">
+        <h2>Add an internal note</h2>
+        <p class="contact-private-help">Private to staff members with contact-inbox access; never emailed to the sender.</p>
+        <form method="post" action="{% url 'core:contact_add_note' contact_message.pk %}" class="contact-note-form">
+          {% csrf_token %}
+          <label for="{{ note_form.details.id_for_label }}">{{ note_form.details.label }}</label>
+          {{ note_form.details }}
+          {% if note_form.details.errors %}<span class="contact-form-error">{{ note_form.details.errors|join:" " }}</span>{% endif %}
+          <button class="btn btn-primary" type="submit">Add note</button>
+        </form>
+      </section>
+    </div>
+
+    <aside class="contact-detail-side">
+      <section class="contact-panel">
+        <h2>Assignment</h2>
+        <form method="post" action="{% url 'core:contact_assign' contact_message.pk %}" class="contact-assignment-form">
+          {% csrf_token %}
+          <label for="{{ assignment_form.assigned_to.id_for_label }}">{{ assignment_form.assigned_to.label }}</label>
+          {{ assignment_form.assigned_to }}
+          {% if assignment_form.assigned_to.errors %}<span class="contact-form-error">{{ assignment_form.assigned_to.errors|join:" " }}</span>{% endif %}
+          <button class="btn btn-primary" type="submit">Save assignment</button>
+        </form>
+      </section>
+
+      <section class="contact-panel">
+        <h2>Status</h2>
+        <p>
+          {% if contact_message.is_handled %}
+            Marked handled{% if contact_message.handled_by %} by {{ contact_message.handled_by.get_full_name|default:contact_message.handled_by.email }}{% endif %}.
+          {% elif contact_message.assigned_to %}
+            Assigned to {{ contact_message.assigned_to.get_full_name|default:contact_message.assigned_to.email }}.
+          {% else %}
+            This message has not been assigned.
+          {% endif %}
+        </p>
+        <form method="post" action="{% url 'core:contact_update_status' contact_message.pk %}">
+          {% csrf_token %}
+          {% if contact_message.is_handled %}
+            <input type="hidden" name="action" value="reopen">
+            <button class="btn btn-ghost" type="submit">Reopen message</button>
+          {% else %}
+            <input type="hidden" name="action" value="handled">
+            <button class="btn btn-primary" type="submit">Mark as handled</button>
+          {% endif %}
+        </form>
+      </section>
+    </aside>
+  </div>
+</main>
+{% endblock %}

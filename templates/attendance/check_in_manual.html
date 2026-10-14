@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Manual check-in · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Manual check-in{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=6">
+{% endblock %}
+
+{% block content %}
+<div class="att-checkin-page">
+
+  <a class="att-back" href="{% url 'attendance:check_in' %}">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="19" y1="12" x2="5" y2="12"/>
+      <polyline points="12 19 5 12 12 5"/>
+    </svg>
+    Back to check-in
+  </a>
+
+  <section class="att-checkin-card att-code-card">
+    <div class="att-checkin-icon" aria-hidden="true">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+    </div>
+
+    <h1>Enter your office code</h1>
+    <p>
+      Each office displays a rotating code. Ask the office contact for the
+      current code, then enter it below. Codes refresh every
+      <strong>{{ rotation_minutes }} minutes</strong>.
+    </p>
+
+    <form method="post" class="att-code-form" autocomplete="off">
+      {% csrf_token %}
+
+      <label class="att-code-label" for="id_code">Current code</label>
+      <input
+        type="text"
+        id="id_code"
+        name="code"
+        class="att-code-input"
+        maxlength="12"
+        autocomplete="off"
+        autocapitalize="characters"
+        autocorrect="off"
+        spellcheck="false"
+        inputmode="text"
+        placeholder="••••••"
+        autofocus
+        required>
+
+      <button type="submit" class="att-btn att-btn-primary att-btn-full att-code-submit">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Check in
+      </button>
+    </form>
+
+    {% if attempts_remaining is not None %}
+      <p class="att-code-meta">
+        Attempts remaining this hour: <strong>{{ attempts_remaining }}</strong>
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="att-code-help">
+    <h3>How it works</h3>
+    <ol>
+      <li>Find your office contact — the person at the reception or desk.</li>
+      <li>Ask for the current code and enter it above.</li>
+      <li>The code changes every {{ rotation_minutes }} minutes, so use the current one.</li>
+      <li>If you don't have a code, use GPS check-in from the main check-in page.</li>
+    </ol>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  "use strict";
+
+  var input = document.getElementById("id_code");
+  if (!input) return;
+
+  // Uppercase and strip anything that isn't a letter or digit, live.
+  input.addEventListener("input", function () {
+    var cleaned = input.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (cleaned !== input.value) {
+      var pos = input.selectionStart;
+      input.value = cleaned;
+      // Restore cursor position if possible.
+      try { input.setSelectionRange(pos, pos); } catch (e) { /* ignore */ }
+    }
+  });
+
+  // If the browser didn't autofocus, do it ourselves.
+  if (document.activeElement !== input) {
+    input.focus();
+  }
+})();
+</script>
+{% endblock %}

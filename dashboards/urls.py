@@ -6,6 +6,7 @@ from . import views
 app_name = "dashboards"
 
 urlpatterns = [
+    path("me/",               views.self_service,      name="self_service"),
     path("director/",        views.director,          name="director"),
     path("deputy/",          views.deputy,            name="deputy"),
     path("es/",              views.es,                name="es"),

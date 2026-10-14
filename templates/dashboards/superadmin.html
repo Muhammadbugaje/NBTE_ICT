@@ -1,155 +1,68 @@
 {% extends "base.html" %}
 {% load static %}
+{% load dash_extras %}
 
 {% block title %}{{ dashboard_title }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{{ dashboard_title }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=2">
-  <style>
-    .dash-sa .dash-health {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 10px;
-    }
-    .dash-sa .dash-health-item {
-      padding: 12px 14px;
-      border-radius: 12px;
-      background: var(--bg-sunken, #F8FAFC);
-      border: 1px solid var(--border, #E5E7EB);
-    }
-    .dash-sa .dash-health-label {
-      font-size: 11px; font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--fg-subtle, #94A3B8);
-      margin-bottom: 6px;
-    }
-    .dash-sa .dash-health-value {
-      font-size: 18px; font-weight: 800;
-      color: var(--fg, #0F172A);
-      font-variant-numeric: tabular-nums;
-    }
-    .dash-sa .dash-health-sub {
-      font-size: 11.5px;
-      color: var(--fg-muted, #64748B);
-      margin-top: 2px;
-    }
-    .dash-sa .dash-health-ok    .dash-health-value { color: #059669; }
-    .dash-sa .dash-health-warn  .dash-health-value { color: #B45309; }
-    .dash-sa .dash-health-error .dash-health-value { color: #B91C1C; }
-
-    .dash-sa .dash-alert-list { display: flex; flex-direction: column; gap: 10px; }
-    .dash-sa .dash-alert {
-      display: flex; gap: 12px;
-      padding: 12px 14px;
-      border-radius: 12px;
-      border: 1px solid transparent;
-    }
-    .dash-sa .dash-alert-icon {
-      width: 32px; height: 32px; border-radius: 9px;
-      display: grid; place-items: center;
-      flex-shrink: 0;
-    }
-    .dash-sa .dash-alert-body { min-width: 0; flex: 1; }
-    .dash-sa .dash-alert-body strong {
-      display: block; font-size: 13.5px; font-weight: 700;
-      color: var(--fg, #0F172A); margin-bottom: 2px;
-    }
-    .dash-sa .dash-alert-body span {
-      display: block; font-size: 12px;
-      color: var(--fg-muted, #64748B);
-    }
-    .dash-sa .dash-alert-danger {
-      background: rgba(220, 38, 38, 0.06);
-      border-color: rgba(220, 38, 38, 0.22);
-    }
-    .dash-sa .dash-alert-danger .dash-alert-icon {
-      background: rgba(220, 38, 38, 0.14); color: #B91C1C;
-    }
-    .dash-sa .dash-alert-warn {
-      background: rgba(245, 158, 11, 0.06);
-      border-color: rgba(245, 158, 11, 0.22);
-    }
-    .dash-sa .dash-alert-warn .dash-alert-icon {
-      background: rgba(245, 158, 11, 0.14); color: #B45309;
-    }
-
-    .dash-sa .dash-role-bar {
-      height: 6px; border-radius: 999px;
-      background: var(--bg-sunken, #F1F5F9);
-      overflow: hidden;
-      margin-top: 6px;
-    }
-    .dash-sa .dash-role-bar span {
-      display: block; height: 100%;
-      border-radius: 999px;
-      background: linear-gradient(90deg, #1F6B3E, #2D8A56);
-    }
-
-    .dash-sa .dash-audit-row {
-      display: grid;
-      grid-template-columns: 150px 1fr 180px 90px;
-      gap: 12px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      font-size: 12.5px;
-      align-items: center;
-    }
-    .dash-sa .dash-audit-row:not(:last-child) { border-bottom: 1px solid var(--divider, #F1F5F9); }
-    .dash-sa .dash-audit-row:hover { background: var(--bg-sunken, #F8FAFC); }
-    .dash-sa .dash-audit-when { color: var(--fg-subtle, #94A3B8); }
-    .dash-sa .dash-audit-actor { color: var(--fg-muted, #64748B); }
-    .dash-sa .dash-audit-action {
-      font-family: ui-monospace, monospace;
-      font-size: 11.5px;
-      padding: 2px 6px; border-radius: 4px;
-      background: var(--bg-sunken, #F1F5F9);
-      color: var(--fg, #0F172A);
-      justify-self: start;
-    }
-    [data-theme="dark"] .dash-sa .dash-health-item { background: #243044; border-color: #334155; }
-    [data-theme="dark"] .dash-sa .dash-health-value { color: #F1F5F9; }
-    [data-theme="dark"] .dash-sa .dash-audit-row:hover { background: #243044; }
-    [data-theme="dark"] .dash-sa .dash-audit-action { background: #243044; color: #E2E8F0; }
-    @media (max-width: 720px) {
-      .dash-sa .dash-audit-row { grid-template-columns: 1fr; gap: 4px; padding: 10px 0; }
-      .dash-sa .dash-audit-when, .dash-sa .dash-audit-actor { font-size: 11px; }
-    }
-  </style>
+  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/dashboards-superadmin.css' %}?v=2">
 {% endblock %}
 
 {% block content %}
 <div class="dash-page dash-sa">
 
+  {# ============================ HERO ============================ #}
   <header class="dash-hero">
     <div class="dash-hero-inner">
-      <div class="dash-hero-icon" style="background:#334155;">
+      <div class="dash-hero-icon dash-hero-icon-sa">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
       </div>
       <div>
         <h1>Super Admin — Control Room</h1>
-        <p class="dash-hero-sub">{% now "l, j F Y · H:i" %} · system-wide visibility and control</p>
+        <p class="dash-hero-sub">
+          <span>{% now "l, j F Y · H:i" %}</span>
+          <span class="dot">·</span>
+          <span>System-wide visibility and control</span>
+        </p>
       </div>
     </div>
     <div class="dash-hero-actions">
-      <a href="{% url 'attendance:all_departments' %}" class="btn btn-ghost btn-sm">All departments</a>
-      <a href="{% url 'dashboards:audit_log' %}" class="btn btn-ghost btn-sm">Full audit log</a>
-      <a href="/admin/" class="btn btn-primary btn-sm">Django admin</a>
+      <a href="{% url 'attendance:all_departments' %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><line x1="10" y1="21" x2="10" y2="12"/><line x1="14" y1="21" x2="14" y2="12"/></svg>
+        <span>All departments</span>
+      </a>
+      <a href="{% url 'dashboards:audit_log' %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span>Audit log</span>
+      </a>
+      <a href="{% url 'config:files_dashboard' %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span>File storage</span>
+      </a>
+      <a href="/admin/" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>Django admin</span>
+      </a>
     </div>
   </header>
 
+  {# ============================ ALERTS ============================ #}
   {% if parked or health.database == 'down' or health.cache == 'down' or health.media == 'missing' %}
     <section class="dash-card">
       <header class="dash-card-head">
-        <div><h2>Alerts</h2><p>Items needing attention now</p></div>
+        <div>
+          <h2>Alerts</h2>
+          <p>Items needing attention now</p>
+        </div>
       </header>
       <div class="dash-alert-list">
 
         {% if health.database == 'down' %}
           <div class="dash-alert dash-alert-danger">
             <div class="dash-alert-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             </div>
             <div class="dash-alert-body">
               <strong>Database unreachable</strong>
@@ -161,7 +74,7 @@
         {% if health.cache == 'down' %}
           <div class="dash-alert dash-alert-warn">
             <div class="dash-alert-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             </div>
             <div class="dash-alert-body">
               <strong>Cache backend unreachable</strong>
@@ -173,7 +86,7 @@
         {% if health.media == 'missing' %}
           <div class="dash-alert dash-alert-danger">
             <div class="dash-alert-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             </div>
             <div class="dash-alert-body">
               <strong>MEDIA_ROOT missing on disk</strong>
@@ -185,13 +98,13 @@
         {% if parked %}
           <div class="dash-alert dash-alert-warn">
             <div class="dash-alert-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             </div>
             <div class="dash-alert-body">
               <strong>{{ parked|length }} request{{ parked|length|pluralize }} parked — no acting user</strong>
               <span>
-                {% for p in parked|slice:":3" %}<a href="{% url 'workflow:detail' p.request.pk %}" style="text-decoration:underline;">{{ p.request.reference }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}
-                {% if parked|length > 3 %}…{% endif %}
+                {% for p in parked|slice:":3" %}<a href="{% url 'workflow:detail' p.request.pk %}">{{ p.request.reference }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}
+                {% if parked|length > 3 %} and {{ parked|length|add:"-3" }} more…{% endif %}
               </span>
             </div>
           </div>
@@ -200,6 +113,7 @@
     </section>
   {% endif %}
 
+  {# ============================ KPIs ============================ #}
   <div class="dash-kpis">
     <a href="{% url 'workflow:my_requests' %}?status=awaiting" class="dash-kpi">
       <div class="dash-kpi-icon dash-kpi-warn">
@@ -210,6 +124,7 @@
         <div class="dash-kpi-lbl">Awaiting approval</div>
       </div>
     </a>
+
     <a href="{% url 'workflow:my_requests' %}" class="dash-kpi">
       <div class="dash-kpi-icon dash-kpi-info">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -219,6 +134,7 @@
         <div class="dash-kpi-lbl">In flight</div>
       </div>
     </a>
+
     <a href="{% url 'staff:list' %}" class="dash-kpi">
       <div class="dash-kpi-icon dash-kpi-primary">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -228,6 +144,7 @@
         <div class="dash-kpi-lbl">Active staff</div>
       </div>
     </a>
+
     <a href="/admin/accounts/user/" class="dash-kpi">
       <div class="dash-kpi-icon dash-kpi-indigo">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -237,6 +154,7 @@
         <div class="dash-kpi-lbl">Active users</div>
       </div>
     </a>
+
     <a href="{% url 'dashboards:audit_log' %}?days=1" class="dash-kpi">
       <div class="dash-kpi-icon dash-kpi-danger">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -246,6 +164,7 @@
         <div class="dash-kpi-lbl">Aged &gt; 7 days</div>
       </div>
     </a>
+
     <a href="{% url 'notifications:list' %}" class="dash-kpi">
       <div class="dash-kpi-icon dash-kpi-rose">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -257,74 +176,103 @@
     </a>
   </div>
 
+  {# ============================ SYSTEM HEALTH ============================ #}
   <section class="dash-card">
     <header class="dash-card-head">
-      <div><h2>System health</h2><p>Live probes on database, cache, storage, workers</p></div>
+      <div>
+        <h2>System health</h2>
+        <p>Live probes on database, cache, storage, and workers</p>
+      </div>
     </header>
     <div class="dash-health">
       <div class="dash-health-item {% if health.database == 'ok' %}dash-health-ok{% else %}dash-health-error{% endif %}">
-        <div class="dash-health-label">Database</div>
+        <div class="dash-health-label"><span class="dash-health-dot"></span>Database</div>
         <div class="dash-health-value">{{ health.database|default:"?"|upper }}</div>
         <div class="dash-health-sub">Primary connection</div>
       </div>
       <div class="dash-health-item {% if health.cache == 'ok' %}dash-health-ok{% else %}dash-health-warn{% endif %}">
-        <div class="dash-health-label">Cache</div>
+        <div class="dash-health-label"><span class="dash-health-dot"></span>Cache</div>
         <div class="dash-health-value">{{ health.cache|default:"?"|upper }}</div>
-        <div class="dash-health-sub">Redis / backend</div>
+        <div class="dash-health-sub">Redis backend</div>
       </div>
       <div class="dash-health-item {% if health.media == 'ok' %}dash-health-ok{% else %}dash-health-error{% endif %}">
-        <div class="dash-health-label">Media root</div>
+        <div class="dash-health-label"><span class="dash-health-dot"></span>Media root</div>
         <div class="dash-health-value">{{ health.media|default:"?"|upper }}</div>
-        <div class="dash-health-sub">Local FileSystemStorage</div>
+        <div class="dash-health-sub">FileSystemStorage</div>
       </div>
       <div class="dash-health-item {% if health.celery == 'ok' %}dash-health-ok{% else %}dash-health-warn{% endif %}">
-        <div class="dash-health-label">Celery</div>
+        <div class="dash-health-label"><span class="dash-health-dot"></span>Celery</div>
         <div class="dash-health-value">{{ health.celery|default:"?"|upper }}</div>
         <div class="dash-health-sub">Worker heartbeat</div>
       </div>
       <div class="dash-health-item {% if health.disk_percent and health.disk_percent < 80 %}dash-health-ok{% elif health.disk_percent and health.disk_percent < 90 %}dash-health-warn{% else %}dash-health-error{% endif %}">
-        <div class="dash-health-label">Disk</div>
+        <div class="dash-health-label"><span class="dash-health-dot"></span>Disk</div>
         <div class="dash-health-value">{{ health.disk_percent|default:"—" }}{% if health.disk_percent %}%{% endif %}</div>
         <div class="dash-health-sub">{% if health.disk_free_gb %}{{ health.disk_free_gb }} GB free{% else %}—{% endif %}</div>
       </div>
       <div class="dash-health-item {% if health.debug %}dash-health-error{% else %}dash-health-ok{% endif %}">
-        <div class="dash-health-label">Debug</div>
+        <div class="dash-health-label"><span class="dash-health-dot"></span>Debug</div>
         <div class="dash-health-value">{% if health.debug %}ON{% else %}OFF{% endif %}</div>
         <div class="dash-health-sub">Should be OFF in production</div>
       </div>
     </div>
   </section>
 
+  {# ============================ CHARTS — ROW 1 ============================ #}
   <div class="dash-grid dash-grid-2-1">
     <section class="dash-card">
       <header class="dash-card-head">
-        <div><h2>Request activity — last 30 days</h2><p>Opened vs completed, system-wide</p></div>
+        <div>
+          <h2>Request activity — last 30 days</h2>
+          <p>Opened vs completed, system-wide</p>
+        </div>
       </header>
       {% if charts.activity.labels %}
         <div class="dash-chart dash-chart-lg" data-chart-type="area">
           {{ charts.activity|json_script:"chart-sa-activity" }}
           <canvas></canvas>
         </div>
-      {% else %}<div class="dash-empty"><p>No activity in the last 30 days.</p></div>{% endif %}
+      {% else %}
+        <div class="dash-empty">
+          <div class="dash-empty-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="3" x2="3" y2="21"/><line x1="3" y1="21" x2="21" y2="21"/><path d="m7 15 4-4 4 4 5-7"/></svg>
+          </div>
+          <p>No activity in the last 30 days.</p>
+        </div>
+      {% endif %}
     </section>
 
     <section class="dash-card">
       <header class="dash-card-head">
-        <div><h2>Status mix</h2><p>Every request by state</p></div>
+        <div>
+          <h2>Status mix</h2>
+          <p>Every request by state</p>
+        </div>
       </header>
       {% if charts.status_mix.labels %}
         <div class="dash-chart dash-chart-lg" data-chart-type="donut">
           {{ charts.status_mix|json_script:"chart-sa-status" }}
           <canvas></canvas>
         </div>
-      {% else %}<div class="dash-empty"><p>No requests yet.</p></div>{% endif %}
+      {% else %}
+        <div class="dash-empty">
+          <div class="dash-empty-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+          </div>
+          <p>No requests yet.</p>
+        </div>
+      {% endif %}
     </section>
   </div>
 
+  {# ============================ CHARTS — ROW 2 ============================ #}
   <div class="dash-grid dash-grid-1-1">
     <section class="dash-card">
       <header class="dash-card-head">
-        <div><h2>Requests by category</h2><p>Last 30 days, by state bucket</p></div>
+        <div>
+          <h2>Requests by category</h2>
+          <p>Last 30 days, by state bucket</p>
+        </div>
       </header>
       {% if charts.categories.labels %}
         <div class="dash-chart" data-chart-type="stackedBar">
@@ -332,16 +280,26 @@
           <canvas></canvas>
         </div>
         <div class="dash-chart-legend">
-          <span><i style="background:#F59E0B"></i>Pending</span>
-          <span><i style="background:#0369A1"></i>In flight</span>
-          <span><i style="background:#1F6B3E"></i>Completed</span>
+          <span><i class="dash-legend-pending"></i>Pending</span>
+          <span><i class="dash-legend-inflight"></i>In flight</span>
+          <span><i class="dash-legend-completed"></i>Completed</span>
         </div>
-      {% else %}<div class="dash-empty"><p>No category activity yet.</p></div>{% endif %}
+      {% else %}
+        <div class="dash-empty">
+          <div class="dash-empty-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </div>
+          <p>No category activity yet.</p>
+        </div>
+      {% endif %}
     </section>
 
     <section class="dash-card">
       <header class="dash-card-head">
-        <div><h2>Requests by department</h2><p>Last 30 days, by state bucket</p></div>
+        <div>
+          <h2>Requests by department</h2>
+          <p>Last 30 days, by state bucket</p>
+        </div>
       </header>
       {% if charts.depts.labels %}
         <div class="dash-chart" data-chart-type="stackedBar">
@@ -349,30 +307,44 @@
           <canvas></canvas>
         </div>
         <div class="dash-chart-legend">
-          <span><i style="background:#F59E0B"></i>Pending</span>
-          <span><i style="background:#0369A1"></i>In flight</span>
-          <span><i style="background:#1F6B3E"></i>Completed</span>
+          <span><i class="dash-legend-pending"></i>Pending</span>
+          <span><i class="dash-legend-inflight"></i>In flight</span>
+          <span><i class="dash-legend-completed"></i>Completed</span>
         </div>
-      {% else %}<div class="dash-empty"><p>No department activity yet.</p></div>{% endif %}
+      {% else %}
+        <div class="dash-empty">
+          <div class="dash-empty-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg>
+          </div>
+          <p>No department activity yet.</p>
+        </div>
+      {% endif %}
     </section>
   </div>
 
+  {# ============================ EVENTS + ROLES ============================ #}
   <div class="dash-grid dash-grid-2-1">
     <section class="dash-card">
       <header class="dash-card-head">
-        <div><h2>Recent critical events</h2><p>Deletions, state changes, permission overrides</p></div>
-        <a href="{% url 'dashboards:audit_log' %}" class="link-btn">Full audit log →</a>
+        <div>
+          <h2>Recent critical events</h2>
+          <p>Deletions, state changes, permission overrides</p>
+        </div>
+        <a href="{% url 'dashboards:audit_log' %}" class="link-btn">
+          Full audit log
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
       </header>
+
       {% if critical_audit %}
         {% for row in critical_audit %}
           <div class="dash-audit-row">
             <span class="dash-audit-when">{% if row.when %}{{ row.when|date:"M j, H:i" }}{% else %}—{% endif %}</span>
             <span class="dash-item-body">
-              <strong>{{ row.summary|truncatechars:60 }}</strong>
+              <strong>{{ row.summary|default:"—"|truncatechars:60 }}</strong>
               <span class="dash-audit-actor">{{ row.actor_name }}{% if row.actor_dept %} · {{ row.actor_dept }}{% endif %}</span>
             </span>
             <span class="dash-audit-action">{{ row.action }}</span>
-            <span style="text-align:right;"></span>
           </div>
         {% endfor %}
       {% else %}
@@ -387,62 +359,86 @@
 
     <section class="dash-card">
       <header class="dash-card-head">
-        <div><h2>Users by role</h2><p>Active accounts by role</p></div>
+        <div>
+          <h2>Users by role</h2>
+          <p>Active accounts by role</p>
+        </div>
       </header>
       {% if role_breakdown %}
         {% with top=role_breakdown.0.count %}
           {% for r in role_breakdown %}
-            <div style="padding:10px 0;{% if not forloop.last %}border-bottom:1px solid var(--divider,#F1F5F9);{% endif %}">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-                <strong style="font-size:13px;">{{ r.role.name }}</strong>
-                <span class="dash-badge dash-badge-primary">{{ r.count }}</span>
+            <div class="dash-role-row">
+              <div class="dash-role-head">
+                <span class="dash-role-name">{{ r.role.name }}</span>
+                <span class="dash-role-count">{{ r.count }}</span>
               </div>
               <div class="dash-role-bar">
-                <span style="width:{% widthratio r.count top 100 %}%;"></span>
+                <span class="{{ r.count|pct_class:top }}"></span>
               </div>
             </div>
           {% endfor %}
         {% endwith %}
-      {% else %}<div class="dash-empty"><p>No roles with active users yet.</p></div>{% endif %}
+      {% else %}
+        <div class="dash-empty">
+          <div class="dash-empty-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <p>No roles with active users yet.</p>
+        </div>
+      {% endif %}
     </section>
   </div>
 
+  {# ============================ OFFICES + AGED ============================ #}
   <div class="dash-grid dash-grid-2-1">
     <section class="dash-card">
       <header class="dash-card-head">
-        <div><h2>Offices at a glance</h2><p>Routing activity, last 30 days</p></div>
+        <div>
+          <h2>Offices at a glance</h2>
+          <p>Routing activity, last 30 days</p>
+        </div>
       </header>
       {% if office_breakdown %}
-        <div style="overflow-x:auto;">
+        <div class="dash-table-scroll">
           <table class="admin-table">
             <thead>
               <tr>
                 <th>Office</th>
-                <th style="text-align:right">Pending</th>
-                <th style="text-align:right">In flight</th>
-                <th style="text-align:right">Completed</th>
-                <th style="text-align:right">Total 30d</th>
+                <th class="dash-cell-num">Pending</th>
+                <th class="dash-cell-num">In flight</th>
+                <th class="dash-cell-num">Completed</th>
+                <th class="dash-cell-num">Total 30d</th>
               </tr>
             </thead>
             <tbody>
               {% for row in office_breakdown %}
                 <tr>
                   <td><strong>{{ row.department.name }}</strong></td>
-                  <td style="text-align:right">{{ row.pending }}</td>
-                  <td style="text-align:right">{{ row.in_flight }}</td>
-                  <td style="text-align:right">{{ row.completed }}</td>
-                  <td style="text-align:right"><strong>{{ row.total_30d }}</strong></td>
+                  <td class="dash-cell-num">{{ row.pending }}</td>
+                  <td class="dash-cell-num">{{ row.in_flight }}</td>
+                  <td class="dash-cell-num">{{ row.completed }}</td>
+                  <td class="dash-cell-num"><strong>{{ row.total_30d }}</strong></td>
                 </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
-      {% else %}<div class="dash-empty"><p>No routing activity yet.</p></div>{% endif %}
+      {% else %}
+        <div class="dash-empty">
+          <div class="dash-empty-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg>
+          </div>
+          <p>No routing activity yet.</p>
+        </div>
+      {% endif %}
     </section>
 
     <section class="dash-card">
       <header class="dash-card-head">
-        <div><h2>Aged approvals</h2><p>Pending &gt; 7 days</p></div>
+        <div>
+          <h2>Aged approvals</h2>
+          <p>Pending &gt; 7 days</p>
+        </div>
       </header>
       {% if aged_approvals %}
         <div class="dash-list">
@@ -459,10 +455,18 @@
             </a>
           {% endfor %}
         </div>
-      {% else %}<div class="dash-empty"><p>Nothing aged out. Good.</p></div>{% endif %}
+      {% else %}
+        <div class="dash-empty">
+          <div class="dash-empty-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <p>Nothing aged out. Good.</p>
+        </div>
+      {% endif %}
     </section>
   </div>
 
+  {# ============================ ATTENDANCE ============================ #}
   {% include "dashboards/_attendance_section.html" %}
 
 </div>
