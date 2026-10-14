@@ -5,13 +5,7 @@ Each provider knows how to search ONE model type. The view calls
 
 Permissions are NOT reimplemented here. Every provider calls the SAME
 scoping function its list view calls, so the search can never return a
-row the user couldn't open themselves. If a destination view tightens
-its scoping tomorrow, the search tightens with it — for free.
-
-Adding a new searchable model:
-    1. Write a class with `type`, `label`, `icon`, `search(user, query, limit)`.
-    2. Append it to PROVIDERS below.
-Nothing else changes — the view, URL, template, and JS are generic.
+row the user couldn't open themselves.
 """
 from __future__ import annotations
 
@@ -23,24 +17,15 @@ from django.urls import NoReverseMatch, reverse
 logger = logging.getLogger(__name__)
 
 
-# ===========================================================================
-# Base
-# ===========================================================================
 class BaseSearchProvider:
-    """Subclass me. Each provider searches exactly one model type."""
-
-    type = ""           # machine name, e.g. "task"
-    label = ""          # human label, e.g. "Tasks"
-    icon = "search"     # icon key the frontend uses
-    min_query = 2       # minimum query length to run this provider
+    type = ""
+    label = ""
+    icon = "search"
+    min_query = 2
 
     def search(self, user, query, limit):
-        """Return a list of result dicts. Subclasses MUST override."""
         raise NotImplementedError
 
-    # -----------------------------------------------------------------
-    # Subclass helpers
-    # -----------------------------------------------------------------
     @staticmethod
     def _clip(text, length=120):
         if not text:
@@ -56,9 +41,6 @@ class BaseSearchProvider:
             return ""
 
 
-# ===========================================================================
-# Tasks
-# ===========================================================================
 class TaskSearchProvider(BaseSearchProvider):
     type = "task"
     label = "Tasks"
@@ -87,9 +69,6 @@ class TaskSearchProvider(BaseSearchProvider):
         return out
 
 
-# ===========================================================================
-# Tickets
-# ===========================================================================
 class TicketSearchProvider(BaseSearchProvider):
     type = "ticket"
     label = "Tickets"
@@ -119,9 +98,6 @@ class TicketSearchProvider(BaseSearchProvider):
         return out
 
 
-# ===========================================================================
-# Workflow requests
-# ===========================================================================
 class RequestSearchProvider(BaseSearchProvider):
     type = "request"
     label = "Requests"
@@ -137,11 +113,6 @@ class RequestSearchProvider(BaseSearchProvider):
         if user.is_superuser:
             qs = base
         else:
-            # Mirrors workflow.views._can_view's queryset-shaped subset:
-            # requester, current assignee, anyone who has acted, or the
-            # receiving department's director. The runtime "current step
-            # approver" check is not replicated here — those users will
-            # still find the request via their approval history.
             q = Q(requester=user) | Q(assigned_to=user) | Q(approvals__actor=user)
             if (
                 user.department_id
@@ -170,9 +141,6 @@ class RequestSearchProvider(BaseSearchProvider):
         return out
 
 
-# ===========================================================================
-# Staff directory
-# ===========================================================================
 class StaffSearchProvider(BaseSearchProvider):
     type = "staff"
     label = "Staff"
@@ -216,9 +184,6 @@ class StaffSearchProvider(BaseSearchProvider):
         return out
 
 
-# ===========================================================================
-# Assets
-# ===========================================================================
 class AssetSearchProvider(BaseSearchProvider):
     type = "asset"
     label = "Assets"
@@ -253,9 +218,6 @@ class AssetSearchProvider(BaseSearchProvider):
         return out
 
 
-# ===========================================================================
-# Portal documents
-# ===========================================================================
 class DocumentSearchProvider(BaseSearchProvider):
     type = "document"
     label = "Documents"
@@ -286,9 +248,6 @@ class DocumentSearchProvider(BaseSearchProvider):
         return out
 
 
-# ===========================================================================
-# Portal announcements
-# ===========================================================================
 class AnnouncementSearchProvider(BaseSearchProvider):
     type = "announcement"
     label = "Announcements"
@@ -322,28 +281,8 @@ class AnnouncementSearchProvider(BaseSearchProvider):
         return out
 
 
-# ===========================================================================
-# Messaging — threads (metadata-only for non-participant superusers)
-# ===========================================================================
 class MessageSearchProvider(BaseSearchProvider):
-    """Search the messaging app.
-
-    Two modes:
-
-      Participants  — search their own threads. Match subject, message
-                      body, and participant names. Show a snippet of the
-                      matching message.
-
-      Superusers    — search every thread, but METADATA ONLY. Match on
-                      subject and participant names only (never on
-                      message body), and never return a snippet. This
-                      lets a superuser know a conversation happened
-                      without reading it. Clicking through is blocked
-                      at the detail view with a friendly message.
-
-    This keeps the privacy model honest: search cannot become a side
-    channel for reading messages you aren't a participant of.
-    """
+    """Search the messaging app. Metadata-only for non-participant superusers."""
     type = "message"
     label = "Messages"
     icon = "message-circle"
@@ -361,9 +300,6 @@ class MessageSearchProvider(BaseSearchProvider):
                 participants__is_deleted=False,
             ).distinct()
 
-        # Everyone can match on subject + participant names. These are
-        # metadata, visible to any authenticated user who could find
-        # the thread in the first place.
         common_q = (
             Q(subject__icontains=query)
             | Q(participants__user__first_name__icontains=query)
@@ -372,15 +308,12 @@ class MessageSearchProvider(BaseSearchProvider):
         )
 
         if is_metadata_reader:
-            # Superusers: metadata only. NO message-body matching —
-            # otherwise "search for password" becomes a content oracle.
             matched = (
                 base.filter(common_q)
                 .distinct()
                 .order_by("-last_message_at", "-updated_at")[:limit]
             )
         else:
-            # Participants: they can search their own message content.
             matched = (
                 base.filter(common_q | Q(messages__body__icontains=query))
                 .distinct()
@@ -400,8 +333,6 @@ class MessageSearchProvider(BaseSearchProvider):
             plural = "" if msg_count == 1 else "s"
 
             if is_metadata_reader:
-                # Metadata only. Empty snippet + "private" marker so
-                # the superuser knows the content is gated.
                 out.append({
                     "id": thread.pk,
                     "title": title,
@@ -411,7 +342,6 @@ class MessageSearchProvider(BaseSearchProvider):
                     "snippet": "",
                 })
             else:
-                # Participant view: show a real snippet.
                 best = (
                     thread.messages
                     .filter(
@@ -435,21 +365,63 @@ class MessageSearchProvider(BaseSearchProvider):
         return out
 
 
-# ===========================================================================
-# Attendance records
-# ===========================================================================
-class AttendanceSearchProvider(BaseSearchProvider):
-    """Search attendance records.
+class MemoSearchProvider(BaseSearchProvider):
+    """Search memos.
 
-    Visibility mirrors attendance.views:
-      - Superuser / Super Admin / ES / accounts.access_all_departments
-        → every record, every department
-      - Director / deputy / office head  → records of users in their dept
-      - Everyone else                    → only their own records
-
-    Match: user first name, last name, email, or status keyword
-    ("present", "late", "absent", "on_leave").
+    Scope mirrors `messaging.memos.visible_memos_for(user)`:
+      - Regular users: memos they received, plus their own sent / drafts.
+      - Superusers: every memo. Memos are official on-record documents,
+        unlike private message threads.
     """
+    type = "memo"
+    label = "Memos"
+    icon = "file-text"
+
+    def search(self, user, query, limit):
+        try:
+            from messaging import memos as memo_service
+        except Exception:
+            logger.exception("Memo search: could not import messaging.memos")
+            return []
+
+        qs = memo_service.visible_memos_for(user).filter(
+            Q(reference__icontains=query)
+            | Q(subject__icontains=query)
+            | Q(body__icontains=query)
+        ).order_by("-published_at", "-created_at")[:limit]
+
+        out = []
+        for memo in qs:
+            if memo.is_draft:
+                state = "Draft"
+            elif memo.is_expired:
+                state = "Expired"
+            else:
+                state = "Published"
+
+            meta_bits = [memo.reference]
+            if memo.sender_id:
+                meta_bits.append(memo.sender.get_full_name() or memo.sender.email)
+            meta_bits.append(state)
+
+            badge = ""
+            if memo.priority == memo.URGENT:
+                badge = "Urgent"
+            elif memo.priority == memo.HIGH:
+                badge = "High"
+
+            out.append({
+                "id": memo.pk,
+                "title": memo.subject,
+                "url": self._url("messaging:memo_detail", memo.pk),
+                "meta": " · ".join(filter(None, meta_bits)),
+                "badge": badge,
+                "snippet": self._clip(memo.body),
+            })
+        return out
+
+
+class AttendanceSearchProvider(BaseSearchProvider):
     type = "attendance"
     label = "Attendance"
     icon = "calendar"
@@ -511,6 +483,7 @@ PROVIDERS = [
     AssetSearchProvider(),
     DocumentSearchProvider(),
     AnnouncementSearchProvider(),
+    MemoSearchProvider(),
     MessageSearchProvider(),
     AttendanceSearchProvider(),
 ]
@@ -520,22 +493,6 @@ DEFAULT_TYPES = [p.type for p in PROVIDERS]
 
 
 def search(user, query, *, types=None, limit=5, per_type=None):
-    """Run the search across every requested provider.
-
-    `types`    — iterable of provider type strings, or None for all.
-    `limit`    — overall cap on results.
-    `per_type` — cap per provider (defaults to `limit`).
-
-    Returns:
-        {
-            "query": str,
-            "total": int,
-            "groups": [
-                {"type": ..., "label": ..., "icon": ...,
-                 "results": [ {id, title, url, meta, badge, snippet}, ... ]},
-            ],
-        }
-    """
     query = (query or "").strip()
     out = {"query": query, "total": 0, "groups": []}
 

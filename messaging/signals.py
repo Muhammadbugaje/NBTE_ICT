@@ -1,9 +1,15 @@
+"""Signal handlers for the messaging app."""
 import logging
 
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
-from .models import Message, MessageAttachment, ThreadParticipant
+from .models import (
+    MemoAttachment,
+    Message,
+    MessageAttachment,
+    ThreadParticipant,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,3 +31,13 @@ def delete_message_attachment_file(sender, instance, **kwargs):
         instance.file.storage.delete(instance.file.name)
     except Exception:
         logger.exception("Could not delete message attachment %s", instance.pk)
+
+
+@receiver(post_delete, sender=MemoAttachment)
+def delete_memo_attachment_file(sender, instance, **kwargs):
+    if not instance.file:
+        return
+    try:
+        instance.file.storage.delete(instance.file.name)
+    except Exception:
+        logger.exception("Could not delete memo attachment %s", instance.pk)

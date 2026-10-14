@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == 'create' %}New memo{% else %}Edit memo{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{% if mode == 'create' %}New memo{% else %}Edit memo{% endif %}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=7">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="memo-page memo-page-form">
+  <a href="{% url 'messaging:memo_list' %}" class="msg-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Memos
+  </a>
+
+  <form method="post" enctype="multipart/form-data" class="memo-form" data-memo-form>
+    {% csrf_token %}
+
+    <header class="memo-form-head">
+      <h1>{% if mode == 'create' %}Compose memo{% else %}Edit memo{% endif %}</h1>
+      <p class="muted">Memos are one-way declarations. Replies go through Messages.</p>
+    </header>
+
+    {% if form.non_field_errors %}
+      <div class="memo-form-error" role="alert">
+        {% for err in form.non_field_errors %}{{ err }}{% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="memo-field">
+      <label for="{{ form.subject.id_for_label }}" class="memo-label">Subject</label>
+      {{ form.subject }}
+      {% if form.subject.errors %}<div class="memo-field-error">{{ form.subject.errors|join:" " }}</div>{% endif %}
+    </div>
+
+    <div class="memo-field">
+      <label for="{{ form.body.id_for_label }}" class="memo-label">Body</label>
+      {{ form.body }}
+      {% if form.body.errors %}<div class="memo-field-error">{{ form.body.errors|join:" " }}</div>{% endif %}
+    </div>
+
+    <div class="memo-row-3">
+      <div class="memo-field">
+        <label for="{{ form.priority.id_for_label }}" class="memo-label">Priority</label>
+        {{ form.priority }}
+      </div>
+      <div class="memo-field">
+        <label for="{{ form.expires_at.id_for_label }}" class="memo-label">Expires (optional)</label>
+        {{ form.expires_at }}
+        <span class="memo-hint">Leave blank for no expiry.</span>
+      </div>
+      <div class="memo-field memo-field-check">
+        <label class="memo-checkbox-label">
+          {{ form.requires_acknowledgment }}
+          <span>Require acknowledgment</span>
+        </label>
+        <span class="memo-hint">Recipients must click "Acknowledge receipt".</span>
+      </div>
+    </div>
+
+    <div class="memo-field">
+      <label for="{{ form.visibility.id_for_label }}" class="memo-label">Audience</label>
+      {{ form.visibility }}
+      {% if form.visibility.errors %}<div class="memo-field-error">{{ form.visibility.errors|join:" " }}</div>{% endif %}
+    </div>
+
+    <div class="memo-audience memo-audience-dept" data-audience="department" hidden>
+      <label class="memo-label">Department</label>
+      {{ form.department }}
+      {% if form.department.errors %}<div class="memo-field-error">{{ form.department.errors|join:" " }}</div>{% endif %}
+    </div>
+
+    <div class="memo-audience memo-audience-role" data-audience="role" hidden>
+      <label class="memo-label">Roles</label>
+      <div class="memo-checkboxes">{{ form.roles }}</div>
+      {% if form.roles.errors %}<div class="memo-field-error">{{ form.roles.errors|join:" " }}</div>{% endif %}
+    </div>
+
+    <div class="memo-audience memo-audience-ind" data-audience="individuals" hidden>
+      <label class="memo-label">People</label>
+      <div class="memo-checkboxes memo-checkboxes-scroll">{{ form.recipients }}</div>
+      {% if form.recipients.errors %}<div class="memo-field-error">{{ form.recipients.errors|join:" " }}</div>{% endif %}
+    </div>
+
+    <div class="memo-field">
+      <label class="memo-label" for="{{ form.attachments.id_for_label }}">Attachments</label>
+      {{ form.attachments }}
+      <span class="memo-hint">Up to 5 MB total. Files expire after 30 days.</span>
+      {% if form.attachments.errors %}<div class="memo-field-error">{{ form.attachments.errors|join:" " }}</div>{% endif %}
+    </div>
+
+    {% if memo and memo.attachments.all %}
+      <div class="memo-existing-attachments">
+        <h3>Already attached</h3>
+        {% for att in memo.attachments.all %}
+          <div class="memo-existing-attachment">
+            <span>{{ att.original_name|default:"Attachment" }}</span>
+            <span class="muted">· {{ att.file.size|filesizeformat }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <footer class="memo-form-actions">
+      {% if mode == 'create' or memo.is_draft %}
+        <button type="submit" name="action" value="draft" class="btn btn-ghost">
+          Save as draft
+        </button>
+        <button type="submit" name="action" value="publish" class="btn btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Publish now
+        </button>
+      {% else %}
+        <button type="submit" name="action" value="save" class="btn btn-primary">Save changes</button>
+      {% endif %}
+      <a href="{% if memo %}{% url 'messaging:memo_detail' memo.pk %}{% else %}{% url 'messaging:memo_list' %}{% endif %}"
+         class="btn btn-ghost">Cancel</a>
+    </footer>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/memo.js' %}?v=1" defer></script>
+{% endblock %}

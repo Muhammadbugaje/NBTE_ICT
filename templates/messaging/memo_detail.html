@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ memo.reference }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{{ memo.reference }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=7">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="memo-page memo-page-detail">
+  <a href="{% url 'messaging:memo_list' %}" class="msg-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Memos
+  </a>
+
+  {# ---- Action bar: downloads + draft workflow ---- #}
+  <div class="memo-actions memo-actions-top">
+    <a href="{% url 'messaging:memo_download_pdf' memo.pk %}"
+       class="btn btn-primary" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download PDF
+    </a>
+    <a href="{% url 'messaging:memo_download_docx' memo.pk %}"
+       class="btn btn-ghost">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download Word
+    </a>
+
+    {% if can_manage and memo.is_draft %}
+      <form method="post" action="{% url 'messaging:memo_publish' memo.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Publish
+        </button>
+      </form>
+      <a href="{% url 'messaging:memo_update' memo.pk %}" class="btn btn-ghost">Edit draft</a>
+    {% endif %}
+  </div>
+
+  {# ---- The document ---- #}
+  <article class="memo-doc {% if memo.priority == 'urgent' %}is-urgent{% elif memo.priority == 'high' %}is-high{% endif %}{% if memo.is_draft %} is-draft{% endif %}">
+
+    {% if memo.is_draft %}
+      <div class="memo-draft-banner">◆ DRAFT — NOT YET PUBLISHED ◆</div>
+    {% endif %}
+
+    <header class="memo-letterhead">
+      <div class="memo-letterhead-logo">
+        <img src="{% static 'img/NBTE_logo.png' %}" alt="NBTE">
+      </div>
+      <div class="memo-letterhead-text">
+        <div class="memo-letterhead-org">National Board for Technical Education</div>
+        <div class="memo-letterhead-dept">ICT Directorate</div>
+        <div class="memo-letterhead-tagline">Education for Productivity and Self-Reliance</div>
+      </div>
+    </header>
+    <div class="memo-letterhead-rule"></div>
+
+    <h1 class="memo-doc-title">INTERNAL MEMORANDUM</h1>
+
+    <dl class="memo-doc-meta">
+      <div><dt>Ref:</dt><dd>{{ memo.reference }}</dd></div>
+      <div><dt>Date:</dt><dd>{{ memo.published_at|default:memo.created_at|date:"F j, Y" }}</dd></div>
+    </dl>
+
+    <dl class="memo-doc-fields">
+      <div>
+        <dt>To:</dt>
+        <dd>
+          {% if memo.visibility == "all_staff" %}All Staff
+          {% elif memo.visibility == "department" %}{{ memo.department.name|default:"—" }}
+          {% elif memo.visibility == "role" %}
+            {% for role in memo.roles.all %}{{ role.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+          {% else %}
+            {% for u in memo.recipients.all|slice:":6" %}{{ u.get_full_name|default:u.email }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            {% if memo.recipients.count > 6 %} +{{ memo.recipients.count|add:"-6" }} more{% endif %}
+          {% endif %}
+        </dd>
+      </div>
+      <div>
+        <dt>From:</dt>
+        <dd>{{ sender_name }}{% if sender_desig %}, {{ sender_desig }}{% endif %}{% if sender_dept %} ({{ sender_dept }}){% endif %}</dd>
+      </div>
+      <div>
+        <dt>Subject:</dt>
+        <dd>{{ memo.subject }}</dd>
+      </div>
+    </dl>
+
+    <div class="memo-doc-rule-thin"></div>
+
+    <div class="memo-doc-body">
+      {{ memo.body|linebreaks }}
+    </div>
+
+    {% if memo.attachments.all %}
+      <div class="memo-doc-attachments">
+        <h3>Attachments</h3>
+        {% for att in memo.attachments.all %}
+          <div class="memo-doc-attachment">
+            <a href="{% url 'messaging:memo_attachment_download' att.pk %}" class="memo-doc-attachment-link">
+              <span class="memo-doc-attachment-icon" aria-hidden="true">↧</span>
+              <span class="memo-doc-attachment-info">
+                <strong>{{ att.original_name|default:"Attachment" }}</strong>
+                {% if att.description %}<small>{{ att.description }}</small>{% endif %}
+              </span>
+            </a>
+            {% if can_manage %}
+              <form method="post" action="{% url 'messaging:memo_remove_attachment' memo.pk att.pk %}"
+                    data-confirm="Remove this attachment? This cannot be undone."
+                    data-confirm-title="Remove attachment?"
+                    data-confirm-action="Remove">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-sm memo-doc-attachment-del" aria-label="Remove attachment">×</button>
+              </form>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="memo-doc-sign">
+      <div class="memo-doc-sign-line"></div>
+      <div class="memo-doc-sign-name">{{ sender_name|upper }}</div>
+      {% if sender_desig %}<div class="memo-doc-sign-meta">{{ sender_desig }}</div>{% endif %}
+      {% if sender_dept %}<div class="memo-doc-sign-meta">{{ sender_dept }}</div>{% endif %}
+    </div>
+  </article>
+
+  {# ---- Action bar: workflow ---- #}
+  <div class="memo-actions">
+    {% if needs_ack %}
+      <form method="post" action="{% url 'messaging:memo_acknowledge' memo.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Acknowledge receipt
+        </button>
+      </form>
+    {% elif receipt and receipt.acknowledged_at %}
+      <span class="memo-ack-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Acknowledged {{ receipt.acknowledged_at|date:"M j, Y · H:i" }}
+      </span>
+    {% endif %}
+
+    {% if receipt %}
+      {% if receipt.is_archived %}
+        <form method="post" action="{% url 'messaging:memo_unarchive' memo.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary memo-btn-unarchive"
+                  title="Restore this memo to your inbox">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4 3 10 9 10"/><path d="M5.5 15a8 8 0 1 0 2.2-8.8L3 10"/></svg>
+            Unarchive
+          </button>
+        </form>
+      {% else %}
+        <form method="post" action="{% url 'messaging:memo_archive' memo.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost" title="Move to your archive">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+            Archive
+          </button>
+        </form>
+      {% endif %}
+    {% endif %}
+
+    {% if can_manage %}
+      <form method="post" action="{% url 'messaging:memo_delete' memo.pk %}"
+            data-confirm="This permanently deletes the memo and all attachments. Cannot be undone."
+            data-confirm-title="Delete memo?"
+            data-confirm-action="Delete">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-ghost memo-danger">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/></svg>
+          Delete
+        </button>
+      </form>
+    {% endif %}
+  </div>
+
+  {# ---- Acknowledgment stats ---- #}
+  {% if show_stats and memo.requires_acknowledgment and memo.is_published %}
+    <section class="memo-stats">
+      <header class="memo-stats-head">
+        <h2>Acknowledgment status</h2>
+        <p>
+          <strong>{{ memo.acknowledged_count }}</strong> of
+          <strong>{{ memo.recipient_count }}</strong> recipients have acknowledged.
+        </p>
+      </header>
+
+      <div class="memo-stats-bar">
+        <div class="memo-stats-bar-fill" data-ack-pct="{{ ack_pct }}"></div>
+      </div>
+
+      {% if pending_recipients %}
+        <details class="memo-stats-pending">
+          <summary>{{ pending_recipients|length }} recipient{{ pending_recipients|length|pluralize }} yet to acknowledge</summary>
+          <ul class="memo-stats-list">
+            {% for r in pending_recipients %}
+              <li>
+                <span class="msg-avatar msg-avatar-xs msg-avatar-c3">
+                  {{ r.user.first_name|slice:":1"|upper }}{{ r.user.last_name|slice:":1"|upper }}
+                </span>
+                {{ r.user.get_full_name|default:r.user.email }}
+                {% if r.user.department %}<small>· {{ r.user.department.name }}</small>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  "use strict";
+  document.querySelectorAll("[data-ack-pct]").forEach(function (el) {
+    var pct = parseInt(el.getAttribute("data-ack-pct"), 10);
+    if (isNaN(pct)) pct = 0;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    el.style.width = pct + "%";
+  });
+})();
+</script>
+{% endblock %}

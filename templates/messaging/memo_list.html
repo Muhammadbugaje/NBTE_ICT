@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Memos · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Memos{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=7">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=2">
+{% endblock %}
+
+{% block content %}
+<div class="memo-page">
+
+  <header class="memo-hero">
+    <div>
+      <h1>Memos</h1>
+      <p class="muted">
+        Formal internal declarations. Two-way conversation stays in
+        <a href="{% url 'messaging:inbox' %}">Messages</a>.
+      </p>
+    </div>
+    <div class="memo-hero-actions">
+      <a href="{% url 'messaging:inbox' %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Messages
+      </a>
+      {% if can_compose %}
+        <a href="{% url 'messaging:memo_create' %}" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New memo
+        </a>
+      {% endif %}
+    </div>
+  </header>
+
+  <nav class="memo-tabs">
+    <a href="?tab=inbox" class="memo-tab {% if tab == 'inbox' %}is-active{% endif %}">
+      Inbox
+      {% if counts.inbox %}<span class="memo-tab-count">{{ counts.inbox }}</span>{% endif %}
+    </a>
+    <a href="?tab=sent" class="memo-tab {% if tab == 'sent' %}is-active{% endif %}">
+      Sent &amp; drafts
+      {% if counts.sent %}<span class="memo-tab-count">{{ counts.sent }}</span>{% endif %}
+    </a>
+    <a href="?tab=archived" class="memo-tab {% if tab == 'archived' %}is-active{% endif %}">
+      Archived
+      {% if counts.archived %}<span class="memo-tab-count">{{ counts.archived }}</span>{% endif %}
+    </a>
+  </nav>
+
+  <form class="memo-list-controls" method="get">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <label class="memo-list-search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search memos…" autocomplete="off">
+    </label>
+    <select name="priority">
+      <option value="">All priorities</option>
+      {% for value, label in priority_choices %}
+        <option value="{{ value }}" {% if priority_filter == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-ghost btn-sm">Filter</button>
+    {% if q or priority_filter %}
+      <a href="?tab={{ tab }}" class="memo-clear">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if memos %}
+    <div class="memo-list">
+      {% for memo in memos %}
+        <div class="memo-row-wrap {% if memo.priority == 'urgent' %}is-urgent{% elif memo.priority == 'high' %}is-high{% endif %}{% if memo.is_draft %} is-draft{% endif %}">
+          <span class="memo-priority-bar"></span>
+
+          <a href="{% url 'messaging:memo_detail' memo.pk %}" class="memo-row">
+            <div class="memo-row-body">
+              <div class="memo-row-head">
+                <span class="memo-ref">{{ memo.reference }}</span>
+                {% if memo.is_draft %}
+                  <span class="memo-tag memo-tag-draft">Draft</span>
+                {% elif memo.is_expired %}
+                  <span class="memo-tag memo-tag-expired">Expired</span>
+                {% endif %}
+                {% if memo.requires_acknowledgment and tab == 'inbox' %}
+                  <span class="memo-tag memo-tag-ack">Ack required</span>
+                {% endif %}
+                <time>{{ memo.published_at|default:memo.created_at|date:"M j, Y · H:i" }}</time>
+              </div>
+              <div class="memo-row-subject">{{ memo.subject }}</div>
+              <div class="memo-row-meta">
+                <span>From <strong>{{ memo.sender.get_full_name|default:memo.sender.email }}</strong></span>
+                <span class="memo-dot">·</span>
+                <span>
+                  {% if memo.visibility == "all_staff" %}All staff
+                  {% elif memo.visibility == "department" %}{{ memo.department.name|default:"Department" }}
+                  {% elif memo.visibility == "role" %}By role
+                  {% else %}Selected people{% endif %}
+                </span>
+                {% if memo.is_published %}
+                  <span class="memo-dot">·</span>
+                  <span>{{ memo.recipient_count }} recipient{{ memo.recipient_count|pluralize }}</span>
+                {% endif %}
+              </div>
+              <div class="memo-row-snippet">{{ memo.card_summary }}</div>
+            </div>
+          </a>
+
+          {% if tab == 'archived' %}
+            <div class="memo-row-actions">
+              <form method="post" action="{% url 'messaging:memo_unarchive' memo.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-sm" title="Restore to inbox">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4 3 10 9 10"/><path d="M5.5 15a8 8 0 1 0 2.2-8.8L3 10"/></svg>
+                  <span class="memo-row-action-label">Unarchive</span>
+                </button>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="memo-empty">
+      <div class="memo-empty-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </div>
+      {% if tab == 'inbox' %}
+        <h3>No memos yet</h3>
+        <p>Memos addressed to you will appear here.</p>
+      {% elif tab == 'sent' %}
+        <h3>You haven't sent any memos</h3>
+        {% if can_compose %}
+          <p>Compose a memo to formally address a group.</p>
+          <a href="{% url 'messaging:memo_create' %}" class="btn btn-primary">Compose a memo</a>
+        {% else %}
+          <p>Only authorized staff can compose memos.</p>
+        {% endif %}
+      {% else %}
+        <h3>No archived memos</h3>
+        <p>Memos you archive from your inbox land here.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

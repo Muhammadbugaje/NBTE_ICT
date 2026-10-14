@@ -1,0 +1,55 @@
+{# Rendered by messaging.templatetags.memo_tags.memo_dashboard_widget #}
+{% if memos or pending_ack %}
+  <section class="ss-section memo-dash" aria-labelledby="memo-dash-title">
+    <header class="ss-section-head">
+      <div class="ss-section-head-text">
+        <span class="ss-section-kicker {% if pending_ack %}ss-kicker-warn{% endif %}">
+          {% if pending_ack %}<span class="ss-kicker-dot"></span>{% endif %}
+          Memos
+        </span>
+        <h2 id="memo-dash-title">
+          {% if pending_ack %}
+            {{ pending_ack }} memo{{ pending_ack|pluralize }} awaiting acknowledgment
+          {% else %}
+            Recent memos
+          {% endif %}
+        </h2>
+        <p>
+          {% if unread_count %}{{ unread_count }} unread · {% endif %}
+          Formal declarations addressed to you.
+        </p>
+      </div>
+      <a href="{% url 'messaging:memo_list' %}" class="btn btn-ghost btn-sm">
+        View all
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+    </header>
+
+    <ul class="memo-dash-list">
+      {% for memo in memos %}
+        <li>
+          <a href="{% url 'messaging:memo_detail' memo.pk %}" class="memo-dash-row">
+            <span class="memo-dash-priority memo-dash-priority-{{ memo.priority }}"></span>
+            <span class="memo-dash-body">
+              <span class="memo-dash-subject">{{ memo.subject }}</span>
+              <span class="memo-dash-meta">
+                <span class="memo-dash-ref">{{ memo.reference }}</span>
+                <span class="memo-dot">·</span>
+                <span>{{ memo.sender.get_full_name|default:memo.sender.email }}</span>
+                {% if memo.published_at %}
+                  <span class="memo-dot">·</span>
+                  <span>{{ memo.published_at|date:"M j" }}</span>
+                {% endif %}
+              </span>
+            </span>
+            {% if memo.requires_acknowledgment %}
+              <span class="memo-dash-tag">Ack</span>
+            {% endif %}
+          </a>
+        </li>
+      {% empty %}
+        <li class="memo-dash-empty">Nothing new.</li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}

@@ -7,6 +7,12 @@ Design notes:
 - `ThreadParticipant.is_archived` archives per-participant (my archive ≠ yours).
 - `Message.is_system` marks auto-generated notices (e.g. "Asset assigned").
 - No hard deletes; threads and messages are preserved for audit.
+
+Memos (added):
+- One-way declarations, not conversations. Recipients are snapshot into
+  `MemoRecipient` rows at publish time so a memo's audience is frozen.
+- Reply goes through regular messaging, not the memo itself.
+- `MemoRecipient.acknowledged_at` proves receipt when required.
 """
 from django.conf import settings
 from django.db import models
@@ -16,6 +22,9 @@ from core.models import TimeStampedModel
 from core.restricted import RestrictedFileModel
 
 
+# ===========================================================================
+# Threads & messages (unchanged)
+# ===========================================================================
 class Thread(TimeStampedModel):
     AUDITED = True
 
@@ -36,14 +45,17 @@ class Thread(TimeStampedModel):
     def __str__(self):
         if self.subject:
             return self.subject
-        participants = ", ".join(p.user.get_full_name() or p.user.email for p in self.participants.all()[:3])
+        participants = ", ".join(
+            p.user.get_full_name() or p.user.email
+            for p in self.participants.all()[:3]
+        )
         return participants or f"Thread #{self.pk}"
 
     def display_title_for(self, user):
-        """Human-friendly title: subject if set, else the OTHER participant's name."""
         if self.subject:
             return self.subject
-        others = [p.user for p in self.participants.select_related("user") if p.user_id != user.pk]
+        others = [p.user for p in self.participants.select_related("user")
+                  if p.user_id != user.pk]
         if not others:
             return "Self thread"
         names = ", ".join((u.get_full_name() or u.email) for u in others[:3])
@@ -52,14 +64,6 @@ class Thread(TimeStampedModel):
         return names
 
     def display_title(self):
-        """Template-safe title fallback.
-
-        Views that know the request user should shadow this per-instance:
-            t.display_title = t.display_title_for(request.user)
-
-        If they don't, this fallback still produces something usable —
-        the subject if set, else a slice of participant names.
-        """
         if self.subject:
             return self.subject
         names = []
@@ -92,7 +96,8 @@ class Thread(TimeStampedModel):
 
 class ThreadParticipant(models.Model):
     thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name="participants")
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="thread_participations")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="thread_participations")
     joined_at = models.DateTimeField(default=timezone.now)
     last_read_at = models.DateTimeField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)
@@ -114,7 +119,8 @@ class Message(models.Model):
     )
     body = models.TextField()
     sent_at = models.DateTimeField(default=timezone.now, db_index=True)
-    is_system = models.BooleanField(default=False, help_text="Auto-generated (not typed by a human).")
+    is_system = models.BooleanField(default=False,
+                                    help_text="Auto-generated (not typed by a human).")
     reply_to = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="replies",
@@ -130,13 +136,10 @@ class Message(models.Model):
 
 
 class MessageDeletion(models.Model):
-    message = models.ForeignKey(
-        Message, on_delete=models.CASCADE, related_name="hidden_for",
-    )
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
-        related_name="hidden_messages",
-    )
+    message = models.ForeignKey(Message, on_delete=models.CASCADE,
+                                related_name="hidden_for")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="hidden_messages")
     deleted_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -149,13 +152,10 @@ class MessageDeletion(models.Model):
 
 
 class MessageRead(models.Model):
-    message = models.ForeignKey(
-        Message, on_delete=models.CASCADE, related_name="read_receipts",
-    )
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
-        related_name="message_read_receipts",
-    )
+    message = models.ForeignKey(Message, on_delete=models.CASCADE,
+                                related_name="read_receipts")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="message_read_receipts")
     read_at = models.DateTimeField(default=timezone.now, db_index=True)
 
     class Meta:
@@ -169,16 +169,14 @@ class MessageRead(models.Model):
 
 def attachment_expiry():
     from datetime import timedelta
-
     return timezone.now() + timedelta(days=30)
 
 
 class MessageAttachment(RestrictedFileModel):
     MEDIA_SUBDIR = "messaging/attachments"
 
-    message = models.ForeignKey(
-        Message, on_delete=models.CASCADE, related_name="attachments",
-    )
+    message = models.ForeignKey(Message, on_delete=models.CASCADE,
+                                related_name="attachments")
     expires_at = models.DateTimeField(default=attachment_expiry, db_index=True)
 
     class Meta:
@@ -198,17 +196,17 @@ class MessageAttachment(RestrictedFileModel):
         ).exists()
 
 
-def start_thread(*, creator, participants, subject="", initial_body="", thread_type=None):
-    """Convenience used by other modules (or a view) to open a thread and post
-    the first message atomically. Returns the Thread."""
+def start_thread(*, creator, participants, subject="", initial_body="",
+                 thread_type=None):
     from django.db import transaction
-
     users = list({creator, *participants})
     if thread_type is None:
         thread_type = Thread.DIRECT if len(users) == 2 else Thread.GROUP
 
     with transaction.atomic():
-        thread = Thread.objects.create(subject=subject[:255], thread_type=thread_type, created_by=creator)
+        thread = Thread.objects.create(subject=subject[:255],
+                                       thread_type=thread_type,
+                                       created_by=creator)
         for user in users:
             ThreadParticipant.objects.create(
                 thread=thread, user=user,
@@ -218,3 +216,165 @@ def start_thread(*, creator, participants, subject="", initial_body="", thread_t
         thread.last_message_at = timezone.now()
         thread.save(update_fields=["last_message_at"])
     return thread
+
+
+# ===========================================================================
+# MEMOS — one-way formal declarations
+# ===========================================================================
+class Memo(TimeStampedModel):
+    """A formal internal memo. One-way: sender declares, recipients receive."""
+    AUDITED = True
+
+    NORMAL, HIGH, URGENT = "normal", "high", "urgent"
+    PRIORITY_CHOICES = [
+        (NORMAL, "Normal"),
+        (HIGH, "High"),
+        (URGENT, "Urgent"),
+    ]
+
+    ALL_STAFF = "all_staff"
+    DEPARTMENT = "department"
+    ROLE = "role"
+    INDIVIDUALS = "individuals"
+    VISIBILITY_CHOICES = [
+        (ALL_STAFF, "All staff"),
+        (DEPARTMENT, "A department"),
+        (ROLE, "Specific roles"),
+        (INDIVIDUALS, "Specific people"),
+    ]
+
+    reference = models.CharField(max_length=20, unique=True, db_index=True)
+    subject = models.CharField(max_length=255)
+    body = models.TextField()
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="memos_sent",
+    )
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=NORMAL)
+
+    visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES,
+                                  default=DEPARTMENT)
+    department = models.ForeignKey(
+        "staff.Department", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="memos_addressed",
+        help_text="Set when visibility = department.",
+    )
+    roles = models.ManyToManyField(
+        "auth.Group", blank=True, related_name="memos_addressed_by_role",
+        help_text="Set when visibility = role.",
+    )
+    recipients = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name="memos_addressed_individually",
+        help_text="Set when visibility = individuals.",
+    )
+
+    requires_acknowledgment = models.BooleanField(
+        default=False,
+        help_text="Recipients must click 'Acknowledge receipt'.",
+    )
+
+    is_draft = models.BooleanField(default=True)
+    published_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    class Meta:
+        ordering = ["-published_at", "-created_at", "-pk"]
+        indexes = [
+            models.Index(fields=["is_draft", "-published_at"]),
+            models.Index(fields=["sender", "-created_at"]),
+        ]
+        permissions = [
+            ("manage_memo", "Can edit or delete any memo"),
+        ]
+
+    def __str__(self):
+        return f"{self.reference} — {self.subject}"
+
+    @property
+    def is_published(self):
+        return (not self.is_draft) and self.published_at is not None
+
+    @property
+    def is_expired(self):
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_live(self):
+        return self.is_published and not self.is_expired
+
+    @property
+    def recipient_count(self):
+        return self.memo_recipients.count()
+
+    @property
+    def read_count(self):
+        return self.memo_recipients.filter(read_at__isnull=False).count()
+
+    @property
+    def acknowledged_count(self):
+        return self.memo_recipients.filter(acknowledged_at__isnull=False).count()
+
+    @property
+    def card_summary(self):
+        if not self.body:
+            return ""
+        text = self.body.strip().replace("\n", " ")
+        return (text[:160] + "…") if len(text) > 160 else text
+
+
+class MemoRecipient(models.Model):
+    """Materialized recipient row. Created at publish time."""
+    memo = models.ForeignKey(Memo, on_delete=models.CASCADE,
+                             related_name="memo_recipients")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="memo_receipts")
+
+    delivered_at = models.DateTimeField(default=timezone.now)
+    read_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    is_archived = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ("memo", "user")
+        ordering = ["-delivered_at", "-pk"]
+        indexes = [
+            models.Index(fields=["user", "is_archived", "-delivered_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user} on {self.memo.reference}"
+
+    @property
+    def is_read(self):
+        return self.read_at is not None
+
+    @property
+    def is_acknowledged(self):
+        return self.acknowledged_at is not None
+
+
+class MemoAttachment(RestrictedFileModel):
+    """File attached to a memo. Same 30-day expiry as message attachments."""
+    MEDIA_SUBDIR = "messaging/memo_attachments"
+
+    memo = models.ForeignKey(Memo, on_delete=models.CASCADE,
+                             related_name="attachments")
+    description = models.CharField(max_length=255, blank=True)
+    expires_at = models.DateTimeField(default=attachment_expiry, db_index=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def can_download(self, user):
+        if (
+            not user.is_authenticated
+            or self.is_deleted
+            or self.expires_at <= timezone.now()
+        ):
+            return False
+        if user.is_superuser or self.memo.sender_id == user.pk:
+            return True
+        if self.memo.is_draft:
+            return False
+        return self.memo.memo_recipients.filter(user=user).exists()
