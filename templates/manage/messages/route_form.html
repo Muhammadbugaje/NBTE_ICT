@@ -1,0 +1,80 @@
+{% extends "manage/messages/_layout.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New route{% else %}Edit {{ route.name }}{% endif %}{% endblock %}
+
+{% block mm_page_class %}mm-page-narrow{% endblock %}
+
+{% block mm_content %}
+
+<a href="{% if route %}{% url 'messaging_manage:route_detail' route.pk %}{% else %}{% url 'messaging_manage:route_list' %}{% endif %}" class="mm-back">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+  Back
+</a>
+
+<header class="mm-hero">
+  <div class="mm-hero-inner">
+    <div class="mm-hero-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
+    <div>
+      <h1>{% if mode == "create" %}New memo route{% else %}Edit route{% endif %}</h1>
+      <p>Give it a name and decide how it handles same-rank actors.</p>
+    </div>
+  </div>
+</header>
+
+<section class="mm-card">
+  <div class="mm-card-body">
+    <form method="post" class="mm-form" novalidate>
+      {% csrf_token %}
+
+      <div class="mm-field">
+        <label for="{{ form.name.id_for_label }}" class="mm-label">Name</label>
+        {{ form.name }}
+        {% if form.name.errors %}<div class="mm-error">{{ form.name.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mm-field">
+        <label for="{{ form.code.id_for_label }}" class="mm-label">Code</label>
+        {{ form.code }}
+        <div class="mm-hint">Used internally. Lowercase, hyphens instead of spaces.</div>
+        {% if form.code.errors %}<div class="mm-error">{{ form.code.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mm-field">
+        <label for="{{ form.description.id_for_label }}" class="mm-label">Description</label>
+        {{ form.description }}
+        {% if form.description.errors %}<div class="mm-error">{{ form.description.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mm-field">
+        <label for="{{ form.same_rank_behaviour.id_for_label }}" class="mm-label">Same-rank behaviour</label>
+        {{ form.same_rank_behaviour }}
+        <div class="mm-hint">
+          What happens when a step's resolved actor has the same rank as the
+          memo's sender. Junior actors are always skipped; senior actors
+          always act.
+        </div>
+        {% if form.same_rank_behaviour.errors %}<div class="mm-error">{{ form.same_rank_behaviour.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <label class="mm-check">
+        {{ form.is_active }}
+        <span class="mm-check-body">
+          <span class="mm-check-title">Active</span>
+          <span class="mm-check-hint">Inactive routes are skipped when a memo looks for its chain.</span>
+        </span>
+      </label>
+
+      <div class="mm-form-actions">
+        <button type="submit" class="btn btn-primary">
+          {% if mode == "create" %}Create route{% else %}Save changes{% endif %}
+        </button>
+        <a href="{% if route %}{% url 'messaging_manage:route_detail' route.pk %}{% else %}{% url 'messaging_manage:route_list' %}{% endif %}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% endblock %}

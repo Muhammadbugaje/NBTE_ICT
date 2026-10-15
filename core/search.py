@@ -17,6 +17,9 @@ from django.urls import NoReverseMatch, reverse
 logger = logging.getLogger(__name__)
 
 
+# ===========================================================================
+# Base
+# ===========================================================================
 class BaseSearchProvider:
     type = ""
     label = ""
@@ -41,6 +44,9 @@ class BaseSearchProvider:
             return ""
 
 
+# ===========================================================================
+# Tasks
+# ===========================================================================
 class TaskSearchProvider(BaseSearchProvider):
     type = "task"
     label = "Tasks"
@@ -69,6 +75,9 @@ class TaskSearchProvider(BaseSearchProvider):
         return out
 
 
+# ===========================================================================
+# Tickets
+# ===========================================================================
 class TicketSearchProvider(BaseSearchProvider):
     type = "ticket"
     label = "Tickets"
@@ -98,6 +107,9 @@ class TicketSearchProvider(BaseSearchProvider):
         return out
 
 
+# ===========================================================================
+# Workflow requests
+# ===========================================================================
 class RequestSearchProvider(BaseSearchProvider):
     type = "request"
     label = "Requests"
@@ -141,6 +153,9 @@ class RequestSearchProvider(BaseSearchProvider):
         return out
 
 
+# ===========================================================================
+# Staff
+# ===========================================================================
 class StaffSearchProvider(BaseSearchProvider):
     type = "staff"
     label = "Staff"
@@ -184,6 +199,9 @@ class StaffSearchProvider(BaseSearchProvider):
         return out
 
 
+# ===========================================================================
+# Assets
+# ===========================================================================
 class AssetSearchProvider(BaseSearchProvider):
     type = "asset"
     label = "Assets"
@@ -218,6 +236,9 @@ class AssetSearchProvider(BaseSearchProvider):
         return out
 
 
+# ===========================================================================
+# Documents
+# ===========================================================================
 class DocumentSearchProvider(BaseSearchProvider):
     type = "document"
     label = "Documents"
@@ -248,6 +269,9 @@ class DocumentSearchProvider(BaseSearchProvider):
         return out
 
 
+# ===========================================================================
+# Announcements
+# ===========================================================================
 class AnnouncementSearchProvider(BaseSearchProvider):
     type = "announcement"
     label = "Announcements"
@@ -281,8 +305,11 @@ class AnnouncementSearchProvider(BaseSearchProvider):
         return out
 
 
+# ===========================================================================
+# Messages (threads)
+# ===========================================================================
 class MessageSearchProvider(BaseSearchProvider):
-    """Search the messaging app. Metadata-only for non-participant superusers."""
+    """Metadata-only for non-participant superusers."""
     type = "message"
     label = "Messages"
     icon = "message-circle"
@@ -365,13 +392,19 @@ class MessageSearchProvider(BaseSearchProvider):
         return out
 
 
+# ===========================================================================
+# Memos
+# ===========================================================================
 class MemoSearchProvider(BaseSearchProvider):
     """Search memos.
 
     Scope mirrors `messaging.memos.visible_memos_for(user)`:
-      - Regular users: memos they received, plus their own sent / drafts.
-      - Superusers: every memo. Memos are official on-record documents,
-        unlike private message threads.
+      - Sender, recipients of published memos, past approvers, and the
+        memo's current approver (if the user's turn is now).
+      - Superusers see everything.
+
+    Badges flag "Awaiting you" for a memo currently at the caller's step,
+    then priority.
     """
     type = "memo"
     label = "Memos"
@@ -384,28 +417,41 @@ class MemoSearchProvider(BaseSearchProvider):
             logger.exception("Memo search: could not import messaging.memos")
             return []
 
-        qs = memo_service.visible_memos_for(user).filter(
+        try:
+            base = memo_service.visible_memos_for(user)
+        except Exception:
+            logger.exception("Memo search: visible_memos_for() failed")
+            return []
+
+        qs = base.filter(
             Q(reference__icontains=query)
             | Q(subject__icontains=query)
             | Q(body__icontains=query)
-        ).order_by("-published_at", "-created_at")[:limit]
+        ).order_by("-updated_at")[:limit]
+
+        # Compute "awaiting you" set for accurate badges.
+        awaiting_ids = set()
+        try:
+            for memo in memo_service.awaiting_memos_for(user):
+                awaiting_ids.add(memo.pk)
+        except Exception:
+            logger.exception("Memo search: awaiting_memos_for() failed")
 
         out = []
         for memo in qs:
-            if memo.is_draft:
-                state = "Draft"
-            elif memo.is_expired:
-                state = "Expired"
-            else:
-                state = "Published"
+            status_label = memo.get_status_display()
 
             meta_bits = [memo.reference]
             if memo.sender_id:
                 meta_bits.append(memo.sender.get_full_name() or memo.sender.email)
-            meta_bits.append(state)
+            meta_bits.append(status_label)
+            if memo.status == memo.AWAITING and memo.current_step_id:
+                meta_bits.append(memo.current_step.name)
 
             badge = ""
-            if memo.priority == memo.URGENT:
+            if memo.pk in awaiting_ids:
+                badge = "Awaiting you"
+            elif memo.priority == memo.URGENT:
                 badge = "Urgent"
             elif memo.priority == memo.HIGH:
                 badge = "High"
@@ -421,6 +467,9 @@ class MemoSearchProvider(BaseSearchProvider):
         return out
 
 
+# ===========================================================================
+# Attendance
+# ===========================================================================
 class AttendanceSearchProvider(BaseSearchProvider):
     type = "attendance"
     label = "Attendance"

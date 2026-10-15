@@ -1,0 +1,111 @@
+{% extends "manage/messages/_layout.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New step{% else %}Edit {{ step.name }}{% endif %}{% endblock %}
+
+{% block mm_page_class %}mm-page-narrow{% endblock %}
+
+{% block mm_content %}
+
+<a href="{% url 'messaging_manage:route_detail' route.pk %}" class="mm-back">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+  {{ route.name }}
+</a>
+
+<header class="mm-hero">
+  <div class="mm-hero-inner">
+    <div class="mm-hero-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    </div>
+    <div>
+      <h1>{% if mode == "create" %}New step{% else %}Edit step{% endif %}</h1>
+      <p>In route <strong>{{ route.name }}</strong>.</p>
+    </div>
+  </div>
+</header>
+
+<section class="mm-card">
+  <div class="mm-card-body">
+    <form method="post" class="mm-form" novalidate>
+      {% csrf_token %}
+
+      <div class="mm-field-row">
+        <div class="mm-field">
+          <label for="{{ form.position.id_for_label }}" class="mm-label">Position</label>
+          {{ form.position }}
+          <div class="mm-hint">1 is the first step.</div>
+        </div>
+        <div class="mm-field">
+          <label for="{{ form.name.id_for_label }}" class="mm-label">Step name</label>
+          {{ form.name }}
+          {% if form.name.errors %}<div class="mm-error">{{ form.name.errors|join:" " }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="mm-field">
+        <label for="{{ form.approver_kind.id_for_label }}" class="mm-label">Who approves this step?</label>
+        {{ form.approver_kind }}
+        {% if form.approver_kind.errors %}<div class="mm-error">{{ form.approver_kind.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mm-field" id="mm-field-approver-role">
+        <label for="{{ form.approver_role.id_for_label }}" class="mm-label">Role</label>
+        {{ form.approver_role }}
+        <div class="mm-hint">Required when the approver kind is "Anyone with a role in a department".</div>
+        {% if form.approver_role.errors %}<div class="mm-error">{{ form.approver_role.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mm-field" id="mm-field-approver-user">
+        <label for="{{ form.approver_user.id_for_label }}" class="mm-label">Specific user</label>
+        {{ form.approver_user }}
+        <div class="mm-hint">Required when the approver kind is "A specific user".</div>
+        {% if form.approver_user.errors %}<div class="mm-error">{{ form.approver_user.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mm-field">
+        <label for="{{ form.scope.id_for_label }}" class="mm-label">Scope</label>
+        {{ form.scope }}
+        <div class="mm-hint">
+          <code>requester</code> (the sender's department), <code>receiving</code>,
+          or a specific Department code.
+        </div>
+      </div>
+
+      <label class="mm-check">
+        {{ form.is_optional }}
+        <span class="mm-check-body">
+          <span class="mm-check-title">Skip this step when no one matches</span>
+          <span class="mm-check-hint">
+            If unticked and no one matches, the memo parks itself and admins are notified.
+          </span>
+        </span>
+      </label>
+
+      <label class="mm-check">
+        {{ form.is_hierarchical }}
+        <span class="mm-check-body">
+          <span class="mm-check-title">Part of the rank hierarchy</span>
+          <span class="mm-check-hint">
+            If on, this step obeys the rank system. Turn OFF for mandatory gates
+            (ES, records filing) that must always run.
+          </span>
+        </span>
+      </label>
+
+      <div class="mm-field">
+        <label for="{{ form.instructions.id_for_label }}" class="mm-label">Instructions for the acting user</label>
+        {{ form.instructions }}
+        <div class="mm-hint">Shown on the memo page as guidance.</div>
+      </div>
+
+      <div class="mm-form-actions">
+        <button type="submit" class="btn btn-primary">
+          {% if mode == "create" %}Add step{% else %}Save changes{% endif %}
+        </button>
+        <a href="{% url 'messaging_manage:route_detail' route.pk %}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% endblock %}

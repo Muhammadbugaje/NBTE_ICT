@@ -1,0 +1,112 @@
+{% extends "manage/messages/_layout.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "create" %}New rule{% else %}Edit {{ rule.name }}{% endif %}{% endblock %}
+
+{% block mm_page_class %}mm-page-narrow{% endblock %}
+
+{% block mm_content %}
+
+<a href="{% url 'messaging_manage:rule_list' %}" class="mm-back">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+  All rules
+</a>
+
+<header class="mm-hero">
+  <div class="mm-hero-inner">
+    <div class="mm-hero-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>
+    </div>
+    <div>
+      <h1>{% if mode == "create" %}New routing rule{% else %}Edit rule{% endif %}</h1>
+      <p>Decide when a route applies.</p>
+    </div>
+  </div>
+</header>
+
+<section class="mm-card">
+  <div class="mm-card-body">
+    <form method="post" class="mm-form" novalidate>
+      {% csrf_token %}
+
+      <div class="mm-field">
+        <label for="{{ form.name.id_for_label }}" class="mm-label">Rule name</label>
+        {{ form.name }}
+        <div class="mm-hint">A descriptive label — e.g. "Staff memo to a Director".</div>
+        {% if form.name.errors %}<div class="mm-error">{{ form.name.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mm-field">
+        <label for="{{ form.route.id_for_label }}" class="mm-label">Route</label>
+        {{ form.route }}
+        <div class="mm-hint">Which chain of approval this memo will walk.</div>
+        {% if form.route.errors %}<div class="mm-error">{{ form.route.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mm-field">
+        <label for="{{ form.target_kind.id_for_label }}" class="mm-label">Target kind</label>
+        {{ form.target_kind }}
+        <div class="mm-hint">
+          Which recipient-set this rule applies to. E.g. "One specific person"
+          for a memo addressed to a single recipient, "All staff" for a
+          broadcast memo.
+        </div>
+        {% if form.target_kind.errors %}<div class="mm-error">{{ form.target_kind.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mm-field">
+        <label class="mm-label">Sender roles</label>
+        <div class="mm-checkbox-grid">
+          {{ form.sender_role_codes }}
+        </div>
+        <div class="mm-hint">
+          Which roles the sender must have for this rule to apply.
+          Leave all unticked to match any sender role.
+        </div>
+        {% if form.sender_role_codes.errors %}
+          <div class="mm-error">{{ form.sender_role_codes.errors|join:" " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mm-field" id="mm-field-target-roles">
+        <label class="mm-label">Recipient roles</label>
+        <div class="mm-checkbox-grid">
+          {{ form.target_role_codes }}
+        </div>
+        <div class="mm-hint" id="mm-target-roles-hint">
+          Only used when the target kind is "One specific person".
+          Leave all unticked to match any recipient.
+        </div>
+        {% if form.target_role_codes.errors %}
+          <div class="mm-error">{{ form.target_role_codes.errors|join:" " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mm-field">
+        <label for="{{ form.priority.id_for_label }}" class="mm-label">Priority</label>
+        {{ form.priority }}
+        <div class="mm-hint">
+          Higher numbers win. If two rules both match, the one with the
+          higher priority is used.
+        </div>
+      </div>
+
+      <label class="mm-check">
+        {{ form.is_active }}
+        <span class="mm-check-body">
+          <span class="mm-check-title">Active</span>
+          <span class="mm-check-hint">Inactive rules are ignored.</span>
+        </span>
+      </label>
+
+      <div class="mm-form-actions">
+        <button type="submit" class="btn btn-primary">
+          {% if mode == "create" %}Create rule{% else %}Save changes{% endif %}
+        </button>
+        <a href="{% url 'messaging_manage:rule_list' %}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% endblock %}

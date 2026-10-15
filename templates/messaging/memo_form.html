@@ -6,7 +6,7 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=7">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=3">
 {% endblock %}
 
 {% block content %}
@@ -16,7 +16,7 @@
     Memos
   </a>
 
-  <form method="post" enctype="multipart/form-data" class="memo-form" data-memo-form>
+  <form method="post" enctype="multipart/form-data" class="memo-form" data-memo-form data-memo-visibility-form>
     {% csrf_token %}
 
     <header class="memo-form-head">
@@ -61,29 +61,82 @@
       </div>
     </div>
 
-    <div class="memo-field">
-      <label for="{{ form.visibility.id_for_label }}" class="memo-label">Audience</label>
-      {{ form.visibility }}
-      {% if form.visibility.errors %}<div class="memo-field-error">{{ form.visibility.errors|join:" " }}</div>{% endif %}
-    </div>
+    {# ---- Target picker ---- #}
+    <section class="memo-target-section">
+      <header class="memo-target-head">
+        <h2>Who is this memo for?</h2>
+        {% if not can_broadcast %}
+          <p class="memo-hint">
+            You can send to <strong>one specific person</strong> or a
+            <strong>hand-picked list</strong>.
+            Broadcasting to a whole department, all Directors, or all staff
+            needs the broadcast permission — ask the ES or a superadmin.
+          </p>
+        {% else %}
+          <p class="memo-hint">
+            Choose the audience. Broadcasting requires care — recipients
+            will see the memo in their inbox.
+          </p>
+        {% endif %}
+      </header>
 
-    <div class="memo-audience memo-audience-dept" data-audience="department" hidden>
-      <label class="memo-label">Department</label>
-      {{ form.department }}
-      {% if form.department.errors %}<div class="memo-field-error">{{ form.department.errors|join:" " }}</div>{% endif %}
-    </div>
+      <div class="memo-field">
+        <label for="{{ form.visibility.id_for_label }}" class="memo-label">Audience</label>
+        {{ form.visibility }}
+        {% if form.visibility.errors %}<div class="memo-field-error">{{ form.visibility.errors|join:" " }}</div>{% endif %}
+      </div>
 
-    <div class="memo-audience memo-audience-role" data-audience="role" hidden>
-      <label class="memo-label">Roles</label>
-      <div class="memo-checkboxes">{{ form.roles }}</div>
-      {% if form.roles.errors %}<div class="memo-field-error">{{ form.roles.errors|join:" " }}</div>{% endif %}
-    </div>
+      {# ---- Per-kind panels ---- #}
+      <div class="memo-target-panel" data-target-panel="specific_user">
+        <label for="{{ form.target_user.id_for_label }}" class="memo-label">
+          Send to
+        </label>
+        {{ form.target_user }}
+        {% if form.target_user.errors %}
+          <div class="memo-field-error">{{ form.target_user.errors|join:" " }}</div>
+        {% endif %}
+      </div>
 
-    <div class="memo-audience memo-audience-ind" data-audience="individuals" hidden>
-      <label class="memo-label">People</label>
-      <div class="memo-checkboxes memo-checkboxes-scroll">{{ form.recipients }}</div>
-      {% if form.recipients.errors %}<div class="memo-field-error">{{ form.recipients.errors|join:" " }}</div>{% endif %}
-    </div>
+      <div class="memo-target-panel" data-target-panel="all_staff">
+        <div class="memo-target-note">
+          <strong>All staff</strong>
+          <p>The memo will be delivered to every active staff member.</p>
+        </div>
+      </div>
+
+      <div class="memo-target-panel" data-target-panel="all_directors">
+        <div class="memo-target-note">
+          <strong>All Directors</strong>
+          <p>The memo will be delivered to every active Director.</p>
+        </div>
+      </div>
+
+      <div class="memo-target-panel" data-target-panel="department">
+        <label for="{{ form.department.id_for_label }}" class="memo-label">
+          Department
+        </label>
+        {{ form.department }}
+        {% if form.department.errors %}
+          <div class="memo-field-error">{{ form.department.errors|join:" " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="memo-target-panel" data-target-panel="role">
+        <label class="memo-label">Roles</label>
+        <div class="memo-checkboxes memo-checkboxes-scroll">{{ form.roles }}</div>
+        {% if form.roles.errors %}
+          <div class="memo-field-error">{{ form.roles.errors|join:" " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="memo-target-panel" data-target-panel="individuals">
+        <label class="memo-label">People</label>
+        <div class="memo-checkboxes memo-checkboxes-scroll">{{ form.recipients }}</div>
+        {% if form.recipients.errors %}
+          <div class="memo-field-error">{{ form.recipients.errors|join:" " }}</div>
+        {% endif %}
+      </div>
+    </section>
 
     <div class="memo-field">
       <label class="memo-label" for="{{ form.attachments.id_for_label }}">Attachments</label>
@@ -105,13 +158,13 @@
     {% endif %}
 
     <footer class="memo-form-actions">
-      {% if mode == 'create' or memo.is_draft %}
+      {% if mode == 'create' or memo.status == 'draft' %}
         <button type="submit" name="action" value="draft" class="btn btn-ghost">
           Save as draft
         </button>
         <button type="submit" name="action" value="publish" class="btn btn-primary">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Publish now
+          Send for approval
         </button>
       {% else %}
         <button type="submit" name="action" value="save" class="btn btn-primary">Save changes</button>
@@ -124,5 +177,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/memo.js' %}?v=1" defer></script>
+<script src="{% static 'js/memo.js' %}?v=2" defer></script>
 {% endblock %}

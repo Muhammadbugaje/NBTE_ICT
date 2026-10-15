@@ -1,0 +1,65 @@
+{% extends "manage/messages/_layout.html" %}
+{% load static %}
+
+{% block title %}Routes · Memo management{% endblock %}
+{% block page_title %}Memo routes{% endblock %}
+
+{% block mm_content %}
+
+<header class="mm-hero">
+  <div class="mm-hero-inner">
+    <div class="mm-hero-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
+    <div>
+      <h1>Memo routes</h1>
+      <p>{{ routes|length }} route{{ routes|length|pluralize }} defined.</p>
+    </div>
+  </div>
+  <div class="mm-hero-actions">
+    <a href="{% url 'messaging_manage:route_create' %}" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New route
+    </a>
+  </div>
+</header>
+
+<form method="get" class="mm-filter">
+  <label class="mm-filter-search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" name="q" value="{{ q }}" placeholder="Search routes…" autocomplete="off">
+  </label>
+  {% if q %}<a href="{% url 'messaging_manage:route_list' %}" class="mm-filter-clear">Clear</a>{% endif %}
+</form>
+
+{% if routes %}
+  <div class="mm-card-grid">
+    {% for r in routes %}
+      <a href="{% url 'messaging_manage:route_detail' r.pk %}" class="mm-tile">
+        <div class="mm-tile-head">
+          <div class="mm-tile-title">{{ r.name }}</div>
+          {% if not r.is_active %}<span class="mm-pill mm-pill-warn">Inactive</span>{% endif %}
+        </div>
+        <div class="mm-tile-code">{{ r.code }}</div>
+        {% if r.description %}
+          <p class="mm-tile-desc">{{ r.description|truncatechars:120 }}</p>
+        {% endif %}
+        <div class="mm-tile-foot">
+          <span class="mm-pill">{{ r.step_count }} step{{ r.step_count|pluralize }}</span>
+          <span class="mm-pill mm-pill-muted">{{ r.rule_count }} rule{{ r.rule_count|pluralize }}</span>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="mm-empty">
+    <div class="mm-empty-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
+    <h3>No routes yet</h3>
+    <p>Routes define the approval sequence a memo walks before delivery.</p>
+    <a href="{% url 'messaging_manage:route_create' %}" class="btn btn-primary">Create the first route</a>
+  </div>
+{% endif %}
+
+{% endblock %}

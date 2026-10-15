@@ -2,12 +2,21 @@
 
 Both public functions return raw bytes ready to stream from an HttpResponse.
 
+Non-published memos get:
+  * A faint diagonal watermark over every page (DRAFT / AWAITING APPROVAL /
+    RETURNED FOR REVISION / REJECTED / CANCELLED).
+  * An amber banner above the title.
+
+Published memos render clean.
+
 Dependencies:
     reportlab   — for PDF (already installed for attendance)
     python-docx — for Word (pip install python-docx)
+    lxml        — for DOCX watermark (comes with python-docx)
 """
 from __future__ import annotations
 
+import copy
 import io
 import logging
 from pathlib import Path
@@ -69,23 +78,50 @@ def _memo_date(memo):
 
 
 def _memo_recipients_label(memo):
-    if memo.visibility == "all_staff":
+    """Human-readable 'To:' line for the PDF/Word letterhead.
+
+    Handles every visibility kind we actually store, including
+    specific_user, and falls back to recipient rows rather than
+    printing an em-dash when the kind is something new.
+    """
+    vis = (memo.visibility or "").strip()
+
+    if vis == "all_staff":
         return "All Staff"
-    if memo.visibility == "department":
+
+    if vis == "all_directors":
+        return "All Directors"
+
+    if vis == "department":
         return memo.department.name if memo.department_id else "Department"
-    if memo.visibility == "role":
+
+    if vis == "role":
         names = list(memo.roles.values_list("name", flat=True))
         return ", ".join(names) if names else "Selected Roles"
-    if memo.visibility == "individuals":
-        names = []
-        qs = memo.recipients.all()
-        for u in qs[:6]:
-            names.append(u.get_full_name() or u.email)
+
+    if vis in ("specific_user", "individual", "individuals"):
+        if memo.target_user_id:
+            u = memo.target_user
+            return u.get_full_name() or u.email
+
+        qs = memo.memo_recipients.select_related("user")
         total = qs.count()
+        names = [(r.user.get_full_name() or r.user.email) for r in qs[:6]]
         if total > len(names):
             names.append(f"+{total - len(names)} more")
         return ", ".join(names) if names else "—"
-    return "—"
+
+    # Unknown kind: do NOT print an em-dash if we can do better.
+    if memo.target_user_id:
+        u = memo.target_user
+        return u.get_full_name() or u.email
+
+    qs = memo.memo_recipients.select_related("user")
+    total = qs.count()
+    names = [(r.user.get_full_name() or r.user.email) for r in qs[:6]]
+    if total > len(names):
+        names.append(f"+{total - len(names)} more")
+    return ", ".join(names) if names else "—"
 
 
 def _sender_signature_lines(memo):
@@ -114,16 +150,44 @@ def _sender_signature_lines(memo):
 
 
 # ===========================================================================
+# Status → watermark / banner
+# ===========================================================================
+def _memo_watermark_label(memo):
+    """Faint diagonal watermark for non-published states. Returns None
+    when the memo is published (published prints clean)."""
+    status = (memo.status or "").lower()
+    if status == "published":
+        return None
+    return {
+        "draft":     "DRAFT",
+        "awaiting":  "AWAITING APPROVAL",
+        "returned":  "RETURNED FOR REVISION",
+        "rejected":  "REJECTED",
+        "cancelled": "CANCELLED",
+    }.get(status, "NOT PUBLISHED")
+
+
+def _memo_status_banner(memo):
+    """Amber inline banner shown at the top of the document body when
+    the memo isn't published. Returns None when published."""
+    return {
+        "draft":     "— DRAFT — NOT YET PUBLISHED —",
+        "awaiting":  "— AWAITING APPROVAL — NOT YET DELIVERED —",
+        "returned":  "— RETURNED FOR REVISION —",
+        "rejected":  "— REJECTED —",
+        "cancelled": "— CANCELLED —",
+    }.get((memo.status or "").lower())
+
+
+# ===========================================================================
 # PDF
 # ===========================================================================
 def render_memo_pdf(memo, request=None):
     """Return the memo as a PDF (bytes).
 
-    The signature block is drawn directly on the canvas and pinned to the
-    bottom-left of the *last* page, so it never floats mid-page even when
-    the memo body is only a couple of lines. This is done with a two-pass
-    build: the first pass counts total pages, the second pass draws the
-    signature only on the last one.
+    Signature block is drawn directly on the canvas and pinned to the
+    bottom-left of the *last* page. Two-pass build: pass 1 counts total
+    pages, pass 2 draws the signature only on the last page.
     """
     try:
         from reportlab.lib.pagesizes import A4
@@ -142,6 +206,8 @@ def render_memo_pdf(memo, request=None):
     brand = _site_brand()
     logo_path = _find_logo()
 
+    watermark_label = _memo_watermark_label(memo)
+
     GREEN = "#1F6B3E"
     INK   = "#0F172A"
     MUTED = "#64748B"
@@ -151,11 +217,11 @@ def render_memo_pdf(memo, request=None):
     PAGE_W, PAGE_H = A4
     MARGIN_L = MARGIN_R = 2.2 * cm
     TOP_MARGIN = 3.6 * cm
-    BOTTOM_MARGIN = 3.2 * cm   # leaves room for signature + footer
+    BOTTOM_MARGIN = 3.2 * cm
     CONTENT_W = PAGE_W - MARGIN_L - MARGIN_R
 
     FOOTER_RULE_Y = 1.5 * cm
-    SIG_BASE_Y    = 3.0 * cm   # signature block sits above the footer
+    SIG_BASE_Y    = 3.0 * cm
 
     # --- Styles ------------------------------------------------------
     styles = getSampleStyleSheet()
@@ -198,10 +264,22 @@ def render_memo_pdf(memo, request=None):
     sender_name, sender_desig, sender_dept = _sender_signature_lines(memo)
 
     def _draw_page(canvas, doc, *, draw_signature=False):
-        """Letterhead on every page, footer on every page, signature on
-        the last page only (when draw_signature is True)."""
         canvas.saveState()
         width, height = doc.pagesize
+
+        # ---- Watermark (every page, behind everything) -------------
+        if watermark_label:
+            canvas.saveState()
+            try:
+                canvas.setFillAlpha(0.10)
+            except Exception:
+                pass
+            canvas.setFillColor(HexColor(GREEN))
+            canvas.setFont("Helvetica-Bold", 72)
+            canvas.translate(width / 2.0, height / 2.0)
+            canvas.rotate(45)
+            canvas.drawCentredString(0, 0, watermark_label)
+            canvas.restoreState()
 
         # ---- Letterhead --------------------------------------------
         top_y = height - 0.9 * cm
@@ -237,7 +315,7 @@ def render_memo_pdf(memo, request=None):
 
         # ---- Signature (last page only) ----------------------------
         if draw_signature:
-            sig_x = MARGIN_L                     # bottom-left
+            sig_x = MARGIN_L
             line_w = 6.5 * cm
 
             canvas.setStrokeColor(HexColor(INK))
@@ -286,10 +364,10 @@ def render_memo_pdf(memo, request=None):
     def _build_story():
         story = []
 
-        if memo.is_draft:
-            story.append(Paragraph(
-                "-- DRAFT - NOT YET PUBLISHED --", draft_style,
-            ))
+        # Status banner (draft / awaiting / returned / rejected / cancelled)
+        status_banner = _memo_status_banner(memo)
+        if status_banner:
+            story.append(Paragraph(status_banner, draft_style))
 
         story.append(Paragraph("INTERNAL MEMORANDUM", title_style))
 
@@ -386,12 +464,79 @@ def render_memo_pdf(memo, request=None):
 # ===========================================================================
 # DOCX (Word)
 # ===========================================================================
+def _add_docx_watermark(doc, text):
+    """Insert a diagonal VML watermark into every section's header.
+
+    Word has no native 'watermark' flag in .docx — Word itself does it
+    via a VML shape anchored in the header, behind the body, rotated
+    315°. We reproduce that here.
+    """
+    try:
+        from lxml import etree
+    except ImportError:
+        logger.exception("lxml is required for DOCX watermark")
+        return
+
+    safe = (
+        (text or "")
+        .replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+    xml = (
+        '<w:r '
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:v="urn:schemas-microsoft-com:vml" '
+        'xmlns:o="urn:schemas-microsoft-com:office:office" '
+        'xmlns:w10="urn:schemas-microsoft-com:office:word">'
+        '<w:pict>'
+        '<v:shape id="PowerPlusWaterMarkObject" type="#_x0000_t136" '
+        'style="position:absolute;margin-left:0;margin-top:0;'
+        'width:480pt;height:120pt;z-index:-251658752;'
+        'mso-position-horizontal:center;'
+        'mso-position-horizontal-relative:margin;'
+        'mso-position-vertical:center;'
+        'mso-position-vertical-relative:margin;'
+        'rotation:315" '
+        'fillcolor="#c8c8c8" stroked="f">'
+        '<v:textpath '
+        'style="font-family:&quot;Calibri&quot;;font-size:1pt" '
+        'string="' + safe + '"/>'
+        '</v:shape>'
+        '</w:pict>'
+        '</w:r>'
+    )
+
+    try:
+        run_elem = etree.fromstring(xml)
+    except Exception:
+        logger.exception("Could not build DOCX watermark XML")
+        return
+
+    for section in doc.sections:
+        header = section.header
+        try:
+            header.is_linked_to_previous = False
+        except Exception:
+            pass
+        if not header.paragraphs:
+            header.add_paragraph()
+        p = header.paragraphs[0]
+        try:
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        except Exception:
+            pass
+        p._p.append(copy.deepcopy(run_elem))
+
+
 def render_memo_docx(memo, request=None):
     """Return the memo as a .docx Word document (bytes).
 
     Word has no canvas, so the signature is placed as a bottom-anchored
-    block via an invisible spacer table with vertical alignment. When the
-    memo body is short, this pushes the signature to just above the footer.
+    block via an invisible spacer table with vertical alignment.
     """
     try:
         from docx import Document
@@ -412,6 +557,7 @@ def render_memo_docx(memo, request=None):
     GREEN = RGBColor(0x1F, 0x6B, 0x3E)
     INK   = RGBColor(0x0F, 0x17, 0x2A)
     MUTED = RGBColor(0x64, 0x74, 0x8B)
+    AMBER = RGBColor(0xB4, 0x53, 0x09)
 
     doc = Document()
 
@@ -420,6 +566,11 @@ def render_memo_docx(memo, request=None):
         section.bottom_margin = Cm(2)
         section.left_margin = Cm(2.2)
         section.right_margin = Cm(2.2)
+
+    # ---- Watermark (header of every section) ------------------------
+    watermark_label = _memo_watermark_label(memo)
+    if watermark_label:
+        _add_docx_watermark(doc, watermark_label)
 
     style = doc.styles["Normal"]
     style.font.name = "Calibri"
@@ -456,6 +607,7 @@ def render_memo_docx(memo, request=None):
     r.font.size = Pt(10.5)
     r.font.color.rgb = GREEN
 
+    p_tag = None
     if brand["tagline"]:
         p_tag = right_cell.add_paragraph()
         r = p_tag.add_run(brand["tagline"])
@@ -466,7 +618,7 @@ def render_memo_docx(memo, request=None):
     for para in (p_org, p_dept):
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after = Pt(0)
-    if brand["tagline"]:
+    if p_tag is not None:
         p_tag.paragraph_format.space_before = Pt(0)
         p_tag.paragraph_format.space_after = Pt(0)
 
@@ -482,6 +634,17 @@ def render_memo_docx(memo, request=None):
     pBdr.append(bottom)
     pPr.append(pBdr)
     rule_para.paragraph_format.space_after = Pt(16)
+
+    # ---- Status banner (non-published only) -------------------------
+    status_banner = _memo_status_banner(memo)
+    if status_banner:
+        banner = doc.add_paragraph()
+        banner.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = banner.add_run(status_banner)
+        r.bold = True
+        r.font.size = Pt(10)
+        r.font.color.rgb = AMBER
+        banner.paragraph_format.space_after = Pt(8)
 
     # ---- Title ------------------------------------------------------
     title = doc.add_paragraph()
@@ -559,27 +722,20 @@ def render_memo_docx(memo, request=None):
             p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
     # ---- Signature block, bottom-anchored ---------------------------
-    # Approach: a 1-cell table with a fixed row height that fills the
-    # remaining page and bottom-aligns its content. Word will keep the
-    # signature at the bottom of the page above the footer.
     sig_table = doc.add_table(rows=1, cols=1)
     sig_table.autofit = False
     sig_table.columns[0].width = Cm(16.6)
 
-    # Set row height to ~5 cm (a fixed value works well for typical memos).
-    # Word interprets "at least" as a minimum, so if the body is long the
-    # signature simply flows onto the next page as needed.
     tr = sig_table.rows[0]._tr
     trPr = tr.get_or_add_trPr()
     trHeight = OxmlElement("w:trHeight")
-    trHeight.set(qn("w:val"), "2800")          # 2.8 cm in twips (1cm ≈ 567)
+    trHeight.set(qn("w:val"), "2800")
     trHeight.set(qn("w:hRule"), "atLeast")
     trPr.append(trHeight)
 
     cell = sig_table.cell(0, 0)
     cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
 
-    # Clear the default empty paragraph
     cell.paragraphs[0].text = ""
 
     def _cell_line(text, *, bold=False, muted=False, size=9):

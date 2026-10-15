@@ -1,0 +1,71 @@
+{% extends "manage/messages/_layout.html" %}
+{% load static %}
+
+{% block title %}Rules · Memo management{% endblock %}
+{% block page_title %}Routing rules{% endblock %}
+
+{% block mm_content %}
+
+<header class="mm-hero">
+  <div class="mm-hero-inner">
+    <div class="mm-hero-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    </div>
+    <div>
+      <h1>Routing rules</h1>
+      <p>{{ rules|length }} rule{{ rules|length|pluralize }}. Higher priority wins when several match.</p>
+    </div>
+  </div>
+  <div class="mm-hero-actions">
+    <a href="{% url 'messaging_manage:rule_create' %}" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New rule
+    </a>
+  </div>
+</header>
+
+<form method="get" class="mm-filter">
+  <label class="mm-filter-search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" name="q" value="{{ q }}" placeholder="Search rules…" autocomplete="off">
+  </label>
+  {% if q %}<a href="{% url 'messaging_manage:rule_list' %}" class="mm-filter-clear">Clear</a>{% endif %}
+</form>
+
+{% if rules %}
+  <div class="mm-card">
+    <ul class="mm-list">
+      {% for r in rules %}
+        <li>
+          <a href="{% url 'messaging_manage:rule_update' r.pk %}" class="mm-list-row mm-list-row-link">
+            <div class="mm-list-main">
+              <strong>{{ r.name }}</strong>
+              <div class="mm-list-meta">
+                <span class="mm-pill mm-pill-info">{{ r.route.name }}</span>
+                <span>Target: {{ r.get_target_kind_display|default:r.target_kind }}</span>
+                <span class="mm-pill mm-pill-muted">priority {{ r.priority }}</span>
+                {% if r.sender_role_codes %}
+                  <span>{{ r.sender_role_codes|length }} sender role{{ r.sender_role_codes|length|pluralize }}</span>
+                {% else %}
+                  <span>any sender</span>
+                {% endif %}
+              </div>
+            </div>
+            {% if not r.is_active %}<span class="mm-pill mm-pill-muted">Inactive</span>{% endif %}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% else %}
+  <div class="mm-empty">
+    <div class="mm-empty-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>
+    </div>
+    <h3>No rules yet</h3>
+    <p>Rules decide which route applies for a given sender and target pair.</p>
+    <a href="{% url 'messaging_manage:rule_create' %}" class="btn btn-primary">Create the first rule</a>
+  </div>
+{% endif %}
+
+{% endblock %}

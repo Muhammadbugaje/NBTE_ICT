@@ -1,0 +1,180 @@
+{% extends "manage/messages/_layout.html" %}
+{% load static %}
+
+{% block title %}Memo management · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Memo management{% endblock %}
+
+{% block mm_content %}
+
+<header class="mm-hero">
+  <div class="mm-hero-inner">
+    <div class="mm-hero-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    </div>
+    <div>
+      <h1>Memo management</h1>
+      <p>Routes, rules, permissions, and a live tester for the memo system.</p>
+    </div>
+  </div>
+  <div class="mm-hero-actions">
+    <a href="{% url 'messaging_manage:route_create' %}" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New route
+    </a>
+    <a href="{% url 'messaging_manage:help' %}" class="btn btn-ghost">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      How-to guide
+    </a>
+  </div>
+</header>
+
+{% if warnings %}
+  {% for w in warnings %}
+    <div class="mm-warning mm-warning-{{ w.level }}">
+      <div class="mm-warning-icon">
+        {% if w.level == "warn" %}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        {% else %}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        {% endif %}
+      </div>
+      <div class="mm-warning-body">
+        <strong>{{ w.title }}</strong>
+        <p>{{ w.text }}</p>
+      </div>
+      {% if w.url %}
+        <a href="{{ w.url }}" class="mm-warning-link">{{ w.link_label }} →</a>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endif %}
+
+<section class="mm-stat-grid">
+
+  <div class="mm-stat">
+    <div class="mm-stat-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
+    <div class="mm-stat-body">
+      <div class="mm-stat-value">{{ counts.active_routes }}<small>of {{ counts.routes }}</small></div>
+      <div class="mm-stat-label">Routes active</div>
+    </div>
+  </div>
+
+  <div class="mm-stat">
+    <div class="mm-stat-icon mm-stat-icon-blue">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    </div>
+    <div class="mm-stat-body">
+      <div class="mm-stat-value">{{ counts.active_rules }}<small>of {{ counts.rules }}</small></div>
+      <div class="mm-stat-label">Rules active</div>
+    </div>
+  </div>
+
+  <div class="mm-stat">
+    <div class="mm-stat-icon mm-stat-icon-purple">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+    </div>
+    <div class="mm-stat-body">
+      <div class="mm-stat-value">{{ counts.steps }}</div>
+      <div class="mm-stat-label">Total steps</div>
+    </div>
+  </div>
+
+  <div class="mm-stat">
+    <div class="mm-stat-icon mm-stat-icon-amber">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+    </div>
+    <div class="mm-stat-body">
+      <div class="mm-stat-value">{{ counts.broadcast_users }}</div>
+      <div class="mm-stat-label">Broadcast senders</div>
+    </div>
+  </div>
+
+</section>
+
+<div class="mm-grid">
+
+  <section class="mm-card">
+    <header class="mm-card-head mm-card-head-split">
+      <div>
+        <h2>Recent routes</h2>
+        <p>Latest updated approval sequences.</p>
+      </div>
+      <a href="{% url 'messaging_manage:route_list' %}" class="mm-card-link">All routes →</a>
+    </header>
+
+    {% if routes %}
+      <ul class="mm-list">
+        {% for r in routes %}
+          <li>
+            <a href="{% url 'messaging_manage:route_detail' r.pk %}" class="mm-list-row mm-list-row-link">
+              <div class="mm-list-main">
+                <strong>{{ r.name }}</strong>
+                <div class="mm-list-meta">
+                  <span class="mm-pill">{{ r.step_count }} step{{ r.step_count|pluralize }}</span>
+                  {% if r.rule_count %}
+                    <span class="mm-pill mm-pill-muted">{{ r.rule_count }} rule{{ r.rule_count|pluralize }}</span>
+                  {% endif %}
+                  <span>{{ r.get_same_rank_behaviour_display }}</span>
+                </div>
+              </div>
+              {% if not r.is_active %}<span class="mm-pill mm-pill-warn">Inactive</span>{% endif %}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="mm-card-body">
+        <div class="mm-empty">
+          <div class="mm-empty-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <h3>No routes yet</h3>
+          <p>Routes define the approval sequence a memo walks before it's delivered.</p>
+          <a href="{% url 'messaging_manage:route_create' %}" class="btn btn-primary">Create the first route</a>
+        </div>
+      </div>
+    {% endif %}
+  </section>
+
+  <aside>
+    <section class="mm-card">
+      <header class="mm-card-head mm-card-head-split">
+        <div>
+          <h2>Active rules</h2>
+          <p>Which memo goes through which route.</p>
+        </div>
+        <a href="{% url 'messaging_manage:rule_list' %}" class="mm-card-link">All →</a>
+      </header>
+
+      {% if rules %}
+        <ul class="mm-list">
+          {% for rule in rules %}
+            <li>
+              <a href="{% url 'messaging_manage:rule_update' rule.pk %}" class="mm-list-row mm-list-row-link">
+                <div class="mm-list-main">
+                  <strong>{{ rule.name }}</strong>
+                  <div class="mm-list-meta">
+                    <span class="mm-pill mm-pill-info">{{ rule.route.name }}</span>
+                    <span>priority {{ rule.priority }}</span>
+                  </div>
+                </div>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="mm-card-body">
+          <p class="mm-hint" style="text-align:center;margin:12px 0;">No rules yet.</p>
+          <a href="{% url 'messaging_manage:rule_create' %}" class="btn btn-primary" style="width:100%;justify-content:center;">
+            Add a rule
+          </a>
+        </div>
+      {% endif %}
+    </section>
+  </aside>
+
+</div>
+
+{% endblock %}

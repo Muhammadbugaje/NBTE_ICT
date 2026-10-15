@@ -25,8 +25,22 @@ urlpatterns = [
     path("memos/new/", memos_views.memo_create, name="memo_create"),
     path("memos/<int:pk>/", memos_views.memo_detail, name="memo_detail"),
     path("memos/<int:pk>/edit/", memos_views.memo_update, name="memo_update"),
+
+    # Workflow actions
     path("memos/<int:pk>/publish/",
          memos_views.memo_publish, name="memo_publish"),
+    path("memos/<int:pk>/approve/",
+         memos_views.memo_approve, name="memo_approve"),
+    path("memos/<int:pk>/return/",
+         memos_views.memo_return, name="memo_return"),
+    path("memos/<int:pk>/reject/",
+         memos_views.memo_reject, name="memo_reject"),
+    path("memos/<int:pk>/resubmit/",
+         memos_views.memo_resubmit, name="memo_resubmit"),
+    path("memos/<int:pk>/cancel/",
+         memos_views.memo_cancel, name="memo_cancel"),
+
+    # Recipient actions
     path("memos/<int:pk>/acknowledge/",
          memos_views.memo_acknowledge, name="memo_acknowledge"),
     path("memos/<int:pk>/archive/",
@@ -35,6 +49,8 @@ urlpatterns = [
          memos_views.memo_unarchive, name="memo_unarchive"),
     path("memos/<int:pk>/delete/",
          memos_views.memo_delete, name="memo_delete"),
+
+    # Attachments
     path("memos/<int:pk>/attach/",
          memos_views.memo_add_attachment, name="memo_add_attachment"),
     path("memos/<int:pk>/attachments/<int:attachment_pk>/remove/",
@@ -42,7 +58,7 @@ urlpatterns = [
     path("memos/attachments/<int:pk>/download/",
          memos_views.memo_attachment_download, name="memo_attachment_download"),
 
-    # ---- Document downloads (PDF / Word) ----
+    # Document downloads (PDF / Word)
     path("memos/<int:pk>/download.pdf",
          memos_views.memo_download_pdf, name="memo_download_pdf"),
     path("memos/<int:pk>/download.docx",

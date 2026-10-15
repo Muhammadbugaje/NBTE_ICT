@@ -6,7 +6,7 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=7">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=3">
 {% endblock %}
 
 {% block content %}
@@ -25,19 +25,34 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Messages
       </a>
-      {% if can_compose %}
-        <a href="{% url 'messaging:memo_create' %}" class="btn btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New memo
-        </a>
-      {% endif %}
+      <a href="{% url 'messaging:memo_create' %}" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New memo
+      </a>
     </div>
   </header>
+
+  <div class="memo-how-hint">
+    <span class="memo-how-hint-icon" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </span>
+    <span>
+      Anyone can write a memo. When you send it, the system routes it
+      through the approvers your directorate has configured before it's
+      delivered. Broadcasting to <strong>All Staff</strong>,
+      <strong>All Directors</strong>, or a whole <strong>Department</strong>
+      needs extra permission — ask the ES or an admin.
+    </span>
+  </div>
 
   <nav class="memo-tabs">
     <a href="?tab=inbox" class="memo-tab {% if tab == 'inbox' %}is-active{% endif %}">
       Inbox
       {% if counts.inbox %}<span class="memo-tab-count">{{ counts.inbox }}</span>{% endif %}
+    </a>
+    <a href="?tab=awaiting" class="memo-tab {% if tab == 'awaiting' %}is-active{% endif %}">
+      Awaiting my action
+      {% if counts.awaiting %}<span class="memo-tab-count memo-tab-count-warn">{{ counts.awaiting }}</span>{% endif %}
     </a>
     <a href="?tab=sent" class="memo-tab {% if tab == 'sent' %}is-active{% endif %}">
       Sent &amp; drafts
@@ -70,18 +85,32 @@
   {% if memos %}
     <div class="memo-list">
       {% for memo in memos %}
-        <div class="memo-row-wrap {% if memo.priority == 'urgent' %}is-urgent{% elif memo.priority == 'high' %}is-high{% endif %}{% if memo.is_draft %} is-draft{% endif %}">
+        <div class="memo-row-wrap {% if memo.priority == 'urgent' %}is-urgent{% elif memo.priority == 'high' %}is-high{% endif %}{% if memo.status == 'draft' %} is-draft{% endif %}">
           <span class="memo-priority-bar"></span>
 
           <a href="{% url 'messaging:memo_detail' memo.pk %}" class="memo-row">
             <div class="memo-row-body">
               <div class="memo-row-head">
                 <span class="memo-ref">{{ memo.reference }}</span>
-                {% if memo.is_draft %}
-                  <span class="memo-tag memo-tag-draft">Draft</span>
-                {% elif memo.is_expired %}
-                  <span class="memo-tag memo-tag-expired">Expired</span>
+
+                {% if memo.status == "draft" %}
+                  <span class="memo-status-chip memo-status-chip-draft">Draft</span>
+                {% elif memo.status == "awaiting" %}
+                  <span class="memo-status-chip memo-status-chip-awaiting">
+                    Awaiting{% if memo.current_step %} · {{ memo.current_step.name }}{% endif %}
+                  </span>
+                {% elif memo.status == "returned" %}
+                  <span class="memo-status-chip memo-status-chip-returned">Returned</span>
+                {% elif memo.status == "published" %}
+                  {% if memo.is_expired %}
+                    <span class="memo-status-chip memo-status-chip-expired">Expired</span>
+                  {% endif %}
+                {% elif memo.status == "rejected" %}
+                  <span class="memo-status-chip memo-status-chip-rejected">Rejected</span>
+                {% elif memo.status == "cancelled" %}
+                  <span class="memo-status-chip memo-status-chip-cancelled">Cancelled</span>
                 {% endif %}
+
                 {% if memo.requires_acknowledgment and tab == 'inbox' %}
                   <span class="memo-tag memo-tag-ack">Ack required</span>
                 {% endif %}
@@ -92,12 +121,15 @@
                 <span>From <strong>{{ memo.sender.get_full_name|default:memo.sender.email }}</strong></span>
                 <span class="memo-dot">·</span>
                 <span>
-                  {% if memo.visibility == "all_staff" %}All staff
+                  {% if memo.visibility == "specific_user" %}
+                    To {{ memo.target_user.get_full_name|default:memo.target_user.email|default:"—" }}
+                  {% elif memo.visibility == "all_staff" %}All staff
+                  {% elif memo.visibility == "all_directors" %}All Directors
                   {% elif memo.visibility == "department" %}{{ memo.department.name|default:"Department" }}
                   {% elif memo.visibility == "role" %}By role
                   {% else %}Selected people{% endif %}
                 </span>
-                {% if memo.is_published %}
+                {% if memo.status == "published" %}
                   <span class="memo-dot">·</span>
                   <span>{{ memo.recipient_count }} recipient{{ memo.recipient_count|pluralize }}</span>
                 {% endif %}
@@ -116,6 +148,13 @@
                 </button>
               </form>
             </div>
+          {% elif tab == 'awaiting' %}
+            <div class="memo-row-actions">
+              <a href="{% url 'messaging:memo_detail' memo.pk %}" class="btn btn-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <span class="memo-row-action-label">Review</span>
+              </a>
+            </div>
           {% endif %}
         </div>
       {% endfor %}
@@ -128,14 +167,14 @@
       {% if tab == 'inbox' %}
         <h3>No memos yet</h3>
         <p>Memos addressed to you will appear here.</p>
+        <a href="{% url 'messaging:memo_create' %}" class="btn btn-primary">Write a memo</a>
+      {% elif tab == 'awaiting' %}
+        <h3>Nothing awaiting your approval</h3>
+        <p>Memos routed to you for a decision will show up here.</p>
       {% elif tab == 'sent' %}
-        <h3>You haven't sent any memos</h3>
-        {% if can_compose %}
-          <p>Compose a memo to formally address a group.</p>
-          <a href="{% url 'messaging:memo_create' %}" class="btn btn-primary">Compose a memo</a>
-        {% else %}
-          <p>Only authorized staff can compose memos.</p>
-        {% endif %}
+        <h3>You haven't sent any memos yet</h3>
+        <p>Write a memo and it'll walk through the approvers configured for your directorate.</p>
+        <a href="{% url 'messaging:memo_create' %}" class="btn btn-primary">Write a memo</a>
       {% else %}
         <h3>No archived memos</h3>
         <p>Memos you archive from your inbox land here.</p>

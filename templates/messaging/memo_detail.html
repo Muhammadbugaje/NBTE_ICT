@@ -6,7 +6,7 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=7">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=3">
 {% endblock %}
 
 {% block content %}
@@ -16,25 +16,109 @@
     Memos
   </a>
 
-  {# ---- Action bar: downloads + draft workflow ---- #}
-  <div class="memo-actions memo-actions-top">
-    <a href="{% url 'messaging:memo_download_pdf' memo.pk %}"
-       class="btn btn-primary" target="_blank" rel="noopener">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Download PDF
-    </a>
-    <a href="{% url 'messaging:memo_download_docx' memo.pk %}"
-       class="btn btn-ghost">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Download Word
-    </a>
+  {# ---- Status banner ---- #}
+  {% if memo.status == "awaiting" %}
+    <div class="memo-status memo-status-awaiting">
+      <div class="memo-status-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div class="memo-status-body">
+        <strong>Awaiting approval</strong>
+        <p>
+          {% if current_step %}
+            At step <strong>{{ current_step.name }}</strong>.
+          {% endif %}
+          {% if current_actor %}
+            Waiting on <strong>{{ current_actor.get_full_name|default:current_actor.email }}</strong>.
+          {% else %}
+            No one is currently assigned to this step.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  {% elif memo.status == "returned" %}
+    <div class="memo-status memo-status-returned">
+      <div class="memo-status-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      </div>
+      <div class="memo-status-body">
+        <strong>Returned for revision</strong>
+        <p>
+          {% if memo.returned_by %}
+            By <strong>{{ memo.returned_by.get_full_name|default:memo.returned_by.email }}</strong>
+            {% if memo.returned_at %} · {{ memo.returned_at|date:"M j, Y · H:i" }}{% endif %}.
+          {% endif %}
+          {% if memo.returned_comment %}
+            <em>“{{ memo.returned_comment }}”</em>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  {% elif memo.status == "rejected" %}
+    <div class="memo-status memo-status-rejected">
+      <div class="memo-status-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <div class="memo-status-body">
+        <strong>Rejected</strong>
+        <p>
+          {% if memo.rejected_by %}
+            By <strong>{{ memo.rejected_by.get_full_name|default:memo.rejected_by.email }}</strong>
+            {% if memo.rejected_at %} · {{ memo.rejected_at|date:"M j, Y · H:i" }}{% endif %}.
+          {% endif %}
+        </p>
+        {% if memo.rejection_comment %}
+          <p><em>“{{ memo.rejection_comment }}”</em></p>
+        {% endif %}
+      </div>
+    </div>
+  {% elif memo.status == "cancelled" %}
+    <div class="memo-status memo-status-cancelled">
+      <div class="memo-status-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+      </div>
+      <div class="memo-status-body">
+        <strong>Cancelled</strong>
+        <p>This memo was cancelled by the sender.</p>
+      </div>
+    </div>
+  {% endif %}
 
-    {% if can_manage and memo.is_draft %}
+  {# ---- Action bar: top (downloads + draft/sender actions) ---- #}
+  <div class="memo-actions memo-actions-top">
+
+    {% if memo.status == "published" %}
+      <a href="{% url 'messaging:memo_download_pdf' memo.pk %}"
+         class="btn btn-primary" target="_blank" rel="noopener">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download PDF
+      </a>
+      <a href="{% url 'messaging:memo_download_docx' memo.pk %}"
+         class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Word
+      </a>
+    {% elif can_manage %}
+      <a href="{% url 'messaging:memo_download_pdf' memo.pk %}"
+         class="btn btn-ghost" target="_blank" rel="noopener"
+         title="Watermarked preview — downloads become public once published.">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Preview PDF
+      </a>
+      <a href="{% url 'messaging:memo_download_docx' memo.pk %}"
+         class="btn btn-ghost"
+         title="Watermarked preview — downloads become public once published.">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Preview Word
+      </a>
+    {% endif %}
+
+    {% if can_manage and memo.status == "draft" %}
       <form method="post" action="{% url 'messaging:memo_publish' memo.pk %}">
         {% csrf_token %}
         <button type="submit" class="btn btn-primary">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Publish
+          Send for approval
         </button>
       </form>
       <a href="{% url 'messaging:memo_update' memo.pk %}" class="btn btn-ghost">Edit draft</a>
@@ -42,10 +126,18 @@
   </div>
 
   {# ---- The document ---- #}
-  <article class="memo-doc {% if memo.priority == 'urgent' %}is-urgent{% elif memo.priority == 'high' %}is-high{% endif %}{% if memo.is_draft %} is-draft{% endif %}">
+  <article class="memo-doc {% if memo.priority == 'urgent' %}is-urgent{% elif memo.priority == 'high' %}is-high{% endif %}{% if memo.status == 'draft' %} is-draft{% endif %}">
 
-    {% if memo.is_draft %}
-      <div class="memo-draft-banner">◆ DRAFT — NOT YET PUBLISHED ◆</div>
+    {% if memo.status == "draft" %}
+      <div class="memo-draft-banner">◆ DRAFT — NOT YET SENT ◆</div>
+    {% elif memo.status == "awaiting" %}
+      <div class="memo-draft-banner">◆ AWAITING APPROVAL — NOT YET DELIVERED ◆</div>
+    {% elif memo.status == "returned" %}
+      <div class="memo-draft-banner">◆ RETURNED FOR REVISION ◆</div>
+    {% elif memo.status == "rejected" %}
+      <div class="memo-draft-banner">◆ REJECTED ◆</div>
+    {% elif memo.status == "cancelled" %}
+      <div class="memo-draft-banner">◆ CANCELLED ◆</div>
     {% endif %}
 
     <header class="memo-letterhead">
@@ -71,7 +163,10 @@
       <div>
         <dt>To:</dt>
         <dd>
-          {% if memo.visibility == "all_staff" %}All Staff
+          {% if memo.visibility == "specific_user" %}
+            {{ memo.target_user.get_full_name|default:memo.target_user.email|default:"—" }}
+          {% elif memo.visibility == "all_staff" %}All Staff
+          {% elif memo.visibility == "all_directors" %}All Directors
           {% elif memo.visibility == "department" %}{{ memo.department.name|default:"—" }}
           {% elif memo.visibility == "role" %}
             {% for role in memo.roles.all %}{{ role.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
@@ -131,7 +226,128 @@
     </div>
   </article>
 
-  {# ---- Action bar: workflow ---- #}
+  {# ---- Approval chain ---- #}
+  {% if chain_rows %}
+    <section class="memo-chain">
+      <header class="memo-chain-head">
+        <h2>Approval chain</h2>
+        {% if memo.route %}
+          <p class="muted">
+            Route: <strong>{{ memo.route.name }}</strong>
+            {% if memo.route.same_rank_behaviour == "skip" %}
+              · same-rank actors skip
+            {% endif %}
+          </p>
+        {% endif %}
+      </header>
+
+      <ol class="memo-chain-list">
+        {% for row in chain_rows %}
+          <li class="memo-chain-step is-{{ row.state }}{% if row.is_current %} is-current{% endif %}">
+            <span class="memo-chain-dot">{{ row.position }}</span>
+            <div class="memo-chain-body">
+              <div class="memo-chain-row-head">
+                <strong>{{ row.step.name }}</strong>
+                <span class="memo-chain-state memo-chain-state-{{ row.state }}">
+                  {% if row.state == "approved" %}Approved
+                  {% elif row.state == "returned" %}Returned
+                  {% elif row.state == "rejected" %}Rejected
+                  {% elif row.state == "current" %}Awaiting
+                  {% elif row.state == "skipped" %}Skipped
+                  {% else %}Pending{% endif %}
+                </span>
+              </div>
+              <div class="memo-chain-meta">
+                {% if row.decided_by %}
+                  <span>{{ row.decided_by.get_full_name|default:row.decided_by.email }}</span>
+                  <span class="memo-dot">·</span>
+                  <span>{{ row.decided_at|date:"M j, Y · H:i" }}</span>
+                {% elif row.actor %}
+                  <span>Will be actioned by</span>
+                  <strong>{{ row.actor.get_full_name|default:row.actor.email }}</strong>
+                {% else %}
+                  <span class="muted">No matching actor</span>
+                {% endif %}
+              </div>
+              {% if row.comment %}
+                <div class="memo-chain-comment">“{{ row.comment }}”</div>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ol>
+    </section>
+  {% endif %}
+
+  {# ---- Approval action bar (only when the caller can act) ---- #}
+  {% if can_act %}
+    <div class="memo-action-bar">
+      <div class="memo-action-bar-info">
+        <strong>Your decision</strong>
+        <p class="muted">
+          {% if current_step %}{{ current_step.name }}{% endif %}
+          {% if current_step.instructions %} — {{ current_step.instructions }}{% endif %}
+        </p>
+      </div>
+
+      <form method="post" action="{% url 'messaging:memo_approve' memo.pk %}" class="memo-action-form">
+        {% csrf_token %}
+        <textarea name="comment" rows="2" class="memo-action-comment"
+                  placeholder="Optional comment…"></textarea>
+        <div class="memo-action-buttons">
+          <button type="button" class="btn btn-ghost" data-memo-action-open="memo-return-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            Return
+          </button>
+          <button type="button" class="btn btn-ghost memo-danger" data-memo-action-open="memo-reject-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            Reject
+          </button>
+          <button type="submit" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Approve
+          </button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+
+  {# ---- Sender resubmit panel ---- #}
+  {% if memo.status == "returned" and is_sender %}
+    <div class="memo-action-bar memo-action-bar-resubmit">
+      <div class="memo-action-bar-info">
+        <strong>Revise and resubmit</strong>
+        <p class="muted">Update the memo, then send it back through the chain.</p>
+      </div>
+      <form method="post" action="{% url 'messaging:memo_resubmit' memo.pk %}" class="memo-resubmit-form">
+        {% csrf_token %}
+        <div class="memo-field">
+          <label class="memo-label" for="resubmit-subject">Subject</label>
+          <input type="text" id="resubmit-subject" name="subject"
+                 value="{{ memo.subject }}" class="memo-action-input">
+        </div>
+        <div class="memo-field">
+          <label class="memo-label" for="resubmit-body">Body</label>
+          <textarea id="resubmit-body" name="body" rows="6"
+                    class="memo-action-input">{{ memo.body }}</textarea>
+        </div>
+        <div class="memo-field">
+          <label class="memo-label" for="resubmit-comment">Note to the approver (optional)</label>
+          <textarea id="resubmit-comment" name="comment" rows="2"
+                    class="memo-action-input"
+                    placeholder="What did you change?"></textarea>
+        </div>
+        <div class="memo-action-buttons">
+          <a href="{% url 'messaging:memo_update' memo.pk %}" class="btn btn-ghost">
+            Edit attachments instead
+          </a>
+          <button type="submit" class="btn btn-primary">Resubmit</button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+
+  {# ---- Recipient actions ---- #}
   <div class="memo-actions">
     {% if needs_ack %}
       <form method="post" action="{% url 'messaging:memo_acknowledge' memo.pk %}">
@@ -148,7 +364,7 @@
       </span>
     {% endif %}
 
-    {% if receipt %}
+    {% if receipt and memo.status == "published" %}
       {% if receipt.is_archived %}
         <form method="post" action="{% url 'messaging:memo_unarchive' memo.pk %}">
           {% csrf_token %}
@@ -170,6 +386,19 @@
     {% endif %}
 
     {% if can_manage %}
+      {% if memo.status == "draft" or memo.status == "awaiting" or memo.status == "returned" %}
+        <form method="post" action="{% url 'messaging:memo_cancel' memo.pk %}"
+              data-confirm="Cancel this memo? It will not be delivered. This cannot be undone."
+              data-confirm-title="Cancel memo?"
+              data-confirm-action="Cancel memo">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+            Cancel memo
+          </button>
+        </form>
+      {% endif %}
+
       <form method="post" action="{% url 'messaging:memo_delete' memo.pk %}"
             data-confirm="This permanently deletes the memo and all attachments. Cannot be undone."
             data-confirm-title="Delete memo?"
@@ -184,7 +413,7 @@
   </div>
 
   {# ---- Acknowledgment stats ---- #}
-  {% if show_stats and memo.requires_acknowledgment and memo.is_published %}
+  {% if show_stats and memo.requires_acknowledgment and memo.status == "published" %}
     <section class="memo-stats">
       <header class="memo-stats-head">
         <h2>Acknowledgment status</h2>
@@ -217,9 +446,56 @@
     </section>
   {% endif %}
 </div>
-{% endblock %}
 
-{% block extra_js %}
+{# ---- Modals (only when the caller can act) ---- #}
+{% if can_act %}
+  <div class="memo-modal" id="memo-return-modal" data-memo-action-modal hidden>
+    <div class="memo-modal-backdrop" data-memo-action-close></div>
+    <div class="memo-modal-panel">
+      <form method="post" action="{% url 'messaging:memo_return' memo.pk %}">
+        {% csrf_token %}
+        <header class="memo-modal-head">
+          <h3>Return this memo?</h3>
+          <p class="muted">The sender can edit and resubmit it.</p>
+        </header>
+        <div class="memo-modal-body">
+          <label for="return-comment" class="memo-label">Comment (optional)</label>
+          <textarea id="return-comment" name="comment" rows="4"
+                    class="memo-action-input"
+                    placeholder="What should the sender change?"></textarea>
+        </div>
+        <footer class="memo-modal-actions">
+          <button type="button" class="btn btn-ghost" data-memo-action-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Return memo</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <div class="memo-modal" id="memo-reject-modal" data-memo-action-modal hidden>
+    <div class="memo-modal-backdrop" data-memo-action-close></div>
+    <div class="memo-modal-panel">
+      <form method="post" action="{% url 'messaging:memo_reject' memo.pk %}">
+        {% csrf_token %}
+        <header class="memo-modal-head">
+          <h3>Reject this memo?</h3>
+          <p class="muted">Rejection is final. The sender cannot resubmit.</p>
+        </header>
+        <div class="memo-modal-body">
+          <label for="reject-comment" class="memo-label">Reason (required)</label>
+          <textarea id="reject-comment" name="comment" rows="4" required
+                    class="memo-action-input"
+                    placeholder="Why are you rejecting this memo?"></textarea>
+        </div>
+        <footer class="memo-modal-actions">
+          <button type="button" class="btn btn-ghost" data-memo-action-close>Cancel</button>
+          <button type="submit" class="btn btn-danger">Reject memo</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
 <script>
 (function () {
   "use strict";
@@ -232,4 +508,8 @@
   });
 })();
 </script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/memo.js' %}?v=2" defer></script>
 {% endblock %}

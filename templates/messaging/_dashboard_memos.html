@@ -1,4 +1,51 @@
 {# Rendered by messaging.templatetags.memo_tags.memo_dashboard_widget #}
+
+{% if awaiting %}
+  <section class="ss-section memo-dash memo-dash-awaiting" aria-labelledby="memo-dash-awaiting-title">
+    <header class="ss-section-head">
+      <div class="ss-section-head-text">
+        <span class="ss-section-kicker ss-kicker-warn">
+          <span class="ss-kicker-dot"></span>
+          Action needed
+        </span>
+        <h2 id="memo-dash-awaiting-title">
+          Memo{{ awaiting|length|pluralize }} awaiting your approval
+        </h2>
+        <p>
+          {{ awaiting|length }} memo{{ awaiting|length|pluralize }} at your step.
+        </p>
+      </div>
+      <a href="{% url 'messaging:memo_list' %}?tab=awaiting" class="btn btn-ghost btn-sm">
+        View all
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+    </header>
+
+    <ul class="memo-dash-list">
+      {% for memo in awaiting %}
+        <li>
+          <a href="{% url 'messaging:memo_detail' memo.pk %}" class="memo-dash-row">
+            <span class="memo-dash-priority memo-dash-priority-{{ memo.priority }}"></span>
+            <span class="memo-dash-body">
+              <span class="memo-dash-subject">{{ memo.subject }}</span>
+              <span class="memo-dash-meta">
+                <span class="memo-dash-ref">{{ memo.reference }}</span>
+                <span class="memo-dot">·</span>
+                <span>{{ memo.sender.get_full_name|default:memo.sender.email }}</span>
+                {% if memo.current_step %}
+                  <span class="memo-dot">·</span>
+                  <span>{{ memo.current_step.name }}</span>
+                {% endif %}
+              </span>
+            </span>
+            <span class="memo-dash-tag">Awaiting</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
 {% if memos or pending_ack %}
   <section class="ss-section memo-dash" aria-labelledby="memo-dash-title">
     <header class="ss-section-head">

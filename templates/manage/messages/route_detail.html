@@ -1,0 +1,174 @@
+{% extends "manage/messages/_layout.html" %}
+{% load static %}
+
+{% block title %}{{ route.name }} · Memo routes{% endblock %}
+{% block page_title %}{{ route.name }}{% endblock %}
+
+{% block mm_content %}
+
+<a href="{% url 'messaging_manage:route_list' %}" class="mm-back">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+  All routes
+</a>
+
+<header class="mm-hero">
+  <div class="mm-hero-inner">
+    <div class="mm-hero-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
+    <div>
+      <h1>{{ route.name }}</h1>
+      <p>
+        <code style="font-family:ui-monospace,monospace;font-size:12px;">{{ route.code }}</code>
+        · {{ steps|length }} step{{ steps|length|pluralize }}
+        · same-rank: {{ route.get_same_rank_behaviour_display }}
+        {% if not route.is_active %} · <span class="mm-pill mm-pill-warn">Inactive</span>{% endif %}
+      </p>
+      {% if route.description %}<p style="margin-top:6px;">{{ route.description }}</p>{% endif %}
+    </div>
+  </div>
+  <div class="mm-hero-actions">
+    <a href="{% url 'messaging_manage:step_create' route.pk %}" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add step
+    </a>
+    <a href="{% url 'messaging_manage:route_update' route.pk %}" class="btn btn-ghost">Edit</a>
+    <a href="{% url 'messaging_manage:route_delete' route.pk %}" class="btn btn-ghost" style="color:var(--mm-danger);">Delete</a>
+  </div>
+</header>
+
+<div class="mm-grid">
+
+  <section class="mm-card">
+    <header class="mm-card-head">
+      <h2>Approval steps</h2>
+      <p>The order the memo walks. First step is listed at the top.</p>
+    </header>
+
+    {% if steps %}
+      <ol class="mm-steps">
+        {% for s in steps %}
+          <li class="mm-step">
+            <span class="mm-step-dot">{{ s.position }}</span>
+            <div class="mm-step-body">
+              <div class="mm-step-head">
+                <div class="mm-step-title">{{ s.name }}</div>
+                <div class="mm-step-actions">
+                  <form method="post" action="{% url 'messaging_manage:step_move' route.pk s.pk %}" style="margin:0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="direction" value="up">
+                    <button type="submit" class="mm-icon-btn" title="Move up" {% if forloop.first %}disabled{% endif %}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                    </button>
+                  </form>
+                  <form method="post" action="{% url 'messaging_manage:step_move' route.pk s.pk %}" style="margin:0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="direction" value="down">
+                    <button type="submit" class="mm-icon-btn" title="Move down" {% if forloop.last %}disabled{% endif %}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                  </form>
+                  <a href="{% url 'messaging_manage:step_update' route.pk s.pk %}" class="mm-icon-btn" title="Edit step">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
+                  </a>
+                  <form method="post"
+                        action="{% url 'messaging_manage:step_delete' route.pk s.pk %}"
+                        style="margin:0;"
+                        data-mm-confirm
+                        data-mm-confirm-title="Remove this step?"
+                        data-mm-confirm-body="'{{ s.name }}' will be removed from this route. In-flight memos will skip it silently."
+                        data-mm-confirm-label="Remove step"
+                        data-mm-confirm-tone="danger">
+                    {% csrf_token %}
+                    <button type="submit" class="mm-icon-btn mm-icon-btn-danger" title="Delete step">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              <div class="mm-step-meta">
+                <span><strong>Approver:</strong> {{ s.get_approver_kind_display }}</span>
+                {% if s.approver_role %}<span><strong>Role:</strong> {{ s.approver_role.name }}</span>{% endif %}
+                {% if s.approver_user %}<span><strong>User:</strong> {{ s.approver_user.get_full_name|default:s.approver_user.email }}</span>{% endif %}
+                <span><strong>Scope:</strong> <code>{{ s.scope }}</code></span>
+              </div>
+
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                {% if s.is_optional %}<span class="mm-pill mm-pill-muted">Optional — skip if empty</span>{% endif %}
+                {% if not s.is_hierarchical %}<span class="mm-pill mm-pill-warn">Mandatory gate</span>{% endif %}
+              </div>
+
+              {% if s.instructions %}
+                <div class="mm-step-note">{{ s.instructions }}</div>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <div class="mm-card-body">
+        <div class="mm-empty">
+          <div class="mm-empty-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </div>
+          <h3>No steps yet</h3>
+          <p>A route needs at least one step, or memos assigned to it will publish immediately.</p>
+          <a href="{% url 'messaging_manage:step_create' route.pk %}" class="btn btn-primary">Add the first step</a>
+        </div>
+      </div>
+    {% endif %}
+  </section>
+
+  <aside>
+    <section class="mm-card">
+      <header class="mm-card-head">
+        <h2>Used by rules</h2>
+        <p>Rules that select this route.</p>
+      </header>
+
+      {% if using %}
+        <ul class="mm-list">
+          {% for rule in using %}
+            <li>
+              <a href="{% url 'messaging_manage:rule_update' rule.pk %}" class="mm-list-row mm-list-row-link">
+                <div class="mm-list-main">
+                  <strong>{{ rule.name }}</strong>
+                  <div class="mm-list-meta">
+                    <span>Target: {{ rule.get_target_kind_display|default:rule.target_kind }}</span>
+                    <span class="mm-pill mm-pill-muted">priority {{ rule.priority }}</span>
+                  </div>
+                </div>
+                {% if not rule.is_active %}<span class="mm-pill mm-pill-muted">Inactive</span>{% endif %}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="mm-card-body">
+          <p class="mm-hint">Not used by any rule yet.</p>
+          <a href="{% url 'messaging_manage:rule_create' %}" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;">
+            Create a rule
+          </a>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="mm-card">
+      <header class="mm-card-head">
+        <h2>Reminders</h2>
+      </header>
+      <div class="mm-card-body">
+        <ul class="mm-hint" style="list-style:none;padding:0;margin:0;display:grid;gap:8px;">
+          <li>• Reorder steps with the ▲ ▼ arrows.</li>
+          <li>• Same-rank behaviour is set on the route itself.</li>
+          <li>• Mandatory gates (ES, records filing) should be marked <strong>not hierarchical</strong>.</li>
+          <li>• Use <a href="{% url 'messaging_manage:test' %}" style="color:var(--mm-accent);">Test a memo</a> before switching a route on.</li>
+        </ul>
+      </div>
+    </section>
+  </aside>
+
+</div>
+
+{% endblock %}

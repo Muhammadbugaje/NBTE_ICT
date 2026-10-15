@@ -1,5 +1,5 @@
 /* =========================================================================
-   Memos — list, detail (letterhead), compose, dashboard widget
+   Memos — list, detail (letterhead), compose, dashboard widget, routing UI
    Reuses --msg-* tokens from messaging.css. Load messaging.css first.
    ========================================================================= */
 
@@ -39,6 +39,14 @@
 }
 .memo-tab.is-active .memo-tab-count {
   background: var(--msg-accent-soft); color: var(--msg-accent);
+}
+.memo-tab-count-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+.memo-tab.is-active .memo-tab-count-warn {
+  background: #fde68a;
+  color: #78350F;
 }
 
 /* -------- List controls -------- */
@@ -80,7 +88,7 @@
   overflow: hidden;
 }
 
-/* -------- Row wrapper (contains the link + optional action button) -------- */
+/* -------- Row wrapper (link + optional action button) -------- */
 .memo-row-wrap {
   position: relative;
   display: flex; align-items: stretch;
@@ -93,7 +101,6 @@
 .memo-row-wrap.is-urgent { background: rgba(220, 38, 38, .035); }
 .memo-row-wrap.is-urgent:hover { background: rgba(220, 38, 38, .06); }
 
-/* Priority stripe — absolutely positioned inside the wrapper */
 .memo-priority-bar {
   position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
   background: transparent;
@@ -102,7 +109,6 @@
 .memo-row-wrap.is-high   .memo-priority-bar { background: #f59e0b; }
 .memo-row-wrap.is-urgent .memo-priority-bar { background: #dc2626; }
 
-/* -------- The clickable row -------- */
 .memo-row {
   flex: 1; min-width: 0;
   display: flex; align-items: flex-start; gap: 14px;
@@ -137,7 +143,7 @@
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 
-/* -------- Row actions (Unarchive button) -------- */
+/* -------- Row actions -------- */
 .memo-row-actions {
   display: flex; align-items: center;
   padding: 0 14px 0 0;
@@ -152,6 +158,7 @@
   border-radius: 9px;
   opacity: .9;
   transition: opacity .12s ease, border-color .12s ease;
+  text-decoration: none;
 }
 .memo-row-wrap:hover .memo-row-actions .btn { opacity: 1; }
 
@@ -167,6 +174,26 @@
 .memo-tag-ack      { background: #fef3c7; color: #92400e; }
 .memo-tag-urgent   { background: #fee2e2; color: #991b1b; }
 .memo-tag-high     { background: #ffedd5; color: #9a3412; }
+
+/* -------- Status chips (list rows) -------- */
+.memo-status-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.memo-status-chip-draft     { background: #e5e7eb; color: #374151; }
+.memo-status-chip-awaiting  { background: #fef3c7; color: #92400e; }
+.memo-status-chip-returned  { background: #dbeafe; color: #1e40af; }
+.memo-status-chip-rejected  { background: #fee2e2; color: #991b1b; }
+.memo-status-chip-cancelled { background: #f3f4f6; color: #6b7280; }
+.memo-status-chip-expired   { background: #f3f4f6; color: #6b7280; }
 
 /* -------- Empty state -------- */
 .memo-empty {
@@ -334,7 +361,6 @@
 .memo-actions-top { margin-top: 0; margin-bottom: 20px; }
 .memo-actions form { margin: 0; }
 .memo-danger { color: #b42318; }
-.memo-btn-unarchive { /* uses .btn-primary; keeping hook for future */ }
 .memo-ack-badge {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 14px; border-radius: 999px;
@@ -412,6 +438,7 @@
   background: var(--msg-bg-card); color: var(--msg-fg);
   border: 1px solid var(--msg-border); border-radius: 8px; outline: 0;
   transition: border-color .15s ease, box-shadow .15s ease;
+  box-sizing: border-box;
 }
 .memo-field textarea { resize: vertical; min-height: 200px; line-height: 1.55; }
 .memo-field input:focus,
@@ -474,6 +501,254 @@
 }
 
 /* ==========================================================================
+   Target picker (compose form)
+   ========================================================================== */
+.memo-target-section {
+  margin: 22px 0;
+  padding: 18px 20px;
+  background: var(--msg-bg-subtle, #f8fafc);
+  border: 1px solid var(--msg-border, #e2e8f0);
+  border-radius: 12px;
+}
+.memo-target-head { margin-bottom: 14px; }
+.memo-target-head h2 { margin: 0 0 4px; font-size: 15px; }
+.memo-target-head p { margin: 0; font-size: 12.5px; color: var(--msg-fg-subtle, #64748b); }
+
+.memo-target-panel { margin-top: 12px; }
+.memo-target-panel[hidden] { display: none; }
+
+.memo-target-note {
+  padding: 14px 16px;
+  background: var(--msg-bg-card, #ffffff);
+  border: 1px dashed var(--msg-border, #e2e8f0);
+  border-radius: 10px;
+}
+.memo-target-note strong { display: block; font-size: 13.5px; margin-bottom: 3px; }
+.memo-target-note p { margin: 0; font-size: 12.5px; color: var(--msg-fg-subtle, #64748b); }
+
+/* ==========================================================================
+   Status banner (detail page)
+   ========================================================================== */
+.memo-status {
+  display: flex;
+  gap: 14px;
+  padding: 14px 18px;
+  margin: 0 0 18px;
+  border-radius: 12px;
+  border: 1px solid var(--msg-border, #e2e8f0);
+  background: var(--msg-bg-card, #ffffff);
+  align-items: flex-start;
+}
+.memo-status-icon {
+  flex-shrink: 0;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+}
+.memo-status-body { flex: 1; min-width: 0; }
+.memo-status-body strong { display: block; font-size: 14px; }
+.memo-status-body p { margin: 4px 0 0; font-size: 12.5px; color: var(--msg-fg-muted, #475569); }
+.memo-status-body em { color: var(--msg-fg, #0f172a); }
+
+.memo-status-awaiting { border-color: #fde68a; background: #fffbeb; }
+.memo-status-awaiting .memo-status-icon { background: #fef3c7; color: #92400e; }
+.memo-status-returned { border-color: #bfdbfe; background: #eff6ff; }
+.memo-status-returned .memo-status-icon { background: #dbeafe; color: #1e40af; }
+.memo-status-rejected { border-color: #fecaca; background: #fef2f2; }
+.memo-status-rejected .memo-status-icon { background: #fee2e2; color: #991b1b; }
+.memo-status-cancelled { border-color: #e5e7eb; background: #f9fafb; }
+.memo-status-cancelled .memo-status-icon { background: #f3f4f6; color: #4b5563; }
+
+/* ==========================================================================
+   Approval chain (detail page)
+   ========================================================================== */
+.memo-chain {
+  margin: 22px 0;
+  padding: 20px 24px;
+  background: var(--msg-bg-card, #ffffff);
+  border: 1px solid var(--msg-border, #e2e8f0);
+  border-radius: 12px;
+}
+.memo-chain-head { margin-bottom: 14px; }
+.memo-chain-head h2 { margin: 0 0 4px; font-size: 15px; }
+.memo-chain-head p { margin: 0; font-size: 12.5px; }
+
+.memo-chain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+.memo-chain-step {
+  display: flex;
+  gap: 14px;
+  padding: 12px 0;
+  position: relative;
+}
+.memo-chain-step + .memo-chain-step { border-top: 1px solid var(--msg-border, #e2e8f0); }
+
+.memo-chain-dot {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--msg-bg-subtle, #f1f5f9);
+  color: var(--msg-fg-subtle, #64748b);
+  font-size: 12px;
+  font-weight: 700;
+}
+.memo-chain-step.is-approved .memo-chain-dot { background: #d1fae5; color: #065f46; }
+.memo-chain-step.is-current .memo-chain-dot { background: #fef3c7; color: #92400e; }
+.memo-chain-step.is-returned .memo-chain-dot { background: #dbeafe; color: #1e40af; }
+.memo-chain-step.is-rejected .memo-chain-dot { background: #fee2e2; color: #991b1b; }
+.memo-chain-step.is-skipped  .memo-chain-dot { opacity: 0.45; }
+
+.memo-chain-body { flex: 1; min-width: 0; padding-top: 2px; }
+.memo-chain-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.memo-chain-row-head strong { font-size: 13.5px; }
+
+.memo-chain-state {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--msg-bg-subtle, #f1f5f9);
+  color: var(--msg-fg-subtle, #64748b);
+}
+.memo-chain-state-approved { background: #d1fae5; color: #065f46; }
+.memo-chain-state-current  { background: #fef3c7; color: #92400e; }
+.memo-chain-state-returned { background: #dbeafe; color: #1e40af; }
+.memo-chain-state-rejected { background: #fee2e2; color: #991b1b; }
+.memo-chain-state-skipped  { background: #f3f4f6; color: #9ca3af; }
+
+.memo-chain-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--msg-fg-subtle, #64748b);
+  align-items: baseline;
+}
+.memo-chain-meta strong { color: var(--msg-fg, #0f172a); font-weight: 600; }
+
+.memo-chain-comment {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: var(--msg-bg-subtle, #f8fafc);
+  border-left: 3px solid var(--msg-accent, #1F6B3E);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--msg-fg-muted, #475569);
+}
+
+/* ==========================================================================
+   Approval action bar
+   ========================================================================== */
+.memo-action-bar {
+  margin: 22px 0;
+  padding: 18px 22px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fef3c7 0%, #fffbeb 100%);
+  border: 1px solid #fde68a;
+}
+.memo-action-bar-info { margin-bottom: 12px; }
+.memo-action-bar-info strong { display: block; font-size: 14px; }
+.memo-action-bar-info p { margin: 4px 0 0; font-size: 12.5px; }
+
+.memo-action-form { display: grid; gap: 12px; }
+.memo-action-comment,
+.memo-action-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13.5px;
+  background: #ffffff;
+  color: var(--msg-fg, #0f172a);
+  border: 1px solid var(--msg-border, #e2e8f0);
+  border-radius: 8px;
+  outline: 0;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.memo-action-comment:focus,
+.memo-action-input:focus {
+  border-color: var(--msg-accent, #1F6B3E);
+  box-shadow: 0 0 0 3px rgba(31, 107, 62, 0.12);
+}
+
+.memo-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.memo-action-buttons .btn { min-height: 38px; }
+
+.memo-action-bar-resubmit {
+  background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+  border-color: #bfdbfe;
+}
+.memo-resubmit-form { display: grid; gap: 12px; }
+.memo-resubmit-form .memo-field { margin: 0; }
+
+/* ==========================================================================
+   Modals
+   ========================================================================== */
+.memo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.memo-modal[hidden] { display: none; }
+.memo-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.memo-modal-panel {
+  position: relative;
+  max-width: 460px;
+  width: 100%;
+  background: var(--msg-bg-card, #ffffff);
+  border: 1px solid var(--msg-border, #e2e8f0);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  overflow: hidden;
+}
+.memo-modal-head {
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid var(--msg-border, #e2e8f0);
+}
+.memo-modal-head h3 { margin: 0 0 3px; font-size: 16px; }
+.memo-modal-head p { margin: 0; font-size: 12.5px; }
+.memo-modal-body { padding: 16px 22px; }
+.memo-modal-body .memo-label { margin-bottom: 6px; }
+.memo-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--msg-border, #e2e8f0);
+  background: var(--msg-bg-subtle, #f8fafc);
+}
+
+/* ==========================================================================
    DASHBOARD WIDGET
    ========================================================================== */
 .memo-dash-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
@@ -513,6 +788,7 @@
   padding: 16px; text-align: center;
   color: var(--msg-fg-subtle); font-size: 12.5px;
 }
+.memo-dash-awaiting .ss-section-kicker { color: #92400e; }
 
 /* ==========================================================================
    DARK MODE
@@ -547,6 +823,15 @@
 [data-theme="dark"] .memo-tag-urgent   { background: #7F1D1D; color: #FECACA; }
 [data-theme="dark"] .memo-tag-high     { background: #7C2D12; color: #FED7AA; }
 
+[data-theme="dark"] .memo-status-chip-draft     { background: #334155; color: #CBD5E1; }
+[data-theme="dark"] .memo-status-chip-awaiting  { background: #78350F; color: #FED7AA; }
+[data-theme="dark"] .memo-status-chip-returned  { background: #1E3A8A; color: #DBEAFE; }
+[data-theme="dark"] .memo-status-chip-rejected  { background: #7F1D1D; color: #FECACA; }
+[data-theme="dark"] .memo-status-chip-cancelled,
+[data-theme="dark"] .memo-status-chip-expired   { background: #334155; color: #94A3B8; }
+[data-theme="dark"] .memo-tab-count-warn { background: #78350F; color: #FED7AA; }
+[data-theme="dark"] .memo-tab.is-active .memo-tab-count-warn { background: #92400e; color: #FEF3C7; }
+
 [data-theme="dark"] .memo-actions,
 [data-theme="dark"] .memo-stats {
   background: #1E293B; border-color: #334155;
@@ -579,6 +864,61 @@
 [data-theme="dark"] .memo-empty { background: #1E293B; border-color: #334155; }
 [data-theme="dark"] .memo-dash-tag { background: #78350F; color: #FED7AA; }
 
+[data-theme="dark"] .memo-target-section {
+  background: #1f2a3d;
+  border-color: #334155;
+}
+[data-theme="dark"] .memo-target-note {
+  background: #243044;
+  border-color: #475569;
+}
+[data-theme="dark"] .memo-status { background: #1E293B; border-color: #334155; }
+[data-theme="dark"] .memo-status-awaiting { background: #2a1f08; border-color: #78350F; }
+[data-theme="dark"] .memo-status-awaiting .memo-status-icon { background: #78350F; color: #FED7AA; }
+[data-theme="dark"] .memo-status-returned { background: #0d1b31; border-color: #1E3A8A; }
+[data-theme="dark"] .memo-status-returned .memo-status-icon { background: #1E3A8A; color: #DBEAFE; }
+[data-theme="dark"] .memo-status-rejected { background: #2a0f0f; border-color: #7F1D1D; }
+[data-theme="dark"] .memo-status-rejected .memo-status-icon { background: #7F1D1D; color: #FECACA; }
+[data-theme="dark"] .memo-status-cancelled { background: #1E293B; border-color: #334155; }
+
+[data-theme="dark"] .memo-chain { background: #1E293B; border-color: #334155; }
+[data-theme="dark"] .memo-chain-step + .memo-chain-step { border-top-color: #334155; }
+[data-theme="dark"] .memo-chain-dot { background: #334155; color: #94A3B8; }
+[data-theme="dark"] .memo-chain-step.is-approved .memo-chain-dot { background: #064E3B; color: #D1FAE5; }
+[data-theme="dark"] .memo-chain-step.is-current .memo-chain-dot { background: #78350F; color: #FED7AA; }
+[data-theme="dark"] .memo-chain-step.is-returned .memo-chain-dot { background: #1E3A8A; color: #DBEAFE; }
+[data-theme="dark"] .memo-chain-step.is-rejected .memo-chain-dot { background: #7F1D1D; color: #FECACA; }
+[data-theme="dark"] .memo-chain-state { background: #334155; color: #CBD5E1; }
+[data-theme="dark"] .memo-chain-state-approved { background: #064E3B; color: #D1FAE5; }
+[data-theme="dark"] .memo-chain-state-current  { background: #78350F; color: #FED7AA; }
+[data-theme="dark"] .memo-chain-state-returned { background: #1E3A8A; color: #DBEAFE; }
+[data-theme="dark"] .memo-chain-state-rejected { background: #7F1D1D; color: #FECACA; }
+[data-theme="dark"] .memo-chain-comment { background: #243044; color: #CBD5E1; }
+
+[data-theme="dark"] .memo-action-bar {
+  background: linear-gradient(180deg, #2a1f08 0%, #1E293B 100%);
+  border-color: #78350F;
+}
+[data-theme="dark"] .memo-action-bar-resubmit {
+  background: linear-gradient(180deg, #0d1b31 0%, #1E293B 100%);
+  border-color: #1E3A8A;
+}
+[data-theme="dark"] .memo-action-comment,
+[data-theme="dark"] .memo-action-input {
+  background: #243044;
+  color: #F1F5F9;
+  border-color: #475569;
+}
+[data-theme="dark"] .memo-action-comment::placeholder,
+[data-theme="dark"] .memo-action-input::placeholder { color: #64748B; }
+
+[data-theme="dark"] .memo-modal-panel { background: #1E293B; border-color: #334155; }
+[data-theme="dark"] .memo-modal-head { border-bottom-color: #334155; }
+[data-theme="dark"] .memo-modal-actions {
+  background: #243044;
+  border-top-color: #334155;
+}
+
 /* ==========================================================================
    MOBILE
    ========================================================================== */
@@ -600,7 +940,6 @@
   .memo-row { padding: 14px 14px 14px 18px; gap: 10px; }
   .memo-row-subject { font-size: 14px; }
 
-  /* Actions become icon-only circles on phones */
   .memo-row-actions { padding-right: 10px; }
   .memo-row-actions .btn {
     width: 36px;
@@ -614,4 +953,53 @@
   .memo-form { padding: 20px; }
 
   .memo-actions-top .btn { flex: 1; justify-content: center; }
+
+  .memo-target-section { padding: 14px; }
+  .memo-status { padding: 12px 14px; gap: 10px; }
+  .memo-status-icon { width: 30px; height: 30px; }
+  .memo-chain { padding: 16px 14px; }
+  .memo-chain-step { gap: 10px; padding: 10px 0; }
+  .memo-chain-dot { width: 24px; height: 24px; font-size: 11px; }
+  .memo-action-bar { padding: 14px 16px; }
+  .memo-action-buttons { justify-content: stretch; }
+  .memo-action-buttons .btn { flex: 1; }
+  .memo-modal-panel { max-width: 100%; }
+  .memo-modal-head,
+  .memo-modal-body,
+  .memo-modal-actions { padding-left: 16px; padding-right: 16px; }
+}
+
+/* ==========================================================================
+   Memo list — how-it-works hint under the hero
+   ========================================================================== */
+.memo-how-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 0 0 18px;
+  background: var(--msg-accent-soft, rgba(31, 107, 62, 0.08));
+  border: 1px solid rgba(31, 107, 62, 0.18);
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--msg-fg-muted, #475569);
+}
+.memo-how-hint strong { color: var(--msg-fg, #0f172a); }
+.memo-how-hint-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--msg-accent, #1F6B3E);
+}
+
+[data-theme="dark"] .memo-how-hint {
+  background: rgba(74, 222, 128, 0.08);
+  border-color: rgba(74, 222, 128, 0.18);
+  color: #cbd5e1;
+}
+[data-theme="dark"] .memo-how-hint strong { color: #f1f5f9; }
+[data-theme="dark"] .memo-how-hint-icon { color: #4ade80; }
+
+@media (max-width: 640px) {
+  .memo-how-hint { padding: 10px 12px; font-size: 12px; }
 }

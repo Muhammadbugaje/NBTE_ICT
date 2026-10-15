@@ -1,26 +1,40 @@
-"""Internal messaging (doc 30 §19.8). Non-real-time inbox — direct and group
-threads. Every routed action elsewhere in the app can drop a message here in
-addition to firing email, so outcomes stay visible in-system.
+"""Internal messaging (doc 30 §19.8). Non-real-time inbox — direct and
+group threads. Every routed action elsewhere in the app can drop a
+message here in addition to firing email, so outcomes stay visible
+in-system.
 
 Design notes:
 - `ThreadParticipant.last_read_at` drives unread counts per user, per thread.
 - `ThreadParticipant.is_archived` archives per-participant (my archive ≠ yours).
-- `Message.is_system` marks auto-generated notices (e.g. "Asset assigned").
+- `Message.is_system` marks auto-generated notices.
 - No hard deletes; threads and messages are preserved for audit.
 
 Memos (added):
-- One-way declarations, not conversations. Recipients are snapshot into
-  `MemoRecipient` rows at publish time so a memo's audience is frozen.
-- Reply goes through regular messaging, not the memo itself.
-- `MemoRecipient.acknowledged_at` proves receipt when required.
+- One-way formal declarations with a routing chain, mirroring the
+  workflow app's approval engine.
+- A `MemoRoute` is a named chain of `MemoRouteStep`s.
+- A `MemoRouteRule` decides which route applies for a given
+  (sender_role, target_kind) pair.
+- `MemoApproval` records every decision, append-only.
+- `Memo.status` is the source of truth; `is_draft` is synced for
+  backward compatibility.
 """
-from django.conf import settings
 from django.db import models
+from django.conf import settings
 from django.utils import timezone
 
 from core.models import TimeStampedModel
 from core.restricted import RestrictedFileModel
 
+# Module-level visibility choices — shared by MemoRouteRule and Memo.
+MEMO_VISIBILITY_CHOICES = [
+    ("specific_user", "One specific person"),
+    ("all_staff",     "All staff"),
+    ("all_directors", "All Directors"),
+    ("department",    "A department"),
+    ("role",          "Specific roles"),
+    ("individuals",   "A list of people"),
+]
 
 # ===========================================================================
 # Threads & messages (unchanged)
@@ -219,12 +233,234 @@ def start_thread(*, creator, participants, subject="", initial_body="",
 
 
 # ===========================================================================
-# MEMOS — one-way formal declarations
+# MEMO ROUTING — data-driven chains for memos
 # ===========================================================================
-class Memo(TimeStampedModel):
-    """A formal internal memo. One-way: sender declares, recipients receive."""
+class MemoRoute(TimeStampedModel):
+    """A named, ordered set of steps a memo walks before it's delivered.
+
+    Routes are reusable across routing rules. Editing a route's steps
+    affects only future memos — in-flight memos track their position by
+    `MemoRouteStep.pk`, so a step that's been deleted is treated as
+    "chain complete".
+
+    `same_rank_behaviour` decides what happens when a step's resolved
+    actor is the same rank as the sender:
+      - 'skip': bypass the step (default — same rank = no need to approve)
+      - 'keep': the actor acts on it anyway
+    """
     AUDITED = True
 
+    SAME_RANK_SKIP = "skip"
+    SAME_RANK_KEEP = "keep"
+    SAME_RANK_CHOICES = [
+        (SAME_RANK_SKIP, "Skip the step"),
+        (SAME_RANK_KEEP, "Keep the step (actor still acts)"),
+    ]
+
+    name = models.CharField(max_length=150)
+    code = models.SlugField(max_length=80, unique=True)
+    description = models.TextField(blank=True)
+    same_rank_behaviour = models.CharField(
+        max_length=8,
+        choices=SAME_RANK_CHOICES,
+        default=SAME_RANK_SKIP,
+        help_text=(
+            "When the resolved actor has the same rank as the memo's "
+            "sender. Lower ranks are always skipped; higher ranks always act."
+        ),
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+        permissions = [
+            ("manage_memoroute", "Can manage memo routes and routing rules"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def step_count(self):
+        return self.steps.count()
+
+
+class MemoRouteStep(models.Model):
+    """One hop in a `MemoRoute`."""
+    AUDITED = True
+
+    APPROVER_DIVISION_HEAD = "division_head"
+    APPROVER_DIRECTOR = "director"
+    APPROVER_DEPUTY = "deputy"
+    APPROVER_ES = "es"
+    APPROVER_SPECIFIC = "specific_user"
+    APPROVER_ROLE_IN_DEPT = "role_in_department"
+    APPROVER_CHOICES = [
+        (APPROVER_DIVISION_HEAD, "Sender's division head"),
+        (APPROVER_DIRECTOR, "Sender's department director"),
+        (APPROVER_DEPUTY, "Sender's deputy director"),
+        (APPROVER_ES, "Executive Secretary"),
+        (APPROVER_SPECIFIC, "A specific user"),
+        (APPROVER_ROLE_IN_DEPT, "Anyone with a role in a department"),
+    ]
+
+    route = models.ForeignKey(MemoRoute, on_delete=models.CASCADE,
+                              related_name="steps")
+    position = models.PositiveIntegerField(
+        help_text="Order within the route (1 = first).",
+    )
+    name = models.CharField(
+        max_length=150,
+        help_text="Human label shown on the memo (e.g. 'Director approval').",
+    )
+    approver_kind = models.CharField(max_length=32, choices=APPROVER_CHOICES)
+    approver_role = models.ForeignKey(
+        "accounts.Role", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+        help_text="Required when approver_kind = 'role_in_department'.",
+    )
+    approver_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+        help_text="Required when approver_kind = 'specific_user'.",
+    )
+    scope = models.CharField(
+        max_length=50, default="requester",
+        help_text=(
+            "'requester' (sender's department), 'es' (no scope), or a "
+            "Department.code for role_in_department steps."
+        ),
+    )
+    is_optional = models.BooleanField(
+        default=False,
+        help_text=(
+            "If ticked, this step is silently skipped when no one matches "
+            "the role or user. Required steps with no actor park the memo "
+            "and alert admins."
+        ),
+    )
+    is_hierarchical = models.BooleanField(
+        default=True,
+        help_text=(
+            "If on, this step participates in the rank system: it's skipped "
+            "when the resolved actor is junior to the sender, or equal-ranked "
+            "and the route's same-rank behaviour says to skip. Turn this OFF "
+            "for mandatory gates (ES, Records filing) that must always run."
+        ),
+    )
+    instructions = models.TextField(
+        blank=True,
+        help_text="Shown to the acting user as guidance on the memo page.",
+    )
+
+    class Meta:
+        ordering = ["route", "position"]
+        unique_together = ("route", "position")
+        verbose_name = "memo route step"
+
+    def __str__(self):
+        return f"{self.route.code}:{self.position} — {self.name}"
+
+
+class MemoRouteRule(TimeStampedModel):
+    """Decides which `MemoRoute` applies for a given (sender role, target).
+
+    Matching is permissive: an empty `sender_role_codes` or
+    `target_role_codes` list means "any".
+
+    When several rules match, the one with the highest `priority` wins.
+    Within the same priority, the most recently updated wins.
+    """
+    AUDITED = True
+
+    name = models.CharField(max_length=150)
+    route = models.ForeignKey(MemoRoute, on_delete=models.PROTECT,
+                              related_name="rules")
+    sender_role_codes = models.JSONField(
+        default=list, blank=True,
+        help_text=(
+            "Role codes of the sender this rule applies to. "
+            "Empty list = any role. Example: [\"admin-staff\", \"officer\"]."
+        ),
+    )
+    target_kind = models.CharField(
+        max_length=20,
+        choices=MEMO_VISIBILITY_CHOICES,
+        help_text="The memo's visibility/target kind.",
+    )
+    target_role_codes = models.JSONField(
+        default=list, blank=True,
+        help_text=(
+            "When target_kind = 'specific_user', restrict this rule to a "
+            "target whose role code is in this list. Empty list = any "
+            "target. Ignored for broadcast target kinds."
+        ),
+    )
+    priority = models.PositiveIntegerField(
+        default=0,
+        help_text="Higher wins when several rules match.",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-priority", "-updated_at", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+
+
+class MemoApproval(models.Model):
+    """One decision at one step. Append-only."""
+    APPROVE = "approve"
+    RETURN = "return"
+    REJECT = "reject"
+    DECISION_CHOICES = [
+        (APPROVE, "Approved"),
+        (RETURN, "Returned"),
+        (REJECT, "Rejected"),
+    ]
+
+    memo = models.ForeignKey("Memo", on_delete=models.CASCADE,
+                             related_name="approvals")
+    step = models.ForeignKey(MemoRouteStep, null=True, blank=True,
+                             on_delete=models.PROTECT, related_name="approvals")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL,
+                              on_delete=models.PROTECT, related_name="+")
+    actor_role = models.CharField(max_length=150, blank=True)
+    decision = models.CharField(max_length=16, choices=DECISION_CHOICES)
+    comment = models.TextField(blank=True)
+    decided_at = models.DateTimeField(default=timezone.now, db_index=True)
+    duration_seconds = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["decided_at", "id"]
+
+    def __str__(self):
+        actor = (
+            (self.actor.get_full_name() or self.actor.email)
+            if self.actor_id else "—"
+        )
+        step_label = self.step.name if self.step_id else "(deleted step)"
+        return f"{self.get_decision_display()} · {step_label} · {actor}"
+
+
+# ===========================================================================
+# MEMO — one-way formal declarations
+# ===========================================================================
+class Memo(TimeStampedModel):
+    """A formal internal memo. Sender declares, routing chain approves,
+    then the memo is delivered to the target audience.
+
+    Lifecycle:
+        DRAFT → AWAITING → PUBLISHED
+              → RETURNED → (edited) → AWAITING
+              → REJECTED
+              → CANCELLED
+    """
+    AUDITED = True
+
+    # ---- Priority ---------------------------------------------------
     NORMAL, HIGH, URGENT = "normal", "high", "urgent"
     PRIORITY_CHOICES = [
         (NORMAL, "Normal"),
@@ -232,17 +468,33 @@ class Memo(TimeStampedModel):
         (URGENT, "Urgent"),
     ]
 
+    # ---- Status -----------------------------------------------------
+    DRAFT = "draft"
+    AWAITING = "awaiting"
+    RETURNED = "returned"
+    PUBLISHED = "published"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (DRAFT, "Draft"),
+        (AWAITING, "Awaiting approval"),
+        (RETURNED, "Returned for revision"),
+        (PUBLISHED, "Published"),
+        (REJECTED, "Rejected"),
+        (CANCELLED, "Cancelled"),
+    ]
+    OPEN_STATUSES = {DRAFT, AWAITING, RETURNED}
+
+    # ---- Visibility / target kind ---------------------------------
+    SPECIFIC_USER = "specific_user"
     ALL_STAFF = "all_staff"
+    ALL_DIRECTORS = "all_directors"
     DEPARTMENT = "department"
     ROLE = "role"
     INDIVIDUALS = "individuals"
-    VISIBILITY_CHOICES = [
-        (ALL_STAFF, "All staff"),
-        (DEPARTMENT, "A department"),
-        (ROLE, "Specific roles"),
-        (INDIVIDUALS, "Specific people"),
-    ]
+    VISIBILITY_CHOICES = MEMO_VISIBILITY_CHOICES
 
+    # ---- Identity ---------------------------------------------------
     reference = models.CharField(max_length=20, unique=True, db_index=True)
     subject = models.CharField(max_length=255)
     body = models.TextField()
@@ -250,50 +502,108 @@ class Memo(TimeStampedModel):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
         related_name="memos_sent",
     )
-    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=NORMAL)
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES,
+                                default=NORMAL)
 
-    visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES,
-                                  default=DEPARTMENT)
+    # ---- Target -----------------------------------------------------
+    visibility = models.CharField(
+        max_length=20, choices=VISIBILITY_CHOICES, default=SPECIFIC_USER,
+    )
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="targeted_memos",
+        help_text="Set when visibility = 'specific_user'.",
+    )
     department = models.ForeignKey(
         "staff.Department", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="memos_addressed",
-        help_text="Set when visibility = department.",
+        help_text="Set when visibility = 'department'.",
     )
     roles = models.ManyToManyField(
         "auth.Group", blank=True, related_name="memos_addressed_by_role",
-        help_text="Set when visibility = role.",
+        help_text="Set when visibility = 'role'.",
     )
     recipients = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True,
         related_name="memos_addressed_individually",
-        help_text="Set when visibility = individuals.",
+        help_text="Set when visibility = 'individuals'.",
     )
 
+    # ---- Routing ----------------------------------------------------
+    route = models.ForeignKey(
+        MemoRoute, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="memos",
+        help_text="The approval chain this memo walks. Null = publish directly.",
+    )
+    current_step = models.ForeignKey(
+        MemoRouteStep, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
+    current_step_key = models.CharField(
+        max_length=64, blank=True,
+        help_text="Stable key of the current step — survives step reordering.",
+    )
+    current_step_started_at = models.DateTimeField(null=True, blank=True)
+
+    # ---- Lifecycle state ------------------------------------------
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES,
+                              default=DRAFT, db_index=True)
+    is_draft = models.BooleanField(default=True)
+    published_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    # ---- Return cycle ---------------------------------------------
+    returned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+        help_text="The approver who last returned this memo.",
+    )
+    returned_from_step_key = models.CharField(max_length=64, blank=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+    returned_comment = models.TextField(blank=True)
+    resubmitted_count = models.PositiveSmallIntegerField(default=0)
+
+    # ---- Rejection -------------------------------------------------
+    rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    rejection_comment = models.TextField(blank=True)
+
+    # ---- Acknowledgment -------------------------------------------
     requires_acknowledgment = models.BooleanField(
         default=False,
         help_text="Recipients must click 'Acknowledge receipt'.",
     )
 
-    is_draft = models.BooleanField(default=True)
-    published_at = models.DateTimeField(null=True, blank=True, db_index=True)
-    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
-
     class Meta:
         ordering = ["-published_at", "-created_at", "-pk"]
         indexes = [
-            models.Index(fields=["is_draft", "-published_at"]),
+            models.Index(fields=["status", "-created_at"]),
             models.Index(fields=["sender", "-created_at"]),
+            models.Index(fields=["is_draft", "-published_at"]),
         ]
         permissions = [
             ("manage_memo", "Can edit or delete any memo"),
+            ("send_memo_broadcast",
+             "Can address memos to All Staff, All Directors, or a whole department"),
+            ("approve_memo", "Can act as an approver on memo routing steps"),
         ]
 
     def __str__(self):
         return f"{self.reference} — {self.subject}"
 
+    # ---- Save -------------------------------------------------------
+    def save(self, *args, **kwargs):
+        # Keep is_draft in sync with status for backward compatibility.
+        self.is_draft = (self.status == self.DRAFT)
+        super().save(*args, **kwargs)
+
+    # ---- Derived ----------------------------------------------------
     @property
     def is_published(self):
-        return (not self.is_draft) and self.published_at is not None
+        return self.status == self.PUBLISHED
 
     @property
     def is_expired(self):
@@ -302,6 +612,18 @@ class Memo(TimeStampedModel):
     @property
     def is_live(self):
         return self.is_published and not self.is_expired
+
+    @property
+    def is_awaiting(self):
+        return self.status == self.AWAITING
+
+    @property
+    def is_returned(self):
+        return self.status == self.RETURNED
+
+    @property
+    def is_closed(self):
+        return self.status in {self.PUBLISHED, self.REJECTED, self.CANCELLED}
 
     @property
     def recipient_count(self):

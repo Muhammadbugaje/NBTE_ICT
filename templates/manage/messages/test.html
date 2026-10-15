@@ -1,0 +1,153 @@
+{% extends "manage/messages/_layout.html" %}
+{% load static %}
+
+{% block title %}Test a memo · Memo management{% endblock %}
+
+{% block mm_content %}
+
+<header class="mm-hero">
+  <div class="mm-hero-inner">
+    <div class="mm-hero-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    </div>
+    <div>
+      <h1>Test a memo</h1>
+      <p>Pick a sender and target. See which route applies and what steps would actually run.</p>
+    </div>
+  </div>
+</header>
+
+<section class="mm-card">
+  <div class="mm-card-body">
+    <form method="get" class="mm-form">
+      <div class="mm-field-row">
+        <div class="mm-field">
+          <label class="mm-label">Sender</label>
+          <select name="sender" class="mm-input">
+            <option value="">— Pick a sender —</option>
+            {% for u in users %}
+              <option value="{{ u.pk }}" {% if sender_id == u.pk|stringformat:"s" %}selected{% endif %}>
+                {{ u.get_full_name|default:u.email }}{% if u.role %} · {{ u.role.name }}{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mm-field">
+          <label class="mm-label">Target kind</label>
+          <select name="target_kind" class="mm-input">
+            <option value="">— Pick a target kind —</option>
+            {% for value, label in target_kinds %}
+              <option value="{{ value }}" {% if target_kind == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="mm-field-row">
+        <div class="mm-field">
+          <label class="mm-label">Target user (for "One specific person")</label>
+          <select name="target_user" class="mm-input">
+            <option value="">— None —</option>
+            {% for u in users %}
+              <option value="{{ u.pk }}" {% if target_user_id == u.pk|stringformat:"s" %}selected{% endif %}>
+                {{ u.get_full_name|default:u.email }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mm-field">
+          <label class="mm-label">Target department (for "A department")</label>
+          <select name="target_dept" class="mm-input">
+            <option value="">— None —</option>
+            {% for d in departments %}
+              <option value="{{ d.pk }}" {% if target_dept_id == d.pk|stringformat:"s" %}selected{% endif %}>{{ d.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="mm-form-actions" style="border-top:0;padding-top:0;">
+        <button type="submit" class="btn btn-primary">Run test</button>
+        <a href="{% url 'messaging_manage:test' %}" class="btn btn-ghost">Reset</a>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% if result %}
+  {% if result.error %}
+    <div class="mm-warning mm-warning-warn">
+      <div class="mm-warning-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="mm-warning-body">
+        <strong>Could not resolve</strong>
+        <p>{{ result.error }}</p>
+      </div>
+    </div>
+  {% else %}
+    <section class="mm-card" style="margin-top:20px;">
+      <header class="mm-card-head">
+        <h2>Result</h2>
+      </header>
+      <div class="mm-result">
+        <p class="mm-result-meta">
+          Sender: <strong>{{ result.sender.get_full_name|default:result.sender.email }}</strong>
+          · Target kind: <strong>{{ result.target_kind }}</strong>
+        </p>
+
+        {% if result.route %}
+          <div class="mm-result-route">
+            Route selected: <strong>{{ result.route.name }}</strong>
+            <code style="margin-left:6px;">{{ result.route.code }}</code>
+            <br>
+            Same-rank behaviour: <strong>{{ result.route.get_same_rank_behaviour_display }}</strong>
+          </div>
+
+          {% if result.steps %}
+            <ol class="mm-result-steps">
+              {% for row in result.steps %}
+                <li class="mm-result-step">
+                  <span class="mm-result-step-num">{{ row.step.position }}</span>
+                  <div class="mm-result-step-body">
+                    <div class="mm-result-step-title">{{ row.step.name }}</div>
+                    <div class="mm-result-step-meta">
+                      {% if row.actor %}
+                        <strong>{{ row.actor.get_full_name|default:row.actor.email }}</strong>
+                        {% if row.actor.role %} · {{ row.actor.role.name }} (rank {{ row.actor.role.rank }}){% endif %}
+                      {% else %}
+                        No matching actor
+                      {% endif %}
+                      {% if row.reason %}<br><em>{{ row.reason }}</em>{% endif %}
+                    </div>
+                  </div>
+                  {% if row.decision == "act" %}
+                    <span class="mm-pill mm-pill-accent">Acts</span>
+                  {% elif row.decision == "skip" %}
+                    <span class="mm-pill mm-pill-muted">Skip</span>
+                  {% else %}
+                    <span class="mm-pill mm-pill-warn">Park</span>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ol>
+          {% else %}
+            <p class="mm-hint">This route has no steps — the memo publishes directly.</p>
+          {% endif %}
+        {% else %}
+          <div class="mm-warning mm-warning-info" style="margin:0;">
+            <div class="mm-warning-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            </div>
+            <div class="mm-warning-body">
+              <strong>No route matches</strong>
+              <p>The memo would publish directly to its audience without going through any approval chain.</p>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+{% endif %}
+
+{% endblock %}

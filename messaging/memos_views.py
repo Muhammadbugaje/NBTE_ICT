@@ -1,5 +1,10 @@
-"""Memo views — list, detail, compose, publish, acknowledge, archive,
-unarchive, attachment download, and document downloads (PDF / Word)."""
+"""Memo views — list, detail, compose, publish, approve, return, reject,
+resubmit, cancel, acknowledge, archive, unarchive, attachment download,
+and document downloads (PDF / Word)."""
+from __future__ import annotations
+
+import logging
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -9,8 +14,11 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from . import memos as memo_service
+from . import routing
 from .forms import MemoAttachmentForm, MemoForm
-from .models import Memo, MemoAttachment
+from .models import Memo, MemoApproval, MemoAttachment
+
+logger = logging.getLogger(__name__)
 
 
 # ===========================================================================
@@ -18,7 +26,9 @@ from .models import Memo, MemoAttachment
 # ===========================================================================
 def _require_view(user, pk):
     memo = get_object_or_404(
-        Memo.objects.select_related("sender", "department"),
+        Memo.objects.select_related(
+            "sender", "department", "route", "target_user",
+        ),
         pk=pk,
     )
     if not memo_service.can_view_memo(memo, user):
@@ -29,6 +39,15 @@ def _require_view(user, pk):
 def _compose_guard(user):
     if not memo_service.can_compose_memo(user):
         raise PermissionDenied("You don't have permission to send memos.")
+
+
+def _can_download_document(memo, user):
+    """Published memos: anyone who can view them.
+    Not-yet-published memos: sender / managers / superusers only —
+    they get the watermarked preview."""
+    if memo.status == Memo.PUBLISHED:
+        return True
+    return memo_service.can_manage_memo(memo, user)
 
 
 def _sender_signature_lines(memo):
@@ -56,13 +75,91 @@ def _sender_signature_lines(memo):
     return name, designation, dept_name
 
 
+def _annotate_chain(memo):
+    """Return a list of chain rows for the template.
+
+    Each row: {step, actor, state, comment, decided_by, decided_at,
+               position, is_current}
+    where state ∈ {approved, returned, rejected, current, skipped, pending}
+    """
+    chain = routing.build_memo_chain(memo)
+    if not chain:
+        return []
+
+    approvals = {
+        routing.step_key(a.step): a
+        for a in memo.approvals.select_related("step", "actor")
+        if a.step_id
+    }
+
+    current_key = memo.current_step_key or ""
+    status = memo.status
+
+    current_position = -1
+    if current_key:
+        for i, s in enumerate(chain):
+            if routing.step_key(s) == current_key:
+                current_position = i
+                break
+
+    is_published = status == Memo.PUBLISHED
+    is_awaiting = status == Memo.AWAITING
+    is_returned = status == Memo.RETURNED
+    is_cancelled = status == Memo.CANCELLED
+
+    rows = []
+    for i, step in enumerate(chain):
+        key = routing.step_key(step)
+        approval = approvals.get(key)
+        actor = routing.resolve_memo_approver(step, memo)
+
+        state = "pending"
+        comment = ""
+        decided_by = None
+        decided_at = None
+
+        if approval:
+            decided_by = approval.actor
+            decided_at = approval.decided_at
+            comment = approval.comment or ""
+            if approval.decision == MemoApproval.APPROVE:
+                state = "approved"
+            elif approval.decision == MemoApproval.RETURN:
+                state = "returned"
+            elif approval.decision == MemoApproval.REJECT:
+                state = "rejected"
+        elif is_awaiting and current_key and key == current_key:
+            state = "current"
+        elif is_published and not current_key:
+            state = "skipped"
+        elif is_awaiting and current_position >= 0 and i < current_position:
+            state = "skipped"
+        elif is_returned and current_position >= 0 and i < current_position:
+            state = "skipped"
+        elif is_cancelled:
+            state = "skipped"
+
+        rows.append({
+            "step": step,
+            "actor": actor,
+            "state": state,
+            "comment": comment,
+            "decided_by": decided_by,
+            "decided_at": decided_at,
+            "position": i + 1,
+            "is_current": state == "current",
+        })
+
+    return rows
+
+
 # ===========================================================================
 # List
 # ===========================================================================
 @login_required
 def memo_list(request):
     tab = (request.GET.get("tab") or "inbox").strip()
-    if tab not in ("inbox", "sent", "archived"):
+    if tab not in ("inbox", "awaiting", "sent", "archived"):
         tab = "inbox"
 
     if tab == "sent":
@@ -72,6 +169,15 @@ def memo_list(request):
             memo_recipients__user=request.user,
             memo_recipients__is_archived=True,
         ).distinct()
+    elif tab == "awaiting":
+        awaiting_list = memo_service.awaiting_memos_for(request.user)
+        ids = [m.pk for m in awaiting_list]
+        qs = (
+            Memo.objects
+            .filter(pk__in=ids)
+            .select_related("sender", "route", "department", "target_user")
+            .order_by("-updated_at")
+        )
     else:
         qs = memo_service.inbox_memos_for(request.user)
 
@@ -88,22 +194,18 @@ def memo_list(request):
     if prio in dict(Memo.PRIORITY_CHOICES):
         qs = qs.filter(priority=prio)
 
+    awaiting_count = len(memo_service.awaiting_memos_for(request.user))
     counts = {
-        "inbox": memo_service.inbox_memos_for(request.user).count(),
-        "sent": (
-            memo_service.visible_memos_for(request.user)
-            .filter(sender=request.user)
-            .count()
-        ),
-        "archived": (
-            memo_service.visible_memos_for(request.user)
-            .filter(
-                memo_recipients__user=request.user,
-                memo_recipients__is_archived=True,
-            )
-            .distinct()
-            .count()
-        ),
+        "inbox":    memo_service.inbox_memos_for(request.user).count(),
+        "awaiting": awaiting_count,
+        "sent":     memo_service.visible_memos_for(request.user)
+                    .filter(sender=request.user).count(),
+        "archived": memo_service.visible_memos_for(request.user)
+                    .filter(
+                        memo_recipients__user=request.user,
+                        memo_recipients__is_archived=True,
+                    )
+                    .distinct().count(),
     }
 
     return render(request, "messaging/memo_list.html", {
@@ -125,7 +227,11 @@ def memo_detail(request, pk):
     memo = _require_view(request.user, pk)
 
     receipt = memo.memo_recipients.filter(user=request.user).first()
-    if receipt is not None and receipt.read_at is None:
+    if (
+        receipt is not None
+        and receipt.read_at is None
+        and memo.status == Memo.PUBLISHED
+    ):
         memo_service.mark_memo_read(memo, request.user)
         receipt.refresh_from_db()
 
@@ -135,7 +241,11 @@ def memo_detail(request, pk):
         or request.user.has_perm("messaging.manage_memo")
     )
     pending_recipients = []
-    if show_stats and memo.requires_acknowledgment:
+    if (
+        show_stats
+        and memo.requires_acknowledgment
+        and memo.status == Memo.PUBLISHED
+    ):
         pending_recipients = list(
             memo.memo_recipients
             .filter(acknowledged_at__isnull=True)
@@ -148,6 +258,15 @@ def memo_detail(request, pk):
     acked = memo.acknowledged_count
     ack_pct = int(round((acked / total) * 100)) if total else 0
 
+    can_act = routing.can_act_on_memo(memo, request.user)
+    current_step = routing.current_step(memo)
+    current_actor = (
+        routing.resolve_memo_approver(current_step, memo)
+        if current_step else None
+    )
+
+    chain_rows = _annotate_chain(memo)
+
     return render(request, "messaging/memo_detail.html", {
         "memo": memo,
         "receipt": receipt,
@@ -159,12 +278,17 @@ def memo_detail(request, pk):
             receipt is not None
             and memo.requires_acknowledgment
             and receipt.acknowledged_at is None
+            and memo.status == Memo.PUBLISHED
         ),
         "attachment_form": MemoAttachmentForm(),
         "sender_name": sender_name,
         "sender_desig": sender_desig,
         "sender_dept": sender_dept,
         "ack_pct": ack_pct,
+        "can_act": can_act,
+        "current_step": current_step,
+        "current_actor": current_actor,
+        "chain_rows": chain_rows,
     })
 
 
@@ -174,9 +298,13 @@ def memo_detail(request, pk):
 @login_required
 def memo_create(request):
     _compose_guard(request.user)
+    allowed_kinds = memo_service.allowed_target_kinds_for(request.user)
 
     if request.method == "POST":
-        form = MemoForm(request.POST, request.FILES, user=request.user)
+        form = MemoForm(
+            request.POST, request.FILES,
+            user=request.user, allowed_kinds=allowed_kinds,
+        )
         action = request.POST.get("action", "draft")
         if form.is_valid():
             try:
@@ -185,18 +313,20 @@ def memo_create(request):
                     subject=form.cleaned_data["subject"],
                     body=form.cleaned_data["body"],
                     visibility=form.cleaned_data["visibility"],
-                    priority=form.cleaned_data["priority"],
+                    target_user=form.cleaned_data.get("target_user"),
                     department=form.cleaned_data.get("department"),
                     roles=list(form.cleaned_data.get("roles") or []),
                     recipients=list(form.cleaned_data.get("recipients") or []),
+                    priority=form.cleaned_data["priority"],
                     requires_acknowledgment=form.cleaned_data.get(
                         "requires_acknowledgment", False,
                     ),
                     expires_at=form.cleaned_data.get("expires_at"),
                     is_draft=(action != "publish"),
                 )
-            except ValidationError as exc:
-                messages.error(request, "; ".join(exc.messages))
+            except (ValidationError, PermissionDenied) as exc:
+                msgs = getattr(exc, "messages", None) or [str(exc)]
+                messages.error(request, "; ".join(msgs))
             else:
                 for f in form.cleaned_data.get("attachments") or []:
                     try:
@@ -207,30 +337,39 @@ def memo_create(request):
                 if action == "publish":
                     try:
                         memo_service.publish_memo(memo, request.user)
-                    except ValidationError as exc:
+                    except (ValidationError, PermissionDenied) as exc:
+                        msgs = getattr(exc, "messages", None) or [str(exc)]
                         messages.warning(
                             request,
-                            "Draft saved, but publication failed: "
-                            + "; ".join(exc.messages),
+                            "Draft saved, but the chain could not start: "
+                            + "; ".join(msgs),
                         )
                         return redirect("messaging:memo_detail", pk=memo.pk)
-                    messages.success(
-                        request,
-                        f"Memo {memo.reference} published to "
-                        f"{memo.recipient_count} recipient(s).",
-                    )
+                    if memo.status == Memo.PUBLISHED:
+                        messages.success(
+                            request,
+                            f"Memo {memo.reference} published to "
+                            f"{memo.recipient_count} recipient(s).",
+                        )
+                    else:
+                        messages.success(
+                            request,
+                            f"Memo {memo.reference} sent for approval.",
+                        )
                 else:
                     messages.success(request, "Memo saved as draft.")
                 return redirect("messaging:memo_detail", pk=memo.pk)
         else:
             messages.error(request, "Please fix the errors below.")
     else:
-        form = MemoForm(user=request.user)
+        form = MemoForm(user=request.user, allowed_kinds=allowed_kinds)
 
     return render(request, "messaging/memo_form.html", {
         "form": form,
         "memo": None,
         "mode": "create",
+        "allowed_kinds": allowed_kinds,
+        "can_broadcast": memo_service.can_broadcast_memo(request.user),
     })
 
 
@@ -240,8 +379,13 @@ def memo_update(request, pk):
     if not memo_service.can_manage_memo(memo, request.user):
         raise PermissionDenied("You cannot edit this memo.")
 
+    allowed_kinds = memo_service.allowed_target_kinds_for(request.user)
+
     if request.method == "POST":
-        form = MemoForm(request.POST, request.FILES, instance=memo, user=request.user)
+        form = MemoForm(
+            request.POST, request.FILES,
+            instance=memo, user=request.user, allowed_kinds=allowed_kinds,
+        )
         action = request.POST.get("action", "save")
         if form.is_valid():
             try:
@@ -252,16 +396,18 @@ def memo_update(request, pk):
                     visibility=form.cleaned_data["visibility"],
                     priority=form.cleaned_data["priority"],
                     department=form.cleaned_data.get("department"),
+                    target_user=form.cleaned_data.get("target_user"),
                     requires_acknowledgment=form.cleaned_data.get(
                         "requires_acknowledgment", False,
                     ),
                     expires_at=form.cleaned_data.get("expires_at"),
                 )
-                if not memo.is_published:
+                if memo.status in (Memo.DRAFT, Memo.RETURNED):
                     memo.roles.set(form.cleaned_data.get("roles") or [])
                     memo.recipients.set(form.cleaned_data.get("recipients") or [])
-            except ValidationError as exc:
-                messages.error(request, "; ".join(exc.messages))
+            except (ValidationError, PermissionDenied) as exc:
+                msgs = getattr(exc, "messages", None) or [str(exc)]
+                messages.error(request, "; ".join(msgs))
             else:
                 for f in form.cleaned_data.get("attachments") or []:
                     try:
@@ -269,20 +415,22 @@ def memo_update(request, pk):
                     except Exception:
                         messages.warning(request, f"Could not attach {f.name}.")
 
-                if action == "publish" and memo.is_draft:
+                if action == "publish" and memo.status == Memo.DRAFT:
                     try:
                         memo_service.publish_memo(memo, request.user)
-                    except ValidationError as exc:
+                    except (ValidationError, PermissionDenied) as exc:
+                        msgs = getattr(exc, "messages", None) or [str(exc)]
                         messages.warning(
                             request,
-                            "Saved, but publication failed: "
-                            + "; ".join(exc.messages),
+                            "Saved, but the chain could not start: "
+                            + "; ".join(msgs),
                         )
                         return redirect("messaging:memo_detail", pk=memo.pk)
                     messages.success(
                         request,
-                        f"Memo {memo.reference} published to "
-                        f"{memo.recipient_count} recipient(s).",
+                        f"Memo {memo.reference} sent for approval."
+                        if memo.status != Memo.PUBLISHED
+                        else f"Memo {memo.reference} published.",
                     )
                 else:
                     messages.success(request, "Memo updated.")
@@ -290,19 +438,22 @@ def memo_update(request, pk):
         else:
             messages.error(request, "Please fix the errors below.")
     else:
-        form = MemoForm(instance=memo, user=request.user)
+        form = MemoForm(instance=memo, user=request.user, allowed_kinds=allowed_kinds)
         form.fields["roles"].initial = memo.roles.all()
         form.fields["recipients"].initial = memo.recipients.all()
+        form.fields["target_user"].initial = memo.target_user
 
     return render(request, "messaging/memo_form.html", {
         "form": form,
         "memo": memo,
         "mode": "update",
+        "allowed_kinds": allowed_kinds,
+        "can_broadcast": memo_service.can_broadcast_memo(request.user),
     })
 
 
 # ===========================================================================
-# Actions
+# Workflow actions
 # ===========================================================================
 @login_required
 @require_POST
@@ -316,13 +467,118 @@ def memo_publish(request, pk):
         msgs = getattr(exc, "messages", None) or [str(exc)]
         messages.error(request, "; ".join(msgs))
     else:
-        messages.success(
-            request,
-            f"Memo {memo.reference} published to {memo.recipient_count} recipient(s).",
-        )
+        if memo.status == Memo.PUBLISHED:
+            messages.success(
+                request,
+                f"Memo {memo.reference} published to {memo.recipient_count} recipient(s).",
+            )
+        else:
+            messages.success(request, f"Memo {memo.reference} sent for approval.")
     return redirect("messaging:memo_detail", pk=memo.pk)
 
 
+@login_required
+@require_POST
+def memo_approve(request, pk):
+    memo = _require_view(request.user, pk)
+    comment = (request.POST.get("comment") or "").strip()
+    try:
+        routing.approve_step(memo, request.user, comment=comment)
+    except (PermissionDenied, ValidationError) as exc:
+        msgs = getattr(exc, "messages", None) or [str(exc)]
+        messages.error(request, "; ".join(msgs))
+    else:
+        if memo.status == Memo.PUBLISHED:
+            messages.success(
+                request,
+                f"Approved. Memo {memo.reference} published to "
+                f"{memo.recipient_count} recipient(s).",
+            )
+        elif memo.status == Memo.AWAITING:
+            messages.success(request, "Approved. Passed to the next step.")
+        else:
+            messages.success(request, "Approved.")
+    return redirect("messaging:memo_detail", pk=memo.pk)
+
+
+@login_required
+@require_POST
+def memo_return(request, pk):
+    memo = _require_view(request.user, pk)
+    comment = (request.POST.get("comment") or "").strip()
+    try:
+        routing.return_to_sender(memo, request.user, comment=comment)
+    except (PermissionDenied, ValidationError) as exc:
+        msgs = getattr(exc, "messages", None) or [str(exc)]
+        messages.error(request, "; ".join(msgs))
+    else:
+        messages.success(request, "Memo returned to the sender.")
+    return redirect("messaging:memo_detail", pk=memo.pk)
+
+
+@login_required
+@require_POST
+def memo_reject(request, pk):
+    memo = _require_view(request.user, pk)
+    comment = (request.POST.get("comment") or "").strip()
+    try:
+        routing.reject_memo(memo, request.user, comment=comment)
+    except (PermissionDenied, ValidationError) as exc:
+        msgs = getattr(exc, "messages", None) or [str(exc)]
+        messages.error(request, "; ".join(msgs))
+    else:
+        messages.success(request, "Memo rejected.")
+    return redirect("messaging:memo_detail", pk=memo.pk)
+
+
+@login_required
+@require_POST
+def memo_resubmit(request, pk):
+    memo = _require_view(request.user, pk)
+    if memo.sender_id != request.user.pk and not request.user.is_superuser:
+        raise PermissionDenied("Only the sender can resubmit.")
+
+    subject = (request.POST.get("subject") or "").strip() or None
+    body = (request.POST.get("body") or "").strip() or None
+    comment = (request.POST.get("comment") or "").strip()
+
+    try:
+        routing.resubmit_memo(
+            memo, request.user,
+            subject=subject, body=body, comment=comment,
+        )
+    except (PermissionDenied, ValidationError) as exc:
+        msgs = getattr(exc, "messages", None) or [str(exc)]
+        messages.error(request, "; ".join(msgs))
+    else:
+        if memo.status == Memo.PUBLISHED:
+            messages.success(
+                request,
+                f"Memo {memo.reference} resubmitted and published.",
+            )
+        else:
+            messages.success(request, "Memo resubmitted for approval.")
+    return redirect("messaging:memo_detail", pk=memo.pk)
+
+
+@login_required
+@require_POST
+def memo_cancel(request, pk):
+    memo = _require_view(request.user, pk)
+    reason = (request.POST.get("reason") or "").strip()
+    try:
+        memo_service.cancel_memo(memo, request.user, reason=reason)
+    except (PermissionDenied, ValidationError) as exc:
+        msgs = getattr(exc, "messages", None) or [str(exc)]
+        messages.error(request, "; ".join(msgs))
+    else:
+        messages.success(request, f"Memo {memo.reference} cancelled.")
+    return redirect("messaging:memo_list")
+
+
+# ===========================================================================
+# Acknowledge / archive / delete
+# ===========================================================================
 @login_required
 @require_POST
 def memo_acknowledge(request, pk):
@@ -353,7 +609,6 @@ def memo_archive(request, pk):
 @login_required
 @require_POST
 def memo_unarchive(request, pk):
-    """Restore an archived memo to the user's inbox."""
     memo = _require_view(request.user, pk)
     try:
         memo_service.unarchive_memo(memo, request.user)
@@ -377,6 +632,9 @@ def memo_delete(request, pk):
     return redirect("messaging:memo_list")
 
 
+# ===========================================================================
+# Attachments
+# ===========================================================================
 @login_required
 @require_POST
 def memo_add_attachment(request, pk):
@@ -416,7 +674,6 @@ def memo_remove_attachment(request, pk, attachment_pk):
 
 @login_required
 def memo_attachment_download(request, pk):
-    """Stream a memo attachment — permission-checked."""
     import mimetypes
     from urllib.parse import quote
     from django.conf import settings
@@ -461,21 +718,26 @@ def memo_attachment_download(request, pk):
 # ===========================================================================
 @login_required
 def memo_download_pdf(request, pk):
-    """Stream the memo as a PDF with the NBTE letterhead."""
     memo = _require_view(request.user, pk)
 
-    from .memo_documents import render_memo_pdf
+    # Gate: only sender / managers / superuser can preview before publish.
+    # Everyone who can view the memo can download once it's published.
+    if not _can_download_document(memo, request.user):
+        messages.error(
+            request,
+            "This memo isn't published yet. PDF downloads unlock once "
+            "the approval chain completes.",
+        )
+        return redirect("messaging:memo_detail", pk=memo.pk)
 
+    from .memo_documents import render_memo_pdf
     try:
         pdf_bytes = render_memo_pdf(memo, request=request)
     except RuntimeError as exc:
         messages.error(request, str(exc))
         return redirect("messaging:memo_detail", pk=memo.pk)
     except Exception:
-        import logging
-        logging.getLogger(__name__).exception(
-            "Memo PDF generation failed for %s", memo.reference,
-        )
+        logger.exception("Memo PDF generation failed for %s", memo.reference)
         messages.error(request, "Could not generate the PDF. Try again later.")
         return redirect("messaging:memo_detail", pk=memo.pk)
 
@@ -487,21 +749,25 @@ def memo_download_pdf(request, pk):
 
 @login_required
 def memo_download_docx(request, pk):
-    """Stream the memo as a Word .docx with the NBTE letterhead."""
     memo = _require_view(request.user, pk)
 
-    from .memo_documents import render_memo_docx
+    # Same gate as the PDF download.
+    if not _can_download_document(memo, request.user):
+        messages.error(
+            request,
+            "This memo isn't published yet. Word downloads unlock once "
+            "the approval chain completes.",
+        )
+        return redirect("messaging:memo_detail", pk=memo.pk)
 
+    from .memo_documents import render_memo_docx
     try:
         docx_bytes = render_memo_docx(memo, request=request)
     except RuntimeError as exc:
         messages.error(request, str(exc))
         return redirect("messaging:memo_detail", pk=memo.pk)
     except Exception:
-        import logging
-        logging.getLogger(__name__).exception(
-            "Memo DOCX generation failed for %s", memo.reference,
-        )
+        logger.exception("Memo DOCX generation failed for %s", memo.reference)
         messages.error(request, "Could not generate the Word document.")
         return redirect("messaging:memo_detail", pk=memo.pk)
 

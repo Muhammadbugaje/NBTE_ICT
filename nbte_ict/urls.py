@@ -8,6 +8,7 @@ urlpatterns = [
     path("accounts/", include("accounts.urls")),
     path("settings/", include("config.urls")),
     path("messages/", include("messaging.urls")),
+    path("manage/messages/", include("messaging.management_urls")),
     path("notifications/", include("notifications.urls")),
     path("workflow/", include("workflow.urls")),
     path("manage/workflow/", include("workflow.management_urls")),

@@ -1,0 +1,140 @@
+{% extends "manage/messages/_layout.html" %}
+{% load static %}
+
+{% block title %}Broadcast permissions · Memo management{% endblock %}
+
+{% block mm_content %}
+
+<header class="mm-hero">
+  <div class="mm-hero-inner">
+    <div class="mm-hero-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </div>
+    <div>
+      <h1>Broadcast permissions</h1>
+      <p>
+        Who can address a memo to <strong>All Staff</strong>,
+        <strong>All Directors</strong>, or a whole <strong>Department</strong>.
+      </p>
+    </div>
+  </div>
+</header>
+
+<div class="mm-grid">
+
+  <section class="mm-card">
+    <header class="mm-card-head">
+      <h2>Granted</h2>
+      <p>Users who can address memos broadly.</p>
+    </header>
+
+    {% if granted %}
+      <ul class="mm-list">
+        {% for u in granted %}
+          <li>
+            <div class="mm-list-row">
+              <div class="mm-list-main">
+                <strong>{{ u.get_full_name|default:u.email }}</strong>
+                <div class="mm-list-meta">
+                  <span>{{ u.email }}</span>
+                  {% if u.role %}<span>· {{ u.role.name }}</span>{% endif %}
+                  {% if u.department %}<span>· {{ u.department.name }}</span>{% endif %}
+                </div>
+              </div>
+              <div class="mm-list-action">
+                <form method="post"
+                      style="margin:0;"
+                      data-mm-confirm
+                      data-mm-confirm-title="Revoke broadcast from {{ u.get_full_name|default:u.email }}?"
+                      data-mm-confirm-body="They will no longer be able to address memos to All Staff, All Directors, or a whole Department."
+                      data-mm-confirm-label="Revoke"
+                      data-mm-confirm-tone="danger">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="revoke">
+                  <input type="hidden" name="user_id" value="{{ u.pk }}">
+                  <button type="submit" class="btn btn-ghost btn-sm">Revoke</button>
+                </form>
+              </div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="mm-card-body">
+        <p class="mm-hint">No one has been explicitly granted the permission yet.</p>
+      </div>
+    {% endif %}
+  </section>
+
+  <aside>
+    <section class="mm-card">
+      <header class="mm-card-head">
+        <h2>Grant a permission</h2>
+        <p>Pick a user to grant broadcast privileges to.</p>
+      </header>
+      <div class="mm-card-body">
+        <form method="post" class="mm-form" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="grant">
+
+          <div class="mm-field">
+            <label for="{{ form.user.id_for_label }}" class="mm-label">Who</label>
+            {{ form.user }}
+            {% if form.user.errors %}<div class="mm-error">{{ form.user.errors|join:" " }}</div>{% endif %}
+          </div>
+
+          <div class="mm-field">
+            <label for="{{ form.reason.id_for_label }}" class="mm-label">Reason (optional)</label>
+            {{ form.reason }}
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
+            Grant broadcast
+          </button>
+        </form>
+      </div>
+    </section>
+
+    {% if implicit %}
+      <section class="mm-card">
+        <header class="mm-card-head">
+          <h2>Always granted</h2>
+          <p>By virtue of their role — nothing to configure.</p>
+        </header>
+        <ul class="mm-list">
+          {% for u in implicit %}
+            <li>
+              <div class="mm-list-row">
+                <div class="mm-list-main">
+                  <strong>{{ u.get_full_name|default:u.email }}</strong>
+                  <div class="mm-list-meta">
+                    {% if u.is_superuser %}<span>Superuser</span>{% endif %}
+                    {% if u.role %}<span>· {{ u.role.name }}</span>{% endif %}
+                  </div>
+                </div>
+                <span class="mm-pill mm-pill-info">Implicit</span>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    <section class="mm-card">
+      <header class="mm-card-head">
+        <h2>Why it matters</h2>
+      </header>
+      <div class="mm-card-body">
+        <ul class="mm-hint" style="list-style:none;padding:0;margin:0;display:grid;gap:8px;">
+          <li>• <strong>Everyone</strong> can compose a memo to one person or a hand-picked list.</li>
+          <li>• <strong>Broadcast senders</strong> can also address All Staff, All Directors, or a whole department.</li>
+          <li>• The ES and Super Admins always have broadcast power.</li>
+          <li>• Grants take effect immediately — no logout needed.</li>
+        </ul>
+      </div>
+    </section>
+  </aside>
+
+</div>
+
+{% endblock %}

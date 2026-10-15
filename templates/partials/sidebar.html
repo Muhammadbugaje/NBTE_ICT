@@ -207,7 +207,7 @@
         <a href="{% url 'messaging:memo_list' %}" class="app-nav-item {% if ns == 'messaging' and un == 'memo_list' or ns == 'messaging' and un == 'memo_detail' or ns == 'messaging' and un == 'memo_create' or ns == 'messaging' and un == 'memo_update' %}active{% endif %}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           <span>Memos</span>
-          {% unread_memo_count request.user as memo_count %}
+          {% memo_badge_count request.user as memo_count %}
           {% if memo_count %}<span class="app-nav-badge">{{ memo_count }}</span>{% endif %}
         </a>
         <a href="{% url 'messaging:archived' %}" class="app-nav-item {% if ns == 'messaging' and un == 'archived' %}active{% endif %}">
@@ -352,28 +352,48 @@
     </div>
 
     {# ---------------- Management ---------------- #}
-    {% if perms.workflow.change_approvalchain %}
-      <div class="app-nav-group {% if ns == 'workflow_manage' %}is-open{% endif %}" data-group="management">
-        <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'workflow_manage' %}true{% else %}false{% endif %}">
+    {% if perms.workflow.change_approvalchain or perms.messaging.change_memoroute or perms.messaging.manage_memoroute %}
+      <div class="app-nav-group {% if ns == 'workflow_manage' or ns == 'messaging_manage' %}is-open{% endif %}" data-group="management">
+        <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'workflow_manage' or ns == 'messaging_manage' %}true{% else %}false{% endif %}">
           <span class="app-nav-group-title">Management</span>
           <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="app-nav-group-body">
-          <a href="{% url 'workflow_manage:home' %}"
-            class="app-nav-item {% if ns == 'workflow_manage' %}active{% endif %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
-            <span>Workflow admin</span>
-          </a>
-          <a href="{% url 'workflow_manage:test' %}"
-            class="app-nav-item {% if un == 'test' %}active{% endif %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span>Test a request</span>
-          </a>
-          <a href="{% url 'workflow_manage:help' %}"
-            class="app-nav-item {% if un == 'help' %}active{% endif %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span>How-to guide</span>
-          </a>
+          {% if perms.workflow.change_approvalchain %}
+            <a href="{% url 'workflow_manage:home' %}"
+              class="app-nav-item {% if ns == 'workflow_manage' %}active{% endif %}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+              <span>Workflow admin</span>
+            </a>
+            <a href="{% url 'workflow_manage:test' %}"
+              class="app-nav-item {% if ns == 'workflow_manage' and un == 'test' %}active{% endif %}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Test a request</span>
+            </a>
+            <a href="{% url 'workflow_manage:help' %}"
+              class="app-nav-item {% if ns == 'workflow_manage' and un == 'help' %}active{% endif %}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>Workflow help</span>
+            </a>
+          {% endif %}
+
+          {% if perms.messaging.change_memoroute or perms.messaging.manage_memoroute %}
+            <a href="{% url 'messaging_manage:home' %}"
+              class="app-nav-item {% if ns == 'messaging_manage' %}active{% endif %}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <span>Memo admin</span>
+            </a>
+            <a href="{% url 'messaging_manage:permission_panel' %}"
+              class="app-nav-item {% if ns == 'messaging_manage' and un == 'permission_panel' %}active{% endif %}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>Memo permissions</span>
+            </a>
+            <a href="{% url 'messaging_manage:test' %}"
+              class="app-nav-item {% if ns == 'messaging_manage' and un == 'test' %}active{% endif %}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Test a memo</span>
+            </a>
+          {% endif %}
         </div>
       </div>
     {% endif %}
