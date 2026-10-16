@@ -1,0 +1,56 @@
+{% comment %}
+  Stage 3 permission picker: one accordion per app (NBTE.collapse), a
+  "select all in this app" checkbox, a per-app search, and a "selected" pill.
+  Params: picker (from group_views.build_picker), field ("permissions"),
+          idp (id prefix, unique per page), show_inherited (bool).
+  Locked rows (permissions the signed-in user may not change) are disabled;
+  the server keeps their current state whatever the browser sends.
+{% endcomment %}
+<div class="gp-picker" data-perm-picker>
+  <div class="gp-picker-tools">
+    <button type="button" class="btn btn-ghost btn-sm" data-picker-expand="open">Expand all</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-picker-expand="close">Collapse all</button>
+  </div>
+  {% for app in picker %}
+    <section class="gp-app{% if app.selected %} has-selection{% endif %}" data-perm-app data-app-name="{{ app.app_name }}" aria-labelledby="{{ idp }}-{{ app.app_label }}-name">
+      <div class="gp-app-head">
+        <label class="check gp-app-all">
+          <input type="checkbox" data-select-all aria-label="Select all permissions in {{ app.app_name }}">
+        </label>
+        <button type="button" class="gp-app-toggle" data-collapse-trigger="{{ idp }}-{{ app.app_label }}" aria-expanded="false">
+          <span class="gp-app-name" id="{{ idp }}-{{ app.app_label }}-name">{{ app.app_name }}</span>
+          <span class="badge badge-primary" data-app-pill{% if not app.selected %} hidden{% endif %}><span data-app-selected>{{ app.selected }}</span>&nbsp;selected</span>
+          <span class="gp-app-count">{{ app.total }}</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+      <div id="{{ idp }}-{{ app.app_label }}" class="gp-app-body">
+        <div class="gp-app-body-inner">
+          <div class="gp-app-search">
+            <label class="sr-only" for="{{ idp }}-{{ app.app_label }}-search">Search {{ app.app_name }} permissions</label>
+            <input type="search" class="input" id="{{ idp }}-{{ app.app_label }}-search" placeholder="Search {{ app.app_name|lower }}…" data-app-search autocomplete="off">
+          </div>
+          <ul class="gp-perm-list">
+            {% for p in app.perms %}
+              <li class="gp-perm{% if p.locked %} is-locked{% endif %}" data-perm-row data-search="{{ p.codename }} {{ p.label|lower }} {{ p.name|lower }}">
+                <input type="checkbox" name="{{ field }}" value="{{ p.id }}" id="{{ idp }}-p{{ p.id }}"
+                       {% if p.checked %}checked{% endif %} {% if p.locked %}disabled aria-describedby="{{ idp }}-locked-note"{% endif %}
+                       data-perm-label="{{ p.full }}">
+                <label for="{{ idp }}-p{{ p.id }}">
+                  <span class="gp-perm-label">{{ p.label }}</span>
+                  <code class="gp-perm-code">{{ p.full }}</code>
+                </label>
+                <span class="gp-perm-flags">
+                  {% if show_inherited and p.inherited %}<span class="badge badge-info" title="The user also gets this from their role, so removing it here won't take it away.">also inherited</span>{% endif %}
+                  {% if p.locked %}<span class="badge">locked</span>{% endif %}
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+          <p class="gp-no-match" data-no-match hidden>No permissions match.</p>
+        </div>
+      </div>
+    </section>
+  {% endfor %}
+  <p class="sr-only" id="{{ idp }}-locked-note">Locked: you can only change permissions you hold yourself.</p>
+</div>

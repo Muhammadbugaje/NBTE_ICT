@@ -45,8 +45,8 @@
              data-portal-image-preview
              {% if event.image %}data-has-image="1"{% endif %}>
           {% if event and event.image %}
-            <img src="{{ event.image_thumb_url }}"
-                 onerror="this.onerror=null;this.src='{{ event.image.url }}';"
+            <img src="{{ event.image_thumb_url|default:event.image.url }}"
+                 data-fallback-src="{{ event.image.url }}"
                  alt="">
           {% else %}
             <span class="portal-image-preview-empty">No image yet — optional.</span>
@@ -73,7 +73,7 @@
         </div>
       </div>
       <label class="portal-check">{{ form.all_day }} <span>All-day event</span></label>
-      <div class="portal-row" style="margin-top:12px;">
+      <div class="portal-row mt-3">
         <div class="portal-field portal-field-half">
           {{ form.reminder_lead_minutes.label_tag }}{{ form.reminder_lead_minutes }}
           <span class="hint">{{ form.reminder_lead_minutes.help_text }}</span>
@@ -127,7 +127,7 @@
         </div>
       </div>
 
-      <label class="portal-check" style="margin-top:12px;">
+      <label class="portal-check mt-3">
         {{ form.rsvp_required }} <span>Ask people to RSVP</span>
       </label>
     </section>
@@ -139,7 +139,7 @@
         <div><h3>Status</h3><p>Draft, cancelled, or live?</p></div>
       </header>
       <label class="portal-check">{{ form.is_cancelled }} <span>This event is cancelled</span></label>
-      <div class="portal-field" style="margin-top:12px;">
+      <div class="portal-field mt-3">
         {{ form.cancellation_reason.label_tag }}{{ form.cancellation_reason }}{{ form.cancellation_reason.errors }}
       </div>
       <label class="portal-check">{{ form.is_draft }} <span>Save as draft (not visible)</span></label>

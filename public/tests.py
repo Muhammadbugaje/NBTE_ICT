@@ -54,4 +54,5 @@ def test_leadership_page_context_matches_public_template():
         },
     )
     assert "Ada Lovelace" in html
-    assert 'data-gov-filter="ict"' in html
+    # Review L9: the filter uses the department's generated code.
+    assert f'data-gov-filter="{department.code}"' in html

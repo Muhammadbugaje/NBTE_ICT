@@ -45,7 +45,7 @@ def scope_filter(user):
     if getattr(user, "department_id", None):
         q |= Q(visibility=Scope.DEPARTMENT, department_id=user.department_id)
 
-    group_ids = list(user.groups.values_list("pk", flat=True))
+    group_ids = [user.role_id] if getattr(user, "role_id", None) else []  # review M6: Role, not groups
     if group_ids:
         q |= Q(visibility=Scope.ROLE, roles__in=group_ids)
 
@@ -116,7 +116,7 @@ class Announcement(SoftDeleteModel):
     )
 
     visibility = models.CharField(max_length=20, choices=Scope.CHOICES, default=Scope.DEPARTMENT)
-    roles = models.ManyToManyField("auth.Group", blank=True, related_name="scoped_announcements")
+    roles = models.ManyToManyField("accounts.Role", blank=True, related_name="scoped_announcements")
     recipients = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="personal_announcements",
     )
@@ -321,7 +321,7 @@ class Event(SoftDeleteModel):
 
     # Scope
     visibility = models.CharField(max_length=20, choices=Scope.CHOICES, default=Scope.STAFF)
-    roles = models.ManyToManyField("auth.Group", blank=True, related_name="scoped_events")
+    roles = models.ManyToManyField("accounts.Role", blank=True, related_name="scoped_events")
     recipients = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="personal_events",
     )
@@ -474,7 +474,7 @@ class Reminder(SoftDeleteModel):
         "staff.Department", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="reminders",
     )
-    roles = models.ManyToManyField("auth.Group", blank=True, related_name="scoped_reminders")
+    roles = models.ManyToManyField("accounts.Role", blank=True, related_name="scoped_reminders")
     recipients = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="personal_reminders",
     )
@@ -605,7 +605,7 @@ class Document(SoftDeleteModel):
     # ---- visibility ------------------------------------------------------
     visibility = models.CharField(max_length=20, choices=Scope.CHOICES,
                                   default=Scope.DEPARTMENT)
-    roles      = models.ManyToManyField("auth.Group", blank=True,
+    roles      = models.ManyToManyField("accounts.Role", blank=True,
                                         related_name="scoped_documents")
     recipients = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True,
                                         related_name="personal_documents")
@@ -736,7 +736,7 @@ class Document(SoftDeleteModel):
         if getattr(user, "department_id", None):
             q |= Q(visibility=Scope.DEPARTMENT, department_id=user.department_id)
 
-        group_ids = list(user.groups.values_list("pk", flat=True))
+        group_ids = [user.role_id] if getattr(user, "role_id", None) else []  # review M6: Role, not groups
         if group_ids:
             q |= Q(visibility=Scope.ROLE, roles__in=group_ids)
 
@@ -941,7 +941,7 @@ class ScopedVisibilityMixin:
     Requires the model to have these fields:
       - visibility (CharField with Scope.CHOICES)
       - department (FK to staff.Department, nullable)
-      - roles      (M2M to auth.Group)
+      - roles      (M2M to accounts.Role - review M6; was auth.Group)
       - recipients (M2M to settings.AUTH_USER_MODEL)
 
     If any of those fields are missing on the subclass, the check simply
@@ -965,9 +965,10 @@ class ScopedVisibilityMixin:
             q |= Q(visibility=Scope.DEPARTMENT, department_id=user.department_id)
 
         if self._has_field("roles"):
-            group_ids = list(user.groups.values_list("pk", flat=True))
-            if group_ids:
-                q |= Q(visibility=Scope.ROLE, roles__in=group_ids)
+            # Review M6: match the user's actual Role, not Django groups.
+            role_id = getattr(user, "role_id", None)
+            if role_id:
+                q |= Q(visibility=Scope.ROLE, roles=role_id)
 
         if self._has_field("recipients"):
             q |= Q(visibility=Scope.INDIVIDUAL, recipients=user)
@@ -1150,7 +1151,7 @@ class Award(SoftDeleteModel):
     visibility = models.CharField(
         max_length=20, choices=Scope.CHOICES, default=Scope.STAFF,
     )
-    roles      = models.ManyToManyField("auth.Group", blank=True,
+    roles      = models.ManyToManyField("accounts.Role", blank=True,
                                         related_name="scoped_awards")
     recipients = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True,
                                         related_name="personal_awards")
@@ -1228,7 +1229,7 @@ class Award(SoftDeleteModel):
         q = Q(visibility=Scope.PUBLIC) | Q(visibility=Scope.STAFF)
         if getattr(user, "department_id", None):
             q |= Q(visibility=Scope.DEPARTMENT, department_id=user.department_id)
-        group_ids = list(user.groups.values_list("pk", flat=True))
+        group_ids = [user.role_id] if getattr(user, "role_id", None) else []  # review M6: Role, not groups
         if group_ids:
             q |= Q(visibility=Scope.ROLE, roles__in=group_ids)
         q |= Q(visibility=Scope.INDIVIDUAL, recipients=user)
@@ -1283,7 +1284,7 @@ class Holiday(TimeStampedModel):
     visibility = models.CharField(
         max_length=20, choices=Scope.CHOICES, default=Scope.STAFF,
     )
-    roles      = models.ManyToManyField("auth.Group", blank=True,
+    roles      = models.ManyToManyField("accounts.Role", blank=True,
                                         related_name="scoped_holidays")
 
     is_active = models.BooleanField(default=True)
@@ -1376,7 +1377,7 @@ class GalleryAlbum(SoftDeleteModel):
     visibility = models.CharField(
         max_length=20, choices=Scope.CHOICES, default=Scope.STAFF,
     )
-    roles      = models.ManyToManyField("auth.Group", blank=True,
+    roles      = models.ManyToManyField("accounts.Role", blank=True,
                                         related_name="scoped_albums")
     recipients = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True,
                                         related_name="personal_albums")
@@ -1448,7 +1449,7 @@ class GalleryAlbum(SoftDeleteModel):
         if getattr(user, "department_id", None):
             q |= Q(visibility=Scope.DEPARTMENT,
                     department_id=user.department_id, is_published=True)
-        group_ids = list(user.groups.values_list("pk", flat=True))
+        group_ids = [user.role_id] if getattr(user, "role_id", None) else []  # review M6: Role, not groups
         if group_ids:
             q |= Q(visibility=Scope.ROLE, roles__in=group_ids, is_published=True)
         q |= Q(visibility=Scope.INDIVIDUAL, recipients=user, is_published=True)

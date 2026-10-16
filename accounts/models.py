@@ -6,7 +6,7 @@
 - Profile completeness is computed from User + linked Staff record; see
   `User.profile_completeness()`.
 """
-from django.contrib.auth.models import AbstractUser, BaseUserManager, Permission
+from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
 from django.db import models
 
 from core.models import TimeStampedModel
@@ -60,6 +60,13 @@ class Role(TimeStampedModel):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     permissions = models.ManyToManyField(Permission, blank=True, related_name="roles")
+    # Stage 3 (groups & permissions): Django groups this role carries. Every
+    # user holding the role inherits the groups' permissions through
+    # RolePermissionBackend. Additive to `permissions` above - both apply.
+    groups = models.ManyToManyField(
+        Group, blank=True, related_name="roles",
+        help_text="Django groups every holder of this role inherits.",
+    )
     # 2FA enforcement flag (wired in Phase 5).
     requires_2fa = models.BooleanField(default=False)
     is_system = models.BooleanField(default=False, help_text="Seeded role; do not delete.")
@@ -88,10 +95,39 @@ class Role(TimeStampedModel):
             ("view_analytics_dashboard", "Can view the full cross-office analytics dashboard"),
             ("approve_requests", "Can approve requests assigned to them"),
             ("raise_cross_department_requests", "Can raise requests that route across departments"),
+            ("view_all_requests", "Can view every workflow request across all offices"),
+            # Review L1: the Chairman dashboard checked a permission that did
+            # not exist. There is no Chairman role; grant this per user.
+            ("view_chairman_dashboard", "Can view the Chairman dashboard"),
+            # Stage 3: assign groups/permissions to roles and users.
+            ("assign_groups", "Can assign groups and direct permissions to roles and users"),
         ]
 
     def __str__(self):
         return self.name
+
+
+# ---------------------------------------------------------------------------
+# GroupProfile (Stage 3)
+# ---------------------------------------------------------------------------
+class GroupProfile(TimeStampedModel):
+    """Optional description for a Django `auth.Group`.
+
+    Django's Group has only a name. Admins asked for a sentence explaining
+    what each group is for; a one-to-one side table keeps `auth.Group`
+    itself untouched (no swapped model, no parallel permission table).
+    """
+
+    AUDITED = True
+
+    group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name="profile")
+    description = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "group profile"
+
+    def __str__(self):
+        return f"Profile of {self.group.name}"
 
 # ---------------------------------------------------------------------------
 # User manager

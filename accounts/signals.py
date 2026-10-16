@@ -56,6 +56,20 @@ def create_staff_profile(sender, instance, created, **kwargs):
     if Staff.objects.filter(user=instance).exists():
         return
 
+    # Review H5: if exactly one unlinked directory record already carries
+    # this email (HR created the staff record first), link it instead of
+    # creating a second record - that duplicate made the follow-up link
+    # fail with a UNIQUE error.
+    if instance.email:
+        matches = list(
+            Staff.objects.filter(user__isnull=True, email__iexact=instance.email)[:2]
+        )
+        if len(matches) == 1:
+            match = matches[0]
+            match.user = instance
+            match.save(update_fields=["user"])
+            return
+
     try:
         Staff.objects.create(
             user=instance,

@@ -1,5 +1,8 @@
 """Tasks admin — read-focused. Actions live in services layer."""
 from django.contrib import admin
+from django import forms
+from django.db import models
+from django.utils.html import format_html
 
 from .models import (
     Task, TaskActivity, TaskAssignee, TaskAttachment,
@@ -55,8 +58,17 @@ class TaskCommentInline(admin.TabularInline):
 class TaskAttachmentInline(admin.TabularInline):
     model = TaskAttachment
     extra = 0
-    fields = ("uploaded_by", "file", "original_name", "description", "created_at")
-    readonly_fields = ("uploaded_by", "original_name", "created_at")
+    fields = ("uploaded_by", "file", "original_name", "description", "created_at", "link")
+    readonly_fields = ("uploaded_by", "original_name", "created_at", "link")
+    # Restricted storage has no public URL, so the stock widget (which links
+    # to file.url) cannot render; downloads go through `link` instead (H1).
+    formfield_overrides = {models.FileField: {"widget": forms.FileInput}}
+
+    @admin.display(description="Download")
+    def link(self, obj):
+        if obj.pk and obj.file:
+            return format_html('<a href="{}">{}</a>', obj.download_url(), obj.original_name or "download")
+        return "—"
 
 
 class TaskActivityInline(admin.TabularInline):
@@ -163,6 +175,16 @@ class TaskCommentAdmin(admin.ModelAdmin):
 class TaskAttachmentAdmin(admin.ModelAdmin):
     list_display = ("task", "original_name", "uploaded_by", "created_at")
     search_fields = ("original_name", "task__reference")
+    readonly_fields = ("link",)
+    # Restricted storage has no public URL, so the stock widget (which links
+    # to file.url) cannot render; downloads go through `link` instead (H1).
+    formfield_overrides = {models.FileField: {"widget": forms.FileInput}}
+
+    @admin.display(description="Download")
+    def link(self, obj):
+        if obj.pk and obj.file:
+            return format_html('<a href="{}">{}</a>', obj.download_url(), obj.original_name or "download")
+        return "—"
 
 
 @admin.register(TaskTimeEntry)

@@ -2,7 +2,9 @@
 
 Rules (doc 30 §5.2, §18.3, §19.6):
 
-  - Superuser / `staff.view_staff`          → see everything, all departments
+  - Superuser, or `staff.view_staff` + `accounts.access_all_departments`
+                                            → see everything, all departments
+  - `staff.view_staff` alone                → full view of own department (M7)
   - `staff.view_own_department_staff`       → see own department (colleague level)
   - Everyone                                → see their own staff record (full)
   - Editing follows the same scope, plus `staff.manage_own_department_staff`
@@ -27,15 +29,28 @@ from .models import Staff
 # ---------------------------------------------------------------------------
 # Querysets
 # ---------------------------------------------------------------------------
+def sees_all_departments(user) -> bool:
+    """Review M7: `staff.view_staff` alone no longer means every department.
+    Cross-department staff data needs `accounts.access_all_departments` too."""
+    return bool(
+        user and user.is_authenticated and (
+            user.is_superuser
+            or (user.has_perm("staff.view_staff")
+                and user.has_perm("accounts.access_all_departments"))
+        )
+    )
+
+
 def staff_visible_to(user):
     qs = Staff.objects.select_related(
         "user", "department", "office", "state", "category", "reports_to",
     )
     if not user or not user.is_authenticated:
         return qs.none()
-    if user.is_superuser or user.has_perm("staff.view_staff"):
+    if sees_all_departments(user):
         return qs
-    if user.has_perm("staff.view_own_department_staff") and getattr(user, "department_id", None):
+    if (user.has_perm("staff.view_staff") or user.has_perm("staff.view_own_department_staff")) \
+            and getattr(user, "department_id", None):
         return qs.filter(Q(department_id=user.department_id) | Q(user_id=user.pk))
     return qs.filter(user_id=user.pk)
 
@@ -47,7 +62,12 @@ def view_level(user, staff: Staff) -> str:
     """Return the highest applicable level string."""
     if not user or not user.is_authenticated:
         return ""
-    if user.is_superuser or user.has_perm("staff.view_staff"):
+    if sees_all_departments(user):
+        return "admin"
+    # Review M7: view_staff without cross-department access = full view of
+    # the holder's own department only.
+    if (user.has_perm("staff.view_staff") and getattr(user, "department_id", None)
+            and staff.department_id == user.department_id):
         return "admin"
     if staff.user_id == user.pk:
         return "self"
@@ -83,6 +103,18 @@ def can_manage_staff(user, staff: Staff) -> bool:
     # Own record: profile-ish fields only (view hides HR-only fields)
     if staff.user_id == user.pk:
         return True
+    return False
+
+
+def can_hr_edit_staff(user, staff: Staff) -> bool:
+    """Full (HR) edit of a record, as opposed to self-service contact edits
+    (review H7)."""
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser or user.has_perm("staff.change_staff"):
+        return True
+    if user.has_perm("staff.manage_own_department_staff") and getattr(user, "department_id", None):
+        return staff.department_id == user.department_id
     return False
 
 

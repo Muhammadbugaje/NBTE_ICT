@@ -50,7 +50,10 @@ def settings_index(request):
     grouped = [(g or "General", list(items)) for g, items in groupby(entries, key=lambda e: e.group)]
     from notifications import engine
 
-    quota = [{"provider": p, "used": engine.used_today(p), "limit": engine.daily_limit(p)} for p in engine.PROVIDERS]
+    quota = [
+        {"provider": key, "used": engine.used_today(key), "limit": engine.daily_limit(key)}
+        for key in dict.fromkeys(engine.quota_key(p) for p in engine.PROVIDERS)
+    ]
     from notifications.models import EmailLog
 
     recent_email_tests = EmailLog.objects.filter(category="test").order_by("-created_at")[:5]

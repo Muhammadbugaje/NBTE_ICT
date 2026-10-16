@@ -117,8 +117,8 @@ class RequestAttachmentInline(admin.TabularInline):
     @admin.display(description="File")
     def file_link(self, obj):
         if obj.pk and obj.file:
-            return format_html('<a href="{}" target="_blank">{}</a>',
-                               obj.file.url, obj.original_name)
+            return format_html('<a href="{}">{}</a>',
+                               obj.download_url(), obj.original_name)
         return "—"
 
 

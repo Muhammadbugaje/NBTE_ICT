@@ -124,6 +124,23 @@ class AdminUserChangeForm(DjangoUserChangeForm):
 # Password reset (custom sender via the notifications engine)
 # ---------------------------------------------------------------------------
 class PortalPasswordResetForm(PasswordResetForm):
+    def save(self, *args, request=None, **kwargs):
+        """Review M18: at most 3 reset emails per hour per client address and
+        per email address. Over the limit nothing is sent, but the normal
+        "check your inbox" page is still shown so the limit does not reveal
+        which addresses have accounts."""
+        from core import ratelimit
+
+        limit, window = ratelimit.PASSWORD_RESETS
+        email = (self.cleaned_data.get("email") or "").strip().lower()
+        ip = ratelimit.client_ip(request) if request is not None else "unknown"
+        if (ratelimit.is_limited("reset-ip", ip, limit)
+                or ratelimit.is_limited("reset-email", email, limit)):
+            return None
+        ratelimit.hit("reset-ip", ip, window)
+        ratelimit.hit("reset-email", email, window)
+        return super().save(*args, request=request, **kwargs)
+
     def send_mail(self, subject_template_name, email_template_name, context, from_email,
                   to_email, html_email_template_name=None):
         from django.conf import settings
@@ -185,6 +202,14 @@ class ProfileForm(forms.Form):
     duties = forms.CharField(widget=forms.Textarea(attrs={"rows": 4}), required=False)
 
     photo = forms.ImageField(required=False)
+
+    def clean_email(self):
+        """Review M13: a duplicate address used to crash with a database
+        error; it is now a normal form error."""
+        email = (self.cleaned_data.get("email") or "").strip().lower()
+        if User.objects.filter(email__iexact=email).exclude(pk=self.user.pk).exists():
+            raise forms.ValidationError("Another account already uses this email address.")
+        return email
 
     def __init__(self, user, *args, **kwargs):
         self.user = user

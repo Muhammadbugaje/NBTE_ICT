@@ -77,6 +77,9 @@ DEFAULTS = [
      "Longest-edge pixel sizes generated for uploaded images."),
     ("media.disk_warn_percent", "80", "int", "Files",
      "Health check reports 'degraded' above this disk-usage percentage."),
+    ("uploads.allowed_extensions",
+     '["pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png"]', "json", "Files",
+     "File types allowed as request, task, ticket and asset attachments."),
 
     # --- Workflow ------------------------------------------------------
     # How the receiving department's approval chain behaves for cross-dept
@@ -170,6 +173,8 @@ DEFAULTS = [
     ("attendance.auto_mark_absent_hour", "20", "int", "Attendance",
      "Hour of day (0-23) when a Celery job marks anyone who didn't check "
      "in as absent. Set to 0 to disable."),
+    ("attendance.max_gps_accuracy_m", "200", "int", "Attendance",
+     "GPS check-ins whose reported accuracy is worse than this many metres are rejected."),
     ("attendance.report_timezone", "Africa/Lagos", "str", "Attendance",
      "Timezone used to interpret check-in times and day boundaries."),   
     

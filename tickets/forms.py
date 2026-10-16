@@ -1,6 +1,8 @@
 """Forms for the tickets app."""
 from django import forms
 
+from core.uploads import validate_attachment_upload
+
 from .models import Ticket, TicketCategory
 
 
@@ -54,6 +56,7 @@ class TicketCreateForm(forms.Form):
 
     attachment = forms.FileField(
         required=False,
+        validators=[validate_attachment_upload],
         widget=forms.ClearableFileInput(attrs={"class": "input"}),
     )
 
@@ -278,7 +281,10 @@ class InternalNoteForm(forms.Form):
 
 
 class AttachmentForm(forms.Form):
-    file = forms.FileField(widget=forms.ClearableFileInput(attrs={"class": "input"}))
+    file = forms.FileField(
+        validators=[validate_attachment_upload],
+        widget=forms.ClearableFileInput(attrs={"class": "input"}),
+    )
     description = forms.CharField(
         required=False, max_length=255,
         widget=forms.TextInput(attrs={

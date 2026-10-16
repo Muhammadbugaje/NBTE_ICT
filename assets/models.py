@@ -26,7 +26,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from core.models import SoftDeleteModel, TimeStampedModel
-from core.storage import capture_original_filename, uuid_upload_to
+from core.storage import capture_original_filename, restricted_storage, uuid_upload_to
 
 
 # ---------------------------------------------------------------------------
@@ -333,10 +333,12 @@ class AssetIssue(TimeStampedModel):
 # AssetAttachment
 # ---------------------------------------------------------------------------
 class AssetAttachment(TimeStampedModel):
-    """Photos, receipts, warranty documents."""
+    """Photos, receipts, warranty documents. Stored in restricted storage;
+    served only via protected_download (review finding H1)."""
 
     AUDITED = True
     MEDIA_SUBDIR = "assets/attachments"
+    PROTECTED_DOWNLOAD = True
 
     KIND_CHOICES = [
         ("photo", "Photo"),
@@ -350,7 +352,7 @@ class AssetAttachment(TimeStampedModel):
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+",
     )
-    file = models.FileField(upload_to=uuid_upload_to)
+    file = models.FileField(upload_to=uuid_upload_to, storage=restricted_storage)
     original_name = models.CharField(max_length=255)
     description = models.CharField(max_length=255, blank=True)
     kind = models.CharField(max_length=20, choices=KIND_CHOICES, default="other")
@@ -363,5 +365,17 @@ class AssetAttachment(TimeStampedModel):
 
     def save(self, *args, **kwargs):
         if self.file and not getattr(self.file, "_committed", True):
+            from core.uploads import enforce_allowed_extension
+            enforce_allowed_extension(self)
             capture_original_filename(self, "file", "original_name")
         super().save(*args, **kwargs)
+
+    def can_download(self, user):
+        if not (user and user.is_authenticated):
+            return False
+        from .views import _visible_assets_qs
+        return _visible_assets_qs(user).filter(pk=self.asset_id).exists()
+
+    def download_url(self):
+        from django.urls import reverse
+        return reverse("core:protected_download", args=[self._meta.label_lower, self.pk])

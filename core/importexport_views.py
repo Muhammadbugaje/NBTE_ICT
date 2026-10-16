@@ -12,7 +12,7 @@ Flow:
 Security:
   - All endpoints require login + `config.change_configentry` (the same
     "administrator" signal used by the settings page).
-  - Uploaded files are stashed in MEDIA_ROOT/import-tmp/<uuid>.xlsx and
+  - Uploaded files are stashed in PROTECTED_MEDIA_ROOT/import-tmp/<uuid>.xlsx and
     referenced by a session-scoped token. Only the same session can commit
     or download the rejected report for its own upload.
 """
@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime
 
 from django.contrib.auth.decorators import login_required, permission_required
-from django.core.files.storage import default_storage
+from django.utils.html import escape
 from django.http import Http404, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -35,6 +35,14 @@ from .importexport import REGISTRY, all_specs
 logger = logging.getLogger(__name__)
 
 TMP_SUBDIR = "import-tmp"
+
+
+def _tmp_storage():
+    """Review L5: scratch uploads and rejected-row reports hold staff data,
+    so they live in the restricted storage (PROTECTED_MEDIA_ROOT, no public
+    URL) instead of public MEDIA_ROOT."""
+    from core.storage import restricted_storage
+    return restricted_storage()
 TOKEN_SESSION_KEY = "import_tokens"
 TOKEN_MAX_AGE_SECONDS = 3600  # 1 hour
 
@@ -59,13 +67,13 @@ def _spec_group_or_404(name):
 
 
 def _save_upload(file_obj):
-    """Persist an uploaded .xlsx under MEDIA_ROOT/import-tmp and return its token."""
+    """Persist an uploaded .xlsx under PROTECTED_MEDIA_ROOT/import-tmp and return its token."""
     token = uuid.uuid4().hex
     ext = os.path.splitext(file_obj.name or "")[1].lower() or ".xlsx"
     if ext not in (".xlsx", ".xlsm"):
         ext = ".xlsx"
     rel_path = f"{TMP_SUBDIR}/{token}{ext}"
-    default_storage.save(rel_path, file_obj)
+    _tmp_storage().save(rel_path, file_obj)
     return token, rel_path
 
 
@@ -198,17 +206,17 @@ def preview(request, spec_name):
     _stash_token(request, spec_name, token, rel_path)
 
     try:
-        with default_storage.open(rel_path, "rb") as fh:
+        with _tmp_storage().open(rel_path, "rb") as fh:
             result = spec.run_from_file(fh, dry_run=True)
     except Exception as exc:
         # Clean up the file if we couldn't read it.
         try:
-            default_storage.delete(rel_path)
+            _tmp_storage().delete(rel_path)
         except Exception:
             pass
         _pop_token(request, spec_name)
         return HttpResponse(
-            f'<div class="wizard-error">Could not read the file: {exc}</div>',
+            f'<div class="wizard-error">Could not read the file: {escape(exc)}</div>',  # review L4
             status=400,
         )
 
@@ -234,17 +242,17 @@ def commit(request, spec_name):
 
     rel_path = entry["path"]
     try:
-        with default_storage.open(rel_path, "rb") as fh:
+        with _tmp_storage().open(rel_path, "rb") as fh:
             result = spec.run_from_file(fh, dry_run=False)
     except Exception as exc:
         logger.exception("Import failed for %s", spec_name)
         return HttpResponse(
-            f'<div class="wizard-error">Import failed: {exc}</div>',
+            f'<div class="wizard-error">Import failed: {escape(exc)}</div>',  # review L4
             status=400,
         )
     finally:
         try:
-            default_storage.delete(rel_path)
+            _tmp_storage().delete(rel_path)
         except Exception:
             pass
 
@@ -256,7 +264,7 @@ def commit(request, spec_name):
         xlsx = excel.write_rejected(header, rows, sheet_title="Rejected rows")
         rep_token = uuid.uuid4().hex
         rep_path = f"{TMP_SUBDIR}/{rep_token}-rejected.xlsx"
-        default_storage.save(rep_path, io.BytesIO(xlsx))
+        _tmp_storage().save(rep_path, io.BytesIO(xlsx))
         store = request.session.get(TOKEN_SESSION_KEY) or {}
         store[f"{spec_name}:rejected"] = {
             "token": rep_token,
@@ -287,11 +295,11 @@ def download_rejected(request, spec_name):
     if not _token_age_ok(entry):
         raise Http404("Rejected-rows report is no longer available.")
     try:
-        with default_storage.open(entry["path"], "rb") as fh:
+        with _tmp_storage().open(entry["path"], "rb") as fh:
             data = fh.read()
     finally:
         try:
-            default_storage.delete(entry["path"])
+            _tmp_storage().delete(entry["path"])
         except Exception:
             pass
     return _download(data, f"{spec_name}-rejected-rows.xlsx", XLSX_CONTENT_TYPE)

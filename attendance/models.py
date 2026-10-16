@@ -257,6 +257,8 @@ class LocationCheckInCode(TimeStampedModel):
     """
 
     AUDITED = True
+    # Review M8: live check-in codes must not be readable from the audit log.
+    AUDIT_EXCLUDE_FIELDS = ("code",)
 
     location = models.ForeignKey(
         AttendanceLocation,

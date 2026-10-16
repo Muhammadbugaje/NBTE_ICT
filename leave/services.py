@@ -94,7 +94,7 @@ def resumption_date(end_date, *, user):
     return candidate
 
 
-def validate_application(user, form_data):
+def validate_application(user, form_data, exclude_request_id=None):
     from staff.models import Staff
 
     staff = Staff.objects.filter(user=user, is_deleted=False).first()
@@ -105,12 +105,28 @@ def validate_application(user, form_data):
     start_date, end_date = parse_application_dates(form_data)
     if not working_days(start_date, end_date, user=user):
         raise ValidationError("The selected period contains no working days.")
+    # Review M16: block overlapping applications (pending or approved).
+    overlapping = LeaveApplication.objects.filter(
+        staff=staff,
+        start_date__lte=end_date,
+        end_date__gte=start_date,
+        request__is_deleted=False,
+        request__status__in=APPROVED_REQUEST_STATUSES + PENDING_REQUEST_STATUSES,
+    )
+    if exclude_request_id is not None:
+        overlapping = overlapping.exclude(request_id=exclude_request_id)
+    clash = overlapping.select_related("request").first()
+    if clash is not None:
+        raise ValidationError(
+            f"These dates overlap your leave application {clash.request.reference} "
+            f"({clash.start_date:%d %b %Y} to {clash.end_date:%d %b %Y})."
+        )
     return staff, start_date, end_date
 
 
 def sync_application(workflow_request, form_data):
     staff, start_date, end_date = validate_application(
-        workflow_request.requester, form_data
+        workflow_request.requester, form_data, exclude_request_id=workflow_request.pk,
     )
     LeaveApplication.objects.update_or_create(
         request=workflow_request,
@@ -204,6 +220,7 @@ def _balance_for(staff, year, *, exclude_request_id=None):
         staff=staff,
         start_date__lte=last_day,
         end_date__gte=first_day,
+        request__is_deleted=False,  # review M16: deleted requests don't count
     )
     if exclude_request_id is not None:
         applications = applications.exclude(request_id=exclude_request_id)
@@ -359,6 +376,7 @@ def dashboard_data(user):
             start_date__lte=today,
             end_date__gte=today,
             request__status__in=APPROVED_REQUEST_STATUSES,
+            request__is_deleted=False,
         )
         .select_related("request")
         .order_by("start_date", "pk")
@@ -370,6 +388,7 @@ def dashboard_data(user):
             staff=staff,
             end_date__gte=today,
             request__status__in=APPROVED_REQUEST_STATUSES,
+            request__is_deleted=False,
         )
         .select_related("request")
         .order_by("start_date", "pk")
@@ -377,7 +396,7 @@ def dashboard_data(user):
     )
     recent = list(
         LeaveApplication.objects
-        .filter(staff=staff)
+        .filter(staff=staff, request__is_deleted=False)
         .exclude(request__status__in=Request.CLOSED_STATUSES)
         .select_related("request")
         .order_by("-created_at")[:3]

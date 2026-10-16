@@ -37,7 +37,9 @@
             <span class="tk-tl-kind">{{ event.kind|humanize_kind }}</span>
             <span class="tk-tl-time">{{ event.created_at|date:"M j, Y · H:i" }}</span>
           </div>
-          {% if event.message %}<div class="tk-tl-msg">{{ event.message }}</div>{% endif %}
+          {% if event.kind == 'internal_note' and not can_internal %}
+            <div class="tk-tl-msg">Internal note added.</div>{# review M3: older rows held the note text #}
+          {% elif event.message %}<div class="tk-tl-msg">{{ event.message }}</div>{% endif %}
           {% if event.actor %}<div class="tk-tl-actor">{{ event.actor.get_full_name|default:event.actor.email }}</div>{% endif %}
         </div>
       </li>

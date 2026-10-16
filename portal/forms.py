@@ -27,8 +27,10 @@ INPUT = "input"
 # VISIBILITY HELPERS
 # ============================================================================
 def _visibility_choices():
-    """Visibility choices minus the Roles option (hidden until Groups exist)."""
-    return [c for c in Scope.CHOICES if c[0] != Scope.ROLE]
+    """All visibility choices. Review M6: the Roles option was hidden because
+    it pointed at Django groups, which nothing uses; it now targets the
+    organisation's Roles (accounts.Role)."""
+    return list(Scope.CHOICES)
 
 
 def _apply_staff_scope(form, user):

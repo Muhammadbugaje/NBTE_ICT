@@ -23,6 +23,7 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import TimeStampedModel
+from core.storage import restricted_storage
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +385,8 @@ class Ticket(TimeStampedModel):
 class TicketComment(TimeStampedModel):
     """A message on the ticket. Public unless `is_internal`."""
     AUDITED = True
+    # Review M8: comment text (including internal notes) stays out of the audit log.
+    AUDIT_EXCLUDE_FIELDS = ("body",)
 
     ticket = models.ForeignKey(
         Ticket, on_delete=models.CASCADE, related_name="comments",
@@ -410,8 +413,10 @@ class TicketComment(TimeStampedModel):
 # Attachment
 # ===========================================================================
 class TicketAttachment(TimeStampedModel):
-    """File attached to a ticket (screenshot, photo of broken device, log)."""
+    """File attached to a ticket (screenshot, photo of broken device, log).
+    Stored in restricted storage; served only via protected_download (H1)."""
     AUDITED = True
+    PROTECTED_DOWNLOAD = True
 
     ticket = models.ForeignKey(
         Ticket, on_delete=models.CASCADE, related_name="attachments",
@@ -420,7 +425,7 @@ class TicketAttachment(TimeStampedModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT, related_name="+",
     )
-    file = models.FileField(upload_to=ticket_attachment_upload)
+    file = models.FileField(upload_to=ticket_attachment_upload, storage=restricted_storage)
     original_name = models.CharField(max_length=255, blank=True)
     description = models.CharField(max_length=255, blank=True)
 
@@ -429,6 +434,21 @@ class TicketAttachment(TimeStampedModel):
 
     def __str__(self):
         return self.original_name or os.path.basename(self.file.name or "")
+
+    def save(self, *args, **kwargs):
+        from core.uploads import enforce_allowed_extension
+        enforce_allowed_extension(self)
+        super().save(*args, **kwargs)
+
+    def can_download(self, user):
+        if not (user and user.is_authenticated):
+            return False
+        from .views import _visible_tickets_qs
+        return _visible_tickets_qs(user).filter(pk=self.ticket_id).exists()
+
+    def download_url(self):
+        from django.urls import reverse
+        return reverse("core:protected_download", args=[self._meta.label_lower, self.pk])
 
 
 # ===========================================================================

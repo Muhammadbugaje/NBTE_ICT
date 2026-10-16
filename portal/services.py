@@ -41,9 +41,11 @@ def scope_filter(user):
     if getattr(user, "department_id", None):
         q |= Q(visibility=Scope.DEPARTMENT, department_id=user.department_id)
 
-    group_ids = list(user.groups.values_list("pk", flat=True))
-    if group_ids:
-        q |= Q(visibility=Scope.ROLE, roles__in=group_ids)
+    # Review M6: role targeting uses the user's Role (accounts.Role),
+    # which is what the permission backend reads - not Django groups.
+    role_id = getattr(user, "role_id", None)
+    if role_id:
+        q |= Q(visibility=Scope.ROLE, roles=role_id)
 
     q |= Q(visibility=Scope.INDIVIDUAL, recipients=user)
 
@@ -126,7 +128,7 @@ def is_announcement_visible_to(ann, user) -> bool:
     if ann.visibility == Scope.DEPARTMENT:
         return ann.department_id and ann.department_id == getattr(user, "department_id", None)
     if ann.visibility == Scope.ROLE:
-        return ann.roles.filter(pk__in=user.groups.values_list("pk", flat=True)).exists()
+        return bool(user.role_id) and ann.roles.filter(pk=user.role_id).exists()
     if ann.visibility == Scope.INDIVIDUAL:
         return ann.recipients.filter(pk=user.pk).exists()
     return False
@@ -217,7 +219,7 @@ def is_event_visible_to(ev, user) -> bool:
     if ev.visibility == Scope.DEPARTMENT:
         return ev.department_id and ev.department_id == getattr(user, "department_id", None)
     if ev.visibility == Scope.ROLE:
-        return ev.roles.filter(pk__in=user.groups.values_list("pk", flat=True)).exists()
+        return bool(user.role_id) and ev.roles.filter(pk=user.role_id).exists()
     if ev.visibility == Scope.INDIVIDUAL:
         return ev.recipients.filter(pk=user.pk).exists()
     return False
@@ -245,9 +247,9 @@ def visible_reminders(*, user):
         dept &= Q(pk__in=[])
 
     custom = Q(kind=Reminder.Kind.CUSTOM)
-    group_ids = list(user.groups.values_list("pk", flat=True))
-    if group_ids:
-        custom &= (Q(recipients=user) | Q(roles__in=group_ids))
+    role_id = getattr(user, "role_id", None)
+    if role_id:
+        custom &= (Q(recipients=user) | Q(roles=role_id))
     else:
         custom &= Q(recipients=user)
 
@@ -286,9 +288,9 @@ def expand_reminder_recipients(reminder: Reminder):
         return User.objects.filter(is_active=True, department_id=reminder.department_id)
 
     q = Q(pk__in=reminder.recipients.values_list("pk", flat=True))
-    group_ids = list(reminder.roles.values_list("pk", flat=True))
-    if group_ids:
-        q |= Q(groups__in=group_ids)
+    role_ids = list(reminder.roles.values_list("pk", flat=True))
+    if role_ids:
+        q |= Q(role_id__in=role_ids)
     return User.objects.filter(q, is_active=True).distinct()
 
 
@@ -397,7 +399,7 @@ def is_document_visible_to(doc, user) -> bool:
     if doc.visibility == Scope.DEPARTMENT:
         return doc.department_id and doc.department_id == getattr(user, "department_id", None)
     if doc.visibility == Scope.ROLE:
-        return doc.roles.filter(pk__in=user.groups.values_list("pk", flat=True)).exists()
+        return bool(user.role_id) and doc.roles.filter(pk=user.role_id).exists()
     if doc.visibility == Scope.INDIVIDUAL:
         return doc.recipients.filter(pk=user.pk).exists()
     return False
@@ -465,7 +467,7 @@ def live_holidays(*, user=None, from_date=None, to_date=None, include_recurring=
                 visibility=Scope.DEPARTMENT,
                 department_id=user.department_id,
             )
-        group_ids = user.groups.values_list("pk", flat=True)
+        group_ids = [user.role_id] if getattr(user, "role_id", None) else []  # review M6: Role, not groups
         holiday_scope |= Q(visibility=Scope.ROLE, roles__in=group_ids)
         scoped = base.filter(holiday_scope).distinct()
 
@@ -561,7 +563,7 @@ def live_albums(*, user=None, category=None, featured_only=False, q=None):
         if getattr(user, "department_id", None):
             vis_q |= Q(visibility=Scope.DEPARTMENT,
                        department_id=user.department_id, is_published=True)
-        group_ids = list(user.groups.values_list("pk", flat=True))
+        group_ids = [user.role_id] if getattr(user, "role_id", None) else []  # review M6: Role, not groups
         if group_ids:
             vis_q |= Q(visibility=Scope.ROLE, roles__in=group_ids, is_published=True)
         vis_q |= Q(visibility=Scope.INDIVIDUAL, recipients=user, is_published=True)

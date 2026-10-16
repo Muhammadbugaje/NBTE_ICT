@@ -1,5 +1,8 @@
 """Admin registration for the tickets app."""
 from django.contrib import admin
+from django import forms
+from django.db import models
+from django.utils.html import format_html
 
 from .models import (
     Ticket,
@@ -32,8 +35,17 @@ class TicketCommentInline(admin.TabularInline):
 class TicketAttachmentInline(admin.TabularInline):
     model = TicketAttachment
     extra = 0
-    readonly_fields = ("uploaded_by", "original_name", "created_at")
-    fields = ("uploaded_by", "file", "original_name", "description", "created_at")
+    readonly_fields = ("uploaded_by", "original_name", "created_at", "link")
+    fields = ("uploaded_by", "file", "original_name", "description", "created_at", "link")
+    # Restricted storage has no public URL, so the stock widget (which links
+    # to file.url) cannot render; downloads go through `link` instead (H1).
+    formfield_overrides = {models.FileField: {"widget": forms.FileInput}}
+
+    @admin.display(description="Download")
+    def link(self, obj):
+        if obj.pk and obj.file:
+            return format_html('<a href="{}">{}</a>', obj.download_url(), obj.original_name or "download")
+        return "—"
 
 
 class TicketActivityInline(admin.TabularInline):
@@ -116,6 +128,16 @@ class TicketCommentAdmin(admin.ModelAdmin):
 class TicketAttachmentAdmin(admin.ModelAdmin):
     list_display = ("ticket", "original_name", "uploaded_by", "created_at")
     search_fields = ("original_name", "ticket__reference")
+    readonly_fields = ("link",)
+    # Restricted storage has no public URL, so the stock widget (which links
+    # to file.url) cannot render; downloads go through `link` instead (H1).
+    formfield_overrides = {models.FileField: {"widget": forms.FileInput}}
+
+    @admin.display(description="Download")
+    def link(self, obj):
+        if obj.pk and obj.file:
+            return format_html('<a href="{}">{}</a>', obj.download_url(), obj.original_name or "download")
+        return "—"
 
 
 @admin.register(TicketActivity)

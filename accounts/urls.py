@@ -1,6 +1,6 @@
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.views import LogoutView
-from django.urls import path, reverse_lazy
+from django.urls import include, path, reverse_lazy
 
 from . import user_views, views
 from .forms import PortalPasswordResetForm, PortalSetPasswordForm
@@ -86,4 +86,9 @@ urlpatterns = [
     path("users/<int:pk>/reset/",  user_views.user_reset_password, name="user_reset_password"),
     path("users/<int:pk>/toggle/", user_views.user_toggle_active,  name="user_toggle_active"),
     path("users/<int:pk>/roles/",  user_views.user_edit_roles,     name="user_edit_roles"),
+
+    # ---------------------------------------------------------------------
+    # Stage 3: groups & permissions  ->  accounts:groups:<name>
+    # ---------------------------------------------------------------------
+    path("access/", include("accounts.group_urls")),
 ]

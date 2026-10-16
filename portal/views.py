@@ -798,7 +798,7 @@ def _notify_document_published(doc, actor):
         users = User.objects.filter(is_active=True, department_id=doc.department_id)
     elif doc.visibility == Scope.ROLE:
         users = User.objects.filter(
-            is_active=True, groups__in=doc.roles.all()
+            is_active=True, role__in=doc.roles.all()  # review M6
         ).distinct()
     elif doc.visibility == Scope.INDIVIDUAL:
         users = doc.recipients.all()
@@ -1015,7 +1015,7 @@ def holiday_update(request, pk):
 
 
 @login_required
-@permission_required("portal:manage_holiday", raise_exception=True)
+@permission_required("portal.manage_holiday", raise_exception=True)  # review L1
 def holiday_delete(request, pk):
     holiday = get_object_or_404(Holiday, pk=pk)
     if request.method == "POST":

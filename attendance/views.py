@@ -78,6 +78,14 @@ def _can_upload(user):
     return user.is_superuser or _is_director(user)
 
 
+def _upload_department(user):
+    """Department an uploader is limited to (None = every department).
+    Review H4: directors may only upload for their own department."""
+    if user.is_superuser or _can_view_all_attendance(user):
+        return None
+    return user.department
+
+
 # ===========================================================================
 # Auto-absent backfill
 # ===========================================================================
@@ -132,6 +140,9 @@ def _backfill_absent_range(users, start, end, actor=None):
         else:
             joined[u.pk] = None
 
+    holidays_by_day = {d: services.holidays_on(d) for d in working_days}
+    users_by_id = {u.pk: u for u in users}
+
     to_create = []
     for uid in user_ids:
         jd = joined.get(uid)
@@ -140,6 +151,8 @@ def _backfill_absent_range(users, start, end, actor=None):
                 continue
             if jd is not None and d < jd:
                 continue
+            if holidays_by_day[d] and services.is_holiday_for(users_by_id[uid], d, holidays_by_day[d]):
+                continue  # review M12: never auto-mark absent on a holiday
             to_create.append(AttendanceRecord(
                 user_id=uid,
                 date=d,
@@ -295,6 +308,32 @@ def check_in_api(request):
         lng = float(lng)
     except (TypeError, ValueError):
         return JsonResponse({"ok": False, "error": "Invalid coordinates."}, status=400)
+
+    # Review M12: server-side sanity checks. A browser can still fake its
+    # position; these only reject impossible or imprecise readings.
+    import math
+    if (not (math.isfinite(lat) and math.isfinite(lng))
+            or not (-90 <= lat <= 90 and -180 <= lng <= 180)
+            or (lat == 0 and lng == 0)):
+        return JsonResponse({"ok": False, "error": "Invalid coordinates."}, status=400)
+    max_accuracy = services._cfg_int("attendance.max_gps_accuracy_m", 200)
+    try:
+        accuracy = float(data.get("accuracy"))
+    except (TypeError, ValueError):
+        accuracy = None
+    if accuracy is None or not math.isfinite(accuracy) or accuracy < 0:
+        return JsonResponse(
+            {"ok": False, "error": "Your device did not report location accuracy. "
+                                   "Reload the page and try again."},
+            status=400,
+        )
+    if accuracy > max_accuracy:
+        return JsonResponse(
+            {"ok": False, "error": f"Your location is only accurate to about "
+                                   f"{round(accuracy)} m (limit {max_accuracy} m). "
+                                   f"Move to an open area and try again."},
+            status=400,
+        )
 
     result = services.check_in_user(request.user, lat, lng)
 
@@ -678,6 +717,7 @@ def upload_matrix(request):
                     form.cleaned_data["file"],
                     month=month,
                     year=year,
+                    department=_upload_department(request.user),
                 )
             except ValidationError as exc:
                 messages.error(request, "; ".join(exc.messages))
@@ -714,6 +754,7 @@ def upload_matrix(request):
                 form.cleaned_data["file"],
                 month=month,
                 year=year,
+                department=_upload_department(request.user),
             )
         except ValidationError as exc:
             messages.error(request, "; ".join(exc.messages))
@@ -750,12 +791,17 @@ def upload_matrix(request):
 def manual_edit(request, pk):
     record = get_object_or_404(AttendanceRecord, pk=pk)
 
-    allowed = (
-        request.user.is_superuser
-        or record.user_id == request.user.pk
-        or (
-            _is_director(request.user)
-            and record.user.department_id == request.user.department_id
+    # Review H4: staff may no longer edit their own records. Only
+    # superusers, cross-department attendance viewers, and the record
+    # owner's department director/deputy/office heads may.
+    allowed = request.user.is_superuser or (
+        record.user_id != request.user.pk
+        and (
+            _can_view_all_attendance(request.user)
+            or (
+                _is_director(request.user)
+                and record.user.department_id == request.user.department_id
+            )
         )
     )
     if not allowed:

@@ -59,9 +59,10 @@ def test_queryset_delete_is_soft():
 def test_uuid_upload_to_ignores_original_name():
     s = Staff(employee_no="E3")
     path = uuid_upload_to(s, "../../Evil Name.PNG")
-    assert re.fullmatch(r"staff/[0-9a-f]{32}\.png", path)
+    # Review L9: Staff now stores photos under MEDIA_SUBDIR "staff/photos".
+    assert re.fullmatch(r"staff/photos/[0-9a-f]{32}\.png", path)
     assert "Evil" not in path
-    assert re.fullmatch(r"staff/[0-9a-f]{32}", uuid_upload_to(s, "x.<script>"))  # unsafe ext dropped
+    assert re.fullmatch(r"staff/photos/[0-9a-f]{32}", uuid_upload_to(s, "x.<script>"))  # unsafe ext dropped
 
 
 def test_staff_photo_stored_with_uuid_and_original_name_kept(settings, tmp_path):
@@ -74,6 +75,6 @@ def test_staff_photo_stored_with_uuid_and_original_name_kept(settings, tmp_path)
     s = Staff(employee_no="E4", first_name="P", last_name="H")
     s.photo = SimpleUploadedFile("My Holiday Photo.png", buf.getvalue(), content_type="image/png")
     s.save()
-    assert re.fullmatch(r"staff/[0-9a-f]{32}\.png", s.photo.name)
+    assert re.fullmatch(r"staff/photos/[0-9a-f]{32}\.png", s.photo.name)  # review L9: MEDIA_SUBDIR
     assert s.photo_original_name == "My Holiday Photo.png"
     assert (tmp_path / s.photo.name).exists()

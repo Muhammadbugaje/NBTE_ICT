@@ -2,7 +2,10 @@ from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView
+from django.forms.utils import ErrorDict
 from django.shortcuts import redirect, render
+
+from core import ratelimit
 
 from .forms import (
     EmailAuthenticationForm,
@@ -16,6 +19,32 @@ class PortalLoginView(LoginView):
     template_name = "accounts/login.html"
     authentication_form = EmailAuthenticationForm
     redirect_authenticated_user = True
+
+    # Review M18: after 5 failed sign-ins for the same email from the same
+    # address, further attempts are refused for 15 minutes (the password is
+    # not even checked). A successful sign-in clears the counter.
+    def _ratelimit_ident(self):
+        email = (self.request.POST.get("username") or "").strip().lower()
+        return f"{email}|{ratelimit.client_ip(self.request)}"
+
+    def post(self, request, *args, **kwargs):
+        limit, _window = ratelimit.LOGIN_FAILURES
+        if ratelimit.is_limited("login", self._ratelimit_ident(), limit):
+            form = self.get_form()
+            form.cleaned_data = {}
+            form._errors = ErrorDict()
+            form.add_error(None, "Too many failed sign-in attempts. Please wait 15 minutes "
+                                 "and try again, or reset your password.")
+            return self.render_to_response(self.get_context_data(form=form), status=429)
+        return super().post(request, *args, **kwargs)
+
+    def form_invalid(self, form):
+        ratelimit.hit("login", self._ratelimit_ident(), ratelimit.LOGIN_FAILURES[1])
+        return super().form_invalid(form)
+
+    def form_valid(self, form):
+        ratelimit.reset("login", self._ratelimit_ident())
+        return super().form_valid(form)
 
 
 @login_required

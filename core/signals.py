@@ -45,7 +45,30 @@ def _bind(model_label: str, namespace: str):
 # Notifications — sidebar unread counts + dashboards
 # ---------------------------------------------------------------------------
 _bind("notifications.Notification", "notifications")
-_bind("notifications.Notification", "sidebar")
+
+
+# Review M17: the sidebar badge counts only read Notification and Request.
+# A notification changes ONE user's counts, so it drops only that user's
+# cached counts instead of bumping the "sidebar" epoch for everybody (which
+# happened on every notification, message, attendance mark, portal edit and
+# ticket/task save). Request changes can affect several users' approval
+# queues, so they still invalidate the whole namespace.
+def _bind_sidebar_for_recipient(model_label):
+    Model = _model(model_label)
+    if Model is None:
+        return
+
+    @receiver([post_save, post_delete], sender=Model, weak=False,
+              dispatch_uid=f"cache_inv_{model_label}_sidebar_user")
+    def _receiver(sender, instance, **kwargs):
+        from django.core.cache import cache
+        from .cache import make_key
+        uid = getattr(instance, "recipient_id", None)
+        if uid:
+            cache.delete(make_key("sidebar", "counts", user=uid))
+
+
+_bind_sidebar_for_recipient("notifications.Notification")
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +91,6 @@ _bind("workflow.RequestCategory", "workflow")
 # ---------------------------------------------------------------------------
 _bind("attendance.AttendanceRecord", "attendance")
 _bind("attendance.AttendanceRecord", "dashboards")
-_bind("attendance.AttendanceRecord", "sidebar")
 _bind("attendance.AttendanceLocation", "attendance")
 
 
@@ -77,7 +99,6 @@ _bind("attendance.AttendanceLocation", "attendance")
 # ---------------------------------------------------------------------------
 _bind("staff.Staff", "staff")
 _bind("staff.Staff", "dashboards")
-_bind("staff.Staff", "sidebar")
 _bind("staff.Department", "staff")
 _bind("staff.ExecutivePosition", "public_leadership")
 _bind("staff.ExecutiveTenure", "public_leadership")
@@ -99,16 +120,13 @@ for _label in (
     "portal.Reminder",
 ):
     _bind(_label, "portal")
-    _bind(_label, "sidebar")
 
 
 # ---------------------------------------------------------------------------
-# Messaging — unread threads on home
+# Messaging — unread threads on home (not in the sidebar counts; review M17)
 # ---------------------------------------------------------------------------
 _bind("messaging.Thread", "messaging")
-_bind("messaging.Thread", "sidebar")
 _bind("messaging.Message", "messaging")
-_bind("messaging.Message", "sidebar")
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +134,6 @@ _bind("messaging.Message", "sidebar")
 # ---------------------------------------------------------------------------
 _bind("tickets.Ticket", "tickets")
 _bind("tickets.Ticket", "dashboards")
-_bind("tickets.Ticket", "sidebar")
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +141,6 @@ _bind("tickets.Ticket", "sidebar")
 # ---------------------------------------------------------------------------
 _bind("tasks.Task", "tasks")
 _bind("tasks.Task", "dashboards")
-_bind("tasks.Task", "sidebar")
 
 
 # ---------------------------------------------------------------------------

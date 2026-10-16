@@ -1,0 +1,18 @@
+{# Stage 3: shared delete confirmation (NBTE.modal). groups.js fills the name and form action from the clicked [data-group-delete] link. #}
+<div class="modal-root" id="group-delete-modal" aria-hidden="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="group-delete-title" aria-describedby="group-delete-body">
+    <button type="button" class="modal-close" aria-label="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <h3 class="modal-title" id="group-delete-title">Delete this group?</h3>
+    <p id="group-delete-body">“<strong data-delete-name>{{ group.name }}</strong>” will be deleted. Everyone who has it — directly or through a role — loses its permissions straight away. This can't be undone.</p>
+    <form method="post" action="{% if group %}{% url 'accounts:groups:delete' group.pk %}{% endif %}" data-delete-form>
+      {% csrf_token %}
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-danger">Delete group</button>
+      </div>
+    </form>
+  </div>
+</div>

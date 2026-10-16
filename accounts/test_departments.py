@@ -41,8 +41,9 @@ def test_code_is_generated_unique_and_stable():
 
 
 def test_seed_departments_is_idempotent():
+    # Review L9: the seed list now also contains Human Resources.
     call_command("seed_departments"); call_command("seed_departments")
-    assert list(Department.objects.values_list("code", flat=True)) == ["ict"]
+    assert sorted(Department.objects.values_list("code", flat=True)) == ["hr", "ict"]
 
 
 # ---------------- user belongs to a department ----------------
@@ -53,8 +54,15 @@ def test_provision_user_with_department(depts, django_capture_on_commit_callback
     assert User.objects.get(pk=u.pk).department == ict
 
 
-def test_admin_add_user_form_has_department_field(client, depts, django_capture_on_commit_callbacks):
-    from django.core import mail
+def test_admin_add_user_form_has_department_field(client, depts, django_capture_on_commit_callbacks,
+                                                  monkeypatch):
+    # Review L9: email now goes through the queued email engine, not
+    # django.core.mail directly, so the credentials email is captured where
+    # it is queued.
+    import accounts.services
+    sent = []
+    monkeypatch.setattr(accounts.services, "send_templated_email",
+                        lambda **kw: sent.append(kw))
     ict, _ = depts
     client.force_login(User.objects.create_superuser("su@x.org", "Pass-word-123"))
     page = client.get("/admin/accounts/user/add/").content
@@ -66,7 +74,8 @@ def test_admin_add_user_form_has_department_field(client, depts, django_capture_
     assert r.status_code == 302
     new = User.objects.get(email="new@x.org")
     assert new.department == ict and new.must_change_password is True
-    assert len(mail.outbox) == 1 and "new@x.org" in mail.outbox[0].body      # credentials email went out
+    assert len(sent) == 1 and sent[0]["recipients"] == ["new@x.org"]        # credentials email went out
+    assert sent[0]["category"] == "credentials"
 
 
 # ---------------- department-aware permissions ----------------
@@ -96,7 +105,9 @@ def test_scope_to_department_queryset(depts):
     ict, planning = depts
     for n, d in (("1", ict), ("2", ict), ("3", planning), ("4", None)):
         Staff.objects.create(employee_no=n, first_name="S", last_name=n, department=d)
-    qs = Staff.objects.all()
+    # Review L9: creating a user now also creates its Staff profile, so the
+    # query is limited to the four records made here.
+    qs = Staff.objects.filter(employee_no__in=["1", "2", "3", "4"])
     assert scope_to_department(qs, _user("a@x.org", ict)).count() == 2
     assert scope_to_department(qs, _user("b@x.org", planning)).count() == 1
     assert scope_to_department(qs, _user("c@x.org")).count() == 0                     # no department -> nothing
@@ -141,8 +152,12 @@ def test_department_specific_config_overrides_global(depts):
 # ---------------- Staff <-> User department stay in step ----------------
 def test_staff_department_flows_to_linked_user_and_back(depts):
     ict, planning = depts
+    # Review L9: a user now gets its Staff profile automatically; use it
+    # instead of creating a second one (which the one-to-one rejects).
     u = _user("link@x.org")
-    s = Staff.objects.create(employee_no="L1", first_name="L", last_name="K", user=u, department=ict)
+    s = Staff.objects.get(user=u)
+    s.department = ict
+    s.save()
     assert User.objects.get(pk=u.pk).department == ict                  # directory -> account
     u = User.objects.get(pk=u.pk); u.department = planning; u.save()
     assert Staff.objects.get(pk=s.pk).department == planning            # account -> directory
@@ -154,8 +169,9 @@ def test_staff_department_flows_to_linked_user_and_back(depts):
 
 def test_blank_side_is_filled_from_the_other_never_wiped(depts):
     ict, _ = depts
+    # Review L9: the profile is created automatically with the account.
     u = _user("fill@x.org", ict)
-    s = Staff.objects.create(employee_no="F1", first_name="F", last_name="L", user=u)   # no department given
+    s = Staff.objects.get(user=u)                                                        # no department given
     assert Staff.objects.get(pk=s.pk).department == ict                                  # filled from the account
     s = Staff.objects.get(pk=s.pk); s.department = None; s.save()
     assert User.objects.get(pk=u.pk).department == ict                                   # blank doesn't wipe the account

@@ -37,6 +37,13 @@ class Department(Lookup):
         max_length=50, unique=True, null=True, blank=True,
         help_text="Stable short code, e.g. 'ict'. Auto-filled from the name if left blank.",
     )
+    # Review M12: who receives the weekly attendance summary. If empty, the
+    # department's active Director is used.
+    head = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="headed_departments",
+        help_text="Receives the weekly attendance summary. Defaults to the department's Director.",
+    )
 
     def save(self, *args, **kwargs):
         if not self.code:
@@ -75,6 +82,11 @@ class StaffState(Lookup):
 
 class Staff(SoftDeleteModel):
     AUDIT_IGNORE_FIELDS = ("photo_original_name",)
+    # Review M8: personal details are recorded as changed ("***"), never stored.
+    AUDIT_EXCLUDE_FIELDS = (
+        "phone", "emergency_contact_name", "emergency_contact_phone",
+        "birth_month", "birth_day",
+    )
     MEDIA_SUBDIR = "staff/photos"
 
     CONTACT_CHOICES = [
@@ -266,6 +278,14 @@ class StaffAttachment(RestrictedFileModel):
 
     class Meta:
         ordering = ["-created_at"]
+
+    def can_download(self, user):
+        """Review M7: the permission alone no longer covers every department."""
+        if not super().can_download(user):
+            return False
+        if user.is_superuser or user.has_perm("accounts.access_all_departments"):
+            return True
+        return bool(user.department_id) and self.staff.department_id == user.department_id
 
     def __str__(self):
         return self.original_name or f"attachment {self.pk}"

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Users · User management · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Users{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="gp-page">
+  <header class="page-header">
+    <div>
+      <p class="gp-eyebrow">User management</p>
+      <h1>Users</h1>
+      <p class="muted">Each person's role, groups and direct permissions. Accounts themselves (passwords, activation) are managed on the existing user pages.</p>
+    </div>
+  </header>
+
+  {% include "accounts/groups/_subnav.html" with section="users" %}
+
+  <form method="get" class="gp-toolbar" role="search" aria-label="Filter users">
+    <div class="field">
+      <label for="ua-q">Search</label>
+      <input type="search" id="ua-q" name="q" value="{{ q }}" class="input" placeholder="Name or email" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="ua-role">Role</label>
+      <select id="ua-role" name="role" class="input" data-autosubmit>
+        <option value="">Any role</option>
+        {% for r in roles %}<option value="{{ r.pk }}"{% if role == r.pk|stringformat:"s" %} selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-ghost">Filter</button>
+    {% if q or role %}<a href="{% url 'accounts:groups:users' %}" class="btn btn-ghost">Clear</a>{% endif %}
+  </form>
+
+  {% if page.object_list %}
+    <div class="card card-flat p-0">
+      <table class="table table--stack">
+        <thead>
+          <tr><th scope="col">Person</th><th scope="col">Role</th><th scope="col">Groups</th><th scope="col">Direct permissions</th><th scope="col"><span class="sr-only">Actions</span></th></tr>
+        </thead>
+        <tbody>
+          {% for u in page.object_list %}
+            <tr>
+              <td data-label="Person"><strong>{{ u.get_full_name|default:u.email }}</strong><br><span class="muted">{{ u.email }}</span></td>
+              <td data-label="Role">{{ u.role.name|default:"—" }}{% if u.is_superuser %} <span class="badge badge-warn">superuser</span>{% endif %}</td>
+              <td data-label="Groups">{{ u.group_count }}</td>
+              <td data-label="Direct permissions">{{ u.direct_perm_count }}</td>
+              <td data-label="Actions" class="text-end">
+                {% if can_assign %}<a href="{% url 'accounts:groups:user_groups' u.pk %}" class="btn btn-ghost btn-sm">Groups &amp; permissions</a>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if page.paginator.num_pages > 1 %}
+      <nav class="pagination" aria-label="Pages">
+        {% if page.has_previous %}<a href="?{% querystring page=page.previous_page_number %}" rel="prev">Previous</a>{% endif %}
+        <span aria-current="page">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="?{% querystring page=page.next_page_number %}" rel="next">Next</a>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    {% include "partials/empty_state.html" with variant="filtered" title="No users found" body="Try another name or role." only %}
+  {% endif %}
+</div>
+{% endblock %}

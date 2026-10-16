@@ -485,9 +485,12 @@ def clone_task(task, user, reset_assignees=True):
             except (ValidationError, PermissionDenied) as exc:
                 logger.warning("Clone: could not attach %s: %s", row.user, exc)
 
-    # Copy subtask structure
+    # Copy subtask structure. Review M10: the parent link was set on the
+    # clone but never saved, leaving subtask clones as top-level tasks.
     for child in task.subtasks.all():
-        clone_task(child, user, reset_assignees=reset_assignees).parent = new
+        child_clone = clone_task(child, user, reset_assignees=reset_assignees)
+        child_clone.parent = new
+        child_clone.save(update_fields=["parent", "updated_at"])
     return new
 
 
@@ -1090,11 +1093,26 @@ def stop_timer(task, user):
     return entry
 
 
+MAX_MANUAL_ENTRY_HOURS = 24
+
+
 @transaction.atomic
 def log_time(task, user, started_at, ended_at, note=""):
+    # Review M10: same rule as the live timer - assignees only - plus basic
+    # sanity limits on manually typed entries.
+    if not task.assignee_rows.filter(user=user).exists():
+        raise PermissionDenied("Only assignees can log time.")
+    if task.state in Task.CLOSED_STATES:
+        raise ValidationError("Time cannot be logged on a closed task.")
     if ended_at <= started_at:
         raise ValidationError("End must be after start.")
+    if ended_at > timezone.now() + timedelta(minutes=5):
+        raise ValidationError("Time cannot be logged in the future.")
     seconds = int((ended_at - started_at).total_seconds())
+    if seconds > MAX_MANUAL_ENTRY_HOURS * 3600:
+        raise ValidationError(
+            f"A single entry cannot exceed {MAX_MANUAL_ENTRY_HOURS} hours; split it by day."
+        )
     entry = TaskTimeEntry.objects.create(
         task=task, user=user,
         started_at=started_at, ended_at=ended_at,

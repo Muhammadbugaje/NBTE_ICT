@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if role %}{{ role.name }} · {% endif %}Roles · User management · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Roles{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="gp-page">
+  <header class="page-header">
+    <div>
+      <p class="gp-eyebrow">User management</p>
+      <h1>Roles &amp; groups</h1>
+      <p class="muted">Pick a role, then choose the groups everyone holding it should get.</p>
+    </div>
+  </header>
+
+  {% include "accounts/groups/_subnav.html" with section="roles" %}
+
+  {% if not role %}
+    {% include "partials/empty_state.html" with title="No roles yet" body="Run “python manage.py seed_roles” to create the standard roles." only %}
+  {% else %}
+  <div class="gp-split">
+    <nav class="card card-flat" aria-label="Roles">
+      <ul class="gp-role-nav">
+        {% for r in roles %}
+          <li>
+            <a class="gp-role-link" href="{% url 'accounts:groups:role_groups' r.pk %}"{% if r.pk == role.pk %} aria-current="page"{% endif %}>
+              <span>{{ r.name }}</span>
+              <span class="gp-role-rank">rank {{ r.rank }} · {{ r.group_count }} group{{ r.group_count|pluralize }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </nav>
+
+    <div class="gp-stack">
+      <section class="card" aria-labelledby="rg-title">
+        <div class="gp-card-title-row">
+          <h2 id="rg-title">{{ role.name }}</h2>
+          <span class="badge">Rank {{ role.rank }}</span>
+        </div>
+        {% if not can_edit_role %}
+          <div class="alert alert-warn" role="note"><div class="alert-body">This role is ranked above yours, so you can view it but not change it.</div></div>
+        {% endif %}
+
+        <div class="tabs" role="tablist" data-tabs aria-label="Groups for {{ role.name }}">
+          <button type="button" class="tab" role="tab" id="rg-tab-direct" aria-controls="rg-panel-direct" aria-selected="true">Direct groups</button>
+          {# Roles in this project have no parent roles, so there is no "Inherited" tab (see GROUPS_PERMISSIONS.md). #}
+        </div>
+
+        <div id="rg-panel-direct" role="tabpanel" aria-labelledby="rg-tab-direct" class="mt-4">
+          <form method="post" data-dirty-guard data-role-preview>
+            {% csrf_token %}
+            {% if form.groups.errors %}<div class="alert alert-danger" role="alert"><div class="alert-body">{{ form.groups.errors|join:" " }}</div></div>{% endif %}
+            {% if group_rows %}
+              <ul class="gp-group-list">
+                {% for row in group_rows %}
+                  <li class="gp-group-row{% if row.checked %} is-checked{% endif %}{% if row.locked %} is-locked{% endif %}" data-group-row>
+                    <input type="checkbox" name="groups" value="{{ row.group.pk }}" id="rg-g{{ row.group.pk }}"
+                           {% if row.checked %}checked{% endif %} {% if row.locked %}disabled aria-describedby="rg-locked-note"{% endif %}
+                           data-perms="{{ row.perms|join:' ' }}">
+                    <label for="rg-g{{ row.group.pk }}">
+                      <span class="gp-group-name">{{ row.group.name }}</span>
+                      <span class="gp-group-meta">{{ row.group.perm_count }} permission{{ row.group.perm_count|pluralize }}{% if row.locked %} · locked{% endif %}</span>
+                    </label>
+                    <a href="{% url 'accounts:groups:detail' row.group.pk %}" class="btn btn-ghost btn-sm" aria-label="View group {{ row.group.name }}">View</a>
+                  </li>
+                {% endfor %}
+              </ul>
+              <p class="sr-only" id="rg-locked-note">Locked: you can only assign groups whose permissions you hold, on roles not ranked above you.</p>
+            {% else %}
+              {% url 'accounts:groups:create' as new_url %}
+              {% include "partials/empty_state.html" with title="No groups to assign" body="Create a group first, then come back to give it to this role." action_url=new_url action_label="Create a group" only %}
+            {% endif %}
+
+            {% if can_edit_role and group_rows %}
+              <div class="gp-sticky-actions">
+                <a href="{% url 'accounts:groups:role_groups' role.pk %}" class="btn btn-ghost" data-cancel-guard>Cancel</a>
+                <button type="submit" class="btn btn-primary">Save groups</button>
+              </div>
+            {% endif %}
+          </form>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="rg-preview-title" data-role-preview-panel>
+        <h2 class="gp-card-title" id="rg-preview-title">Preview</h2>
+        <p class="gp-summary-total mt-3" aria-live="polite">This role will grant <strong data-preview-total>{{ grant_total }}</strong> permission{{ grant_total|pluralize }} across <strong data-preview-apps>{{ grants|length }}</strong> app{{ grants|length|pluralize }}.</p>
+        <p class="gp-note">Includes the role's own baseline ({{ baseline|length }}), which you edit in Django admin → Roles.</p>
+        <details class="gp-preview-details">
+          <summary>Show the full list</summary>
+          <ul class="gp-perm-apps" data-preview-list>
+            {% for a in grants %}
+              <li><h4>{{ a.app_name }} <span class="gp-app-count">{{ a.count }}</span></h4>
+                <ul class="gp-code-list">{% for c in a.codes %}<li><code>{{ a.app_label }}.{{ c }}</code></li>{% endfor %}</ul></li>
+            {% endfor %}
+          </ul>
+        </details>
+        {{ baseline|json_script:"rg-baseline" }}
+      </section>
+    </div>
+  </div>
+  {% include "accounts/groups/_discard_modal.html" %}
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+{% endblock %}

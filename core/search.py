@@ -122,7 +122,8 @@ class RequestSearchProvider(BaseSearchProvider):
             "requester", "request_type", "receiving_department",
         )
 
-        if user.is_superuser:
+        if user.is_superuser or user.has_perm("accounts.view_all_requests"):
+            # Review M1: same rule as workflow.views.all_requests / detail.
             qs = base
         else:
             q = Q(requester=user) | Q(assigned_to=user) | Q(approvals__actor=user)

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Groups · User management · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Groups{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="gp-page">
+  <header class="page-header">
+    <div>
+      <p class="gp-eyebrow">User management</p>
+      <h1>Groups</h1>
+      <p class="muted">A group is a named bundle of permissions. Give it to a role and everyone in the role gets it, or give it to one person.</p>
+    </div>
+    {% if can_add %}
+      <div class="header-actions">
+        <a href="{% url 'accounts:groups:create' %}" class="btn btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New group
+        </a>
+      </div>
+    {% endif %}
+  </header>
+
+  {% include "accounts/groups/_subnav.html" with section="groups" %}
+
+  <form method="get" class="gp-toolbar" role="search" aria-label="Filter groups">
+    <div class="field">
+      <label for="gp-q">Search</label>
+      <input type="search" id="gp-q" name="q" value="{{ q }}" class="input" placeholder="Group name or description" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="gp-app">Has permissions in</label>
+      <select id="gp-app" name="app" class="input" data-autosubmit>
+        <option value="">Any app</option>
+        {% for code, name in app_choices %}
+          <option value="{{ code }}"{% if code == app %} selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-ghost">Filter</button>
+    {% if q or app %}<a href="{% url 'accounts:groups:list' %}" class="btn btn-ghost">Clear</a>{% endif %}
+  </form>
+
+  {% if page.object_list %}
+    <ul class="gp-cards reveal-stagger">
+      {% for g in page.object_list %}
+        <li class="reveal">
+          <article class="card gp-card" aria-labelledby="g{{ g.pk }}-name">
+            <div class="gp-card-head">
+              <h2 class="gp-card-title" id="g{{ g.pk }}-name"><a href="{% url 'accounts:groups:detail' g.pk %}">{{ g.name }}</a></h2>
+            </div>
+            {% if g.profile.description %}<p class="gp-card-desc">{{ g.profile.description|truncatechars:140 }}</p>{% endif %}
+            <dl class="gp-stats">
+              <div class="gp-stat"><dt>Permissions</dt><dd>{{ g.perm_count }}</dd></div>
+              <div class="gp-stat"><dt>Direct members</dt><dd>{{ g.member_count }}</dd></div>
+              <div class="gp-stat"><dt>Roles</dt><dd>{{ g.roles.all|length }}</dd></div>
+            </dl>
+            {% if g.roles.all %}
+              <ul class="gp-chips" aria-label="Roles carrying {{ g.name }}">
+                {% for r in g.roles.all %}<li><span class="badge badge-primary">{{ r.name }}</span></li>{% endfor %}
+              </ul>
+            {% endif %}
+            <div class="gp-card-actions">
+              <a href="{% url 'accounts:groups:detail' g.pk %}" class="btn btn-ghost btn-sm">View</a>
+              {% if can_change %}<a href="{% url 'accounts:groups:update' g.pk %}" class="btn btn-ghost btn-sm">Edit</a>{% endif %}
+              {% if can_delete %}
+                <a href="{% url 'accounts:groups:delete' g.pk %}" class="btn btn-ghost btn-danger btn-sm"
+                   data-group-delete data-delete-url="{% url 'accounts:groups:delete' g.pk %}" data-delete-name="{{ g.name }}">Delete</a>
+              {% endif %}
+            </div>
+          </article>
+        </li>
+      {% endfor %}
+    </ul>
+
+    {% if page.paginator.num_pages > 1 %}
+      <nav class="pagination" aria-label="Pages">
+        {% if page.has_previous %}<a href="?{% querystring page=page.previous_page_number %}" rel="prev">Previous</a>{% endif %}
+        <span aria-current="page">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="?{% querystring page=page.next_page_number %}" rel="next">Next</a>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    {% if q or app %}
+      {% url 'accounts:groups:list' as clear_url %}
+      {% include "partials/empty_state.html" with variant="filtered" title="No groups match" body="Try another search or app, or clear the filters." action_url=clear_url action_label="Clear filters" action_class="btn-ghost" only %}
+    {% elif can_add %}
+      {% url 'accounts:groups:create' as new_url %}
+      {% include "partials/empty_state.html" with title="No groups yet" body="Create a group, tick the permissions it carries, then give it to a role or a person. You can also run “python manage.py seed_default_groups” to start from the standard set." action_url=new_url action_label="Create the first group" only %}
+    {% else %}
+      {% include "partials/empty_state.html" with title="No groups yet" body="An administrator hasn't created any permission groups." only %}
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if can_delete %}
+  {% include "accounts/groups/_delete_modal.html" %}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+{% endblock %}

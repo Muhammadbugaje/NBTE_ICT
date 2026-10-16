@@ -1,0 +1,236 @@
+/* ==========================================================================
+   NBTE ICT — Utilities (v5). A deliberately small set. Not a framework.
+   Spacing uses logical properties so layouts mirror correctly in RTL.
+
+   DOCUMENTED !important: single-purpose utilities (spacing, text, display,
+   flex, sizing, visibility) carry !important. They replaced inline style=""
+   attributes during the overhaul, and page stylesheets load after this file,
+   so without it a page rule like `.att-btn { margin: 0 }` would silently
+   cancel a `.mt-4` on the same element. Component-like helpers further down
+   (swatches, confirm card, list/heading helpers) do not use it.
+   ========================================================================== */
+
+/* Text */
+.muted, .who { color: var(--text-muted); }
+.subtle { color: var(--text-subtle); }
+.center-text, .text-center { text-align: center !important; }
+.text-end { text-align: end !important; }
+.text-sm { font-size: var(--fs-sm) !important; }
+.text-xs { font-size: var(--fs-xs) !important; }
+.fw-semibold { font-weight: var(--fw-semibold) !important; }
+.fst-italic { font-style: italic !important; }
+.mono { font-family: var(--font-mono) !important; }
+.nowrap { white-space: nowrap !important; }
+.truncate { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+.break-anywhere { overflow-wrap: anywhere !important; }
+.tabular { font-variant-numeric: tabular-nums !important; }
+.inline { display: inline !important; }
+
+/* Flex helpers */
+.flex { display: flex !important; }
+.flex-col { display: flex !important; flex-direction: column !important; }
+.items-center { align-items: center !important; }
+.justify-between { justify-content: space-between !important; }
+.justify-end { justify-content: flex-end !important; }
+.wrap { flex-wrap: wrap !important; }
+.grow { flex: 1 1 auto !important; min-width: 0 !important; }
+.shrink-0 { flex-shrink: 0 !important; }
+.min-w-0 { min-width: 0 !important; }
+.gap-1 { gap: var(--space-1) !important; }
+.gap-2 { gap: var(--space-2) !important; }
+.gap-3 { gap: var(--space-3) !important; }
+.gap-4 { gap: var(--space-4) !important; }
+.spacer { flex: 1 !important; }
+
+/* Spacing (block = vertical, inline = horizontal) */
+.m-0 { margin: 0 !important; }
+.mt-0 { margin-block-start: 0 !important; }
+.mt-1 { margin-block-start: var(--space-1) !important; }
+.mt-2 { margin-block-start: var(--space-2) !important; }
+.mt-3 { margin-block-start: var(--space-3) !important; }
+.mt-4 { margin-block-start: var(--space-4) !important; }
+.mt-5 { margin-block-start: var(--space-5) !important; }
+.mt-6 { margin-block-start: var(--space-6) !important; }
+.mb-0 { margin-block-end: 0 !important; }
+.mb-1 { margin-block-end: var(--space-1) !important; }
+.mb-2 { margin-block-end: var(--space-2) !important; }
+.mb-3 { margin-block-end: var(--space-3) !important; }
+.mb-4 { margin-block-end: var(--space-4) !important; }
+.mb-5 { margin-block-end: var(--space-5) !important; }
+.mb-6 { margin-block-end: var(--space-6) !important; }
+.ms-auto { margin-inline-start: auto !important; }
+.p-0 { padding: 0 !important; }
+.py-2 { padding-block: var(--space-2) !important; }
+.py-3 { padding-block: var(--space-3) !important; }
+.py-4 { padding-block: var(--space-4) !important; }
+.p-4 { padding: var(--space-4) !important; }
+.p-5 { padding: var(--space-5) !important; }
+
+/* Sizing */
+.w-full { width: 100% !important; }
+.max-w-prose { max-width: 68ch !important; }
+
+/* Visibility by breakpoint (mobile first) */
+.hide-sm-down { display: none !important; }
+@media (min-width: 480px) { .hide-sm-down { display: revert !important; } }
+@media (max-width: 767px) { .hide-md-down { display: none !important; } }
+@media (min-width: 768px) { .show-md-down { display: none !important; } }
+@media (max-width: 1023px) { .hide-lg-down { display: none !important; } }
+@media (min-width: 1024px) { .show-lg-down { display: none !important; } }
+
+/* Accessibility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.skip-link {
+  position: fixed;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: var(--z-tooltip);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--primary-fg);
+  font-weight: var(--fw-semibold);
+  transform: translateY(-200%);
+  transition: transform var(--dur) var(--ease-standard);
+}
+.skip-link:focus { transform: translateY(0); color: var(--primary-fg); }
+
+/* Rows/cards made clickable with data-href (ui.js) */
+.is-clickable { cursor: pointer; }
+tr.is-clickable:focus-visible { outline-offset: -2px; }
+
+/* Motion helpers (see animations.css) */
+.hover-lift { transition: transform var(--dur) var(--ease-standard), box-shadow var(--dur) var(--ease-standard) !important; }
+.hover-lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+/* Progress bar driven by a custom property: style="--value: 42%" on the
+   element is the one sanctioned inline style (it is data, not styling). */
+.progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+}
+.progress > span {
+  display: block;
+  width: var(--value, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width var(--dur-slow) var(--ease-emphasized);
+}
+
+/* ==========================================================================
+   PRINT — reports, attendance sheets, approvals
+   Documented utility: `!important` here guarantees chrome (navigation,
+   buttons, toasts) never reaches paper whatever the page stylesheet says.
+   ========================================================================== */
+@media print {
+  :root { color-scheme: light; }
+  html, body { background: var(--white); color: var(--black); font-size: 11pt; }
+  .app-sidebar, .app-sidebar-backdrop, .app-topbar, .app-footer, .impersonation-banner,
+  .toast-stack, .page-loader, .htmx-progress, .btn, .pagination, .nbte-page-header__actions,
+  .theme-toggle, .no-print, form button, nav, .carousel-dots { display: none !important; }
+  .app-shell { display: block; }
+  .app-content { max-width: none; padding: 0; }
+  .card, .table-wrap { border-color: var(--ink-400); box-shadow: none; break-inside: avoid; }
+  .table-wrap { overflow: visible; background: none; }
+  .table-wrap > table { min-width: 0; }
+  table { font-size: 10pt; }
+  th, td { border-bottom: 1px solid var(--ink-400); }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  a { color: var(--black); text-decoration: underline; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 9pt; }
+  .only-mobile { display: none !important; }
+  .only-desktop { display: block !important; }
+  .badge, .tk-chip, .att-pill { border: 1px solid var(--ink-400); background: none !important; color: var(--black) !important; }
+  .reveal { opacity: 1 !important; transform: none !important; }   /* never print a section that hasn't scrolled in */
+}
+
+/* Flex column with gap (replaces repeated inline "display:flex;flex-direction:column;gap:…") */
+.vstack { display: flex !important; flex-direction: column !important; gap: var(--space-2) !important; }
+.vstack-3 { display: flex !important; flex-direction: column !important; gap: var(--space-3) !important; }
+.self-start { align-self: flex-start !important; }
+.gap-row-3 { gap: var(--space-3) !important; }
+.text-subtle { color: var(--text-subtle) !important; }
+.text-muted { color: var(--text-muted) !important; }
+.text-strong { color: var(--text) !important; }
+.pre-wrap { white-space: pre-wrap !important; }
+.max-w-form { max-width: 820px !important; }
+.mb-2-5 { margin-block-end: 6px !important; }
+.lh-relaxed { line-height: 1.6 !important; }
+.icon-inline { display: inline-block !important; vertical-align: -2px !important; margin-inline-end: 4px !important; }
+.ms-1-5 { margin-inline-start: 6px !important; }
+.is-dimmed { opacity: 0.8 !important; }
+.divided-top { margin-block-start: var(--space-4) !important; padding-block-start: var(--space-4) !important; border-top: 1px solid var(--divider) !important; }
+.detail-eyebrow {
+  margin-block-end: 6px;
+  color: var(--text-subtle);
+  font-size: var(--fs-sm); letter-spacing: .06em; text-transform: uppercase;
+}
+.ps-0 { padding-inline-start: 0 !important; }
+.pt-0 { padding-block-start: 0 !important; }
+.pb-2 { padding-block-end: var(--space-2) !important; }
+.py-0-5 { padding-block: 3px !important; }
+.py-1-5 { padding-block: 6px !important; }
+.my-3 { margin-block: var(--space-3) !important; }
+.ms-6 { margin-inline-start: var(--space-5) !important; }
+.p-6 { padding: var(--space-6) !important; }
+.p-card-sm { padding: 14px 18px !important; }
+.p-empty { padding: var(--space-6) var(--space-5) !important; }
+.pull-up { margin-block-start: calc(var(--space-2) * -1) !important; }
+.border-top-0 { border-top: 0 !important; }
+.block { display: block !important; }
+.grid-1col { grid-template-columns: minmax(0, 1fr) !important; }
+.grid-auto-320 { grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)) !important; }
+.justify-center { justify-content: center !important; }
+.justify-end { justify-content: flex-end !important; }
+.text-center { text-align: center !important; }
+.text-link { color: var(--link) !important; }
+.text-info { color: var(--info) !important; }
+.text-warning { color: var(--warning) !important; }
+.text-danger { color: var(--danger) !important; }
+.fw-normal { font-weight: 400 !important; }
+.fw-medium { font-weight: 500 !important; }
+.mono { font-family: var(--font-mono) !important; }
+.link-plain { color: inherit !important; text-decoration: none !important; }
+.link-plain.text-link { color: var(--link); }
+.scroll-x { overflow-x: auto !important; overscroll-behavior-x: contain !important; }
+.cursor-default { cursor: default !important; }
+.max-w-narrow { max-width: 620px !important; }
+.list-plain-grid { display: grid !important; gap: var(--space-2) !important; margin: 0 !important; padding: 0 !important; list-style: none !important; }
+.subhead-md { margin-block-end: 6px !important; font-size: var(--fs-lg) !important; font-weight: 500 !important; }
+.subhead-lg { margin-block-end: var(--space-2) !important; font-family: var(--font-sans) !important; font-size: var(--fs-lg) !important; font-weight: 600 !important; }
+.page-head-split { display: flex !important; flex-wrap: wrap !important; align-items: flex-end !important; justify-content: space-between !important; gap: var(--space-5) !important; max-width: none !important; }
+
+/* Chart legend swatches — same hues as the chart palette in dashboards.js */
+.swatch { display: inline-block; }
+.swatch-amber { background: var(--amber-500); }
+.swatch-sky { background: var(--sky-700); }
+.swatch-brand { background: var(--brand-500); }
+.swatch-emerald { background: var(--emerald-500); }
+.swatch-red { background: var(--red-500); }
+.swatch-indigo { background: var(--indigo-500); }
+
+/* Shared confirm-delete card pieces (manage/*, portal/* confirm pages) */
+.confirm-card-body { padding: var(--space-6) var(--space-5) !important; text-align: center !important; }
+.confirm-icon-danger {
+  display: flex !important; align-items: center !important; justify-content: center !important;
+  width: 56px !important; height: 56px !important; margin: 0 auto var(--space-4) !important;
+  border-radius: 50% !important;
+  background: var(--danger-subtle) !important; color: var(--danger) !important;
+}
+.confirm-title { margin: 0 0 6px !important; font-size: var(--fs-xl) !important; color: var(--text) !important; }
+.confirm-subject { margin: 0 0 4px !important; font-size: var(--fs-md) !important; font-weight: 600 !important; color: var(--text-muted) !important; }
+.confirm-note { margin: 0 0 var(--space-5) !important; font-size: var(--fs-sm) !important; color: var(--text-subtle) !important; }

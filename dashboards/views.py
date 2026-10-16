@@ -74,7 +74,7 @@ def es(request):
 # --------------------------------------------------------------------------
 @login_required
 def chairman(request):
-    _guard(request.user, permission="dashboards.view_chairman")
+    _guard(request.user, permission="accounts.view_chairman_dashboard")  # review L1
     ctx = services.chairman_context(request.user)
     return _render(request, "dashboards/chairman.html",
                    "chairman", "Chairman", ctx)

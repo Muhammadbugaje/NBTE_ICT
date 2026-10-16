@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if is_create %}Add image{% else %}Edit “{{ obj }}”{% endif %} · {{ SITE_NAME }}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/showcase.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="sc-page">
+  <form method="post" enctype="multipart/form-data" class="sc-form" novalidate>
+    {% csrf_token %}
+
+    <header class="sc-head">
+      <div class="sc-head-text">
+        <h1 class="sc-title">{% if is_create %}Add a showcase image{% else %}Edit showcase image{% endif %}</h1>
+        <p class="sc-subtitle">
+          {% if is_create %}Upload one picture and choose where it should appear.{% else %}Update the image, its placements and its schedule.{% endif %}
+        </p>
+      </div>
+      <a href="{% url 'showcase:manage_list' %}" class="btn-ghost">← Back to library</a>
+    </header>
+
+    {% if form.non_field_errors %}
+      <div class="sc-panel" style="border-color:#fca5a5;background:#fef2f2;margin-bottom:1.25rem;color:#991b1b;">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    <div class="sc-form-grid">
+
+      {# ============ LEFT — image and text ============ #}
+      <section class="sc-panel">
+        <h2 class="sc-panel-title">Image</h2>
+
+        <div class="sc-field">
+          <span class="sc-label">File <span class="req">*</span></span>
+
+          {% if obj and obj.image %}
+            <div class="sc-dropzone-current">
+              <img src="{{ obj.get_image_url }}" alt="">
+              <div class="sc-dropzone-current-info">
+                <small>Current image</small>
+                <a href="{{ obj.get_image_url }}" target="_blank" rel="noopener">{{ obj.image.name }}</a>
+              </div>
+            </div>
+          {% endif %}
+
+          <div class="sc-dropzone-wrap" data-dropzone>
+            <label class="sc-dropzone" for="id_image">
+              <span class="sc-dropzone-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </span>
+              <span class="sc-dropzone-title">
+                {% if obj and obj.image %}Replace this image{% else %}Drop an image here, or <b>browse</b>{% endif %}
+              </span>
+              <span class="sc-dropzone-hint">JPG, PNG or WebP · 1920×1080 or larger looks best</span>
+              <input type="file" name="image" id="id_image" accept="image/jpeg,image/png,image/webp">
+            </label>
+            <div class="sc-dropzone-preview" hidden>
+              <img alt="Selected image preview">
+            </div>
+          </div>
+
+          {% if form.image.errors %}<ul class="errorlist">{{ form.image.errors }}</ul>{% endif %}
+          <p class="sc-help">Landscape works best — at least 1920×1080 for full-width backgrounds.</p>
+        </div>
+
+        <div class="sc-field">
+          <label class="sc-label" for="{{ form.alt_text.id_for_label }}">Alt text <span class="req">*</span></label>
+          {{ form.alt_text }}
+          <p class="sc-help">Describe the picture for people using screen readers. Required.</p>
+          {% if form.alt_text.errors %}<ul class="errorlist">{{ form.alt_text.errors }}</ul>{% endif %}
+        </div>
+
+        <div class="sc-field">
+          <label class="sc-label" for="{{ form.title.id_for_label }}">Title</label>
+          {{ form.title }}
+          {% if form.title.errors %}<ul class="errorlist">{{ form.title.errors }}</ul>{% endif %}
+        </div>
+
+        <div class="sc-field">
+          <label class="sc-label" for="{{ form.caption.id_for_label }}">Caption</label>
+          {{ form.caption }}
+          <p class="sc-help">Optional. A short line shown under the image.</p>
+          {% if form.caption.errors %}<ul class="errorlist">{{ form.caption.errors }}</ul>{% endif %}
+        </div>
+      </section>
+
+      {# ============ RIGHT — placements and schedule ============ #}
+      <section class="sc-panel">
+        <h2 class="sc-panel-title">Where and when</h2>
+
+        <div class="sc-field">
+          <span class="sc-label">Placements <span class="req">*</span></span>
+          <div class="sc-placements">
+            {% for value, label in form.placements.field.choices %}
+              <label class="sc-placement">
+                <input type="checkbox" name="placements" value="{{ value }}"
+                       {% if value in form.placements.value %}checked{% endif %}>
+                <span class="sc-placement-icon" aria-hidden="true">
+                  {% if value == "signin_background" %}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  {% elif value == "hero" %}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  {% elif value == "dashboard_banner" %}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></svg>
+                  {% else %}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+                  {% endif %}
+                </span>
+                <span class="sc-placement-body">
+                  <span class="sc-placement-label">{{ label }}</span>
+                </span>
+                <span class="sc-placement-check" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              </label>
+            {% endfor %}
+          </div>
+          <p class="sc-help">Pick one or more. The image will appear in each selected spot.</p>
+          {% if form.placements.errors %}<ul class="errorlist">{{ form.placements.errors }}</ul>{% endif %}
+        </div>
+
+        <div class="sc-field">
+          <label class="sc-label" for="{{ form.order.id_for_label }}">Order</label>
+          {{ form.order }}
+          <p class="sc-help">Lower numbers show first.</p>
+          {% if form.order.errors %}<ul class="errorlist">{{ form.order.errors }}</ul>{% endif %}
+        </div>
+
+        <div class="sc-field">
+          <label class="sc-switch" for="{{ form.is_active.id_for_label }}">
+            {{ form.is_active }}
+            <span class="sc-switch-track" aria-hidden="true"></span>
+            <span class="sc-switch-text">
+              <span class="sc-switch-label">Active</span>
+              <span class="sc-switch-hint">Show this image on the public site</span>
+            </span>
+          </label>
+          {% if form.is_active.errors %}<ul class="errorlist">{{ form.is_active.errors }}</ul>{% endif %}
+        </div>
+
+        <div class="sc-field">
+          <span class="sc-label">Schedule (optional)</span>
+          <div class="sc-daterange">
+            <div class="sc-field" style="margin:0">
+              <label class="sc-help" for="{{ form.start_at.id_for_label }}">Show from</label>
+              {{ form.start_at }}
+              {% if form.start_at.errors %}<ul class="errorlist">{{ form.start_at.errors }}</ul>{% endif %}
+            </div>
+            <div class="arrow" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </div>
+            <div class="sc-field" style="margin:0">
+              <label class="sc-help" for="{{ form.end_at.id_for_label }}">Stop after</label>
+              {{ form.end_at }}
+              {% if form.end_at.errors %}<ul class="errorlist">{{ form.end_at.errors }}</ul>{% endif %}
+            </div>
+          </div>
+          <p class="sc-help">Leave both empty to show the image at all times.</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="sc-footer">
+      <a href="{% url 'showcase:manage_list' %}" class="btn-ghost">Cancel</a>
+      <button type="submit" class="btn-primary">
+        {% if is_create %}Add image{% else %}Save changes{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  document.querySelectorAll('[data-dropzone]').forEach(function (wrap) {
+    var input = wrap.querySelector('input[type="file"]');
+    var preview = wrap.querySelector('.sc-dropzone-preview');
+    var previewImg = preview ? preview.querySelector('img') : null;
+    if (!input) return;
+
+    ['dragenter', 'dragover'].forEach(function (evt) {
+      wrap.addEventListener(evt, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var dz = wrap.querySelector('.sc-dropzone');
+        if (dz) dz.classList.add('is-dragging');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (evt) {
+      wrap.addEventListener(evt, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var dz = wrap.querySelector('.sc-dropzone');
+        if (dz) dz.classList.remove('is-dragging');
+      });
+    });
+    wrap.addEventListener('drop', function (e) {
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) { input.files = files; showPreview(files[0]); }
+    });
+    input.addEventListener('change', function () {
+      if (input.files && input.files.length) showPreview(input.files[0]);
+    });
+    function showPreview(file) {
+      if (!preview || !previewImg) return;
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        previewImg.src = ev.target.result;
+        preview.hidden = false;
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+})();
+</script>
+{% endblock %}

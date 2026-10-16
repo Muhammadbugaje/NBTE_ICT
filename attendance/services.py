@@ -119,6 +119,38 @@ def is_working_day(d):
     return d.weekday() in work_week()
 
 
+def holidays_on(day):
+    """Active portal holidays that cover `day` (recurring ones included).
+    Review M12: automatic absent-marking must not run on public holidays."""
+    from django.db.models import Q
+    from portal.models import Holiday
+    from leave.services import _holiday_covers
+
+    qs = (
+        Holiday.objects.filter(is_active=True)
+        .filter(Q(is_recurring=True) | Q(date_start__lte=day, date_end__gte=day))
+        .prefetch_related("roles")
+    )
+    return [h for h in qs if _holiday_covers(day, h)]
+
+
+def is_holiday_for(user, day, holidays=None):
+    """True if a holiday visible to `user` covers `day`."""
+    from portal.models import Scope
+
+    holidays = holidays_on(day) if holidays is None else holidays
+    for h in holidays:
+        if h.visibility in (Scope.PUBLIC, Scope.STAFF):
+            return True
+        if h.visibility == Scope.DEPARTMENT and h.department_id \
+                and h.department_id == getattr(user, "department_id", None):
+            return True
+        if h.visibility == Scope.ROLE and getattr(user, "role_id", None) \
+                and any(r.pk == user.role_id for r in h.roles.all()):
+            return True
+    return False
+
+
 def working_days_in_month(year, month):
     days = []
     for d in range(1, calendar.monthrange(year, month)[1] + 1):
@@ -458,6 +490,10 @@ def parse_matrix(file_obj, month, year, department=None):
         if user is None:
             emails_missing += 1
             errors.append("No active user with this email.")
+        elif department is not None and user.department_id != getattr(department, "pk", department):
+            # Review H4: an uploader limited to one department may not
+            # write attendance for anyone outside it.
+            errors.append("This person is not in your department; row ignored.")
         else:
             emails_ok += 1
 
@@ -528,6 +564,12 @@ def apply_matrix(parsed, actor, overwrite=True):
             result.skipped += 1
             result.errors.append(
                 f"Row {row.row_number} ({row.email}): no matching user."
+            )
+            continue
+        if row.errors:
+            result.skipped += 1
+            result.errors.append(
+                f"Row {row.row_number} ({row.email}): {'; '.join(row.errors)}"
             )
             continue
 
@@ -796,11 +838,14 @@ def auto_mark_absent(for_date=None, days_back=0):
             .filter(date=day)
             .values_list("user_id", flat=True)
         )
+        day_holidays = holidays_on(day)
 
         to_create = []
         for s in staff:
             if s.user_id in existing:
                 continue
+            if day_holidays and is_holiday_for(s.user, day, day_holidays):
+                continue  # review M12: public/department holiday
 
             state = getattr(s, "state", None)
             if state and getattr(state, "counts_as_absent", False):
@@ -892,11 +937,18 @@ def send_weekly_summary(for_date=None):
     sent = 0
     departments = Department.objects.filter(pk__in=list(by_dept.keys()))
 
+    from accounts.models import User as _User
+
     for dept in departments:
-        head = (
-            getattr(dept, "head", None)
-            or getattr(dept, "director", None)
-        )
+        # Review M12: Department had no head/director attribute, so this
+        # never sent. It now uses the new Department.head field, falling
+        # back to the department's active Director.
+        head = dept.head if dept.head_id and dept.head.is_active else None
+        if head is None:
+            head = (
+                _User.objects.filter(is_active=True, department=dept, role__code="director")
+                .order_by("pk").first()
+            )
         if not head or not getattr(head, "email", None):
             continue
 

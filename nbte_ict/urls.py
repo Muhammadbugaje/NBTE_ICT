@@ -20,6 +20,7 @@ urlpatterns = [
     path("attendance/", include("attendance.urls")),
     path("staff/", include("staff.urls", namespace="staff")),
     path("portal/", include("portal.urls", namespace="portal")),
+    path("showcase/", include("showcase.urls")),
     path("", include("core.urls")),
 ]
 

@@ -85,9 +85,10 @@ def _request_items(user):
     from workflow import services
     from workflow.models import ApprovalStep, Request
 
+    # Review M17: narrow to requests this user could act on in one query
+    # before resolving each one's approver.
     requests = (
-        Request.objects
-        .exclude(status__in=Request.CLOSED_STATUSES)
+        services.candidate_requests_for(user)
         .select_related(
             "requester", "request_type", "receiving_department",
             "assigned_to", "current_step",

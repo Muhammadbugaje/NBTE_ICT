@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "dashboards",
     "leave",
     "public",
+    "showcase",   # UI overhaul: admin-uploadable sign-in / hero / banner images
 ]
 
 MIDDLEWARE = [

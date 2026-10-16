@@ -1,0 +1,46 @@
+{% load static %}<!DOCTYPE html>
+{% comment %}
+  Standalone error page shell (UI overhaul Phase 5). Deliberately independent
+  of base.html: no context processors, no request, no database, so 500.html
+  still renders when the app itself is broken. Only the static tag is used.
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex">
+  <title>{% block title %}Something went wrong{% endblock %} · NBTE ICT</title>
+  <link rel="icon" href="{% static 'img/NBTE_logo.png' %}" type="image/png">
+  <script src="{% static 'js/theme-init.js' %}?v=1"></script>
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}?v=14">
+  <link rel="stylesheet" href="{% static 'css/base.css' %}?v=13">
+  <link rel="stylesheet" href="{% static 'css/layout.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/components.css' %}?v=14">
+  <link rel="stylesheet" href="{% static 'css/utilities.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/animations.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/errors.css' %}?v=1">
+</head>
+<body class="error-body">
+  <main class="error-page" id="main">
+    <a class="error-brand" href="/">
+      <img src="{% static 'img/NBTE_logo.png' %}" alt="" width="40" height="40">
+      <span>NBTE ICT Directorate</span>
+    </a>
+
+    <div class="error-art" aria-hidden="true">{% block art %}{% endblock %}</div>
+
+    <p class="error-code">{% block code %}{% endblock %}</p>
+    <h1 class="error-title">{% block heading %}{% endblock %}</h1>
+    <p class="error-lead">{% block lead %}{% endblock %}</p>
+
+    <div class="error-actions">
+      {% block actions %}
+        <a class="btn btn-primary" href="/">Go to the home page</a>
+      {% endblock %}
+    </div>
+
+    {% block extra %}{% endblock %}
+  </main>
+</body>
+</html>

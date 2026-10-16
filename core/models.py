@@ -8,7 +8,18 @@ from django.utils import timezone
 # --------------------------------------------------------------------------
 class SoftDeleteQuerySet(models.QuerySet):
     def delete(self):
-        return super().update(is_deleted=True, deleted_at=timezone.now())
+        """Soft-delete every row.
+
+        Review M14: this used to be a single UPDATE, which skipped the
+        audit log (and the file signals). Each row now goes through
+        `SoftDeleteModel.delete()`, so it is audited like a single delete.
+        Returns the number of rows soft-deleted.
+        """
+        count = 0
+        for obj in self.filter(is_deleted=False):
+            obj.delete()
+            count += 1
+        return count
 
     def hard_delete(self):
         return super().delete()

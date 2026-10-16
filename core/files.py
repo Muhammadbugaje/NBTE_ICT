@@ -4,8 +4,8 @@ Registry is stored on Django's `apps` singleton so it survives any
 module reimport. Registered models get four signals wired:
 
     pre_save     Snapshot the DB's current file names + `deleted_at`.
-    post_save    Delete old file on replace; delete every file on
-                 soft-delete transition (deleted_at NULL -> value).
+    post_save    Delete old file on replace. (Soft delete keeps files so a
+                 restore works - review M14.)
     pre_delete   Snapshot on-disk names before the row disappears.
     post_delete  Delete every registered file (hard delete).
 
@@ -57,7 +57,7 @@ def register_file_cleanup(model, fields):
     new_fields = set(fields) - existing
 
     if not new_fields:
-        logger.warning(
+        logger.info(  # review L7: routine
             "file cleanup: %s already registered (fields=%s)",
             model._meta.label, sorted(existing),
         )
@@ -65,7 +65,7 @@ def register_file_cleanup(model, fields):
 
     reg[model] = existing | new_fields
     _install_signals(model, sorted(reg[model]))
-    logger.warning(
+    logger.info(  # review L7: routine
         "file cleanup: registered %s -> %s",
         model._meta.label, sorted(new_fields),
     )
@@ -175,11 +175,11 @@ def _delete_safely(storage, name, reason=""):
     try:
         if storage.exists(name):
             storage.delete(name)
-            logger.warning(
+            logger.info(  # review L7: routine
                 "file cleanup: DELETED %s (%s)", name, reason or "no reason",
             )
         else:
-            logger.warning(
+            logger.info(  # review L7: routine
                 "file cleanup: %s already gone (%s)", name, reason or "no reason",
             )
     except Exception:
@@ -307,38 +307,14 @@ def _post_save(model, fields, instance, update_fields=None):
             reason=f"{model._meta.label}.{field} replaced",
         )
 
-    # ---- 2. Soft-delete detection -------------------------------------
-    sentinel = object()
-    old_deleted = getattr(instance, "_fc_old_deleted_at", sentinel)
-    if old_deleted is sentinel:
-        return
-
+    # ---- 2. Soft delete ------------------------------------------------
+    # Review M14: a soft-deleted row can be restored, so its files are KEPT.
+    # They are removed only on hard delete (post_delete below), which also
+    # covers QuerySet.hard_delete().
     try:
         delattr(instance, "_fc_old_deleted_at")
     except AttributeError:
         pass
-
-    new_deleted = getattr(instance, "deleted_at", None)
-    if not (old_deleted is None and new_deleted is not None):
-        return
-
-    logger.warning(
-        "file cleanup: soft-delete detected on %s pk=%s",
-        model._meta.label, instance.pk,
-    )
-
-    for field in fields:
-        name = _file_name_of(instance, field)
-        if not name:
-            continue
-        try:
-            model_field = model._meta.get_field(field)
-        except Exception:
-            continue
-        _delete_with_variants(
-            model_field.storage, name,
-            reason=f"{model._meta.label} soft-deleted",
-        )
 
 
 # ===========================================================================

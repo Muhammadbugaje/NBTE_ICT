@@ -15,8 +15,9 @@ class LookupAdmin(admin.ModelAdmin):
 
 @admin.register(Department)
 class DepartmentAdmin(LookupAdmin):
-    list_display = ("name", "code", "is_active", "sort_order")
+    list_display = ("name", "code", "head", "is_active", "sort_order")
     search_fields = ("name", "code")
+    raw_id_fields = ("head",)
 admin.site.register(StaffCategory, LookupAdmin)
 admin.site.register(StaffState, LookupAdmin)
 

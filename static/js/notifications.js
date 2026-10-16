@@ -72,6 +72,7 @@
     if (!list) return;
 
     updateBadge(data.unread || 0);
+    list.setAttribute("aria-busy", "false");
 
     if (markAll) markAll.hidden = !data.unread;
 
@@ -103,33 +104,33 @@
   // ------------------------------------------------------------------------
   // SSE stream (with polling fallback)
   // ------------------------------------------------------------------------
+  // Review H2: the endless SSE stream held one server worker per open tab.
+  // The badge now short-polls STREAM_URL, which answers immediately with
+  // {"unread": N}. Polling pauses while the tab is hidden.
+  var POLL_MS = 20000;
+
+  function pollUnread() {
+    if (document.hidden) return;
+    fetch(STREAM_URL, {
+      credentials: "same-origin",
+      headers: { "Accept": "application/json" },
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) { if (data) updateBadge(data.unread || 0); })
+      .catch(function () {});
+  }
+
   function startStream() {
-    if (!window.EventSource) return startPolling();
-    try {
-      var es = new EventSource(STREAM_URL);
-      state.eventSource = es;
-      es.addEventListener("unread", function (evt) {
-        try {
-          var data = JSON.parse(evt.data);
-          updateBadge(data.unread || 0);
-          // The dropdown body refreshes on open, so we don't need to redraw it here.
-        } catch (e) {}
-      });
-      es.addEventListener("error", function () {
-        es.close();
-        state.eventSource = null;
-        startPolling();
-      });
-    } catch (e) {
-      startPolling();
-    }
+    startPolling();
   }
 
   function startPolling() {
     if (state.pollTimer) return;
-    state.pollTimer = setInterval(function () {
-      fetchBell().then(function (data) { updateBadge(data.unread || 0); }).catch(function () {});
-    }, 30000);
+    pollUnread();
+    state.pollTimer = setInterval(pollUnread, POLL_MS);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) pollUnread();
+    });
   }
 
   // ------------------------------------------------------------------------

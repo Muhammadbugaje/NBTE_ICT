@@ -63,7 +63,14 @@ def sidebar_counts(request):
             "my_active": 0,
             "office_requests": 0,
             "all_requests": 0,
+            "can_incoming": False,
         }
+
+        try:
+            from workflow.views import can_see_incoming
+            counts["can_incoming"] = can_see_incoming(user)
+        except Exception:
+            pass
 
         try:
             from notifications.models import Notification
@@ -128,11 +135,14 @@ def sidebar_counts(request):
             from workflow.models import Request
 
             if not user.is_superuser:
+                # Review M17: one query narrows the open requests to those
+                # this user could act on (was: the 200 newest, resolved one
+                # by one, which also miscounted beyond 200).
                 candidates = (
-                    Request.objects
-                    .exclude(status__in=Request.CLOSED_STATUSES)
-                    .select_related("requester", "receiving_department")
-                    .order_by("-created_at")[:200]
+                    services.candidate_requests_for(user)
+                    .select_related("requester", "requester__department",
+                                    "receiving_department", "request_type")
+                    .order_by("-created_at")
                 )
                 for req in candidates:
                     step = services._resolve_current_step(req)

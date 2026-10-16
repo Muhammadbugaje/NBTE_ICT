@@ -645,9 +645,14 @@ def ticket_delete_attachment(request, pk, attachment_id):
 def ticket_timeline_partial(request, pk):
     ticket = get_object_or_404(_visible_tickets_qs(request.user), pk=pk)
     activities = ticket.activities.select_related("actor").order_by("created_at")
+    can_internal = (
+        ticket.raised_by_id != request.user.pk
+        and services._is_staff_on_ticket(ticket, request.user)
+    ) or request.user.is_superuser
     return render(request, "tickets/_timeline.html", {
         "ticket": ticket,
         "activities": activities,
+        "can_internal": can_internal,
     })
     
     
@@ -657,41 +662,10 @@ TICKET_POLL_INTERVAL = 5
 @login_required
 @require_GET
 def ticket_stream(request, pk):
-    """SSE stream for a single ticket's activity timeline.
+    """Timeline poll for one ticket (was an endless SSE stream - review H2)."""
+    from core.polling import activity_response
 
-    Same contract as the workflow version: client passes ?since=<max
-    activity pk it already has>, server streams only newer rows.
-    """
     ticket = get_object_or_404(_visible_tickets_qs(request.user), pk=pk)
-    try:
-        since = int(request.GET.get("since") or 0)
-    except (TypeError, ValueError):
-        since = 0
+    return activity_response(request, TicketActivity.objects.filter(ticket_id=ticket.pk))
 
-    def event_stream():
-        last = since
-        yield ": connected\n\n"
-        try:
-            while True:
-                time.sleep(TICKET_POLL_INTERVAL)
-                new_pks = list(
-                    TicketActivity.objects
-                    .filter(ticket_id=ticket.pk, pk__gt=last)
-                    .order_by("pk")
-                    .values_list("pk", flat=True)[:50]
-                )
-                if new_pks:
-                    last = new_pks[-1]
-                    payload = json.dumps({"last_pk": last, "count": len(new_pks)})
-                    yield f"event: activity\ndata: {payload}\n\n"
-                else:
-                    yield ": heartbeat\n\n"
-        except GeneratorExit:
-            return
 
-    resp = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-    resp["Cache-Control"] = "no-cache"
-    resp["X-Accel-Buffering"] = "no"
-    return resp    
-    
-    

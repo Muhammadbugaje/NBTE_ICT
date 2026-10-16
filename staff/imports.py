@@ -203,13 +203,25 @@ class StaffImport(ImportSpec):
         if created:
             obj = Staff(employee_no=emp)
 
-        # Assign only fields that came through (blank string cells are already None).
+        # Review H6: the Department column used to be popped and discarded.
+        # A blank cell leaves an existing record's department unchanged.
+        if department is not None:
+            obj.department = department
+
+        # Review H6: blank cells arrive as None. Text columns are NOT NULL in
+        # the database, so they become "" (previously the whole row failed).
+        # A blank State leaves the current state unchanged; a blank contact
+        # preference falls back to the model default.
         for field, value in cleaned.items():
-            if value is None and field not in ("state", "department"):
-                # For most fields, explicit None = clear.
-                setattr(obj, field, value)
-            else:
-                setattr(obj, field, value)
+            if value is None:
+                if field == "state":
+                    continue
+                model_field = Staff._meta.get_field(field)
+                if field == "contact_preference":
+                    value = model_field.default
+                elif not model_field.null and not model_field.is_relation:
+                    value = ""
+            setattr(obj, field, value)
 
         obj._state_changed_by = None  # no actor context inside the wizard
         obj.save()
@@ -223,48 +235,20 @@ class StaffImport(ImportSpec):
 
 def _provision_account_for_import(staff: Staff):
     """Minimal counterpart to the view's provisioning helper — creates the
-    user, sets must_change_password, and dispatches the welcome email."""
-    import secrets
-    existing = User.objects.filter(email__iexact=staff.email).first()
-    if existing:
-        staff.user = existing
-        staff.save(update_fields=["user"])
-        return
+    user, sets must_change_password, and dispatches the welcome email.
+    Review H5: shares staff.services.provision_account_for_staff."""
+    from django.conf import settings
+    from django.core.exceptions import ValidationError
+    from django.urls import reverse
 
-    temp_password = secrets.token_urlsafe(10)
-    try:
-        user = User.objects.create_user(
-            email=staff.email,
-            password=temp_password,
-            first_name=staff.first_name,
-            last_name=staff.last_name,
-            **({"department": staff.department} if staff.department_id else {}),
+    from .services import provision_account_for_staff
+
+    login_url = f"{getattr(settings, 'SITE_URL', '').rstrip('/')}{reverse('accounts:login')}"
+    status, _user = provision_account_for_staff(staff, login_url=login_url)
+    if status == "conflict":
+        raise ValidationError(
+            f"An account with {staff.email} already belongs to another directory record."
         )
-    except Exception:
-        return
-
-    if hasattr(user, "must_change_password"):
-        user.must_change_password = True
-        try:
-            user.save(update_fields=["must_change_password"])
-        except Exception:
-            user.save()
-
-    staff.user = user
-    staff.save(update_fields=["user"])
-
-    try:
-        from core.email_utils import send_templated_email
-        send_templated_email(
-            subject="Your NBTE ICT account",
-            recipients=[staff.email],
-            template_name="emails/staff_welcome.html",
-            context={"staff": staff, "user": user, "temp_password": temp_password,
-                     "login_url": "/accounts/login/"},
-            category="general",
-        )
-    except Exception:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -322,5 +306,7 @@ class StaffExport(ExportSpec):
         if column.field == "state_name":
             return obj.state.name if obj.state else ""
         if column.field == "reports_to_name":
-            return obj.reports_to.full_name if obj.reports_to else ""
+            # Review H6: export the supervisor's employee number so the file
+            # re-imports (the import looks supervisors up by employee no/email).
+            return obj.reports_to.employee_no if obj.reports_to else ""
         return getattr(obj, column.field, "")

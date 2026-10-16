@@ -1,16 +1,38 @@
 {% extends "base_public.html" %}
-{% load static %}
+{% load static showcase_tags %}
 
 {% block title %}Sign in · {{ SITE_NAME }}{% endblock %}
 {% block meta_description %}Sign in to the {{ site_info.department_name }} workspace.{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/auth.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/auth.css' %}?v=2">
 {% endblock %}
 
 {% block body %}
-<div class="auth-shell">
-  <!-- Left: brand panel with faded logo backdrop -->
+{% showcase_images "signin_background" as bg_images %}
+<div class="auth-shell has-backdrop">
+  {% comment %}Full-viewport background carousel (showcase app). Falls back to the
+  brand gradient + faded crest when no images have been uploaded.{% endcomment %}
+  <div class="carousel auth-backdrop" data-carousel data-interval="8000" data-pause-on-hover
+       aria-roledescription="carousel" aria-label="Background images">
+    {% if bg_images %}
+      <div class="carousel-track">
+        {% for img in bg_images %}
+          <figure class="carousel-slide{% if forloop.first %} is-active{% endif %}"
+                  aria-hidden="{% if forloop.first %}false{% else %}true{% endif %}">
+            <img src="{{ img.get_image_url }}" alt="{{ img.alt_text }}" decoding="async"
+                 {% if forloop.first %}fetchpriority="high"{% else %}loading="lazy"{% endif %}>
+          </figure>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="carousel-fallback"><img src="{% static 'img/MBTE_logo.png' %}" alt=""></div>
+    {% endif %}
+    <div class="carousel-scrim"></div>
+    {% if bg_images|length > 1 %}<div class="carousel-dots"></div>{% endif %}
+  </div>
+
+  <!-- Left: brand panel over the imagery -->
   <aside class="auth-hero" aria-hidden="true">
     <div class="auth-hero-logo-backdrop">
       <img src="{% static 'img/MBTE_logo.png' %}" alt="">
@@ -69,7 +91,7 @@
         <p>Access your {{ site_info.department_name }} workspace.</p>
       </div>
 
-      <div class="card card-pad-lg" style="padding:var(--space-6);">
+      <div class="card card-pad-lg auth-card">
         <div class="signin-note">
           <strong>Secure staff access</strong>
           Use the email and password issued to you by ICT support.
@@ -96,10 +118,10 @@
           </div>
 
           <div class="field">
-            <label for="id_password" style="display:flex;justify-content:space-between;align-items:center;">
-              <span>Password</span>
-              <a href="{% url 'accounts:password_reset' %}" style="font-size:var(--text-xs);font-weight:500;">Forgot password?</a>
-            </label>
+            <div class="auth-label-row">
+              <label for="id_password">Password</label>
+              <a href="{% url 'accounts:password_reset' %}" class="auth-forgot">Forgot password?</a>
+            </div>
             <div class="input-group">
               <input class="input{% if form.password.errors %} error{% endif %}"
                      type="password" name="password" id="id_password"
@@ -113,7 +135,7 @@
             {% if form.password.errors %}<span class="error">{{ form.password.errors|join:" " }}</span>{% endif %}
           </div>
 
-          <button class="btn btn-primary btn-lg" type="submit" style="width:100%;margin-top:var(--space-6);">
+          <button class="btn btn-primary btn-lg btn-block auth-submit" type="submit">
             Sign in
           </button>
         </form>

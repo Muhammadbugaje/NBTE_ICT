@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django import forms
+from django.db import models
 from django.utils.html import format_html
 
 from .models import (
@@ -55,12 +57,15 @@ class AssetAttachmentInline(admin.TabularInline):
     extra = 0
     fields = ("file", "kind", "description", "original_name", "uploaded_by", "link")
     readonly_fields = ("original_name", "link")
+    # Restricted storage has no public URL, so the stock widget (which links
+    # to file.url) cannot render; downloads go through `link` instead (H1).
+    formfield_overrides = {models.FileField: {"widget": forms.FileInput}}
 
     @admin.display(description="File")
     def link(self, obj):
         if obj.pk and obj.file:
-            return format_html('<a href="{}" target="_blank">{}</a>',
-                               obj.file.url, obj.original_name or "download")
+            return format_html('<a href="{}">{}</a>',
+                               obj.download_url(), obj.original_name or "download")
         return "—"
 
 

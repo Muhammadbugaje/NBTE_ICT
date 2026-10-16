@@ -681,6 +681,61 @@ def _link_asset_from_form_data(request, requester, form_data):
 # ===========================================================================
 # Actor authorization
 # ===========================================================================
+_EXTRA_APPROVAL_FLAGS = {
+    "finance": "requires_finance_approval",
+    "audit": "requires_audit_approval",
+    "hr": "requires_hr_approval",
+}
+
+
+def candidate_requests_for(user, queryset=None):
+    """Open requests on which `user` could possibly be the acting user.
+
+    Review M17: the sidebar and the action queue used to resolve the
+    approver of every open request (several queries each) on every page.
+    This narrows the set in ONE database query to requests the user can
+    act on under some step kind, using the same rules as `resolve_approver`
+    and `_ensure_actor`:
+
+      * fulfilment - the request is assigned to them
+      * closure    - they raised it
+      * specific   - the current step names them
+      * requester/receiving/department-scoped role steps - one of the
+        request's departments (or the step's scope) is their department,
+        including the Finance / Audit / HR gates
+      * superusers and the Executive Secretary are not narrowed (they can
+        act anywhere)
+
+    The caller still checks each candidate with `_ensure_actor` /
+    `resolve_approver`; this only removes requests that cannot match.
+    """
+    from django.db.models import Q
+
+    qs = queryset if queryset is not None else Request.objects.all()
+    qs = qs.exclude(status__in=Request.CLOSED_STATUSES)
+    if user.is_superuser:
+        return qs
+    role_code = user.role.code if user.role_id else ""
+    if role_code == "executive-secretary":
+        return qs
+
+    q = (
+        Q(assigned_to=user)
+        | Q(requester=user)
+        | Q(current_step__approver_user=user)
+    )
+    if user.department_id:
+        q |= Q(requester__department_id=user.department_id)
+        q |= Q(receiving_department_id=user.department_id)
+        code = (user.department.code or "").strip().lower()
+        if code:
+            q |= Q(current_step__scope__iexact=code)
+            flag = _EXTRA_APPROVAL_FLAGS.get(code)
+            if flag:
+                q |= Q(**{f"request_type__{flag}": True})
+    return qs.filter(q)
+
+
 def _ensure_actor(request, user):
     """Return (step, actor) if `user` is allowed to act on the current step.
 
@@ -720,6 +775,10 @@ def _ensure_actor(request, user):
 @transaction.atomic
 def approve_step(request, user, comment=""):
     step, actor = _ensure_actor(request, user)
+    if step.kind == ApprovalStep.KIND_ASSIGNMENT:
+        # Review L3: "approving" an assignment step used to record an
+        # approval and then do nothing. The step is completed by assigning.
+        raise ValidationError("This step is completed by assigning a staff member.")
     now = timezone.now()
     duration = 0
     if request.current_step_started_at:
@@ -881,13 +940,40 @@ def return_step(request, user, comment=""):
     )
 
     idx = _position_of_step(request, step)
-    if idx <= 0:
-        # First step → send to requester for revision.
+    # Review L3: go back to the nearest earlier step that someone actually
+    # acted on. Stepping back one position blindly could land on a step
+    # that was skipped, so the chain re-skipped it and returned the request
+    # to the same person. No acted step before this one -> requester.
+    steps = build_runtime_steps(request)
+    acted = _acted_step_keys(request)
+    target_idx = None
+    for i in range(idx - 1, -1, -1):
+        if _step_key(steps[i]) in acted:
+            target_idx = i
+            break
+    if target_idx is None:
         return _send_to_requester(request, user, step, comment)
 
-    # Back one step.
-    _advance_to_next_actor(request, from_step_index=idx - 2)
+    _advance_to_next_actor(request, from_step_index=target_idx - 1)
     return request
+
+
+def _acted_step_keys(request):
+    """Step keys on which someone recorded an approval/assignment for
+    this request (DB steps via RequestApproval, synthetic ones via the
+    APPROVED activity metadata)."""
+    keys = {
+        f"db:{sid}" for sid in request.approvals.filter(
+            decision=RequestApproval.APPROVE, step__isnull=False,
+        ).values_list("step_id", flat=True)
+    }
+    for meta in request.activity.filter(
+        kind=RequestActivity.APPROVED,
+    ).values_list("metadata", flat=True):
+        key = (meta or {}).get("step")
+        if key:
+            keys.add(key)
+    return keys
 
 
 @transaction.atomic
@@ -972,12 +1058,16 @@ def resubmit(request, user, *, subject=None, body=None, comment="", form_data=No
             target_step = s
             break
 
-    if target_step is None:
-        _set_current_step(request, build_runtime_steps(request)[0])
-    else:
-        _set_current_step(request, target_step)
+    steps, handoff_index = _build_runtime_chain(request)
+    entered_step = target_step if target_step is not None else steps[0]
+    _set_current_step(request, entered_step)
 
-    request.status = Request.AWAITING
+    # Review L3: status follows the step (receiving-department steps are
+    # "awaiting receiving", fulfilment is "in progress"), as when the chain
+    # first reached it. It used to always be AWAITING.
+    request.status = _status_for_step(
+        entered_step, _position_of_step(request, entered_step), handoff_index,
+    )
     request.returned_by = None
     request.returned_from_step = None
     request.returned_at = None
@@ -1046,7 +1136,8 @@ def reject_step(request, user, comment=""):
         workflow_emails.send_request_rejected_email(request, user, comment)
     except Exception:
         logger.exception("Workflow rejection email failed for %s", request.reference)
-    _close_linked_asset_issues(request, user, note="Request rejected.")
+    # Review M16: nothing was repaired, so the asset keeps its damaged state.
+    _close_linked_asset_issues(request, user, note="Request rejected.", restore_state=None)
     return request
 
 
@@ -1066,7 +1157,7 @@ def cancel_request(request, user, comment=""):
         request, RequestActivity.CANCELLED, actor=user,
         message=comment or "Cancelled by requester.",
     )
-    _close_linked_asset_issues(request, user, note="Request cancelled.")
+    _close_linked_asset_issues(request, user, note="Request cancelled.", restore_state=None)
     return request
 
 
@@ -1076,6 +1167,17 @@ def delete_request(request, user, reason=""):
         raise ValidationError("A reason is required to delete a request.")
     if request.requester_id != user.pk and not user.is_superuser:
         raise PermissionDenied("Only the requester or a superuser can delete this request.")
+    # Review M16: completed requests are official records, and approved
+    # leave is reflected in attendance - requesters may not delete them.
+    if not user.is_superuser:
+        if request.status == Request.COMPLETED:
+            raise ValidationError("Completed requests cannot be deleted.")
+        from leave.services import APPROVED_REQUEST_STATUSES
+        if (request.request_type.code == "annual-leave"
+                and request.status in APPROVED_REQUEST_STATUSES):
+            raise ValidationError(
+                "Approved leave cannot be deleted. Ask an approver if it must be withdrawn."
+            )
 
     notify_targets = set()
     notify_targets.add(request.requester_id)
@@ -1126,12 +1228,16 @@ def delete_request(request, user, reason=""):
 # Comments, attachments
 # ===========================================================================
 def add_comment(request, user, body, internal=False):
+    # Review M2: internal notes are hidden from the requester, so a
+    # requester cannot write one, and the timeline never carries their text.
+    if internal and request.requester_id == user.pk:
+        internal = False
     comment = RequestComment.objects.create(
         request=request, author=user, body=body.strip(), is_internal=internal,
     )
     log_activity(
         request, RequestActivity.COMMENTED, actor=user,
-        message=body[:200],
+        message="Internal note added." if internal else body[:200],
         metadata={"internal": internal, "comment_id": comment.pk},
     )
     return comment
@@ -1193,9 +1299,9 @@ def _finalise(request, actor=None, note=""):
     return request
 
 
-def _close_linked_asset_issues(request, actor, note=""):
+def _close_linked_asset_issues(request, actor, note="", restore_state="in_service"):
     """Resolve every open AssetIssue linked to this request and restore the
-    asset to 'in_service'."""
+    asset to `restore_state` (None = leave the asset's state unchanged)."""
     try:
         from assets import services as asset_services
     except ImportError:
@@ -1206,7 +1312,7 @@ def _close_linked_asset_issues(request, actor, note=""):
                 issue=issue,
                 resolved_by=actor,
                 resolution_notes=note,
-                restore_state="in_service",
+                restore_state=restore_state,
             )
         except Exception:
             logger.exception("Could not resolve asset issue %s", issue.pk)

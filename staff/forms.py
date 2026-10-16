@@ -32,7 +32,8 @@ class StaffSearchForm(forms.Form):
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if user and not (user.is_superuser or user.has_perm("staff.view_staff")):
+        from .permissions import sees_all_departments
+        if user and not sees_all_departments(user):
             dept_id = getattr(user, "department_id", None)
             self.fields["department"].queryset = Department.objects.filter(pk=dept_id)
 
@@ -111,11 +112,15 @@ class StaffForm(forms.ModelForm):
         self.fields["email"].required = True
 
         # Department heads can't move staff out of their own department.
+        # Review H7: someone without a department gets no choices at all
+        # (previously they got the full, unrestricted list).
         if user and not (user.is_superuser or user.has_perm("staff.change_staff")):
             dept = getattr(user, "department", None)
             if dept:
                 self.fields["department"].queryset = Department.objects.filter(pk=dept.pk)
                 self.initial.setdefault("department", dept.pk)
+            else:
+                self.fields["department"].queryset = Department.objects.none()
 
         # Sensible default: only active states are selectable for a new record.
         if not self.instance.pk:
@@ -148,6 +153,32 @@ class StaffForm(forms.ModelForm):
                 self.add_error("initial_password", "Must be at least 8 characters.")
 
         return cleaned
+
+
+class StaffSelfForm(forms.ModelForm):
+    """What a person may edit on their OWN directory record (review H7):
+    contact details only. HR-controlled fields (employee no, department,
+    office, designation, grade, reports-to, state, birthday, duties) stay
+    with HR / department managers via `StaffForm`."""
+
+    class Meta:
+        model = Staff
+        fields = [
+            "phone", "photo", "office_location", "contact_preference",
+            "emergency_contact_name", "emergency_contact_phone",
+        ]
+        widgets = {
+            "phone":           forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "office_location": forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "contact_preference": forms.Select(attrs={"class": INPUT_CLASS}),
+            "emergency_contact_name":  forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "emergency_contact_phone": forms.TextInput(attrs={"class": INPUT_CLASS}),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.fields["photo"].required = False
 
 
 # ---------------------------------------------------------------------------

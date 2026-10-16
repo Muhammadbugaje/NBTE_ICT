@@ -364,6 +364,22 @@ def update_memo(memo, actor, **fields):
                 "acknowledgment requirement changed."
             )
 
+    # Review M4: once any approver has signed an in-flight memo, its content
+    # and audience are frozen - approvers must not end up approving text
+    # they never saw. To change them, an approver returns the memo first
+    # (RETURNED memos are editable again and walk the chain afresh).
+    if memo.status == memo.AWAITING and memo.approvals.exists():
+        frozen = {"subject", "body", "visibility", "department", "target_user"}
+        changed = sorted(
+            k for k in frozen & set(fields)
+            if getattr(memo, k) != fields[k]
+        )
+        if changed:
+            raise ValidationError(
+                "This memo has already been approved by at least one person, so "
+                "its subject, body and audience can no longer change. Ask an "
+                "approver to return it if it needs editing."
+            )
     for k, v in fields.items():
         setattr(memo, k, v)
     memo.save()

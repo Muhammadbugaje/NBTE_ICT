@@ -36,7 +36,7 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import SoftDeleteModel, TimeStampedModel
-from core.storage import uuid_upload_to
+from core.storage import restricted_storage, uuid_upload_to
 
 
 
@@ -517,16 +517,18 @@ class RequestComment(models.Model):
 # Attachments
 # ===========================================================================
 class RequestAttachment(TimeStampedModel):
-    """File attached to a request. Public (served by nginx via /media/)."""
+    """File attached to a request. Stored in restricted storage and served
+    only through core.views.protected_download (review finding H1)."""
 
     AUDITED = True
     MEDIA_SUBDIR = "workflow/attachments"
+    PROTECTED_DOWNLOAD = True
 
     request = models.ForeignKey(Request, on_delete=models.CASCADE, related_name="attachments")
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+",
     )
-    file = models.FileField(upload_to=uuid_upload_to)
+    file = models.FileField(upload_to=uuid_upload_to, storage=restricted_storage)
     original_name = models.CharField(max_length=255)
     description = models.CharField(max_length=255, blank=True)
 
@@ -535,6 +537,19 @@ class RequestAttachment(TimeStampedModel):
 
     def __str__(self):
         return self.original_name or f"attachment {self.pk}"
+
+    def save(self, *args, **kwargs):
+        from core.uploads import enforce_allowed_extension
+        enforce_allowed_extension(self)
+        super().save(*args, **kwargs)
+
+    def can_download(self, user):
+        from .views import can_view_request
+        return bool(user and user.is_authenticated) and can_view_request(user, self.request)
+
+    def download_url(self):
+        from django.urls import reverse
+        return reverse("core:protected_download", args=[self._meta.label_lower, self.pk])
 
 
 # ===========================================================================

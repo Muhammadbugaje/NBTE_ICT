@@ -1,0 +1,262 @@
+/* ==========================================================================
+   NBTE ICT — Groups & permissions (Stage 3). Prefix: gp-
+   Tokens only (tokens.css). Builds on components.css (.card, .badge, .btn,
+   .check, .tabs, .modal-root, .collapse-body, .nbte-empty-state, .pagination)
+   and layout.css (.page-header, .header-actions, .grid). Loaded only by the
+   templates under templates/accounts/{groups,roles,users,permissions}/.
+   ========================================================================== */
+
+.gp-page { max-width: var(--content-full); margin-inline: auto; padding-block-end: var(--space-8); }
+.gp-back {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  margin-block-end: var(--space-3);
+  color: var(--text-muted); font-size: var(--fs-sm);
+}
+.gp-back:hover { color: var(--link); }
+.gp-eyebrow {
+  margin-block-end: var(--space-1);
+  color: var(--link);
+  font-size: var(--fs-2xs); font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-widest); text-transform: uppercase;
+}
+
+/* ---- Section nav (Users · Groups · Roles · Matrix) ----------------------- */
+.gp-subnav { margin-block-end: var(--space-5); }
+.gp-subnav a.tab { display: inline-flex; align-items: center; text-decoration: none; }
+.gp-subnav a.tab[aria-current="page"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--primary); }
+
+/* ---- Toolbar (search + app filter) --------------------------------------- */
+.gp-toolbar {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3);
+  margin-block-end: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.gp-toolbar .field { flex: 1 1 14rem; margin: 0; }
+.gp-toolbar .field + .field { margin: 0; }
+.gp-toolbar .btn { flex: 0 0 auto; }
+@media (max-width: 479px) { .gp-toolbar .btn { flex: 1 1 100%; } }
+
+/* ---- Group cards ---------------------------------------------------------- */
+.gp-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
+  gap: var(--space-4);
+  margin: 0; padding: 0; list-style: none;
+}
+.gp-card { display: flex; flex-direction: column; gap: var(--space-3); height: 100%; }
+.gp-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.gp-card-title { margin: 0; font-family: var(--font-sans); font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+.gp-card-title a { color: var(--text); }
+.gp-card-title a:hover { color: var(--link); }
+.gp-card-desc { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+.gp-stats { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: 0; }
+.gp-stat { display: flex; flex-direction: column; }
+.gp-stat dt { color: var(--text-subtle); font-size: var(--fs-2xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.gp-stat dd { margin: 0; color: var(--text); font-size: var(--fs-xl); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.gp-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.gp-card-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block-start: auto; padding-block-start: var(--space-3); border-top: 1px solid var(--divider); }
+@media (max-width: 767px) {
+  .gp-cards { gap: var(--space-3); }
+  .gp-card { padding: var(--space-4); }
+  .gp-card-actions .btn { flex: 1 1 auto; }
+}
+
+/* ---- Two-column editor ---------------------------------------------------- */
+.gp-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .gp-editor { grid-template-columns: minmax(0, 20rem) minmax(0, 1fr); }
+  .gp-editor-side { position: sticky; inset-block-start: calc(var(--topbar-h) + var(--space-4)); }
+}
+.gp-summary { margin-block-start: var(--space-4); }
+.gp-summary-total { margin: 0 0 var(--space-3); color: var(--text); font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.gp-summary-total strong { color: var(--link); font-variant-numeric: tabular-nums; }
+.gp-summary-list { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.gp-summary-list li { display: flex; justify-content: space-between; gap: var(--space-3); color: var(--text-muted); }
+.gp-summary-list li span:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
+.gp-summary-empty { color: var(--text-subtle); font-size: var(--fs-sm); }
+
+/* ---- Permission picker (accordion per app) -------------------------------- */
+.gp-picker { display: grid; gap: var(--space-2); }
+.gp-picker-tools { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; margin-block-end: var(--space-2); }
+.gp-app {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.gp-app.has-selection { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); }
+.gp-app-head { display: flex; align-items: center; gap: var(--space-2); padding-inline-start: var(--space-3); }
+.gp-app-all { flex: 0 0 auto; min-height: var(--tap-min); }
+.gp-app-toggle {
+  display: flex; flex: 1 1 auto; align-items: center; gap: var(--space-2);
+  min-width: 0; min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-1);
+  color: var(--text); text-align: start;
+  border-radius: var(--radius-md);
+}
+.gp-app-toggle:hover { color: var(--link); }
+.gp-app-name { flex: 1 1 auto; min-width: 0; font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.gp-app-count { color: var(--text-subtle); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.gp-app-toggle svg { flex: 0 0 auto; color: var(--text-subtle); }
+.gp-app-body { padding: 0 var(--space-3); }
+.gp-app-body-inner { padding-block: var(--space-1) var(--space-3); border-top: 1px solid var(--divider); }
+.gp-app-search { margin-block: var(--space-3); }
+.gp-perm-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.gp-perm {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+.gp-perm:hover { background: var(--surface-2); }
+.gp-perm input { flex: 0 0 auto; width: 18px; height: 18px; margin-block-start: 2px; accent-color: var(--primary); }
+.gp-perm label { flex: 1 1 auto; min-width: 0; margin: 0; cursor: pointer; }
+.gp-perm-label { display: block; color: var(--text); font-size: var(--fs-sm); }
+.gp-perm-code { display: block; margin-block-start: 2px; padding: 0; border: 0; background: none; color: var(--text-subtle); font-size: var(--fs-2xs); overflow-wrap: anywhere; }
+.gp-perm-flags { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.gp-perm.is-locked label { cursor: not-allowed; }
+.gp-perm.is-locked .gp-perm-label { color: var(--text-muted); }
+.gp-perm[hidden] { display: none; }
+.gp-no-match { padding: var(--space-2); color: var(--text-subtle); font-size: var(--fs-sm); }
+
+/* ---- Group checklist (role & user pages) ---------------------------------- */
+.gp-group-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.gp-group-row {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.gp-group-row.is-checked { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); background: color-mix(in srgb, var(--primary) 5%, var(--surface)); }
+.gp-group-row input { flex: 0 0 auto; width: 18px; height: 18px; margin-block-start: 3px; accent-color: var(--primary); }
+.gp-group-row label { flex: 1 1 auto; min-width: 0; margin: 0; cursor: pointer; }
+.gp-group-row.is-locked label { cursor: not-allowed; }
+.gp-group-name { display: block; color: var(--text); font-family: var(--font-sans); font-size: var(--fs-sm); font-weight: var(--fw-semibold); letter-spacing: 0; }
+h3.gp-group-name { font-size: var(--fs-md); }
+.gp-group-meta { display: block; color: var(--text-subtle); font-size: var(--fs-xs); }
+
+/* ---- Sticky action footer ------------------------------------------------- */
+.gp-sticky-actions {
+  position: sticky; inset-block-end: 0; z-index: var(--z-sticky);
+  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2);
+  margin-block-start: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  padding-block-end: max(var(--space-3), env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface-glass-strong);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-md);
+}
+@media (max-width: 767px) {
+  .gp-sticky-actions { flex-direction: column-reverse; border-radius: var(--radius-lg) var(--radius-lg) 0 0; margin-inline: calc(var(--space-4) * -1); }
+  .gp-sticky-actions .btn { width: 100%; }
+}
+
+/* ---- Role picker (roles page) -------------------------------------------- */
+.gp-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+@media (min-width: 1024px) { .gp-split { grid-template-columns: minmax(0, 17rem) minmax(0, 1fr); } }
+.gp-role-nav { display: grid; gap: 2px; margin: 0; padding: var(--space-2); list-style: none; }
+.gp-role-link {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 var(--space-2);
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
+.gp-role-link:hover { background: var(--surface-2); color: var(--text); }
+.gp-role-link[aria-current="page"] { background: var(--primary-subtle); color: var(--primary-subtle-fg); font-weight: var(--fw-semibold); }
+.gp-role-rank { color: var(--text-subtle); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+@media (max-width: 1023px) {
+  .gp-role-nav { display: flex; overflow-x: auto; gap: var(--space-2); scrollbar-width: thin; }
+  .gp-role-nav > li { flex: 0 0 auto; }
+  .gp-role-link { flex-direction: column; align-items: flex-start; border: 1px solid var(--border); white-space: nowrap; }
+}
+
+/* ---- Read-only permission lists ------------------------------------------ */
+.gp-perm-apps { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.gp-perm-apps h3,
+.gp-perm-apps h4 { margin: 0 0 var(--space-1); font-family: var(--font-sans); font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text); }
+.gp-code-list { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.gp-code-list code { font-size: var(--fs-2xs); }
+.gp-note { margin: 0 0 var(--space-3); color: var(--text-muted); font-size: var(--fs-sm); }
+.gp-card-title-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin-block-end: var(--space-3); }
+.gp-card-title-row h2, .gp-card-title-row h3 { margin: 0; font-family: var(--font-sans); font-size: var(--fs-lg); }
+.gp-stack { display: grid; gap: var(--space-5); }
+.gp-people { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.gp-person { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.gp-person-text { min-width: 0; }
+.gp-person-name { display: block; color: var(--text); font-weight: var(--fw-medium); overflow-wrap: anywhere; }
+.gp-person-meta { display: block; color: var(--text-subtle); font-size: var(--fs-xs); }
+.gp-activity { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.gp-activity time { display: block; color: var(--text-subtle); font-size: var(--fs-xs); }
+.gp-preview-details summary { cursor: pointer; color: var(--link); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.gp-preview-details[open] summary { margin-block-end: var(--space-3); }
+
+/* ---- Permission matrix ---------------------------------------------------- */
+.gp-matrix-wrap {
+  max-width: 100%;
+  max-height: 70vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.gp-matrix { margin: 0; border-collapse: separate; border-spacing: 0; min-width: max-content; }
+.gp-matrix th, .gp-matrix td { padding: 0; border-bottom: 1px solid var(--divider); text-align: center; }
+.gp-matrix thead th {
+  position: sticky; inset-block-start: 0; z-index: 2;
+  padding: var(--space-3);
+  background: var(--surface-2);
+  text-transform: none; letter-spacing: 0;
+  color: var(--text); font-size: var(--fs-xs);
+}
+.gp-matrix tbody th, .gp-matrix thead th:first-child {
+  position: sticky; inset-inline-start: 0; z-index: 1;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  text-align: start; white-space: nowrap;
+  text-transform: none; letter-spacing: 0; color: var(--text); font-size: var(--fs-sm);
+  box-shadow: 1px 0 0 var(--divider);
+}
+.gp-matrix thead th:first-child { z-index: 3; background: var(--surface-2); }
+.gp-matrix-rank { display: block; color: var(--text-subtle); font-size: var(--fs-2xs); font-weight: var(--fw-regular); }
+.gp-cell {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; min-width: 4.5rem; min-height: var(--tap-min);
+  padding: var(--space-2);
+  color: var(--text); font-variant-numeric: tabular-nums; font-weight: var(--fw-semibold);
+  transition: background-color var(--dur) var(--ease-standard);
+}
+button.gp-cell { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+button.gp-cell:hover { background: color-mix(in srgb, var(--primary) 20%, transparent); }
+.gp-cell-empty { color: var(--text-subtle); font-weight: var(--fw-regular); }
+.gp-matrix td.gp-total { padding: var(--space-2) var(--space-3); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gp-modal-list { display: grid; gap: var(--space-1); max-height: 55vh; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.gp-modal-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--divider); font-size: var(--fs-sm); }
+.gp-modal-list code { font-size: var(--fs-2xs); }
+
+/* ---- Motion: only a fade when the user prefers less motion --------------- */
+@media (prefers-reduced-motion: reduce) {
+  .gp-cards > .reveal:not(.in) { opacity: 1; transform: none; }
+}
+
+/* ---- Print: the matrix and lists stay readable on paper ------------------
+   Documented !important: NBTE.collapse writes max-height as an inline style,
+   and print must beat it (and beat component display rules) so every
+   accordion prints open and screen-only controls disappear. */
+@media print {
+  .gp-toolbar, .gp-subnav, .gp-sticky-actions, .gp-card-actions, .gp-picker-tools, .gp-back { display: none !important; }
+  .gp-matrix-wrap { max-height: none; overflow: visible; border: 0; }
+  .gp-matrix { min-width: 0; width: 100%; font-size: 9pt; }
+  .gp-matrix thead th, .gp-matrix tbody th { position: static; background: none; box-shadow: none; }
+  .gp-matrix th, .gp-matrix td { border: 1px solid var(--ink-400); }
+  button.gp-cell { background: none; }
+  .gp-cell { min-height: 0; min-width: 0; padding: 2pt; }
+  .gp-app .collapse-body { max-height: none !important; opacity: 1 !important; }
+}

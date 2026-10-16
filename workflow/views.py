@@ -68,8 +68,16 @@ def _can_view(request, req):
       - users in the receiving department with the director role
       - superusers
     """
-    user = request.user
+    return can_view_request(request.user, req)
+
+
+def can_view_request(user, req):
+    """User-based form of `_can_view` (used by attachment downloads)."""
     if user.is_superuser:
+        return True
+    # Review M1: the list view (`all_requests`) already shows these users
+    # every request; the detail page must agree.
+    if user.has_perm("accounts.view_all_requests"):
         return True
     if req.requester_id == user.pk:
         return True
@@ -295,9 +303,28 @@ def bulk_awaiting_action(request):
     return redirect("workflow:awaiting_action")
 
 
+DEPARTMENT_LEAD_ROLE_CODES = (
+    "executive-secretary", "director", "deputy-director",
+    "office-head-admin", "office-head-ts", "office-head-dev", "division-head",
+)
+
+
+def can_see_incoming(user):
+    """Review M7: the incoming queue is for the receiving department's leads,
+    not every member of the department."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return bool(user.department_id and user.role_id
+                and user.role.code in DEPARTMENT_LEAD_ROLE_CODES)
+
+
 @login_required
 def incoming(request):
     """Requests routed to my department, awaiting the receiving director."""
+    if not can_see_incoming(request.user):
+        raise PermissionDenied("Only department leads can view incoming requests.")
     if not request.user.department_id:
         qs = Request.objects.none()
     else:
@@ -593,6 +620,11 @@ def detail(request, pk):
     can_act = bool(current_actor and current_actor.pk == request.user.pk)
     is_assignee = req.assigned_to_id == request.user.pk
     is_requester = req.requester_id == request.user.pk
+    # Review M2: internal notes are for everyone who can view EXCEPT the requester.
+    show_internal = request.user.is_superuser or not is_requester
+    comments_qs = req.comments.select_related("author").order_by("created_at")
+    if not show_internal:
+        comments_qs = comments_qs.filter(is_internal=False)
 
     timeline_qs = req.timeline().select_related("actor")
     timeline_last_pk = (
@@ -613,7 +645,8 @@ def detail(request, pk):
         "is_requester": is_requester,
         "timeline": req.timeline().select_related("actor"),
         "approvals": req.approvals.select_related("step", "actor").order_by("decided_at"),
-        "comments": req.comments.select_related("author").order_by("created_at"),
+        "comments": comments_qs,
+        "show_internal": show_internal,
         "attachments": req.attachments.select_related("uploaded_by"),
         "approve_form": ApproveForm(),
         "return_form": ReturnForm(),
@@ -850,7 +883,7 @@ def resubmit(request, pk):
     try:
         if req.request_type.code == "annual-leave":
             from leave.services import validate_application
-            validate_application(request.user, form_data)
+            validate_application(request.user, form_data, exclude_request_id=req.pk)
         with transaction.atomic():
             services.resubmit(
                 req, request.user,
@@ -931,46 +964,14 @@ POLL_INTERVAL = 5   # seconds between checks
 @login_required
 @require_GET
 def request_stream(request, pk):
-    """Server-Sent Events stream for a single request's timeline.
+    """Timeline poll for one request (was an endless SSE stream - review H2).
 
-    Query param `since` = the highest activity pk already visible on the
-    page. We only stream rows with pk > since, so the browser never gets
-    duplicates. Sends a heartbeat every POLL_INTERVAL seconds to keep
-    proxies from closing the connection.
+    `?since=<highest activity pk on the page>`; answers immediately with
+    {"last_pk", "count"} (JSON) or one SSE frame. Never sleeps.
     """
+    from core.polling import activity_response
+
     req = _require_view(request, pk)
-    try:
-        since = int(request.GET.get("since") or 0)
-    except (TypeError, ValueError):
-        since = 0
+    return activity_response(request, RequestActivity.objects.filter(request_id=req.pk))
 
-    # Permission check happens once, before the stream starts. After this,
-    # the connection is anonymous bytes to Django — it won't re-check auth.
-    def event_stream():
-        last = since
-        # Send an immediate frame so proxies flush.
-        yield ": connected\n\n"
-        try:
-            while True:
-                time.sleep(POLL_INTERVAL)
-                new_pks = list(
-                    RequestActivity.objects
-                    .filter(request_id=req.pk, pk__gt=last)
-                    .order_by("pk")
-                    .values_list("pk", flat=True)[:50]
-                )
-                if new_pks:
-                    last = new_pks[-1]
-                    payload = json.dumps({"last_pk": last, "count": len(new_pks)})
-                    yield f"event: activity\ndata: {payload}\n\n"
-                else:
-                    yield ": heartbeat\n\n"
-        except GeneratorExit:
-            return
 
-    resp = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-    resp["Cache-Control"] = "no-cache"
-    resp["X-Accel-Buffering"] = "no"
-    return resp    
-    
-    

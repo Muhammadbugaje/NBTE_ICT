@@ -3,7 +3,7 @@
 {% load tasks_tags %}
 {% load portal_tags %}
 {% load memo_tags %}
-<aside class="app-sidebar" role="navigation" aria-label="Main">
+<aside class="app-sidebar" id="app-sidebar" role="navigation" aria-label="Main">
   <div class="app-sidebar-header">
     <a href="{% url 'core:home' %}" class="app-brand">
       <img src="{% static 'img/NBTE_logo.png' %}" alt="">
@@ -12,6 +12,9 @@
         <span class="app-brand-sub">{% if request.user.department %}{{ request.user.department.name }}{% else %}ICT Directorate{% endif %}</span>
       </span>
     </a>
+    <button type="button" class="app-topbar-btn app-sidebar-close" data-drawer-toggle="app-sidebar" aria-label="Close navigation menu">
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
   </div>
 
   <nav class="app-nav">
@@ -55,11 +58,13 @@
           <span>Awaiting my action</span>
           {% if sidebar_counts.awaiting %}<span class="app-nav-badge">{{ sidebar_counts.awaiting }}</span>{% endif %}
         </a>
+        {% if sidebar_counts.can_incoming %}
         <a href="{% url 'workflow:incoming' %}" class="app-nav-item {% if un == 'incoming' %}active{% endif %}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           <span>Incoming</span>
           {% if sidebar_counts.incoming %}<span class="app-nav-badge">{{ sidebar_counts.incoming }}</span>{% endif %}
         </a>
+        {% endif %}
         <a href="{% url 'workflow:assigned_to_me' %}" class="app-nav-item {% if un == 'assigned_to_me' %}active{% endif %}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span>Assigned to me</span>
@@ -351,6 +356,38 @@
       </div>
     </div>
 
+    {# ---------------- User Management (Stage 3: groups & permissions) ---------------- #}
+    {% if request.user.is_superuser or perms.accounts.change_user or perms.accounts.assign_groups %}
+      {% with gns=request.resolver_match.namespace %}
+      <div class="app-nav-group {% if gns == 'accounts:groups' %}is-open{% endif %}" data-group="user-management">
+        <button type="button" class="app-nav-group-head" aria-expanded="{% if gns == 'accounts:groups' %}true{% else %}false{% endif %}">
+          <span class="app-nav-group-title">User Management</span>
+          <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="app-nav-group-body">
+          <a href="{% url 'accounts:groups:users' %}" class="app-nav-item {% if gns == 'accounts:groups' and un == 'users' or gns == 'accounts:groups' and un == 'user_groups' %}active{% endif %}"{% if gns == 'accounts:groups' and un == 'users' or gns == 'accounts:groups' and un == 'user_groups' %} aria-current="page"{% endif %}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Users</span>
+          </a>
+          <a href="{% url 'accounts:groups:list' %}" class="app-nav-item {% if gns == 'accounts:groups' and un in 'list create detail update delete' %}active{% endif %}"{% if gns == 'accounts:groups' and un in 'list create detail update delete' %} aria-current="page"{% endif %}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span>Groups</span>
+          </a>
+          {% if request.user.is_superuser or perms.accounts.assign_groups %}
+            <a href="{% url 'accounts:groups:roles' %}" class="app-nav-item {% if gns == 'accounts:groups' and un == 'roles' or gns == 'accounts:groups' and un == 'role_groups' %}active{% endif %}"{% if gns == 'accounts:groups' and un == 'roles' or gns == 'accounts:groups' and un == 'role_groups' %} aria-current="page"{% endif %}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg>
+              <span>Roles</span>
+            </a>
+          {% endif %}
+          <a href="{% url 'accounts:groups:matrix' %}" class="app-nav-item {% if gns == 'accounts:groups' and un == 'matrix' %}active{% endif %}"{% if gns == 'accounts:groups' and un == 'matrix' %} aria-current="page"{% endif %}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+            <span>Permission Matrix</span>
+          </a>
+        </div>
+      </div>
+      {% endwith %}
+    {% endif %}
+
     {# ---------------- Management ---------------- #}
     {% if perms.workflow.change_approvalchain or perms.messaging.change_memoroute or perms.messaging.manage_memoroute %}
       <div class="app-nav-group {% if ns == 'workflow_manage' or ns == 'messaging_manage' %}is-open{% endif %}" data-group="management">
@@ -410,6 +447,21 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>Import / Export</span>
           </a>
+
+    {% if perms.showcase.add_showcaseimage or request.user.is_superuser %}
+      <a href="{% url 'showcase:manage_list' %}"
+        class="app-nav-item {% if ns == 'showcase' and 'manage' in un %}active{% endif %}"
+        {% if ns == 'showcase' and 'manage' in un %}aria-current="page"{% endif %}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <span>Showcase images</span>
+      </a>
+    {% endif %}
+
 
           <a href="{% url 'config:files_dashboard' %}"
              class="app-nav-item {% if un == 'files_dashboard' %}active{% endif %}">

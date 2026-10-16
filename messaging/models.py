@@ -459,6 +459,8 @@ class Memo(TimeStampedModel):
               → CANCELLED
     """
     AUDITED = True
+    # Review M8: memo text never goes into the audit log.
+    AUDIT_EXCLUDE_FIELDS = ("subject", "body")
 
     # ---- Priority ---------------------------------------------------
     NORMAL, HIGH, URGENT = "normal", "high", "urgent"

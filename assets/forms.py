@@ -1,6 +1,8 @@
 """Forms for the assets module."""
 from django import forms
 
+from core.uploads import validate_attachment_upload
+
 from accounts.models import User
 from staff.models import Department
 
@@ -202,6 +204,7 @@ class ResolveIssueForm(forms.Form):
 
 class AssetAttachmentForm(forms.Form):
     file = forms.FileField(
+        validators=[validate_attachment_upload],
         widget=forms.ClearableFileInput(attrs={"class": "input"}),
     )
     kind = forms.ChoiceField(

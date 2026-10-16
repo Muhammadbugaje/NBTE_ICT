@@ -3,14 +3,14 @@
 {% load tasks_tags %}
 {% block title %}Edit {{ task.reference }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Edit task{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=3">{% endblock %}
-{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=3" defer></script>{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=4">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=4" defer></script>{% endblock %}
 
 {% block content %}
 <div class="tsk-page">
   <header class="tsk-page-head">
     <div>
-      <a href="{% url 'tasks:detail' task.pk %}" class="tsk-btn tsk-btn-ghost" style="margin-bottom:12px;">
+      <a href="{% url 'tasks:detail' task.pk %}" class="tsk-btn tsk-btn-ghost mb-3">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         Back to {{ task.reference }}
       </a>
@@ -73,7 +73,7 @@
         {{ form.requires_review }}
         <span>Requires review before closing.</span>
       </label>
-      <label class="tsk-field" style="margin-top:14px;">
+      <label class="tsk-field mt-4">
         <span class="tsk-field-label">Reviewer</span>
         {{ form.reviewer }}
       </label>
@@ -105,12 +105,12 @@
 
   {# ---------- Assignees form (separate so picker posts independently) ---------- #}
   {% if task.state not in 'completed,cancelled' %}
-    <form method="post" action="{% url 'tasks:sync_assignees' task.pk %}" class="tsk-form" style="margin-top:20px;">
+    <form method="post" action="{% url 'tasks:sync_assignees' task.pk %}" class="tsk-form mt-5">
       {% csrf_token %}
       <div class="tsk-form-section">
         <h3 class="tsk-form-section-title">Assignees</h3>
         {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_task=task picker_initial_ids=current_assignee_ids %}
-        <span class="tsk-field-hint" style="margin-top:10px;">
+        <span class="tsk-field-hint mt-3">
           Check to add, uncheck to remove. Only people below your rank appear — never the Executive Secretary. Capacity limits are enforced server-side.
         </span>
       </div>

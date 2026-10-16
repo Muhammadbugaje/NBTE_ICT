@@ -8,7 +8,9 @@
           <span class="wf-tl-kind">{{ event.kind|humanize_kind }}</span>
           <span class="wf-tl-time">{{ event.created_at|date:"M j, Y · H:i" }}</span>
         </div>
-        {% if event.message %}<div class="wf-tl-msg">{{ event.message }}</div>{% endif %}
+        {% if event.metadata.internal and request.user.pk == req.requester_id and not request.user.is_superuser %}
+          <div class="wf-tl-msg">Internal note added.</div>{# review M2: older rows held the note text #}
+        {% elif event.message %}<div class="wf-tl-msg">{{ event.message }}</div>{% endif %}
         {% if event.actor %}
           <div class="wf-tl-actor">{{ event.actor.get_full_name|default:event.actor.email }}</div>
         {% endif %}

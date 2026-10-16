@@ -1,5 +1,11 @@
 /* ==========================================================================
-   NBTE ICT — Global JS (v20)
+   NBTE ICT — Global JS (v21)
+   Changes in v21 (UI overhaul):
+     - window.NBTE is merged, not replaced (ui.js adds primitives).
+     - Toasts: close button styled by CSS (no inline style), countdown bar.
+   ========================================================================== */
+/* ==========================================================================
+   (history)
    Changes in v20:
      - Added initSidebarActiveScroll(): scrolls .app-nav so the currently
        active item is visible on page load.
@@ -208,14 +214,22 @@
 
       var closeBtn = document.createElement("button");
       closeBtn.type = "button";
-      closeBtn.className = "btn-subtle toast-close";
+      closeBtn.className = "toast-close";
       closeBtn.setAttribute("aria-label", "Dismiss notification");
-      closeBtn.innerHTML = "×";
-      closeBtn.style.cssText = "width:28px;height:28px;padding:0;display:grid;place-items:center;border-radius:999px;color:var(--fg-subtle);flex-shrink:0;";
+      closeBtn.innerHTML = "&times;";
 
       el.appendChild(icon);
       el.appendChild(body);
       el.appendChild(closeBtn);
+      // Countdown bar (UI overhaul): shows how long until auto-dismiss.
+      var bar = null;
+      if (duration > 0) {
+        bar = document.createElement("span");
+        bar.className = "toast-progress";
+        bar.setAttribute("aria-hidden", "true");
+        bar.style.animationDuration = duration + "ms";
+        el.appendChild(bar);
+      }
       stack.appendChild(el);
 
       var timer = null;
@@ -240,6 +254,7 @@
 
       el.addEventListener("mouseenter", function () {
         if (timer) { clearTimeout(timer); timer = null; }
+        if (bar) bar.style.animationPlayState = "paused";
       });
       el.addEventListener("mouseleave", function () {
         if (!dismissed && duration > 0) timer = setTimeout(dismiss, 1500);
@@ -809,28 +824,31 @@
       if (el.__sse) return;
       var url = el.getAttribute("data-sse-stream");
       if (!url) return;
-      if (typeof window.EventSource === "undefined") return;
-
-      try {
-        var src = new EventSource(url);
-        el.__sse = src;
-
-        src.addEventListener("activity", function (evt) {
-          var detail = {};
-          try { if (evt.data) detail = JSON.parse(evt.data); } catch (e) {}
-          document.body.dispatchEvent(new CustomEvent("sse:activity", {
-            detail: detail
-          }));
-        });
-
-        src.addEventListener("error", function () {});
-
-        window.addEventListener("beforeunload", function () {
-          try { src.close(); } catch (e) {}
-        });
-      } catch (err) {
-        console.error("[NBTE] SSE init failed for", url, err);
-      }
+      // Review H2: short-poll instead of a long-lived EventSource. The
+      // endpoint answers at once with {"last_pk", "count"}; we keep the
+      // highest pk seen so the same activity never fires twice.
+      var last = 0;
+      var m = /[?&]since=(\d+)/.exec(url);
+      if (m) last = parseInt(m[1], 10) || 0;
+      var base = url.split("?")[0];
+      var tick = function () {
+        if (document.hidden) return;
+        fetch(base + "?since=" + last, {
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" },
+        })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (!data) return;
+            if (data.count > 0 && data.last_pk > last) {
+              last = data.last_pk;
+              document.body.dispatchEvent(new CustomEvent("sse:activity", { detail: data }));
+            }
+          })
+          .catch(function () {});
+      };
+      el.__sse = setInterval(tick, 10000);
+      window.addEventListener("beforeunload", function () { clearInterval(el.__sse); });
     });
 
     if (!sseHooksBound) {
@@ -974,7 +992,8 @@
   }
 
   /* Expose public API */
-  window.NBTE = {
+  // Merge rather than replace: ui.js and the page scripts extend NBTE too.
+  window.NBTE = Object.assign(window.NBTE || {}, {
     Theme: Theme,
     Toast: Toast,
     Modal: Modal,
@@ -986,7 +1005,7 @@
     getCookie: getCookie,
     setGroupOpen: setGroupOpen,
     syncTopbarOffset: syncTopbarOffset,
-  };
+  });
   window.NBTETheme = Theme;
   window.NBTEToast = Toast;
   window.NBTEModal = Modal;

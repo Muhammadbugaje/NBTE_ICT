@@ -44,13 +44,24 @@ def today():
     return timezone.localdate()
 
 
+# Review M15: Brevo SMTP and the Brevo HTTP API are two doors into ONE Brevo
+# account with ONE daily allowance, so they share a single quota counter.
+_QUOTA_KEYS = {"brevo_smtp": "brevo", "brevo": "brevo", "gmail": "gmail"}
+
+
+def quota_key(provider):
+    return _QUOTA_KEYS.get(provider, provider)
+
+
 def daily_limit(provider):
-    return int(config.get(f"email.{provider}_daily_limit", DEFAULT_LIMITS[provider]))
+    key = quota_key(provider)
+    return int(config.get(f"email.{key}_daily_limit", DEFAULT_LIMITS[key]))
 
 
 def used_today(provider):
-    row = EmailQuotaTracker.objects.filter(provider=provider, date=today()).first()
+    row = EmailQuotaTracker.objects.filter(provider=quota_key(provider), date=today()).first()
     return row.sent_count if row else 0
+
 
 
 def _provider_is_configured(provider):
@@ -74,6 +85,10 @@ def safe_error_message(exc):
     secrets = [
         getattr(settings, "ANYMAIL", {}).get("BREVO_API_KEY", ""),
         providers.get("gmail", {}).get("OPTIONS", {}).get("password", ""),
+        # Review M15: the Brevo SMTP key was not redacted.
+        providers.get("brevo_smtp", {}).get("OPTIONS", {}).get("password", ""),
+        getattr(settings, "BREVO_SMTP_KEY", ""),
+        getattr(settings, "EMAIL_HOST_PASSWORD", ""),
     ]
     for secret in secrets:
         if secret:
@@ -100,17 +115,18 @@ def provider_order(category="general"):
 def _reserve(provider, n):
     """Atomically take n units of today's quota. False if it would exceed the limit."""
     limit = daily_limit(provider)
-    EmailQuotaTracker.objects.get_or_create(provider=provider, date=today())
+    key = quota_key(provider)
+    EmailQuotaTracker.objects.get_or_create(provider=key, date=today())
     with transaction.atomic():
         return bool(
             EmailQuotaTracker.objects.filter(
-                provider=provider, date=today(), sent_count__lte=limit - n
+                provider=key, date=today(), sent_count__lte=limit - n
             ).update(sent_count=F("sent_count") + n)
         )
 
 
 def _release(provider, n):
-    EmailQuotaTracker.objects.filter(provider=provider, date=today(), sent_count__gte=n).update(
+    EmailQuotaTracker.objects.filter(provider=quota_key(provider), date=today(), sent_count__gte=n).update(
         sent_count=F("sent_count") - n
     )
 

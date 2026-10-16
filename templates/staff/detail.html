@@ -5,7 +5,7 @@
 {% block page_title %}Staff member{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/staff.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/staff.css' %}?v=5">
 {% endblock %}
 
 {% block content %}
@@ -63,7 +63,7 @@
         </a>
       {% endif %}
       {% if can_notify %}
-        <button type="button" class="btn btn-ghost" data-open-modal="modal-notify">
+        <button type="button" class="btn btn-ghost" data-modal-open="modal-notify">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           Notify
         </button>
@@ -174,107 +174,56 @@
   </div>
 </div>
 
-{# ============ MODALS ============ #}
+{# ============ MODALS (design-system dialogs: NBTE.modal via data-modal-open) ============ #}
 {% if can_message %}
-  <div class="modal" id="modal-message" data-modal style="display:none;">
-    <div class="modal-backdrop" data-close-modal></div>
-    <div class="modal-panel" role="dialog" aria-modal="true">
-      <header class="modal-head">
-        <h3>Message {{ staff.full_name }}</h3>
-        <button type="button" class="modal-close" data-close-modal aria-label="Close">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </header>
+  <div class="modal-root" id="modal-message" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-message-title">
+      <button type="button" class="modal-close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      <h3 class="modal-title" id="modal-message-title">Message {{ staff.full_name }}</h3>
       <form method="post" action="{% url 'staff:message' staff.pk %}">
         {% csrf_token %}
-        <div class="modal-body">
-          <label class="field">
-            <span>Subject</span>
-            <input type="text" name="subject" class="input"
-                   value="Message from {{ request.user.get_full_name|default:request.user.email }}">
-          </label>
-          <label class="field">
-            <span>Body</span>
-            <textarea name="body" rows="5" class="input" required></textarea>
-          </label>
-        </div>
-        <footer class="modal-foot">
-          <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <label class="field">
+          <span>Subject</span>
+          <input type="text" name="subject" class="input"
+                 value="Message from {{ request.user.get_full_name|default:request.user.email }}">
+        </label>
+        <label class="field">
+          <span>Body</span>
+          <textarea name="body" rows="5" class="input" required></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
           <button type="submit" class="btn btn-primary">Send message</button>
-        </footer>
+        </div>
       </form>
     </div>
   </div>
 {% endif %}
 
 {% if can_notify %}
-  <div class="modal" id="modal-notify" data-modal style="display:none;">
-    <div class="modal-backdrop" data-close-modal></div>
-    <div class="modal-panel" role="dialog" aria-modal="true">
-      <header class="modal-head">
-        <h3>Send notification to {{ staff.full_name }}</h3>
-        <button type="button" class="modal-close" data-close-modal aria-label="Close">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </header>
+  <div class="modal-root" id="modal-notify" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-notify-title">
+      <button type="button" class="modal-close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      <h3 class="modal-title" id="modal-notify-title">Send notification to {{ staff.full_name }}</h3>
       <form method="post" action="{% url 'staff:notify' staff.pk %}">
         {% csrf_token %}
-        <div class="modal-body">
-          <label class="field">
-            <span>Title</span>
-            <input type="text" name="title" class="input" required>
-          </label>
-          <label class="field">
-            <span>Body</span>
-            <textarea name="body" rows="4" class="input"></textarea>
-          </label>
-        </div>
-        <footer class="modal-foot">
-          <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <label class="field">
+          <span>Title</span>
+          <input type="text" name="title" class="input" required>
+        </label>
+        <label class="field">
+          <span>Body</span>
+          <textarea name="body" rows="4" class="input"></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
           <button type="submit" class="btn btn-primary">Send notification</button>
-        </footer>
+        </div>
       </form>
     </div>
   </div>
 {% endif %}
-
-{# ============ MODAL SCRIPT (inline, no extra_js dependency) ============ #}
-<script>
-(function () {
-  function openModal(m) {
-    if (!m) return;
-    m.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-  }
-  function closeModal(m) {
-    if (!m) return;
-    m.style.display = 'none';
-    document.body.style.overflow = '';
-  }
-  document.addEventListener('click', function (e) {
-    // Open
-    var opener = e.target.closest('[data-open-modal]');
-    if (opener) {
-      var id = opener.getAttribute('data-open-modal');
-      var m = document.getElementById(id);
-      openModal(m);
-      return;
-    }
-    // Close (backdrop, X, cancel buttons)
-    var closer = e.target.closest('[data-close-modal]');
-    if (closer) {
-      closeModal(closer.closest('[data-modal]'));
-      return;
-    }
-  });
-  // Escape key closes any open modal
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
-    document.querySelectorAll('[data-modal]').forEach(function (m) {
-      if (m.style.display !== 'none') closeModal(m);
-    });
-  });
-})();
-</script>
 
 {% endblock %}

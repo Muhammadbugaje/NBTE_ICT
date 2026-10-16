@@ -15,7 +15,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Count, Max, Prefetch, Q
+from django.db.models import Count, Max, Prefetch, ProtectedError, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -33,6 +33,7 @@ from .management_forms import (
 from .models import (
     ApprovalChain,
     ApprovalStep,
+    Request,
     RequestCategory,
     RequestType,
 )
@@ -298,7 +299,15 @@ def chain_delete(request, pk):
             )
             return redirect("workflow_manage:chain_detail", pk=chain.pk)
         name = chain.name
-        chain.delete()
+        try:
+            chain.delete()
+        except ProtectedError:  # review M16: its steps have recorded approvals
+            messages.error(
+                request,
+                "This chain's steps have recorded approvals, so it cannot be deleted. "
+                "Mark it inactive instead.",
+            )
+            return redirect("workflow_manage:chain_detail", pk=chain.pk)
         messages.success(request, f"Chain “{name}” deleted.")
         return redirect("workflow_manage:chain_list")
     return render(request, "manage/workflow/chain_confirm_delete.html",
@@ -335,6 +344,25 @@ def step_create(request, chain_pk):
     })
 
 
+def _step_in_use(step):
+    """Review M16: a step that has approvals or is the current step of an
+    open request must not change what it does - that would silently
+    rewrite requests already in progress."""
+    if step.approvals.exists():
+        return True
+    return Request.objects.filter(current_step=step).exclude(
+        status__in=Request.CLOSED_STATUSES,
+    ).exists()
+
+
+# Fields that change WHO acts or WHAT the step does. Name and instructions
+# stay editable on a step that is in use.
+_STEP_BEHAVIOUR_FIELDS = {
+    "kind", "approver_kind", "approver_role", "approver_user",
+    "scope", "is_optional", "is_hierarchical", "position",
+}
+
+
 @login_required
 def step_update(request, chain_pk, step_pk):
     _require_manage(request.user)
@@ -343,6 +371,14 @@ def step_update(request, chain_pk, step_pk):
 
     if request.method == "POST":
         form = ApprovalStepForm(request.POST, instance=step, chain=chain)
+        if form.is_valid() and _step_in_use(step) \
+                and _STEP_BEHAVIOUR_FIELDS & set(form.changed_data):
+            form.add_error(
+                None,
+                "This step has already been used by requests, so who acts and what "
+                "the step does can no longer change (only its name and instructions). "
+                "Add a new step instead.",
+            )
         if form.is_valid():
             form.save()
             messages.success(request, "Step updated.")
@@ -365,10 +401,25 @@ def step_delete(request, chain_pk, step_pk):
     step  = get_object_or_404(ApprovalStep, pk=step_pk, chain=chain)
     ajax  = _wants_json(request)
 
-    with transaction.atomic():
-        name = step.name
-        step.delete()
-        _normalize_positions(chain.pk)
+    # Review M16: a step with recorded approvals is protected by the database
+    # (RequestApproval.step is PROTECT); deleting it used to crash with a 500.
+    name = step.name
+    blocked = None
+    if _step_in_use(step):
+        blocked = ("This step has already been used by requests and cannot be "
+                   "deleted. Rename it or add a new step instead.")
+    else:
+        try:
+            with transaction.atomic():
+                step.delete()
+                _normalize_positions(chain.pk)
+        except ProtectedError:
+            blocked = "This step is referenced by recorded approvals and cannot be deleted."
+    if blocked:
+        if ajax:
+            return JsonResponse({"ok": False, "error": blocked}, status=409)
+        messages.error(request, blocked)
+        return redirect("workflow_manage:chain_detail", pk=chain.pk)
 
     if ajax:
         return JsonResponse({"ok": True})
@@ -563,7 +614,15 @@ def type_delete(request, pk):
             return redirect("workflow_manage:type_list")
 
         name = rt.name
-        rt.delete()
+        try:
+            rt.delete()
+        except ProtectedError:  # review M16: soft-deleted requests still reference it
+            messages.error(
+                request,
+                "Deleted requests still reference this type, so it cannot be removed. "
+                "Mark it inactive instead.",
+            )
+            return redirect("workflow_manage:type_list")
         messages.success(request, f"Type “{name}” deleted.")
         return redirect("workflow_manage:type_list")
 

@@ -30,7 +30,11 @@ ALLOWED_URL_NAMES = (
 ALLOWED_PATH_PREFIXES = (
     "/static/",
     "/media/",
-    "/admin/",
+    # Review L2: only the admin's own login/logout pages. Exempting all of
+    # /admin/ let a flagged staff user work in the admin indefinitely
+    # without ever replacing the temporary password.
+    "/admin/login/",
+    "/admin/logout/",
     "/favicon.ico",
     "/robots.txt",
 )

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ group.name }} · Groups · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Group{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="gp-page">
+  <a class="gp-back" href="{% url 'accounts:groups:list' %}">← All groups</a>
+  <header class="page-header">
+    <div>
+      <p class="gp-eyebrow">Group</p>
+      <h1>{{ group.name }}</h1>
+      {% if group.profile.description %}<p class="muted">{{ group.profile.description }}</p>{% endif %}
+    </div>
+    <div class="header-actions">
+      {% if can_change %}<a href="{% url 'accounts:groups:update' group.pk %}" class="btn btn-primary">Edit group</a>{% endif %}
+      {% if can_delete %}
+        <a href="{% url 'accounts:groups:delete' group.pk %}" class="btn btn-ghost btn-danger"
+           data-group-delete data-delete-url="{% url 'accounts:groups:delete' group.pk %}" data-delete-name="{{ group.name }}">Delete</a>
+      {% endif %}
+    </div>
+  </header>
+
+  {% include "accounts/groups/_subnav.html" with section="groups" %}
+
+  <div class="gp-editor">
+    <div class="gp-stack gp-editor-side">
+      <section class="card" aria-labelledby="gd-roles">
+        <div class="gp-card-title-row"><h2 id="gd-roles">Roles</h2><span class="badge">{{ roles|length }}</span></div>
+        {% if roles %}
+          <ul class="gp-people">
+            {% for r in roles %}
+              <li class="gp-person">
+                <span class="gp-person-text">
+                  <a class="gp-person-name" href="{% url 'accounts:groups:role_groups' r.pk %}">{{ r.name }}</a>
+                  <span class="gp-person-meta">Rank {{ r.rank }} · {{ r.holders }} holder{{ r.holders|pluralize }}</span>
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="gp-note">No role carries this group.</p>
+        {% endif %}
+      </section>
+
+      <section class="card" aria-labelledby="gd-members">
+        <div class="gp-card-title-row"><h2 id="gd-members">Members</h2><span class="badge">{{ direct_members|length|add:via_role.count }}</span></div>
+        {% if direct_members or via_role %}
+          <ul class="gp-people">
+            {% for u in direct_members %}
+              <li class="gp-person">
+                <span class="avatar avatar-sm" aria-hidden="true">{{ u.first_name|default:u.email|slice:":1"|upper }}</span>
+                <span class="gp-person-text">
+                  <a class="gp-person-name" href="{% url 'accounts:groups:user_groups' u.pk %}">{{ u.get_full_name|default:u.email }}</a>
+                  <span class="gp-person-meta">Direct · {{ u.role.name|default:"No role" }}</span>
+                </span>
+              </li>
+            {% endfor %}
+            {% for u in via_role %}
+              <li class="gp-person">
+                <span class="avatar avatar-sm" aria-hidden="true">{{ u.first_name|default:u.email|slice:":1"|upper }}</span>
+                <span class="gp-person-text">
+                  <a class="gp-person-name" href="{% url 'accounts:groups:user_groups' u.pk %}">{{ u.get_full_name|default:u.email }}</a>
+                  <span class="gp-person-meta">Through role · {{ u.role.name }}</span>
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="gp-note">Nobody you can see holds this group yet.</p>
+        {% endif %}
+      </section>
+
+      {% if activity %}
+        <section class="card" aria-labelledby="gd-activity">
+          <div class="gp-card-title-row"><h2 id="gd-activity">Recent activity</h2></div>
+          <ul class="gp-activity">
+            {% for e in activity %}
+              <li>
+                <strong>{{ e.get_action_display }}</strong> by {{ e.actor_repr|default:"system" }}
+                {% if e.changes.added %}<br><span class="muted">Added {{ e.changes.added|length }} permission{{ e.changes.added|length|pluralize }}</span>{% endif %}
+                {% if e.changes.removed %}<br><span class="muted">Removed {{ e.changes.removed|length }} permission{{ e.changes.removed|length|pluralize }}</span>{% endif %}
+                <time datetime="{{ e.timestamp|date:'c' }}">{{ e.timestamp|date:"M j, Y H:i" }}</time>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+    </div>
+
+    <section class="card" aria-labelledby="gd-perms">
+      <div class="gp-card-title-row"><h2 id="gd-perms">Permissions</h2><span class="badge badge-primary">{{ perm_total }}</span></div>
+      {% if perm_apps %}
+        <ul class="gp-perm-apps">
+          {% for a in perm_apps %}
+            <li>
+              <h3 class="gp-perm-apps-title">{{ a.app_name }} <span class="gp-app-count">{{ a.count }}</span></h3>
+              <ul class="gp-code-list">{% for c in a.codes %}<li><code>{{ a.app_label }}.{{ c }}</code></li>{% endfor %}</ul>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="gp-note">This group has no permissions yet.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+{% if can_delete %}
+  {% include "accounts/groups/_delete_modal.html" %}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+{% endblock %}

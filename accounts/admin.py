@@ -111,7 +111,9 @@ def _email_credentials(user_id, email, temporary_password):
 class RoleAdmin(admin.ModelAdmin):
     list_display = ("name", "code", "requires_2fa", "is_system")
     search_fields = ("name", "code")
-    filter_horizontal = ("permissions",)
+    # Stage 3: `groups` uses Django's own filter_horizontal widget, same as
+    # `permissions`, so the admin and the groups UI edit the same data.
+    filter_horizontal = ("permissions", "groups")
     prepopulated_fields = {"code": ("name",)}
 
     def has_delete_permission(self, request, obj=None):
@@ -135,3 +137,56 @@ class PermissionAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+# ---------------------------------------------------------------------------
+# Stage 3: Django's built-in Group admin, extended (not replaced)
+# ---------------------------------------------------------------------------
+from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin  # noqa: E402
+from django.contrib.auth.models import Group  # noqa: E402
+
+from .models import GroupProfile  # noqa: E402
+
+
+class GroupProfileInline(admin.StackedInline):
+    model = GroupProfile
+    can_delete = False
+    extra = 0
+    max_num = 1
+    fields = ("description",)
+
+
+class RoleInline(admin.TabularInline):
+    """Read-only list of roles carrying this group (edit on the Role page)."""
+    model = Role.groups.through
+    extra = 0
+    can_delete = False
+    verbose_name = "role carrying this group"
+    verbose_name_plural = "roles carrying this group"
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+try:
+    admin.site.unregister(Group)
+except admin.sites.NotRegistered:
+    pass
+
+
+@admin.register(Group)
+class GroupAdmin(DjangoGroupAdmin):
+    """Django's GroupAdmin keeps its permission picker (filter_horizontal);
+    this only adds the description inline and the roles that carry it."""
+    inlines = [GroupProfileInline, RoleInline]
+    list_display = ("name", "permission_count", "member_count")
+
+    @admin.display(description="Permissions")
+    def permission_count(self, obj):
+        return obj.permissions.count()
+
+    @admin.display(description="Direct members")
+    def member_count(self, obj):
+        return obj.user_set.count()

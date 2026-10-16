@@ -124,7 +124,12 @@ class Command(BaseCommand):
                     "max_open_tasks": max_open,
                 },
             )
-            if created or opts["sync"]:
+            # Review M5: a role that exists but has NO permissions yet (the
+            # Executive Secretary role is created bare by migration 0007)
+            # gets its baseline even without --sync. Roles an admin has
+            # already configured are only touched with --sync.
+            fresh = created or not role.permissions.exists()
+            if fresh or opts["sync"]:
                 if role.rank != rank:
                     role.rank = rank
                     role.save(update_fields=["rank", "updated_at"])

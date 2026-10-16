@@ -12,7 +12,7 @@ class CoreConfig(AppConfig):
     verbose_name = "Core"
 
     def ready(self):
-        logger.warning("core.apps: ready() starting")
+        logger.info("core.apps: ready() starting")
 
         # 1. Register file-owning models with the cleanup signals.
         from .files_register import install_all
@@ -28,4 +28,4 @@ class CoreConfig(AppConfig):
                 audit.register(model)
                 count += 1
 
-        logger.warning("core.apps: ready() complete — %d audited model(s)", count)
+        logger.info("core.apps: ready() complete — %d audited model(s)", count)

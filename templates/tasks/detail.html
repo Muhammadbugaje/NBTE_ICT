@@ -6,10 +6,10 @@
 {% block page_title %}{{ task.reference }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=6">
+  <link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=7">
 {% endblock %}
 {% block extra_js %}
-  <script src="{% static 'js/tasks.js' %}?v=6" defer></script>
+  <script src="{% static 'js/tasks.js' %}?v=8" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -18,7 +18,7 @@
   {# ---------- Page head ---------- #}
   <header class="tsk-page-head">
     <div>
-      <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost" style="margin-bottom:12px;">
+      <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost mb-3">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         All tasks
       </a>
@@ -31,7 +31,7 @@
         </a>
       {% endif %}
       {% if can_edit and not task.is_closed %}
-        <form method="post" id="clone-task-form" action="{% url 'tasks:clone' task.pk %}" style="display:none;">{% csrf_token %}</form>
+        <form hidden method="post" id="clone-task-form" action="{% url 'tasks:clone' task.pk %}">{% csrf_token %}</form>
         <button type="button" class="tsk-btn tsk-btn-ghost"
                 data-tsk-confirm
                 data-form-id="clone-task-form"
@@ -51,10 +51,10 @@
       <span class="tsk-chip {{ task.state|state_chip_class }}"><span class="tsk-chip-dot"></span>{{ task.get_state_display }}</span>
       <span class="tsk-chip {{ task.priority|priority_chip_class }}">{{ task.get_priority_display }}</span>
       {% if task.category %}<span class="tsk-chip tsk-chip-cat">{{ task.category.name }}</span>{% endif %}
-      {% if task.is_overdue %}<span class="tsk-chip" style="background:rgba(239,68,68,0.14);color:#dc2626;">Overdue</span>{% endif %}
+      {% if task.is_overdue %}<span class="tsk-chip tsk-chip-overdue">Overdue</span>{% endif %}
       {% if task.is_recurring %}<span class="tsk-chip tsk-chip-cat">Recurring · {{ task.get_recurrence_type_display }}</span>{% endif %}
       {% if task.cloned_from %}<span class="tsk-chip tsk-chip-cat">From {{ task.cloned_from.reference }}</span>{% endif %}
-      {% if task.is_closed %}<span class="tsk-chip" style="background:rgba(100,116,139,0.14);color:#475569;">Locked</span>{% endif %}
+      {% if task.is_closed %}<span class="tsk-chip tsk-chip-locked">Locked</span>{% endif %}
     </div>
 
     <h1>{{ task.title }}</h1>
@@ -69,7 +69,7 @@
         {{ task.created_at|date:"M j, Y · H:i" }}
       </span>
       {% if task.due_date %}
-        <span class="tsk-hero-meta-item" {% if task.is_overdue %}style="color:#dc2626;"{% endif %}>
+        <span class="tsk-hero-meta-item{% if task.is_overdue %} tsk-text-danger{% endif %}">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           Due <strong>{{ task.due_date|date:"M j, Y" }}</strong>
         </span>
@@ -87,7 +87,7 @@
         </span>
       {% endif %}
       {% if task.parent %}
-        <a href="{% url 'tasks:detail' task.parent.pk %}" class="tsk-hero-meta-item" style="color:var(--tsk-accent);text-decoration:none;">
+        <a href="{% url 'tasks:detail' task.parent.pk %}" class="tsk-hero-meta-item tsk-accent-text">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           Part of {{ task.parent.reference }}
         </a>
@@ -114,7 +114,7 @@
         {% if task.description %}
           <div class="tsk-body">{{ task.description|linebreaks }}</div>
         {% else %}
-          <p style="color:var(--tsk-fg-subtle);font-size:13.5px;margin:0;font-style:italic;">No description.</p>
+          <p class="tsk-empty-note fst-italic">No description.</p>
         {% endif %}
       </section>
 
@@ -124,24 +124,24 @@
           <h2 class="tsk-block-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             Subtasks ({{ subtasks|length }})
-            <span style="margin-left:auto;font-size:11px;font-weight:600;color:var(--tsk-accent);letter-spacing:0;">{{ task.progress_percent }}% complete</span>
+            <span class="tsk-head-aside tsk-accent-text">{{ task.progress_percent }}% complete</span>
           </h2>
           <ul class="tsk-subtree">
             {% for sub in subtasks %}
               <li class="tsk-subtree-item">
                 <div class="tsk-subtree-head">
                   <a href="{% url 'tasks:detail' sub.pk %}" class="tsk-subtree-title">{{ sub.title }}</a>
-                  <span class="tsk-chip {{ sub.state|state_chip_class }}" style="font-size:10px;padding:1px 7px;">
-                    <span class="tsk-chip-dot" style="width:5px;height:5px;"></span>{{ sub.get_state_display }}
+                  <span class="tsk-chip {{ sub.state|state_chip_class }} tsk-chip-xs">
+                    <span class="tsk-chip-dot tsk-dot-sm"></span>{{ sub.get_state_display }}
                   </span>
-                  <span class="tsk-chip {{ sub.priority|priority_chip_class }}" style="font-size:10px;padding:1px 7px;">{{ sub.get_priority_display }}</span>
+                  <span class="tsk-chip {{ sub.priority|priority_chip_class }} tsk-chip-xs">{{ sub.get_priority_display }}</span>
                 </div>
                 <div class="tsk-subtree-meta">
                   {% for row in sub.assignee_rows.all %}
                     <span>{{ row.user.get_full_name|default:row.user.email }}</span>
                   {% endfor %}
                   {% if sub.due_date %}<span>Due {{ sub.due_date|date:"M j" }}</span>{% endif %}
-                  <span class="tsk-progress tsk-subtree-progress" style="width:60px;">
+                  <span class="tsk-progress tsk-subtree-progress tsk-progress-sm">
                     <span class="tsk-progress-fill" style="width:{{ sub.progress_percent }}%"></span>
                   </span>
                 </div>
@@ -166,7 +166,7 @@
                   {{ dep.depends_on.reference }} — {{ dep.depends_on.title }}
                 </a>
                 {% if can_edit and not task.is_closed %}
-                  <form method="post" id="del-dep-{{ dep.pk }}" action="{% url 'tasks:remove_dependency' task.pk dep.pk %}" style="display:none;">{% csrf_token %}</form>
+                  <form hidden method="post" id="del-dep-{{ dep.pk }}" action="{% url 'tasks:remove_dependency' task.pk dep.pk %}">{% csrf_token %}</form>
                   <button type="button" class="tsk-dep-remove"
                           data-tsk-confirm
                           data-form-id="del-dep-{{ dep.pk }}"
@@ -201,11 +201,11 @@
                     {% if row.assigned_at %}· assigned {{ row.assigned_at|timesince }} ago{% endif %}
                   </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;">
+                <div class="tsk-row">
                   <span class="tsk-roster-state {{ row.state|assignee_state_class }}">{{ row.get_state_display }}</span>
                   {% if can_assign and not task.is_closed %}
                     <div class="tsk-roster-row-actions">
-                      <form method="post" id="del-assignee-{{ row.pk }}" action="{% url 'tasks:unassign' task.pk row.user.pk %}" style="display:none;">{% csrf_token %}</form>
+                      <form hidden method="post" id="del-assignee-{{ row.pk }}" action="{% url 'tasks:unassign' task.pk row.user.pk %}">{% csrf_token %}</form>
                       <button type="button" class="tsk-icon-btn" title="Remove"
                               data-tsk-confirm
                               data-form-id="del-assignee-{{ row.pk }}"
@@ -231,14 +231,14 @@
           </h2>
 
           {% if running_timer %}
-            <div class="tsk-timer" style="margin-bottom:12px;">
+            <div class="tsk-timer mb-3">
               <span class="tsk-timer-dot"></span>
               <span class="tsk-timer-time" data-timer-started="{{ running_timer.started_at|date:'c' }}">00:00</span>
-              <span style="font-size:12.5px;color:var(--tsk-fg-subtle);">Running since {{ running_timer.started_at|date:"H:i" }}</span>
+              <span class="tsk-note tsk-note-subtle">Running since {{ running_timer.started_at|date:"H:i" }}</span>
               {% if can_stop_timer %}
-                <form method="post" action="{% url 'tasks:timer_stop' task.pk %}" style="margin-left:auto;">
+                <form class="ms-auto" method="post" action="{% url 'tasks:timer_stop' task.pk %}">
                   {% csrf_token %}
-                  <button type="submit" class="tsk-btn tsk-btn-danger" style="padding:6px 12px;font-size:12px;">Stop</button>
+                  <button type="submit" class="tsk-btn tsk-btn-danger tsk-btn-sm">Stop</button>
                 </form>
               {% endif %}
             </div>
@@ -293,7 +293,7 @@
                   <span class="tsk-comment-time">{{ c.created_at|date:"M j · H:i" }}</span>
                   {% if can_edit and not task.is_closed %}
                     <div class="tsk-comment-actions">
-                      <form method="post" id="unpin-{{ c.pk }}" action="{% url 'tasks:unpin_comment' task.pk c.pk %}" style="display:none;">{% csrf_token %}</form>
+                      <form hidden method="post" id="unpin-{{ c.pk }}" action="{% url 'tasks:unpin_comment' task.pk c.pk %}">{% csrf_token %}</form>
                       <button type="button" class="tsk-icon-btn" title="Unpin"
                               data-tsk-confirm
                               data-form-id="unpin-{{ c.pk }}"
@@ -316,7 +316,7 @@
         <h2 class="tsk-block-title">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           Comments
-          {% if task.is_closed %}<span class="tsk-chip tsk-chip-cat" style="margin-left:auto;font-size:10px;text-transform:none;letter-spacing:0;">Read-only</span>{% endif %}
+          {% if task.is_closed %}<span class="tsk-chip tsk-chip-cat tsk-head-aside">Read-only</span>{% endif %}
         </h2>
         {% if comments %}
           {% for c in comments %}
@@ -328,12 +328,12 @@
                 <div class="tsk-comment-body">
                   <div class="tsk-comment-head">
                     <span class="tsk-comment-author">{{ c.author.get_full_name|default:c.author.email }}</span>
-                    {% if c.is_internal %}<span class="tsk-chip tsk-chip-prio-high" style="font-size:9.5px;padding:1px 6px;">Internal</span>{% endif %}
+                    {% if c.is_internal %}<span class="tsk-chip tsk-chip-prio-high tsk-chip-xs">Internal</span>{% endif %}
                     <span class="tsk-comment-time">{{ c.created_at|date:"M j · H:i" }}</span>
                     {% if not task.is_closed %}
                       <div class="tsk-comment-actions">
                         {% if can_edit %}
-                          <form method="post" id="pin-{{ c.pk }}" action="{% url 'tasks:pin_comment' task.pk c.pk %}" style="display:none;">{% csrf_token %}</form>
+                          <form hidden method="post" id="pin-{{ c.pk }}" action="{% url 'tasks:pin_comment' task.pk c.pk %}">{% csrf_token %}</form>
                           <button type="button" class="tsk-icon-btn" title="Pin"
                                   data-tsk-confirm
                                   data-form-id="pin-{{ c.pk }}"
@@ -343,7 +343,7 @@
                           </button>
                         {% endif %}
                         {% if request.user.pk == c.author.pk or request.user.is_superuser %}
-                          <form method="post" id="del-c-{{ c.pk }}" action="{% url 'tasks:delete_comment' task.pk c.pk %}" style="display:none;">{% csrf_token %}</form>
+                          <form hidden method="post" id="del-c-{{ c.pk }}" action="{% url 'tasks:delete_comment' task.pk c.pk %}">{% csrf_token %}</form>
                           <button type="button" class="tsk-icon-btn" title="Delete"
                                   data-tsk-confirm data-modal-danger="1"
                                   data-form-id="del-c-{{ c.pk }}"
@@ -361,29 +361,29 @@
             {% endif %}
           {% endfor %}
         {% else %}
-          <p style="color:var(--tsk-fg-subtle);font-size:13.5px;margin:0;">No comments yet.</p>
+          <p class="tsk-empty-note">No comments yet.</p>
         {% endif %}
 
         {% if not task.is_closed %}
-          <form method="post" action="{% url 'tasks:comment' task.pk %}" style="margin-top:18px;padding-top:18px;border-top:1px solid var(--tsk-border);">
+          <form class="tsk-divided" method="post" action="{% url 'tasks:comment' task.pk %}">
             {% csrf_token %}
-            <textarea name="body" data-autoresize
-                      style="width:100%;min-height:84px;max-height:260px;padding:12px 14px;font-family:inherit;font-size:14px;line-height:1.6;color:var(--tsk-fg);background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);resize:none;"
+            <textarea class="tsk-composer-input" name="body" data-autoresize
+                     
                       placeholder="Write a comment… (Ctrl+Enter to send)"></textarea>
-            <div style="display:flex;gap:14px;justify-content:flex-end;align-items:center;margin-top:10px;flex-wrap:wrap;">
-              <label class="tsk-check" style="padding:0;background:transparent;border:0;">
-                <input type="checkbox" name="is_internal"> <span style="font-size:12.5px;color:var(--tsk-fg-muted);">Internal note</span>
+            <div class="tsk-composer-actions">
+              <label class="tsk-check tsk-bare">
+                <input type="checkbox" name="is_internal"> <span class="tsk-note">Internal note</span>
               </label>
               {% if can_edit %}
-                <label class="tsk-check" style="padding:0;background:transparent;border:0;">
-                  <input type="checkbox" name="pinned"> <span style="font-size:12.5px;color:var(--tsk-fg-muted);">Pin</span>
+                <label class="tsk-check tsk-bare">
+                  <input type="checkbox" name="pinned"> <span class="tsk-note">Pin</span>
                 </label>
               {% endif %}
               <button type="submit" class="tsk-btn tsk-btn-primary">Post comment</button>
             </div>
           </form>
         {% else %}
-          <div style="margin-top:18px;padding:12px 14px;background:var(--tsk-bg-subtle);border-radius:var(--tsk-radius-sm);font-size:12.5px;color:var(--tsk-fg-subtle);display:flex;align-items:center;gap:8px;">
+          <div class="tsk-info-strip mt-5">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             This task is closed. Comments are read-only.
           </div>
@@ -395,7 +395,7 @@
         <h2 class="tsk-block-title">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           Attachments
-          {% if task.is_closed %}<span class="tsk-chip tsk-chip-cat" style="margin-left:auto;font-size:10px;text-transform:none;letter-spacing:0;">Read-only</span>{% endif %}
+          {% if task.is_closed %}<span class="tsk-chip tsk-chip-cat tsk-head-aside">Read-only</span>{% endif %}
         </h2>
         {% if attachments %}
           <div class="tsk-attachments">
@@ -404,8 +404,8 @@
                 <div class="tsk-attachment-icon">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 </div>
-                <div style="min-width:0;">
-                  <a href="{{ a.file.url }}" target="_blank" rel="noopener" class="tsk-attachment-name">{{ a.original_name }}</a>
+                <div class="min-w-0">
+                  <a href="{{ a.download_url }}" target="_blank" rel="noopener" class="tsk-attachment-name">{{ a.original_name }}</a>
                   <div class="tsk-attachment-meta">
                     {{ a.uploaded_by.get_full_name|default:a.uploaded_by.email }} · {{ a.created_at|date:"M j · H:i" }}
                     {% if a.description %} · {{ a.description }}{% endif %}
@@ -413,7 +413,7 @@
                 </div>
                 {% if not task.is_closed and request.user.pk == a.uploaded_by.pk or not task.is_closed and request.user.is_superuser %}
                   <div>
-                    <form method="post" id="del-a-{{ a.pk }}" action="{% url 'tasks:delete_attachment' task.pk a.pk %}" style="display:none;">{% csrf_token %}</form>
+                    <form hidden method="post" id="del-a-{{ a.pk }}" action="{% url 'tasks:delete_attachment' task.pk a.pk %}">{% csrf_token %}</form>
                     <button type="button" class="tsk-icon-btn" title="Delete"
                             data-tsk-confirm data-modal-danger="1"
                             data-form-id="del-a-{{ a.pk }}"
@@ -427,22 +427,22 @@
             {% endfor %}
           </div>
         {% else %}
-          <p style="color:var(--tsk-fg-subtle);font-size:13.5px;margin:0;">No attachments yet.</p>
+          <p class="tsk-empty-note">No attachments yet.</p>
         {% endif %}
 
         {% if not task.is_closed %}
-          <form method="post" action="{% url 'tasks:attach' task.pk %}" enctype="multipart/form-data"
-                style="margin-top:16px;padding:14px;background:var(--tsk-bg-subtle);border:1px dashed var(--tsk-border);border-radius:var(--tsk-radius-sm);display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;">
+          <form class="tsk-dashed-panel" method="post" action="{% url 'tasks:attach' task.pk %}" enctype="multipart/form-data"
+               >
             {% csrf_token %}
             <div>
-              <input type="file" name="file" required style="font-size:12.5px;color:var(--tsk-fg-muted);">
-              <input type="text" name="description" placeholder="Optional description"
-                     style="margin-top:8px;width:100%;padding:6px 10px;font-size:12.5px;background:transparent;border:1px solid var(--tsk-border);border-radius:6px;color:var(--tsk-fg);">
+              <input class="tsk-note" type="file" name="file" required>
+              <input class="tsk-mini-input" type="text" name="description" placeholder="Optional description"
+                    >
             </div>
             <button type="submit" class="tsk-btn tsk-btn-ghost">Upload</button>
           </form>
         {% else %}
-          <div style="margin-top:16px;padding:12px 14px;background:var(--tsk-bg-subtle);border-radius:var(--tsk-radius-sm);font-size:12.5px;color:var(--tsk-fg-subtle);display:flex;align-items:center;gap:8px;">
+          <div class="tsk-info-strip mt-4">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             This task is closed. Attachments are read-only.
           </div>
@@ -464,17 +464,17 @@
           {% if task.category %}<dt>Category</dt><dd>{{ task.category.name }}</dd>{% endif %}
           {% if task.owner_department %}<dt>Department</dt><dd>{{ task.owner_department.name }}</dd>{% endif %}
           <dt>Created</dt><dd>{{ task.created_at|date:"M j, Y" }}</dd>
-          {% if task.due_date %}<dt>Due</dt><dd {% if task.is_overdue %}style="color:#dc2626;font-weight:600;"{% endif %}>{{ task.due_date|date:"M j, Y" }}</dd>{% endif %}
+          {% if task.due_date %}<dt>Due</dt><dd{% if task.is_overdue %} class="tsk-text-danger fw-semibold"{% endif %}>{{ task.due_date|date:"M j, Y" }}</dd>{% endif %}
           {% if task.reviewer %}<dt>Reviewer</dt><dd>{{ task.reviewer.get_full_name|default:task.reviewer.email }}</dd>{% endif %}
           {% if my_row %}<dt>My status</dt><dd><span class="tsk-roster-state {{ my_row.state|assignee_state_class }}">{{ my_row.get_state_display }}</span></dd>{% endif %}
         </dl>
         {% if task.progress_percent > 0 %}
-            <div class="tsk-progress" style="margin-top:14px;">
+            <div class="tsk-progress mt-4">
             <div class="tsk-progress-fill"
                 data-level="{% if task.progress_percent == 100 %}done{% else %}active{% endif %}"
                 style="width:{{ task.progress_percent }}%"></div>
             </div>
-            <div style="font-size:11.5px;color:var(--tsk-fg-subtle);margin-top:6px;text-align:right;">
+            <div class="tsk-counter">
             {{ task.progress_percent }}% complete
             </div>
         {% endif %}
@@ -482,13 +482,13 @@
 
       {# --- Live timer --- #}
       {% if running_timer %}
-        <div class="tsk-side-card" style="background:linear-gradient(135deg,rgba(20,184,166,0.08),rgba(20,184,166,0.02));border-color:rgba(20,184,166,0.25);">
+        <div class="tsk-side-card tsk-side-card-teal">
           <h3 class="tsk-side-card-title">Your timer</h3>
-          <div class="tsk-timer" style="border:0;background:transparent;padding:0;">
+          <div class="tsk-timer tsk-bare">
             <span class="tsk-timer-dot"></span>
             <span class="tsk-timer-time" data-timer-started="{{ running_timer.started_at|date:'c' }}">00:00</span>
           </div>
-          <p style="font-size:12px;color:var(--tsk-fg-subtle);margin:8px 0 12px;line-height:1.5;">
+          <p class="tsk-para tsk-para-subtle mt-2">
             Started at {{ running_timer.started_at|date:"H:i" }}.
           </p>
           {% if can_stop_timer %}
@@ -504,17 +504,17 @@
       {% if can_review %}
         <div class="tsk-side-card tsk-side-card-highlight">
           <h3 class="tsk-side-card-title">Review needed</h3>
-          <p style="font-size:13px;color:var(--tsk-fg-muted);line-height:1.6;margin:0 0 12px;">
+          <p class="tsk-para">
             The assignees have marked this complete. Approve to close, or send it back with notes.
           </p>
           <form method="post" action="{% url 'tasks:review' task.pk %}">
             {% csrf_token %}
-            <label class="tsk-check" style="padding:8px 10px;">
-              <input type="checkbox" name="approve" checked> <span style="font-size:13px;">Approve</span>
+            <label class="tsk-check tsk-check-pad">
+              <input type="checkbox" name="approve" checked> <span class="text-sm">Approve</span>
             </label>
-            <textarea name="notes" rows="3" placeholder="Notes for the assignees (required if rejecting)."
-                      style="width:100%;margin-top:8px;padding:8px 10px;font-family:inherit;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);resize:vertical;"></textarea>
-            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full" style="margin-top:8px;">Submit review</button>
+            <textarea class="tsk-textarea mt-2" name="notes" rows="3" placeholder="Notes for the assignees (required if rejecting)."
+                     ></textarea>
+            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">Submit review</button>
           </form>
         </div>
       {% endif %}
@@ -523,17 +523,17 @@
       {% if can_reopen %}
         <div class="tsk-side-card tsk-side-card-highlight">
           <h3 class="tsk-side-card-title">Reopen task</h3>
-          <p style="font-size:12.5px;color:var(--tsk-fg-muted);line-height:1.6;margin:0 0 12px;">
+          <p class="tsk-para">
             This task is complete and locked. Reopen it if further work is
             needed or if something looks wrong. Everyone assigned will be
             notified.
           </p>
           <form method="post" action="{% url 'tasks:reopen' task.pk %}">
             {% csrf_token %}
-            <textarea name="reason" rows="3" required
+            <textarea class="tsk-textarea" name="reason" rows="3" required
                       placeholder="Why does this need to be reopened?"
-                      style="width:100%;padding:8px 12px;font-family:inherit;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);resize:vertical;"></textarea>
-            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full" style="margin-top:10px;">
+                     ></textarea>
+            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-3">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               Reopen task
             </button>
@@ -561,9 +561,9 @@
               <span class="tsk-action-label">Start work</span>
               <form method="post" action="{% url 'tasks:start' task.pk %}">
                 {% csrf_token %}
-                <input type="text" name="note" placeholder="Optional — what are you starting with?"
-                       style="width:100%;padding:8px 12px;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);">
-                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full" style="margin-top:8px;">
+                <input class="tsk-textarea" type="text" name="note" placeholder="Optional — what are you starting with?"
+                      >
+                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                   Start work
                 </button>
@@ -602,13 +602,13 @@
               <span class="tsk-action-label">Mark my part done</span>
               <form method="post" action="{% url 'tasks:mark_done' task.pk %}">
                 {% csrf_token %}
-                <textarea name="note" rows="2" placeholder="Optional — what did you do?"
-                          style="width:100%;padding:8px 12px;font-family:inherit;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);resize:vertical;"></textarea>
-                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full" style="margin-top:8px;">
+                <textarea class="tsk-textarea" name="note" rows="2" placeholder="Optional — what did you do?"
+                         ></textarea>
+                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   Mark done
                 </button>
-                <span class="tsk-field-hint" style="margin-top:6px;">Any running timer stops automatically.</span>
+                <span class="tsk-field-hint mt-1">Any running timer stops automatically.</span>
               </form>
             </div>
           {% endif %}
@@ -618,9 +618,9 @@
               <span class="tsk-action-label">Ask a question</span>
               <form method="post" action="{% url 'tasks:ask' task.pk %}">
                 {% csrf_token %}
-                <textarea name="note" rows="2" placeholder="What do you need clarified?"
-                          style="width:100%;padding:8px 12px;font-family:inherit;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);resize:vertical;"></textarea>
-                <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full" style="margin-top:8px;">Ask</button>
+                <textarea class="tsk-textarea" name="note" rows="2" placeholder="What do you need clarified?"
+                         ></textarea>
+                <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full mt-2">Ask</button>
               </form>
             </div>
           {% endif %}
@@ -630,9 +630,9 @@
               <span class="tsk-action-label">Resume work</span>
               <form method="post" action="{% url 'tasks:resume' task.pk %}">
                 {% csrf_token %}
-                <input type="text" name="note" placeholder="Optional note"
-                       style="width:100%;padding:8px 12px;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);">
-                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full" style="margin-top:8px;">Resume</button>
+                <input class="tsk-textarea" type="text" name="note" placeholder="Optional note"
+                      >
+                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">Resume</button>
               </form>
             </div>
           {% endif %}
@@ -642,9 +642,9 @@
               <span class="tsk-action-label">Return to creator</span>
               <form method="post" action="{% url 'tasks:return' task.pk %}">
                 {% csrf_token %}
-                <textarea name="reason" rows="2" placeholder="Why are you returning this?"
-                          style="width:100%;padding:8px 12px;font-family:inherit;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);resize:vertical;"></textarea>
-                <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full" style="margin-top:8px;">Return</button>
+                <textarea class="tsk-textarea" name="reason" rows="2" placeholder="Why are you returning this?"
+                         ></textarea>
+                <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full mt-2">Return</button>
               </form>
             </div>
           {% endif %}
@@ -654,9 +654,9 @@
               <span class="tsk-action-label">Resend task</span>
               <form method="post" action="{% url 'tasks:resend' task.pk %}">
                 {% csrf_token %}
-                <input type="text" name="note" placeholder="Optional note"
-                       style="width:100%;padding:8px 12px;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);">
-                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full" style="margin-top:8px;">Resend</button>
+                <input class="tsk-textarea" type="text" name="note" placeholder="Optional note"
+                      >
+                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">Resend</button>
               </form>
             </div>
           {% endif %}
@@ -666,10 +666,10 @@
               <span class="tsk-action-label">Cancel</span>
               <form method="post" id="cancel-task-form" action="{% url 'tasks:cancel' task.pk %}">
                 {% csrf_token %}
-                <textarea name="reason" rows="2" placeholder="Optional — why are you cancelling?"
-                          style="width:100%;padding:8px 12px;font-family:inherit;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);resize:vertical;"></textarea>
+                <textarea class="tsk-textarea" name="reason" rows="2" placeholder="Optional — why are you cancelling?"
+                         ></textarea>
               </form>
-              <button type="button" class="tsk-btn tsk-btn-danger tsk-btn-full" style="margin-top:8px;"
+              <button type="button" class="tsk-btn tsk-btn-danger tsk-btn-full mt-2"
                       data-tsk-confirm data-modal-danger="1"
                       data-form-id="cancel-task-form"
                       data-modal-title="Cancel this task?"
@@ -688,13 +688,13 @@
           <form method="post" action="{% url 'tasks:assign' task.pk %}">
             {% csrf_token %}
             {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_task=task %}
-            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full" style="margin-top:10px;">Add selected</button>
+            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-3">Add selected</button>
           </form>
-          <form method="post" action="{% url 'tasks:assign_to_role' task.pk %}" style="margin-top:10px;">
+          <form class="mt-3" method="post" action="{% url 'tasks:assign_to_role' task.pk %}">
             {% csrf_token %}
-            <input type="text" name="role_code" placeholder="Or type a role code (auto-pick)"
-                   style="width:100%;padding:8px 12px;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);">
-            <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full" style="margin-top:8px;">Auto-assign by role</button>
+            <input class="tsk-textarea" type="text" name="role_code" placeholder="Or type a role code (auto-pick)"
+                  >
+            <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full mt-2">Auto-assign by role</button>
           </form>
         </div>
       {% endif %}
@@ -703,7 +703,7 @@
       {% if can_split and not task.is_closed %}
         <div class="tsk-side-card">
           <h3 class="tsk-side-card-title">Split into subtasks</h3>
-          <p style="font-size:12.5px;color:var(--tsk-fg-muted);line-height:1.55;margin:0 0 14px;">
+          <p class="tsk-para">
             Break this task into smaller pieces. Each row becomes a subtask with its own assignee and due date.
           </p>
 
@@ -716,7 +716,7 @@
                 {{ sub_form.id }}
 
                 <div class="tsk-formset-field">
-                  <label>Title <span style="color:#dc2626;">*</span></label>
+                  <label>Title <span class="tsk-text-danger">*</span></label>
                   {{ sub_form.title }}
                   {% if sub_form.title.errors %}<span class="tsk-field-error">{{ sub_form.title.errors|join:" " }}</span>{% endif %}
                 </div>
@@ -751,7 +751,7 @@
             <template data-empty-form>
               <div class="tsk-formset-row">
                 <div class="tsk-formset-field">
-                  <label>Title <span style="color:#dc2626;">*</span></label>
+                  <label>Title <span class="tsk-text-danger">*</span></label>
                   <input type="text" name="form-__prefix__-title" maxlength="255" placeholder="Subtask title">
                 </div>
 
@@ -794,7 +794,7 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Add another subtask
             </button>
-            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full" style="margin-top:8px;">
+            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
               Create subtasks
             </button>
@@ -809,28 +809,28 @@
           <form method="post" action="{% url 'tasks:add_dependency' task.pk %}">
             {% csrf_token %}
             {{ dependency_form.depends_on }}
-            <input type="text" name="note" placeholder="Optional note"
-                   style="width:100%;padding:8px 12px;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);margin-top:8px;">
-            <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full" style="margin-top:8px;">Add dependency</button>
+            <input class="tsk-textarea mt-2" type="text" name="note" placeholder="Optional note"
+                  >
+            <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full mt-2">Add dependency</button>
           </form>
         </div>
       {% endif %}
 
       {# --- Danger zone --- #}
       {% if can_delete and not task.is_closed %}
-        <details class="tsk-side-card" style="border-color:rgba(220,38,38,0.3);">
-          <summary style="cursor:pointer;font-size:11.5px;font-weight:700;color:#dc2626;letter-spacing:0.06em;text-transform:uppercase;list-style:none;">
+        <details class="tsk-side-card tsk-side-card-danger">
+          <summary class="tsk-danger-summary">
             Danger zone
           </summary>
-          <p style="font-size:12.5px;color:var(--tsk-fg-muted);margin:12px 0;line-height:1.55;">
+          <p class="tsk-para mt-3">
             Deleting a task removes it and its history. The action is logged.
           </p>
           <form method="post" id="delete-task-form" action="{% url 'tasks:delete' task.pk %}">
             {% csrf_token %}
-            <textarea name="reason" rows="2" required placeholder="Required — why is this being deleted?"
-                      style="width:100%;padding:8px 12px;font-family:inherit;font-size:13px;background:var(--tsk-bg-subtle);border:1px solid var(--tsk-border);border-radius:var(--tsk-radius-sm);color:var(--tsk-fg);resize:vertical;"></textarea>
+            <textarea class="tsk-textarea" name="reason" rows="2" required placeholder="Required — why is this being deleted?"
+                     ></textarea>
           </form>
-          <button type="button" class="tsk-btn tsk-btn-danger tsk-btn-full" style="margin-top:8px;"
+          <button type="button" class="tsk-btn tsk-btn-danger tsk-btn-full mt-2"
                   data-tsk-confirm data-modal-danger="1"
                   data-form-id="delete-task-form"
                   data-modal-title="Delete this task?"

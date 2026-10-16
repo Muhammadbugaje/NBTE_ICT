@@ -69,13 +69,21 @@ def _visible_assets_qs(user):
 
 
 def _can_edit_asset(user, asset):
-    if user.is_superuser or user.has_perm("accounts.access_all_departments"):
+    """Review H8: editing needs the real `assets.change_asset` permission.
+    Holders with `access_all_departments` may edit any asset; everyone else
+    only their own department's. (The old `or user.role_id` fallback let any
+    role-holder edit, reassign or retire department assets.)"""
+    if user.is_superuser:
         return True
-    if not user.department_id:
+    if not user.has_perm("assets.change_asset"):
         return False
-    if asset.owner_department_id == user.department_id:
-        return bool(user.has_perm("assets.change_asset") or user.role_id)
-    return False
+    if user.has_perm("accounts.access_all_departments"):
+        return True
+    return bool(user.department_id) and asset.owner_department_id == user.department_id
+
+
+def _can_create_asset(user):
+    return user.is_superuser or user.has_perm("assets.add_asset")
 
 
 # ---------------------------------------------------------------------------
@@ -174,8 +182,7 @@ def asset_detail(request, asset_tag):
 # ---------------------------------------------------------------------------
 @login_required
 def asset_create(request):
-    if not request.user.has_perm("assets.add_asset") and not request.user.is_superuser \
-            and not request.user.role_id:
+    if not _can_create_asset(request.user):
         raise PermissionDenied("You do not have permission to create assets.")
 
     if request.method == "POST":

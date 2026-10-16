@@ -744,9 +744,11 @@ def add_internal_comment(ticket, user, body):
     comment = TicketComment.objects.create(
         ticket=ticket, author=user, body=body, is_internal=True,
     )
+    # Review M3: the timeline is shown to the raiser, so it must not carry
+    # the note's text (the note itself is only rendered for staff).
     log_activity(
         ticket, "internal_note", actor=user,
-        message=body[:200],
+        message="Internal note added.",
         metadata={"internal": True, "comment_id": comment.pk},
     )
     return comment

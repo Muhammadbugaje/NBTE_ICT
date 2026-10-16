@@ -6,10 +6,10 @@
 {% block page_title %}Tasks{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=4">
 {% endblock %}
 {% block extra_js %}
-  <script src="{% static 'js/tasks.js' %}?v=2" defer></script>
+  <script src="{% static 'js/tasks.js' %}?v=3" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -200,15 +200,15 @@
       {% endfor %}
     </select>
 
-    <select name="priority" class="tsk-bulk-select" data-bulk-field="priority" style="display:none;">
+    <select hidden name="priority" class="tsk-bulk-select" data-bulk-field="priority">
       <option value="">— pick priority —</option>
       {% for value, label in priority_choices %}
         <option value="{{ value }}">{{ label }}</option>
       {% endfor %}
     </select>
 
-    <input type="text" name="reason" placeholder="Reason (cancel/delete)"
-           class="tsk-bulk-reason" data-bulk-field="reason" style="display:none;">
+    <input hidden type="text" name="reason" placeholder="Reason (cancel/delete)"
+           class="tsk-bulk-reason" data-bulk-field="reason">
 
     <div class="tsk-bulk-actions">
       <button type="button" class="tsk-btn tsk-btn-ghost" data-bulk-clear>Clear</button>
@@ -235,7 +235,7 @@
     var sync = function () {
       var v = sel.value;
       bar.querySelectorAll("[data-bulk-field]").forEach(function (f) {
-        f.style.display = (f.getAttribute("data-bulk-field") === v) ? "" : "none";
+        f.hidden = (f.getAttribute("data-bulk-field") !== v);
       });
     };
     sel.addEventListener("change", sync);

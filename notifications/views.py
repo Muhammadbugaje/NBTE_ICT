@@ -198,42 +198,14 @@ def open_and_read(request, pk):
 # ---------------------------------------------------------------------------
 @login_required
 def stream(request):
-    """Server-Sent Events stream. Sends an `unread` event whenever the count
-    changes, plus a heartbeat every POLL_INTERVAL seconds to keep the
-    connection alive through proxies.
+    """Unread-count poll (was an endless SSE stream - review H2).
 
-    In dev (runserver), works out of the box.
-    In production behind Gunicorn/uvicorn:
-      - use `-k gthread --threads=100` OR `-k gevent` with enough workers,
-        since each open SSE connection occupies one worker thread.
-      - nginx needs `proxy_buffering off;` and `X-Accel-Buffering: no`
-        (already set below) for the stream to flush.
-
-    NOTE: do NOT set a `Connection` header. It is a hop-by-hop header and
-    WSGI rejects it — Django's dev server will 500 on every request.
+    Answers immediately: JSON for the polling bell, or a single SSE frame
+    with a `retry:` hint for any old EventSource client. Never sleeps.
     """
-    user = request.user
+    from core.polling import unread_response
 
-    def event_stream():
-        last_unread = -1
-        unread = Notification.objects.filter(recipient=user, is_read=False).count()
-        yield f"event: unread\ndata: {json.dumps({'unread': unread})}\n\n"
-        last_unread = unread
-        try:
-            while True:
-                time.sleep(POLL_INTERVAL)
-                unread = Notification.objects.filter(
-                    recipient=user, is_read=False
-                ).count()
-                if unread != last_unread:
-                    yield f"event: unread\ndata: {json.dumps({'unread': unread})}\n\n"
-                    last_unread = unread
-                else:
-                    yield ": heartbeat\n\n"
-        except GeneratorExit:
-            return
+    unread = Notification.objects.filter(recipient=request.user, is_read=False).count()
+    return unread_response(request, unread)
 
-    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"
-    return response
+

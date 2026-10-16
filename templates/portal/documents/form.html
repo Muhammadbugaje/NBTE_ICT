@@ -44,8 +44,8 @@
              data-portal-image-preview
              {% if document.cover_image %}data-has-image="1"{% endif %}>
           {% if document and document.cover_image %}
-            <img src="{{ document.cover_thumb_url }}"
-                 onerror="this.onerror=null;this.src='{{ document.cover_image.url }}';"
+            <img src="{{ document.cover_thumb_url|default:document.cover_image.url }}"
+                 data-fallback-src="{{ document.cover_image.url }}"
                  alt="">
           {% else %}
             <span class="portal-image-preview-empty">No cover yet — optional.</span>
@@ -134,11 +134,11 @@
         </div>
       </div>
 
-      <label class="portal-check" style="margin-top:12px;">
+      <label class="portal-check mt-3">
         {{ form.is_featured }}
         <span>Feature on the public homepage</span>
       </label>
-      <span class="hint" style="display:block;margin-left:24px;">{{ form.is_featured.help_text }}</span>
+      <span class="hint block ms-6">{{ form.is_featured.help_text }}</span>
     </section>
 
     {# ---- 5. STATUS ---- #}

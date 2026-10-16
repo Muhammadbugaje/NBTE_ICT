@@ -17,7 +17,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from . import permissions
-from .forms import StaffForm, StaffSearchForm, StaffStateChangeForm
+from .forms import StaffForm, StaffSearchForm, StaffSelfForm, StaffStateChangeForm
 from .models import Staff, StaffState
 
 User = get_user_model()
@@ -56,10 +56,7 @@ def staff_list(request):
     )
 
     # Is this user seeing all departments, or just their own?
-    is_all_departments = bool(
-        request.user.is_superuser
-        or request.user.has_perm("staff.view_staff")
-    )
+    is_all_departments = permissions.sees_all_departments(request.user)
 
     page = Paginator(qs, 25).get_page(request.GET.get("page") or 1)
 
@@ -159,8 +156,12 @@ def staff_update(request, pk):
     # If the user can change state, they'll see a dedicated link on the detail page.
     state_snapshot = (staff.state_id, staff.state_start, staff.state_end)
 
+    # Review H7: people editing their own record get the contact-only form.
+    self_edit = not permissions.can_hr_edit_staff(request.user, staff)
+    FormClass = StaffSelfForm if self_edit else StaffForm
+
     if request.method == "POST":
-        form = StaffForm(request.POST, request.FILES, instance=staff, user=request.user)
+        form = FormClass(request.POST, request.FILES, instance=staff, user=request.user)
         if form.is_valid():
             # Guard: silently re-apply the original state so the general form
             # can never bypass change_staff_state.
@@ -173,12 +174,13 @@ def staff_update(request, pk):
         else:
             messages.error(request, "Please fix the errors below.")
     else:
-        form = StaffForm(instance=staff, user=request.user)
+        form = FormClass(instance=staff, user=request.user)
 
     return render(request, "staff/form.html", {
         "form": form,
         "mode": "update",
         "staff": staff,
+        "self_edit": self_edit,
     })
 
 
@@ -248,67 +250,41 @@ def _provision_account(request, staff: Staff, password: str | None = None):
     flag must_change_password, and email the login details.
 
     If `password` is None or empty, a random one is generated.
+    Review H5: delegates to staff.services.provision_account_for_staff,
+    which avoids the duplicate-Staff crash and never displays the password.
     """
-    if staff.user_id:
+    from .services import provision_account_for_staff
+
+    try:
+        status, user = provision_account_for_staff(
+            staff, password=password,
+            login_url=request.build_absolute_uri(reverse("accounts:login")),
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Account provisioning failed for staff %s", staff.pk)
+        messages.error(request, "Could not create the account. Check the server log.")
+        return
+
+    if status == "exists":
         messages.info(request, "This staff member already has an account.")
-        return
-    if not staff.email:
+    elif status == "no_email":
         messages.warning(request, "No email — account not created.")
-        return
-
-    existing = User.objects.filter(email__iexact=staff.email).first()
-    if existing:
-        staff.user = existing
-        staff.save(update_fields=["user"])
-        messages.info(request, f"Linked to existing account {existing.email}.")
-        return
-
-    temp_password = (password or "").strip() or secrets.token_urlsafe(10)
-
-    try:
-        user = User.objects.create_user(
-            email=staff.email,
-            password=temp_password,
-            first_name=staff.first_name,
-            last_name=staff.last_name,
-            **({"department": staff.department} if staff.department_id else {}),
-        )
-    except Exception as exc:
-        messages.error(request, f"Could not create account: {exc}")
-        return
-
-    if hasattr(user, "must_change_password"):
-        user.must_change_password = True
-        try:
-            user.save(update_fields=["must_change_password"])
-        except Exception:
-            user.save()
-
-    staff.user = user
-    staff.save(update_fields=["user"])
-
-    try:
-        from core.email_utils import send_templated_email
-        send_templated_email(
-            subject="Your NBTE ICT account",
-            recipients=[staff.email],
-            template_name="emails/staff_welcome.html",
-            context={
-                "staff": staff, "user": user,
-                "temp_password": temp_password,
-                "login_url": request.build_absolute_uri(reverse("login")),
-            },
-            category="general",
-        )
-        messages.success(
+    elif status == "linked":
+        messages.info(request, f"Linked to existing account {user.email}.")
+    elif status == "conflict":
+        messages.error(
             request,
-            f"Account created for {staff.email} — credentials emailed.",
+            f"An account with {staff.email} already belongs to another directory "
+            f"record. Account not created; resolve the duplicate first.",
         )
-    except Exception as exc:
+    elif status == "created":
+        messages.success(request, f"Account created for {staff.email} — credentials emailed.")
+    else:
         messages.warning(
             request,
-            f"Account created, but the welcome email failed ({exc}). "
-            f"Password: {temp_password}",
+            f"Account created for {staff.email}, but the welcome email could not be "
+            f"queued. Use 'Reset password' on the user page to send new credentials.",
         )
         
         

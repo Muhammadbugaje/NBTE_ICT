@@ -5,11 +5,12 @@
 {% block page_title %}{{ dashboard_title }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=3">
 {% endblock %}
 
 {% block content %}
 <div class="dash-page">
+  {% include "showcase/_banner.html" %}
 
   <header class="dash-hero">
     <div class="dash-hero-inner">
@@ -134,9 +135,9 @@
           <canvas></canvas>
         </div>
         <div class="dash-chart-legend">
-          <span><i style="background:#F59E0B"></i>Pending</span>
-          <span><i style="background:#0369A1"></i>In flight</span>
-          <span><i style="background:#1F6B3E"></i>Completed</span>
+          <span><i class="swatch swatch-amber"></i>Pending</span>
+          <span><i class="swatch swatch-sky"></i>In flight</span>
+          <span><i class="swatch swatch-brand"></i>Completed</span>
         </div>
       {% else %}<div class="dash-empty"><p>No categories with activity yet.</p></div>{% endif %}
     </section>
@@ -149,25 +150,25 @@
           <div><h2>Offices at a glance</h2><p>Requests routed to each office, last 30 days</p></div>
         </header>
         {% if office_breakdown %}
-          <div style="overflow-x:auto;">
+          <div class="scroll-x">
             <table class="admin-table">
               <thead>
                 <tr>
                   <th>Office</th>
-                  <th style="text-align:right">Pending</th>
-                  <th style="text-align:right">In flight</th>
-                  <th style="text-align:right">Completed</th>
-                  <th style="text-align:right">Total 30d</th>
+                  <th class="text-end">Pending</th>
+                  <th class="text-end">In flight</th>
+                  <th class="text-end">Completed</th>
+                  <th class="text-end">Total 30d</th>
                 </tr>
               </thead>
               <tbody>
                 {% for row in office_breakdown %}
                   <tr>
                     <td><strong>{{ row.department.name }}</strong></td>
-                    <td style="text-align:right">{{ row.pending }}</td>
-                    <td style="text-align:right">{{ row.in_flight }}</td>
-                    <td style="text-align:right">{{ row.completed }}</td>
-                    <td style="text-align:right"><strong>{{ row.total_30d }}</strong></td>
+                    <td class="text-end">{{ row.pending }}</td>
+                    <td class="text-end">{{ row.in_flight }}</td>
+                    <td class="text-end">{{ row.completed }}</td>
+                    <td class="text-end"><strong>{{ row.total_30d }}</strong></td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -256,6 +257,6 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="{% static 'vendor/chart-4.4.1.umd.js' %}"></script>
   <script src="{% static 'js/charts.js' %}?v=1"></script>
 {% endblock %}

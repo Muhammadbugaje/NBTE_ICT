@@ -3,6 +3,8 @@ from datetime import date
 
 from django import forms
 
+from core.uploads import validate_attachment_upload
+
 from accounts.models import User
 
 from .models import RequestType
@@ -222,6 +224,7 @@ class CommentForm(forms.Form):
 
 class AttachmentForm(forms.Form):
     file = forms.FileField(
+        validators=[validate_attachment_upload],
         widget=forms.ClearableFileInput(attrs={"class": "input"}),
     )
     description = forms.CharField(
@@ -259,6 +262,7 @@ class ResubmitForm(forms.Form):
     )
     file = forms.FileField(
         required=False,
+        validators=[validate_attachment_upload],
         widget=forms.ClearableFileInput(attrs={"class": "input"}),
     )
     file_description = forms.CharField(
@@ -527,6 +531,7 @@ def build_resubmit_form(request_obj, requester, data=None, files=None):
         ),
         "file": forms.FileField(
             required=False,
+            validators=[validate_attachment_upload],
             widget=forms.ClearableFileInput(attrs={"class": "input"}),
         ),
         "file_description": forms.CharField(

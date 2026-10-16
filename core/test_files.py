@@ -38,7 +38,8 @@ def attachment(settings):
 
 
 def test_restricted_file_lives_outside_media_root_with_uuid_name(attachment, settings):
-    assert re.fullmatch(r"staff_private/[0-9a-f]{32}\.pdf", attachment.file.name)
+    # Review L9: private documents now live under MEDIA_SUBDIR "staff/private_documents".
+    assert re.fullmatch(r"staff/private_documents/[0-9a-f]{32}\.pdf", attachment.file.name)
     assert attachment.original_name == "Contract (final).pdf"
     on_disk = settings.PROTECTED_MEDIA_ROOT / attachment.file.name
     assert on_disk.read_bytes() == b"%PDF-secret-bytes"
@@ -63,9 +64,21 @@ def test_user_without_permission_gets_403_even_with_exact_url(attachment):
     assert b"secret" not in r.content
 
 
+def _same_department_user(email, attachment):
+    # Review M7: the permission alone no longer opens every department's
+    # documents; the downloader must be in the record's department.
+    from staff.models import Department
+    dept = Department.objects.create(name="HR docs", code="hr-docs")
+    Staff.objects.filter(pk=attachment.staff_id).update(department=dept)
+    u = _user(email, "view_staffattachment")
+    u.department = dept
+    u.save()
+    return u
+
+
 def test_permitted_user_downloads_in_dev_mode(attachment):
     c = Client()
-    c.force_login(_user("ok@x.org", "view_staffattachment"))
+    c.force_login(_same_department_user("ok@x.org", attachment))
     r = c.get(attachment.download_url())
     assert r.status_code == 200
     assert b"".join(r.streaming_content) == b"%PDF-secret-bytes"
@@ -77,7 +90,7 @@ def test_permitted_user_downloads_in_dev_mode(attachment):
 def test_permitted_user_gets_x_accel_redirect_with_empty_body(attachment, settings):
     settings.USE_X_ACCEL_REDIRECT = True
     c = Client()
-    c.force_login(_user("ok@x.org", "view_staffattachment"))
+    c.force_login(_same_department_user("ok@x.org", attachment))
     r = c.get(attachment.download_url())
     assert r.status_code == 200 and r.content == b""
     assert r["X-Accel-Redirect"] == "/protected/" + attachment.file.name
@@ -114,7 +127,7 @@ def test_upload_fires_thumbnail_task_and_writes_variants(settings, django_captur
         s = Staff.objects.create(
             employee_no="T1", first_name="P", last_name="H",
             photo=SimpleUploadedFile("Holiday.png", _png(800, 400), content_type="image/png"))
-    assert re.fullmatch(r"staff/[0-9a-f]{32}\.png", s.photo.name)
+    assert re.fullmatch(r"staff/photos/[0-9a-f]{32}\.png", s.photo.name)  # review L9: MEDIA_SUBDIR
     big, small = (settings.MEDIA_ROOT / variant_name(s.photo.name, n) for n in (300, 64))
     assert big.exists() and small.exists()
     assert Image.open(big).size == (300, 150)      # longest edge 300, aspect kept

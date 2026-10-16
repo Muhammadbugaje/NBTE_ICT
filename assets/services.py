@@ -194,7 +194,10 @@ def resolve_issue(*, issue, resolved_by, resolution_notes="", restore_state="in_
                               "resolution_notes", "updated_at"])
 
     # Restore the asset to a working state unless it was retired/lost.
-    if issue.asset.state not in ("retired", "lost", "disposed"):
+    # Review M16: restore_state=None closes the issue but leaves the asset's
+    # state alone (used when the linked request was rejected or cancelled -
+    # nothing was repaired).
+    if restore_state and issue.asset.state not in ("retired", "lost", "disposed"):
         issue.asset.state = restore_state
         issue.asset.save(update_fields=["state", "updated_at"])
     return issue

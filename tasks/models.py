@@ -19,6 +19,7 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import TimeStampedModel
+from core.storage import restricted_storage
 
 
 # Top-level so Django's migration serializer can reference it.
@@ -384,7 +385,9 @@ class TaskComment(TimeStampedModel):
 # Attachments
 # ===========================================================================
 class TaskAttachment(TimeStampedModel):
+    """Stored in restricted storage; served only via protected_download (H1)."""
     AUDITED = True
+    PROTECTED_DOWNLOAD = True
 
     task = models.ForeignKey(
         Task, on_delete=models.CASCADE, related_name="attachments",
@@ -392,12 +395,27 @@ class TaskAttachment(TimeStampedModel):
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+",
     )
-    file = models.FileField(upload_to=task_attachment_upload)
+    file = models.FileField(upload_to=task_attachment_upload, storage=restricted_storage)
     original_name = models.CharField(max_length=255, blank=True)
     description = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        from core.uploads import enforce_allowed_extension
+        enforce_allowed_extension(self)
+        super().save(*args, **kwargs)
+
+    def can_download(self, user):
+        if not (user and user.is_authenticated):
+            return False
+        from .views import _visible_tasks_qs
+        return _visible_tasks_qs(user).filter(pk=self.task_id).exists()
+
+    def download_url(self):
+        from django.urls import reverse
+        return reverse("core:protected_download", args=[self._meta.label_lower, self.pk])
 
 
 # ===========================================================================

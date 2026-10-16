@@ -1,186 +1,260 @@
 /* ==========================================================================
-   NBTE ICT — Base: reset, typography, layout primitives
+   NBTE ICT — Base (v5): reset and element defaults. Tokens only.
+   Load order: tokens → base → layout → components → utilities → animations
    ========================================================================== */
 
 *,
 *::before,
-*::after {
-  box-sizing: border-box;
-}
+*::after { box-sizing: border-box; }
 
-* {
-  margin: 0;
-  padding: 0;
-}
+* { margin: 0; padding: 0; }
 
 html {
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;
-  scroll-padding-top: calc(var(--nav-height) + var(--space-5));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+  scroll-padding-top: calc(var(--topbar-h) + var(--space-5));
+  hanging-punctuation: first last;
 }
 
 body {
+  min-height: 100vh;
+  min-height: 100dvh;
   font-family: var(--font-sans);
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
-  color: var(--fg);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  min-height: 100vh;
-  min-height: 100dvh;
   overflow-x: hidden;
-  transition:
-    background-color var(--duration-base) var(--ease-out),
-    color var(--duration-base) var(--ease-out);
 }
 
-img, svg, video, canvas {
+/* ---- Reduced motion -------------------------------------------------------
+   Documented utility override: when the user asks for less motion every
+   animation and transition is cut to ~0 so nothing moves. `!important` is
+   required to beat component rules. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* Same switch, forced from the in-app setting (html[data-motion="reduce"]) */
+:root[data-motion="reduce"] *,
+:root[data-motion="reduce"] *::before,
+:root[data-motion="reduce"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* ---- Media ---------------------------------------------------------------- */
+img, svg, video, canvas, picture {
   display: block;
   max-width: 100%;
   height: auto;
 }
+img { font-style: italic; }   /* alt text reads as a caption if the file fails */
 
-button, input, select, textarea {
-  font: inherit;
-  color: inherit;
-}
+/* ---- Hidden really means hidden (beats component display rules) ---------- */
+[hidden] { display: none !important; }
 
-button {
-  cursor: pointer;
-  background: none;
-  border: 0;
-}
-
-a {
-  color: var(--primary);
-  text-decoration: none;
-  transition: color var(--duration-fast) var(--ease-out);
-}
-a:hover { color: var(--primary-hover); }
-
-/* ---------- Typography ---------- */
+/* ---- Typography ----------------------------------------------------------- */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  line-height: var(--leading-tight);
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
   letter-spacing: var(--tracking-tight);
-  color: var(--fg);
+  color: var(--text);
   text-wrap: balance;
+  overflow-wrap: break-word;
 }
-h1 { font-size: clamp(2.25rem, 5vw + 1rem, var(--text-5xl)); }
-h2 { font-size: clamp(1.75rem, 3vw + 1rem, var(--text-4xl)); }
-h3 { font-size: clamp(1.375rem, 2vw + 1rem, var(--text-2xl)); }
-h4 { font-size: var(--text-xl); }
-h5 { font-size: var(--text-lg); }
-h6 { font-size: var(--text-base); }
+h1 { font-size: clamp(2rem, 4vw + 1rem, var(--text-5xl)); }
+h2 { font-size: clamp(1.625rem, 2.6vw + 1rem, var(--text-4xl)); }
+h3 { font-size: clamp(1.25rem, 1.6vw + 1rem, var(--fs-2xl)); }
+h4 { font-size: var(--fs-xl); }
+h5 { font-size: var(--fs-lg); }
+h6 { font-size: var(--fs-md); }
 
 p {
-  color: var(--fg-muted);
+  color: var(--text-muted);
   text-wrap: pretty;
+  overflow-wrap: break-word;
 }
 p.lead {
-  font-size: var(--text-lg);
-  line-height: var(--leading-relaxed);
-  color: var(--fg-muted);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-loose);
 }
+small { font-size: var(--fs-sm); }
+strong, b { font-weight: var(--fw-semibold); }
 
-small { font-size: var(--text-sm); }
-code, pre, kbd {
+a {
+  color: var(--link);
+  text-decoration: none;
+  text-underline-offset: 0.18em;
+  transition: color var(--dur) var(--ease-standard);
+}
+a:hover { color: var(--link-hover); }
+
+code, pre, kbd, samp {
   font-family: var(--font-mono);
   font-size: 0.9em;
 }
 code {
-  background: var(--bg-sunken);
-  padding: 0.15em 0.4em;
-  border-radius: var(--radius-xs);
+  padding: 0.12em 0.4em;
   border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
 }
 pre {
-  background: var(--bg-sunken);
   padding: var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
   overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
 }
-
+kbd {
+  padding: 0.1em 0.45em;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  font-size: 0.8em;
+}
+hr {
+  border: 0;
+  height: 1px;
+  background: var(--divider);
+}
 ::selection {
   background: var(--primary);
   color: var(--primary-fg);
 }
 
-/* ---------- Layout primitives ---------- */
-.container {
-  width: 100%;
-  max-width: var(--content-wide);
-  margin-inline: auto;
-  padding-inline: var(--space-5);
-}
-.container-narrow { max-width: var(--content-narrow); }
-.container-wide   { max-width: var(--content-full); }
-
-.stack > * + * { margin-top: var(--space-4); }
-.stack-sm > * + * { margin-top: var(--space-2); }
-.stack-lg > * + * { margin-top: var(--space-6); }
-
-.cluster {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  align-items: center;
-}
-.cluster-between { justify-content: space-between; }
-.cluster-center  { justify-content: center; }
-
-.grid {
-  display: grid;
-  gap: var(--space-5);
-}
-.grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
-.grid-3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
-.grid-4 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
-
-.center-text { text-align: center; }
-.muted { color: var(--fg-muted); }
-.subtle { color: var(--fg-subtle); }
-
-/* ---------- Focus visible ---------- */
+/* ---- Focus ---------------------------------------------------------------
+   Every interactive element gets a visible ring on keyboard focus. */
 :focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--link);
   outline-offset: 3px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
+  animation: focus-ring-in var(--dur) var(--ease-emphasized);
 }
-button:focus:not(:focus-visible),
-a:focus:not(:focus-visible) {
-  outline: none;
+:focus:not(:focus-visible) { outline: none; }
+
+/* ---- Form elements -------------------------------------------------------
+   Defaults for fields Django renders without a class. `.input` (components)
+   is the styled variant. */
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+button:disabled { cursor: not-allowed; }
+
+label {
+  display: block;
+  margin-block: 0.8rem 0.25rem;
+  font-size: var(--fs-sm);
 }
 
-/* ---------- Scrollbar (subtle, theme-aware) ---------- */
+input:where([type="text"], [type="email"], [type="password"], [type="search"],
+            [type="number"], [type="url"], [type="tel"], [type="date"],
+            [type="datetime-local"], [type="time"], [type="month"]),
+select,
+textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  transition:
+    border-color var(--dur) var(--ease-standard),
+    box-shadow var(--dur) var(--ease-standard);
+}
+textarea { min-height: 6rem; resize: vertical; line-height: var(--lh-normal); }
+input:where([type="text"], [type="email"], [type="password"], [type="search"],
+            [type="number"], [type="url"], [type="tel"], [type="date"],
+            [type="datetime-local"], [type="time"], [type="month"]):focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-subtle);
+}
+input::placeholder,
+textarea::placeholder { color: var(--text-subtle); opacity: 1; }
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+  inline-size: 1.05rem;
+  block-size: 1.05rem;
+}
+input[type="file"] { max-width: 100%; font-size: var(--fs-sm); }
+fieldset { border: 0; min-width: 0; }
+
+/* Django renders field errors as <ul class="errorlist"> */
+.errorlist {
+  list-style: none;
+  margin-block: var(--space-1);
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+
+/* ---- Tables --------------------------------------------------------------- */
+table {
+  width: 100%;
+  margin-block: 0.5rem 1.2rem;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+th, td {
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+th {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  white-space: nowrap;   /* short uppercase headings; wide tables scroll in .table-wrap */
+}
+
+/* ---- Overflow safety for user content ------------------------------------ */
+li, dd, dt, blockquote, figcaption, .user-content { overflow-wrap: anywhere; }
+/* Table cells use break-word, not anywhere: `anywhere` lowers the cell's
+   min-content width, so tables in a scroll wrapper squeezed short codes like
+   "REF" or "00017" into one letter per line instead of scrolling. */
+td, th { overflow-wrap: break-word; }
+/* Django's ClearableFileInput prints the stored file path as a link
+   ("Currently: <a>very/long/path.jpg</a>"); let it wrap inside forms. */
+form a, form label { overflow-wrap: anywhere; }
+.user-content { white-space: pre-line; }
+
+/* ---- Scrollbars (theme aware) -------------------------------------------- */
+* { scrollbar-color: var(--border-strong) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: var(--radius-pill);
   border: 3px solid var(--bg);
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
 }
-::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
-
-/* ---------- Utility: visibility transitions for theme ---------- */
-.theme-transition {
-  transition:
-    background-color var(--duration-base) var(--ease-out),
-    border-color var(--duration-base) var(--ease-out),
-    color var(--duration-base) var(--ease-out);
-}
+::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }

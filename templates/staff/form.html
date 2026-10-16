@@ -5,7 +5,7 @@
 {% block page_title %}{% if mode == "create" %}Add staff{% else %}Edit staff{% endif %}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/staff.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/staff.css' %}?v=3">
 {% endblock %}
 
 {% block content %}
@@ -28,6 +28,25 @@
 
     {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
 
+    {% if self_edit %}
+    {# Review H7: self-service edit is limited to contact details. #}
+    <section class="staff-section">
+      <h3>Your contact details</h3>
+      <p class="staff-section-hint">Other details on your record are maintained by HR. Contact them to change your department, grade, designation or supervisor.</p>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.phone.label_tag }}{{ form.phone }}{{ form.phone.errors }}</div>
+        <div class="staff-col">{{ form.photo.label_tag }}{{ form.photo }}{{ form.photo.errors }}</div>
+      </div>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.office_location.label_tag }}{{ form.office_location }}{{ form.office_location.errors }}</div>
+        <div class="staff-col">{{ form.contact_preference.label_tag }}{{ form.contact_preference }}{{ form.contact_preference.errors }}</div>
+      </div>
+      <div class="staff-row">
+        <div class="staff-col">{{ form.emergency_contact_name.label_tag }}{{ form.emergency_contact_name }}{{ form.emergency_contact_name.errors }}</div>
+        <div class="staff-col">{{ form.emergency_contact_phone.label_tag }}{{ form.emergency_contact_phone }}{{ form.emergency_contact_phone.errors }}</div>
+      </div>
+    </section>
+    {% else %}
     <section class="staff-section">
       <h3>Identity</h3>
       <div class="staff-row">
@@ -94,6 +113,7 @@
       <h3>Duties</h3>
       {{ form.duties }}{{ form.duties.errors }}
     </section>
+    {% endif %}
 
     {% if form.create_account %}
       <section class="staff-section staff-section-accent">
@@ -103,7 +123,7 @@
           {{ form.create_account }}
           <span>Create a user account for this staff member</span>
         </label>
-        <div class="staff-row" style="margin-top:12px;">
+        <div class="staff-row mt-3">
           <div class="staff-col staff-col-full">
             {{ form.initial_password.label_tag }}
             {{ form.initial_password }}

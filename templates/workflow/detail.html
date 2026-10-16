@@ -6,7 +6,7 @@
 {% block page_title %}{{ req.reference }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/workflow.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/workflow.css' %}?v=3">
 {% endblock %}
 
 {% block content %}
@@ -14,7 +14,7 @@
 {# ---------- Page head ---------- #}
 <div class="wf-page-head">
   <div>
-    <a href="{% url 'workflow:my_requests' %}" class="btn btn-subtle btn-sm" style="margin-bottom:12px;">
+    <a href="{% url 'workflow:my_requests' %}" class="btn btn-subtle btn-sm mb-3">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
       My requests
     </a>
@@ -132,46 +132,46 @@
           {% csrf_token %}
 
           {% if resubmit_schema_fields %}
-            <div style="padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--wf-border);">
-              <h3 style="font-size:11.5px;font-weight:700;color:var(--wf-fg-subtle);letter-spacing:0.07em;text-transform:uppercase;margin:0 0 14px;">Request details</h3>
+            <div class="wf-form-section">
+              <h3 class="wf-form-eyebrow">Request details</h3>
               {% for key, defn in resubmit_schema_fields %}
-                <div class="field" style="margin-bottom:14px;">
+                <div class="field mb-4">
                   {% if defn.type == 'checkbox' %}
-                    <label class="check" style="margin-bottom:0;display:flex;gap:10px;align-items:center;">
+                    <label class="check wf-check-row">
                       {{ resubmit_form|get_item:key }}
                       <span>{{ defn.label }}{% if defn.required %} <span class="req">*</span>{% endif %}</span>
                     </label>
                   {% else %}
-                    <label for="resubmit-{{ key }}" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">{{ defn.label }}{% if defn.required %} <span class="req">*</span>{% endif %}</label>
+                    <label class="wf-label" for="resubmit-{{ key }}">{{ defn.label }}{% if defn.required %} <span class="req">*</span>{% endif %}</label>
                     {{ resubmit_form|get_item:key }}
                   {% endif %}
-                  {% if defn.help %}<span class="hint" style="display:block;font-size:12px;color:var(--wf-fg-subtle);margin-top:4px;">{{ defn.help }}</span>{% endif %}
+                  {% if defn.help %}<span class="hint wf-help">{{ defn.help }}</span>{% endif %}
                   {% with errs=resubmit_form|get_field_errors:key %}
-                    {% if errs %}<span style="color:#dc2626;font-size:12.5px;">{{ errs|join:" " }}</span>{% endif %}
+                    {% if errs %}<span class="wf-error">{{ errs|join:" " }}</span>{% endif %}
                   {% endwith %}
                 </div>
               {% endfor %}
             </div>
           {% endif %}
 
-          <div class="field" style="margin-bottom:14px;">
-            <label for="resubmit-subject" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Subject</label>
+          <div class="field mb-4">
+            <label class="wf-label" for="resubmit-subject">Subject</label>
             <input class="input" type="text" name="subject" id="resubmit-subject" maxlength="255" required value="{{ resubmit_form.subject.value|default:req.subject }}">
           </div>
-          <div class="field" style="margin-bottom:14px;">
-            <label for="resubmit-body" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Details</label>
+          <div class="field mb-4">
+            <label class="wf-label" for="resubmit-body">Details</label>
             <textarea class="input" name="body" id="resubmit-body" rows="6" required>{{ resubmit_form.body.value|default:req.body }}</textarea>
           </div>
-          <div class="field" style="margin-bottom:14px;">
-            <label for="resubmit-comment" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Note to the reviewer <span class="muted" style="font-weight:400;color:var(--wf-fg-subtle);">(optional)</span></label>
+          <div class="field mb-4">
+            <label class="wf-label" for="resubmit-comment">Note to the reviewer <span class="muted wf-label-hint">(optional)</span></label>
             <textarea class="input" name="comment" id="resubmit-comment" rows="2" placeholder="What did you change?"></textarea>
           </div>
-          <div class="field" style="margin-bottom:14px;">
-            <label for="resubmit-file" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Attach a file <span class="muted" style="font-weight:400;color:var(--wf-fg-subtle);">(optional)</span></label>
+          <div class="field mb-4">
+            <label class="wf-label" for="resubmit-file">Attach a file <span class="muted wf-label-hint">(optional)</span></label>
             <input class="input" type="file" name="file" id="resubmit-file">
-            <input class="input" type="text" name="file_description" placeholder="Optional description" style="margin-top:8px;">
+            <input class="input mt-2" type="text" name="file_description" placeholder="Optional description">
           </div>
-          <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">
+          <div class="wf-form-actions">
             <button class="btn btn-primary" type="submit">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               Resubmit
@@ -291,17 +291,19 @@
           </div>
         {% endfor %}
       {% else %}
-        <p style="color:var(--wf-fg-subtle);font-size:13.5px;margin:0;">No comments yet.</p>
+        <p class="wf-empty-note">No comments yet.</p>
       {% endif %}
 
       {% if not is_closed %}
-        <form method="post" action="{% url 'workflow:comment' req.pk %}" style="margin-top:18px;padding-top:18px;border-top:1px solid var(--wf-border);">
+        <form class="wf-divided" method="post" action="{% url 'workflow:comment' req.pk %}">
           {% csrf_token %}
           {{ comment_form.body }}
-          <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;color:var(--wf-fg-muted);">
-            {{ comment_form.is_internal }} <span>Internal note (only staff can see this)</span>
+          {% if show_internal %}
+          <label class="wf-meta-row">
+            {{ comment_form.is_internal }} <span>Internal note (hidden from the requester)</span>
           </label>
-          <button class="btn btn-primary btn-sm" type="submit" style="margin-top:12px;">Post comment</button>
+          {% endif %}
+          <button class="btn btn-primary btn-sm mt-3" type="submit">Post comment</button>
         </form>
       {% else %}
         <div class="wf-closed-note">
@@ -325,7 +327,7 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             </div>
             <div class="wf-attachment-info">
-              <a href="{{ a.file.url }}" target="_blank" rel="noopener" class="wf-attachment-name">{{ a.original_name }}</a>
+              <a href="{{ a.download_url }}" target="_blank" rel="noopener" class="wf-attachment-name">{{ a.original_name }}</a>
               <div class="wf-attachment-desc">
                 {{ a.uploaded_by.get_full_name|default:a.uploaded_by.email|default:"System" }}
                 · {{ a.created_at|date:"M j, Y · H:i" }}
@@ -348,17 +350,17 @@
           </div>
         {% endfor %}
       {% else %}
-        <p style="color:var(--wf-fg-subtle);font-size:13.5px;margin:0;">No attachments yet.</p>
+        <p class="wf-empty-note">No attachments yet.</p>
       {% endif %}
 
       {% if not is_closed %}
-        <form method="post" action="{% url 'workflow:attach' req.pk %}" enctype="multipart/form-data"
-              style="margin-top:16px;padding:14px;background:var(--wf-bg-subtle);border:1px dashed var(--wf-border);border-radius:var(--wf-radius-sm);display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;">
+        <form class="wf-dashed-panel" method="post" action="{% url 'workflow:attach' req.pk %}" enctype="multipart/form-data"
+             >
           {% csrf_token %}
           <div>
-            <input type="file" name="file" required style="font-size:12.5px;color:var(--wf-fg-muted);">
-            <input type="text" name="description" placeholder="Optional description"
-                   style="margin-top:8px;width:100%;padding:6px 10px;font-size:12.5px;background:transparent;border:1px solid var(--wf-border);border-radius:6px;color:var(--wf-fg);">
+            <input class="wf-dashed-note" type="file" name="file" required>
+            <input class="wf-mini-input" type="text" name="description" placeholder="Optional description"
+                  >
           </div>
           <button type="submit" class="btn btn-ghost btn-sm">Upload</button>
         </form>
@@ -378,17 +380,17 @@
     {% if current_step and req.status != 'returned' %}
       <div class="wf-side-card wf-current-card">
         <h3 class="wf-side-card-title">Current step</h3>
-        <p class="wf-side-card-sub" style="margin-bottom:10px;">
+        <p class="wf-side-card-sub mb-3">
           <span class="wf-pill wf-pill-current">{{ current_step.get_kind_display }}</span>
-          &nbsp;<strong style="color:var(--wf-fg);">{{ current_step.name }}</strong>
+          &nbsp;<strong class="wf-strong">{{ current_step.name }}</strong>
         </p>
         {% if current_step.instructions %}
-          <p style="font-size:13px;color:var(--wf-fg-muted);line-height:1.5;margin:0 0 12px;">{{ current_step.instructions }}</p>
+          <p class="wf-para">{{ current_step.instructions }}</p>
         {% endif %}
-        <div style="font-size:12px;color:var(--wf-fg-subtle);">
+        <div class="wf-small">
           {% if current_actor %}
-            Acting: <strong style="color:var(--wf-fg);">{{ current_actor.get_full_name|default:current_actor.email }}</strong>
-            {% if current_actor.pk == request.user.pk %}<span class="badge badge-success" style="margin-left:6px;">You</span>{% endif %}
+            Acting: <strong class="wf-strong">{{ current_actor.get_full_name|default:current_actor.email }}</strong>
+            {% if current_actor.pk == request.user.pk %}<span class="badge badge-success wf-gap-start">You</span>{% endif %}
           {% else %}
             No one is currently assigned to this step.
           {% endif %}
@@ -494,7 +496,7 @@
       <div class="wf-side-card">
         <h3 class="wf-side-card-title">Convert</h3>
         <a href="{% url 'tasks:create' %}?subject={{ req.subject|urlencode }}"
-           class="btn btn-ghost btn-sm" style="width:100%;">
+           class="btn btn-ghost btn-sm w-full">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Create task from this
         </a>
@@ -509,7 +511,7 @@
           {% if req.completed_at %}Completed {{ req.completed_at|date:"M j, Y" }}.{% endif %}
         </p>
         {% if req.record_pdf %}
-          <a href="{% url 'workflow:record_pdf' req.pk %}" class="btn btn-ghost btn-sm" style="width:100%;" target="_blank">Download record PDF</a>
+          <a href="{% url 'workflow:record_pdf' req.pk %}" class="btn btn-ghost btn-sm w-full" target="_blank">Download record PDF</a>
         {% endif %}
       </div>
     {% endif %}
@@ -541,8 +543,8 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           Danger zone
         </summary>
-        <div class="wf-side-action" style="margin-top:12px;">
-          <p style="font-size:12.5px;color:var(--wf-fg-muted);margin:0 0 10px;line-height:1.55;">
+        <div class="wf-side-action mt-3">
+          <p class="wf-para">
             Permanently remove this request. Logged and notified.
           </p>
           <form method="post" id="delete-request-form" action="{% url 'workflow:delete' req.pk %}"
@@ -552,15 +554,15 @@
                 data-confirm-label="Delete request"
                 data-confirm-tone="danger">
             {% csrf_token %}
-            <label style="display:block;font-size:12px;font-weight:600;color:var(--wf-fg-muted);margin-bottom:5px;">Reason</label>
-            <textarea name="reason" rows="2" maxlength="500" required placeholder="Why is this being deleted?"
-                      style="width:100%;padding:8px 10px;font-family:inherit;font-size:13px;background:var(--wf-bg-subtle);border:1px solid var(--wf-border);border-radius:var(--wf-radius-sm);color:var(--wf-fg);resize:vertical;"></textarea>
-            <label style="display:block;font-size:12px;font-weight:600;color:var(--wf-fg-muted);margin:10px 0 5px;">Type <strong>DELETE</strong> to confirm</label>
-            <input type="text" name="confirm" placeholder="DELETE" autocomplete="off" required
-                   style="width:100%;padding:8px 10px;font-family:inherit;font-size:13px;background:var(--wf-bg-subtle);border:1px solid var(--wf-border);border-radius:var(--wf-radius-sm);color:var(--wf-fg);">
+            <label class="wf-label-sm">Reason</label>
+            <textarea class="wf-textarea" name="reason" rows="2" maxlength="500" required placeholder="Why is this being deleted?"
+                     ></textarea>
+            <label class="wf-label-sm mt-3">Type <strong>DELETE</strong> to confirm</label>
+            <input class="wf-textarea" type="text" name="confirm" placeholder="DELETE" autocomplete="off" required
+                  >
           </form>
           <button type="submit" form="delete-request-form"
-                  class="btn btn-danger btn-sm" style="margin-top:10px;width:100%;">
+                  class="btn btn-danger btn-sm mt-3 w-full">
             Delete request
           </button>
         </div>

@@ -32,17 +32,24 @@ def generate_thumbnails(label, pk, field_name):
 
 @shared_task
 def cleanup_import_tmp(max_age_hours=24):
-    """Delete files under MEDIA_ROOT/import-tmp older than `max_age_hours`.
+    """Delete files under PROTECTED_MEDIA_ROOT/import-tmp older than `max_age_hours`.
 
     Runs hourly via Celery Beat. Cleans up:
       - uploads that were previewed but never committed
       - rejected-rows reports that were generated but never downloaded
 
-    Uses direct filesystem access since MEDIA_ROOT is local (per doc 34).
-    Returns a small dict for logging/inspection.
+    Uses direct filesystem access since the media roots are local (per doc 34).
+    Review L5: the folder moved to PROTECTED_MEDIA_ROOT; the old public
+    MEDIA_ROOT/import-tmp is still swept so leftovers from before the move
+    are removed. Returns a small dict for logging/inspection.
     """
-    tmp_dir = Path(settings.MEDIA_ROOT) / "import-tmp"
-    if not tmp_dir.exists():
+    tmp_dirs = [
+        d for d in (
+            Path(settings.PROTECTED_MEDIA_ROOT) / "import-tmp",
+            Path(settings.MEDIA_ROOT) / "import-tmp",
+        ) if d.exists()
+    ]
+    if not tmp_dirs:
         return {"removed": 0, "failed": 0, "skipped": "no import-tmp directory"}
 
     import time as _time
@@ -50,16 +57,17 @@ def cleanup_import_tmp(max_age_hours=24):
     removed = 0
     failed = 0
 
-    for entry in tmp_dir.iterdir():
-        if not entry.is_file():
-            continue
-        try:
-            if entry.stat().st_mtime < cutoff:
-                entry.unlink()
-                removed += 1
-        except Exception:
-            logger.exception("cleanup_import_tmp: could not remove %s", entry)
-            failed += 1
+    for tmp_dir in tmp_dirs:
+        for entry in tmp_dir.iterdir():
+            if not entry.is_file():
+                continue
+            try:
+                if entry.stat().st_mtime < cutoff:
+                    entry.unlink()
+                    removed += 1
+            except Exception:
+                logger.exception("cleanup_import_tmp: could not remove %s", entry)
+                failed += 1
 
     logger.info("cleanup_import_tmp: removed=%d failed=%d (older than %dh)",
                 removed, failed, max_age_hours)

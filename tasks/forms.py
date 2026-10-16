@@ -4,6 +4,8 @@ Data-only forms (plain Form) for task creation and editing — the service
 layer handles mutations so business rules stay in one place.
 """
 from django import forms
+
+from core.uploads import validate_attachment_upload
 from django.forms import BaseFormSet, formset_factory
 
 from .models import Task, TaskAssignee, TaskCategory
@@ -479,6 +481,7 @@ class CommentForm(forms.Form):
 
 class AttachmentForm(forms.Form):
     file = forms.FileField(
+        validators=[validate_attachment_upload],
         widget=forms.ClearableFileInput(attrs={"class": "input"}),
     )
     description = forms.CharField(
@@ -530,13 +533,22 @@ class DependencyForm(forms.Form):
         widget=forms.TextInput(attrs={"class": "input"}),
     )
 
-    def __init__(self, *args, task=None, **kwargs):
+    def __init__(self, *args, task=None, user=None, **kwargs):
         super().__init__(*args, **kwargs)
-        qs = Task.objects.all()
+        # Review M9: no slice (a sliced queryset made every submitted choice
+        # "invalid"), and only tasks the user can see - from the same owning
+        # department as this task when it has one.
+        if user is not None:
+            from .views import _visible_tasks_qs
+            qs = _visible_tasks_qs(user)
+        else:
+            qs = Task.objects.all()
         if task is not None and task.pk:
             qs = qs.exclude(pk=task.pk)
             qs = qs.exclude(pk__in=task.dependency_links.values_list("depends_on_id", flat=True))
-        self.fields["depends_on"].queryset = qs.order_by("-created_at")[:200]
+            if task.owner_department_id:
+                qs = qs.filter(owner_department_id=task.owner_department_id)
+        self.fields["depends_on"].queryset = qs.order_by("-created_at")
 
 
 # ===========================================================================

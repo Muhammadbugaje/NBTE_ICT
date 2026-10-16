@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
+import logging
 import time
 
 from core.sorting import apply_sort
@@ -55,6 +56,8 @@ from .models import (
     TaskDependency,
     TaskTimeEntry,
 )
+
+logger = logging.getLogger(__name__)  # review M10: was used but never defined
 
 PER_PAGE = 25
 POLL_INTERVAL = 5
@@ -601,7 +604,7 @@ def task_detail(request, pk):
         "comment_form": CommentForm(),
         "attach_form": AttachmentForm(),
         "log_time_form": LogTimeForm(),
-        "dependency_form": DependencyForm(task=task),
+        "dependency_form": DependencyForm(task=task, user=request.user),
     }
     return render(request, "tasks/detail.html", ctx)
 
@@ -957,7 +960,7 @@ def task_split(request, pk):
 @require_POST
 def task_add_dependency(request, pk):
     task = _require_view(request, pk)
-    form = DependencyForm(request.POST, task=task)
+    form = DependencyForm(request.POST, task=task, user=request.user)
     if not form.is_valid():
         messages.error(request, "Please pick a valid task.")
         return redirect("tasks:detail", pk=task.pk)
@@ -1274,38 +1277,11 @@ def task_timeline_partial(request, pk):
 @login_required
 @require_GET
 def task_stream(request, pk):
-    """SSE for the task timeline — same contract as tickets/workflow."""
+    """Timeline poll for one task (was an endless SSE stream - review H2)."""
+    from core.polling import activity_response
+
     task = _require_view(request, pk)
-    try:
-        since = int(request.GET.get("since") or 0)
-    except (TypeError, ValueError):
-        since = 0
-
-    def stream():
-        last = since
-        yield ": connected\n\n"
-        try:
-            while True:
-                time.sleep(POLL_INTERVAL)
-                new_pks = list(
-                    TaskActivity.objects
-                    .filter(task_id=task.pk, pk__gt=last)
-                    .order_by("pk")
-                    .values_list("pk", flat=True)[:50]
-                )
-                if new_pks:
-                    last = new_pks[-1]
-                    payload = json.dumps({"last_pk": last, "count": len(new_pks)})
-                    yield f"event: activity\ndata: {payload}\n\n"
-                else:
-                    yield ": heartbeat\n\n"
-        except GeneratorExit:
-            return
-
-    resp = StreamingHttpResponse(stream(), content_type="text/event-stream")
-    resp["Cache-Control"] = "no-cache"
-    resp["X-Accel-Buffering"] = "no"
-    return resp
+    return activity_response(request, TaskActivity.objects.filter(task_id=task.pk))
 
 
 @login_required
@@ -1359,9 +1335,10 @@ def task_change_state(request, pk):
 def task_create_from_ticket(request, ticket_id):
     """Prefill the task form from a ticket, so departments can push a
     ticket into their own task board as a reusable work item."""
-    from tickets.models import Ticket
+    # Review M11: only tickets the user may open themselves.
+    from tickets.views import _visible_tickets_qs
     ticket = get_object_or_404(
-        Ticket.objects.select_related("category", "raised_by", "asset"),
+        _visible_tickets_qs(request.user).select_related("category", "raised_by", "asset"),
         pk=ticket_id,
     )
     prefill = {

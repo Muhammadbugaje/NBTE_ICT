@@ -17,22 +17,34 @@ def _perm(label):
     return Permission.objects.get(content_type__app_label=app, codename=code)
 
 
-def test_provision_generates_password_emails_and_forces_change(django_capture_on_commit_callbacks):
+def _capture_credentials(monkeypatch):
+    # Review L9: email is queued through the email engine (not
+    # django.core.mail), so the tests capture it where it is queued.
+    import accounts.services
+    sent = []
+    monkeypatch.setattr(accounts.services, "send_templated_email", lambda **kw: sent.append(kw))
+    return sent
+
+
+def test_provision_generates_password_emails_and_forces_change(django_capture_on_commit_callbacks,
+                                                               monkeypatch):
+    sent = _capture_credentials(monkeypatch)
     with django_capture_on_commit_callbacks(execute=True):
         u = provision_user("new@x.org", "New", "User")
     assert u.must_change_password is True
-    assert len(mail.outbox) == 1
-    body = mail.outbox[0].body
+    assert len(sent) == 1
     pw = u._temporary_password
-    assert pw in body and "new@x.org" in body
+    assert sent[0]["recipients"] == ["new@x.org"] and sent[0]["category"] == "credentials"
+    assert sent[0]["context"]["temp_password"] == pw and sent[0]["context"]["username"] == "new@x.org"
     assert u.check_password(pw) and len(pw) == 12
 
 
-def test_admin_set_password_is_used(django_capture_on_commit_callbacks):
+def test_admin_set_password_is_used(django_capture_on_commit_callbacks, monkeypatch):
+    sent = _capture_credentials(monkeypatch)
     with django_capture_on_commit_callbacks(execute=True):
         u = provision_user("n2@x.org", "N", "Two", temporary_password="Chosen-By-Admin-9")
     assert u.check_password("Chosen-By-Admin-9")
-    assert "Chosen-By-Admin-9" in mail.outbox[0].body
+    assert sent[0]["context"]["temp_password"] == "Chosen-By-Admin-9"
 
 
 def test_admin_password_reset_reports_queue_failure():
@@ -73,7 +85,8 @@ def test_login_and_logout_via_views():
     assert r.status_code == 302
     assert c.get("/").status_code == 200
     assert c.post("/accounts/logout/").status_code == 302
-    assert c.get("/").status_code == 302  # back to login
+    # Review L9: "/" is now the public landing page; the signed-in home is /home/.
+    assert c.get("/home/").status_code == 302  # back to login
 
 
 def test_role_baseline_and_user_overrides():
@@ -92,6 +105,16 @@ def test_role_baseline_and_user_overrides():
     assert not fresh().has_perm("staff.view_staff")  # revoke beats role baseline
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Stage 3 (groups & permissions) deliberately makes Django groups grant "
+        "permissions through RolePermissionBackend. This test recorded the old "
+        "'groups are ignored' contract; it is kept, unchanged, as an expected "
+        "failure. The new contract is covered by "
+        "accounts/test_groups_permissions.py."
+    ),
+)
 def test_django_groups_are_ignored():
     from django.contrib.auth.models import Group
     g = Group.objects.create(name="g")
@@ -116,5 +139,5 @@ def test_seed_roles_idempotent_and_no_missing_permissions(capsys):
     call_command("seed_roles")
     out = capsys.readouterr()
     assert "missing permission" not in out.err
-    assert Role.objects.count() == 10
+    assert Role.objects.count() == 11  # review L9: Executive Secretary role added
     assert Role.objects.get(code="director").requires_2fa

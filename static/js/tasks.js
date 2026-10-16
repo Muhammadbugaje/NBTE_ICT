@@ -383,20 +383,32 @@
     document.querySelectorAll("[data-sse-stream]").forEach(function (el) {
       if (el.__sse) return;
       var url = el.getAttribute("data-sse-stream");
-      if (!url || typeof window.EventSource === "undefined") return;
-      try {
-        var src = new EventSource(url);
-        el.__sse = src;
-        src.addEventListener("activity", function (evt) {
-          var detail = {};
-          try { if (evt.data) detail = JSON.parse(evt.data); } catch (e) {}
-          document.body.dispatchEvent(new CustomEvent("sse:activity", { detail: detail }));
-        });
-        src.addEventListener("error", function () {});
-        window.addEventListener("beforeunload", function () { try { src.close(); } catch (e) {} });
-      } catch (err) {
-        console.error("[NBTE-Tasks] SSE init failed", url, err);
-      }
+      if (!url) return;
+      // Review H2: short-poll instead of a long-lived EventSource. The
+      // endpoint answers at once with {"last_pk", "count"}; we keep the
+      // highest pk seen so the same activity never fires twice.
+      var last = 0;
+      var m = /[?&]since=(\d+)/.exec(url);
+      if (m) last = parseInt(m[1], 10) || 0;
+      var base = url.split("?")[0];
+      var tick = function () {
+        if (document.hidden) return;
+        fetch(base + "?since=" + last, {
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" },
+        })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (!data) return;
+            if (data.count > 0 && data.last_pk > last) {
+              last = data.last_pk;
+              document.body.dispatchEvent(new CustomEvent("sse:activity", { detail: data }));
+            }
+          })
+          .catch(function () {});
+      };
+      el.__sse = setInterval(tick, 10000);
+      window.addEventListener("beforeunload", function () { clearInterval(el.__sse); });
     });
 
     if (!sseHooksBound) {

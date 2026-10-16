@@ -5,7 +5,7 @@
 {% block page_title %}Department attendance{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=5">
 {% endblock %}
 
 {% block content %}
@@ -63,7 +63,7 @@
         <form method="get" class="att-switcher-form">
           {% if year %}<input type="hidden" name="year" value="{{ year }}">{% endif %}
           {% if month %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
-          <select name="department" class="att-switcher-select" onchange="this.form.submit()">
+          <select name="department" class="att-switcher-select" data-autosubmit>
             {% for d in departments %}
               <option value="{{ d.pk }}" {% if d.pk == department.pk %}selected{% endif %}>{{ d.name }}</option>
             {% endfor %}
@@ -84,7 +84,7 @@
       <form method="get" class="att-switcher-form">
         {% if month %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
         {% if can_view_all %}<input type="hidden" name="department" value="{{ department.pk }}">{% endif %}
-        <select name="year" class="att-switcher-select" onchange="this.form.submit()">
+        <select name="year" class="att-switcher-select" data-autosubmit>
           {% for yr in years_available %}
             <option value="{{ yr }}" {% if year_filter == yr %}selected{% endif %}>{{ yr }}</option>
           {% endfor %}

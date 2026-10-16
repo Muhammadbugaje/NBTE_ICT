@@ -3,7 +3,15 @@ import os
 from celery import Celery
 from celery.schedules import crontab
 from datetime import timedelta
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "nbte_ict.settings.dev")
+# Review M19: the worker used to fall back to DEV settings even on a
+# production server (wsgi.py/asgi.py fall back to prod). An explicit
+# DJANGO_SETTINGS_MODULE always wins. Otherwise production is recognised by
+# REDIS_URL, which only settings.prod reads (it is required there); dev
+# never uses it, so `celery -A nbte_ict worker` in dev is unchanged.
+os.environ.setdefault(
+    "DJANGO_SETTINGS_MODULE",
+    "nbte_ict.settings.prod" if os.environ.get("REDIS_URL") else "nbte_ict.settings.dev",
+)
 
 app = Celery("nbte_ict")
 app.config_from_object("django.conf:settings", namespace="CELERY")
@@ -71,17 +79,9 @@ app.conf.beat_schedule = {
         "schedule": 86400.0,
     },
       
-    # End-of-day auto-absent. Adjust hour to match your workday end.
-    "attendance-auto-mark-absent": {
-        "task": "attendance.tasks.auto_mark_absent",
-        "schedule": crontab(hour=18, minute=30, day_of_week="mon-fri"),
-    },
-
-    # Monday morning weekly digest.
-    "attendance-weekly-summary": {
-        "task": "attendance.tasks.weekly_summary",
-        "schedule": crontab(hour=7, minute=0, day_of_week="mon"),
-    },      
+    # Review M12: the duplicate "attendance-auto-mark-absent" (18:30 Mon-Fri)
+    # and "attendance-weekly-summary" (Mon 07:00) entries were removed; each
+    # job now runs once, from the entries above.
       
       
       

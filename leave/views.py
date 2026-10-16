@@ -105,6 +105,7 @@ def management(request):
     staff = _staff_scope(request.user)
     applications = LeaveApplication.objects.filter(
         staff_id__in=Subquery(staff.values("pk")),
+        request__is_deleted=False,  # review M16
     ).select_related(
         "staff", "staff__department", "request", "request__requester",
         "request__request_type",
@@ -145,6 +146,7 @@ def management(request):
     today = timezone.localdate()
     base_applications = LeaveApplication.objects.filter(
         staff_id__in=Subquery(staff.values("pk")),
+        request__is_deleted=False,  # review M16
     )
     stats = {
         "on_leave": base_applications.filter(

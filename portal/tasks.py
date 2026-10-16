@@ -62,7 +62,7 @@ def _fanout_announcement(ann):
     elif ann.visibility == "department" and ann.department_id:
         qs = qs.filter(department_id=ann.department_id)
     elif ann.visibility == "role":
-        qs = qs.filter(groups__in=ann.roles.values_list("pk", flat=True))
+        qs = qs.filter(role_id__in=ann.roles.values_list("pk", flat=True))  # review M6
     elif ann.visibility == "individual":
         qs = qs.filter(pk__in=ann.recipients.values_list("pk", flat=True))
 

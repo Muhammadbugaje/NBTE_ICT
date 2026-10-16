@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Access for {{ u.get_full_name|default:u.email }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Groups &amp; permissions{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="gp-page">
+  <a class="gp-back" href="{% url 'accounts:groups:users' %}">← All users</a>
+  <header class="page-header">
+    <div>
+      <p class="gp-eyebrow">Groups &amp; permissions</p>
+      <h1>{{ u.get_full_name|default:u.email }}</h1>
+      <p class="muted">{{ u.email }}{% if u.department %} · {{ u.department.name }}{% endif %}</p>
+    </div>
+    <div class="header-actions">
+      <a href="{% url 'accounts:user_detail' u.pk %}" class="btn btn-ghost">Account details</a>
+    </div>
+  </header>
+
+  {% include "accounts/groups/_subnav.html" with section="users" %}
+
+  <dl class="gp-stats mb-5" aria-label="Access summary">
+    <div class="gp-stat"><dt>Effective permissions</dt><dd>{{ effective_total }}</dd></div>
+    <div class="gp-stat"><dt>From role</dt><dd>{{ inherited_total }}</dd></div>
+    <div class="gp-stat"><dt>Direct</dt><dd>{{ direct_total }}</dd></div>
+  </dl>
+
+  {% if u.is_superuser %}
+    <div class="alert alert-warn mb-5" role="note"><div class="alert-body">This account is a superuser and holds every permission whatever is assigned here.</div></div>
+  {% endif %}
+  {% if not can_act %}
+    <div class="alert alert-warn mb-5" role="note"><div class="alert-body">This person is ranked above you, so you can view their access but not change it.</div></div>
+  {% endif %}
+
+  <div class="gp-stack">
+    {# 1 — Roles #}
+    <section class="card" aria-labelledby="ug-roles">
+      <div class="gp-card-title-row"><h2 id="ug-roles">Role</h2></div>
+      {% if u.role %}
+        <ul class="gp-chips"><li><span class="badge badge-primary">{{ u.role.name }}</span></li><li><span class="badge">Rank {{ u.role.rank }}</span></li></ul>
+        <p class="gp-note mt-3">Change the role on the <a href="{% url 'accounts:user_edit_roles' u.pk %}">Edit roles</a> page.</p>
+      {% else %}
+        <p class="gp-note">No role assigned.</p>
+      {% endif %}
+    </section>
+
+    {# 2 — Inherited from role #}
+    <section class="card" aria-labelledby="ug-inherited">
+      <div class="gp-card-title-row"><h2 id="ug-inherited">Inherited from role</h2><span class="badge">{{ inherited_total }}</span></div>
+      <p class="gp-note">Read-only — edit the role to change these.</p>
+      {% if role_groups or role_baseline_apps %}
+        <div class="gp-stack">
+          {% for rg in role_groups %}
+            <div>
+              <h3 class="gp-group-name">Group: {{ rg.group.name }}</h3>
+              <ul class="gp-perm-apps mt-2">
+                {% for a in rg.apps %}<li><ul class="gp-code-list">{% for c in a.codes %}<li><code>{{ a.app_label }}.{{ c }}</code></li>{% endfor %}</ul></li>{% endfor %}
+              </ul>
+            </div>
+          {% endfor %}
+          {% if role_baseline_apps %}
+            <div>
+              <h3 class="gp-group-name">Role baseline</h3>
+              <ul class="gp-perm-apps mt-2">
+                {% for a in role_baseline_apps %}<li><ul class="gp-code-list">{% for c in a.codes %}<li><code>{{ a.app_label }}.{{ c }}</code></li>{% endfor %}</ul></li>{% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+        </div>
+      {% else %}
+        <p class="gp-note">Nothing comes from the role.</p>
+      {% endif %}
+    </section>
+
+    {# 3 — Direct assignments (editable) #}
+    <form method="post" data-dirty-guard aria-labelledby="ug-direct">
+      {% csrf_token %}
+      <section class="card" aria-labelledby="ug-direct">
+        <div class="gp-card-title-row"><h2 id="ug-direct">Direct assignments</h2></div>
+        {% if gform.groups.errors or pform.permissions.errors %}
+          <div class="alert alert-danger" role="alert"><div class="alert-body">{{ gform.groups.errors|join:" " }} {{ pform.permissions.errors|join:" " }}</div></div>
+        {% endif %}
+
+        <h3 class="gp-group-name mt-3" id="ug-direct-groups">Direct groups</h3>
+        <ul class="gp-group-list mt-2" aria-labelledby="ug-direct-groups">
+          {% for row in group_rows %}
+            <li class="gp-group-row{% if row.checked %} is-checked{% endif %}{% if row.locked %} is-locked{% endif %}" data-group-row>
+              <input type="checkbox" name="groups" value="{{ row.group.pk }}" id="ug-g{{ row.group.pk }}"
+                     {% if row.checked %}checked{% endif %} {% if row.locked %}disabled aria-describedby="ug-locked-note"{% endif %}>
+              <label for="ug-g{{ row.group.pk }}">
+                <span class="gp-group-name">{{ row.group.name }}</span>
+                <span class="gp-group-meta">{{ row.perm_count }} permission{{ row.perm_count|pluralize }}</span>
+              </label>
+              {% if row.inherited %}<span class="badge badge-info" title="The role already gives this group, so removing it here won't take it away.">also inherited</span>{% endif %}
+              {% if row.locked %}<span class="badge">locked</span>{% endif %}
+            </li>
+          {% empty %}
+            <li class="gp-note">No groups exist yet.</li>
+          {% endfor %}
+        </ul>
+        <p class="sr-only" id="ug-locked-note">Locked: you can only assign groups and permissions you hold yourself, to people not ranked above you.</p>
+
+        <h3 class="gp-group-name mt-5" id="ug-direct-perms">Direct permissions</h3>
+        <p class="gp-note">“also inherited” means the role already gives it — removing it here won't take the access away.</p>
+        {% include "accounts/groups/_picker.html" with picker=picker field="permissions" idp="ug" show_inherited=True %}
+      </section>
+
+      {% if can_act %}
+        <div class="gp-sticky-actions">
+          <a href="{% url 'accounts:groups:user_groups' u.pk %}" class="btn btn-ghost" data-cancel-guard>Cancel</a>
+          <button type="submit" class="btn btn-primary">Save access</button>
+        </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% include "accounts/groups/_discard_modal.html" %}
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+{% endblock %}

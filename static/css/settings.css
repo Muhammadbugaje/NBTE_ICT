@@ -12,7 +12,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(circle at 95% 5%, rgba(31, 107, 62, 0.14), transparent 32%),
+    radial-gradient(circle at 95% 5%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 32%),
     linear-gradient(135deg, var(--bg-elevated), var(--primary-soft));
   box-shadow: var(--shadow-sm);
 }
@@ -21,7 +21,7 @@
 .settings-kicker {
   display: block;
   margin-bottom: 7px;
-  color: var(--primary);
+  color:var(--link);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -69,7 +69,7 @@
   font-size: var(--text-xs) !important;
 }
 .settings-email-route strong {
-  color: var(--primary);
+  color:var(--link);
   text-transform: capitalize;
 }
 
@@ -148,6 +148,10 @@
 .settings-test-history .settings-table td {
   padding-inline: 12px;
 }
+/* Phones: the history table scrolls sideways; give the Details column room so
+   provider error text does not stretch each row to several screens tall. */
+.settings-test-history .settings-table td:last-child { min-width: 18rem; }
+.settings-test-history .settings-table td small { display: block; color: var(--text-subtle); }
 .settings-groups { display: grid; gap: 4px; }
 .settings-group { margin-bottom: 0; }
 
@@ -232,11 +236,15 @@
   white-space: nowrap;
 }
 
-.settings-table-wrap { overflow-x: auto; }
+.settings-table-wrap {
+  position: relative;   /* contains the visually-hidden labels so they scroll with the table */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
 .settings-table {
   width: 100%;
   border-collapse: collapse;
-  text-align: left;
+  text-align: start;
 }
 
 .settings-table th {
@@ -258,7 +266,7 @@
 .settings-description { min-width: 240px; }
 .settings-description code {
   display: inline-block;
-  color: var(--primary);
+  color:var(--link);
   font-size: 12px;
   font-weight: 700;
 }
@@ -293,7 +301,7 @@
 
 .settings-edit-form input:focus {
   border-color: var(--primary);
-  outline: 3px solid rgba(31, 107, 62, 0.12);
+  outline: 3px solid color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 .settings-value-type {
@@ -333,7 +341,7 @@
   }
 
   .settings-role-policy-form { padding: 0 19px 19px; }
-  .settings-role-policy-grid { grid-template-columns: 1fr; }
+  .settings-role-policy-grid { grid-template-columns: minmax(0, 1fr); }
   .settings-role-policy-footer { align-items: stretch; flex-direction: column; }
   .settings-role-policy-footer .btn { justify-content: center; }
   .settings-policy-error { margin-inline: 19px; }
@@ -354,8 +362,8 @@
 
 [data-theme="dark"] .settings-hero {
   background:
-    radial-gradient(circle at 95% 5%, rgba(31, 107, 62, 0.2), transparent 32%),
-    linear-gradient(135deg, var(--bg-elevated), rgba(31, 107, 62, 0.09));
+    radial-gradient(circle at 95% 5%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 32%),
+    linear-gradient(135deg, var(--bg-elevated), color-mix(in srgb, var(--primary) 9%, transparent));
 }
 
 [data-theme="dark"] .settings-quota-track span {

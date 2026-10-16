@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if group %}Edit {{ group.name }}{% else %}New group{% endif %} · Groups · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{% if group %}Edit group{% else %}New group{% endif %}{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="gp-page">
+  <a class="gp-back" href="{% if group %}{% url 'accounts:groups:detail' group.pk %}{% else %}{% url 'accounts:groups:list' %}{% endif %}">← {% if group %}{{ group.name }}{% else %}All groups{% endif %}</a>
+  <header class="page-header">
+    <div>
+      <p class="gp-eyebrow">Groups</p>
+      <h1>{% if group %}Edit “{{ group.name }}”{% else %}New group{% endif %}</h1>
+      <p class="muted">Tick the permissions this group carries. You can only add or remove permissions you hold yourself.</p>
+    </div>
+  </header>
+
+  <form method="post" data-dirty-guard id="group-form">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">{{ form.non_field_errors|join:" " }}</div>
+    {% endif %}
+
+    <div class="gp-editor">
+      <div class="gp-editor-side">
+        <section class="card" aria-labelledby="gp-details-title">
+          <h2 class="gp-card-title" id="gp-details-title">Details</h2>
+          <div class="field mt-4">
+            <label for="{{ form.name.id_for_label }}">Name <span aria-hidden="true">*</span></label>
+            <input type="text" name="name" id="{{ form.name.id_for_label }}" class="input{% if form.name.errors %} is-shaking{% endif %}"
+                   value="{{ form.name.value|default:'' }}" required maxlength="150" autocomplete="off"
+                   {% if form.name.errors %}aria-invalid="true" aria-describedby="gp-name-error"{% endif %}>
+            {% if form.name.errors %}<span class="field-error" id="gp-name-error">{{ form.name.errors|join:" " }}</span>{% endif %}
+            <span class="hint">{{ form.name.help_text }}</span>
+          </div>
+          <div class="field">
+            <label for="{{ form.description.id_for_label }}">Description</label>
+            <textarea name="description" id="{{ form.description.id_for_label }}" class="input" rows="3">{{ form.description.value|default:'' }}</textarea>
+            <span class="hint">{{ form.description.help_text }}</span>
+          </div>
+
+          <div class="gp-summary" data-perm-summary aria-live="polite">
+            <p class="gp-summary-total"><strong data-summary-total>{{ selected_total }}</strong> permission{{ selected_total|pluralize }} selected across <strong data-summary-apps>{{ selected_apps }}</strong> app{{ selected_apps|pluralize }}</p>
+            <ul class="gp-summary-list" data-summary-list>
+              {% for app in picker %}{% if app.selected %}<li><span>{{ app.app_name }}</span><span>{{ app.selected }}</span></li>{% endif %}{% endfor %}
+            </ul>
+            <p class="gp-summary-empty" data-summary-empty{% if selected_total %} hidden{% endif %}>Nothing selected yet.</p>
+          </div>
+        </section>
+      </div>
+
+      <section aria-labelledby="gp-perms-title">
+        <div class="gp-card-title-row">
+          <h2 id="gp-perms-title">Permissions</h2>
+          {% if form.permissions.errors %}<span class="field-error" role="alert">{{ form.permissions.errors|join:" " }}</span>{% endif %}
+        </div>
+        {% include "accounts/groups/_picker.html" with picker=picker field="permissions" idp="gp" show_inherited=False %}
+      </section>
+    </div>
+
+    <div class="gp-sticky-actions">
+      <a href="{% if group %}{% url 'accounts:groups:detail' group.pk %}{% else %}{% url 'accounts:groups:list' %}{% endif %}" class="btn btn-ghost" data-cancel-guard>Cancel</a>
+      <button type="submit" name="save_add" value="1" class="btn btn-ghost">Save &amp; add another</button>
+      <button type="submit" class="btn btn-primary">Save group</button>
+    </div>
+  </form>
+</div>
+
+{% include "accounts/groups/_discard_modal.html" %}
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+{% endblock %}

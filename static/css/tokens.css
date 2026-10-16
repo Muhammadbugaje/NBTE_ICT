@@ -1,229 +1,473 @@
 /* ==========================================================================
-   NBTE ICT — Design Tokens (v4)
-   Light theme uses a light-gray page background with white surfaces on top,
-   so cards and sections visibly pop. Dark theme keeps its near-black canvas.
+   NBTE ICT — Design tokens (v5, UI overhaul)
+
+   The ONE place colours, type, spacing, radii, shadows, motion and z-index
+   are defined. Every other stylesheet uses var(--token) only.
+
+   Layers
+     1. Raw palette   --brand-*, --ink-*, --slate-* … (never use in components;
+                      they exist so legacy stylesheets have no literal hex)
+     2. Semantic      --bg, --surface, --text, --primary, --success …
+                      (what components should use)
+     3. Scales        type, spacing, radii, shadows, motion, z-index
+     4. Legacy names  aliases for the v4 token names and the variables app.css
+                      used to redefine, so every existing stylesheet keeps
+                      working. New code should use the semantic names.
+
+   Themes: light is the default. Dark applies when the OS prefers dark and the
+   user has not chosen light (html[data-theme="light"]), or when the user picks
+   it (html[data-theme="dark"]). static/js/theme-init.js sets data-theme
+   before first paint, so there is no white flash.
+   See DESIGN_TOKENS.md for the naming convention.
    ========================================================================== */
 
+/* --------------------------------------------------------------------------
+   1. RAW PALETTE
+   -------------------------------------------------------------------------- */
 :root {
-  /* Palette (raw) */
-  --green-50:  #f0f7f2;
-  --green-100: #d9ebde;
-  --green-200: #b3d7bd;
-  --green-300: #86bd95;
-  --green-400: #5aa072;
-  --green-500: #1F6B3E;
-  --green-600: #195730;
-  --green-700: #134326;
-  --green-800: #0d301a;
-  --green-900: #061c0e;
+  /* NBTE brand green — 500 is the official brand colour */
+  --brand-50:  #f0f7f2;
+  --brand-100: #d9ebde;
+  --brand-200: #b3d7bd;
+  --brand-300: #86bd95;
+  --brand-400: #5aa072;
+  --brand-500: #1f6b3e;
+  --brand-600: #195730;
+  --brand-700: #134326;
+  --brand-800: #0d301a;
+  --brand-900: #061c0e;
+  /* Brand greens lifted for dark backgrounds */
+  --brand-glow-200: #a3d4b5;
+  --brand-glow-300: #6fb586;
+  --brand-glow-400: #4fbf80;
+  --brand-glow-500: #2d8a56;
+  --brand-glow-600: #2a8452;
 
+  /* Warm neutral (original NBTE ink scale) */
+  --ink-0:   #ffffff;
   --ink-50:  #f8f9fa;
+  --ink-75:  #f4f6f7;
   --ink-100: #eef0f2;
+  --ink-150: #e6e9ec;
   --ink-200: #d9dce0;
   --ink-300: #b5bac1;
   --ink-400: #848b95;
+  --ink-450: #626973;
   --ink-500: #5a616b;
   --ink-600: #3d434b;
   --ink-700: #282d33;
   --ink-800: #181c20;
+  --ink-850: #161b20;
   --ink-900: #0a0d10;
+  --ink-950: #0f1316;
+  --white: #ffffff;
+  --black: #000000;
 
-  --amber-500: #b7791f;
-  --red-500:   #c53030;
-  --blue-500:  #2b6cb0;
+  /* Night surfaces used by legacy dark-mode rules */
+  --night-600: #2a3346;
+  --night-700: #243044;
+  --night-800: #1a2434;
+  --night-850: #131a26;
+  --night-900: #0e141e;
 
-  --font-serif: ui-serif, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua',
-                Georgia, 'Times New Roman', serif;
-  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter',
-               'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  /* Legacy single accents from tokens v4 */
+  --gold-400: #d69e2e;
+  --gold-500: #b7791f;
+  --crimson-500: #c53030;
+  --cobalt-500: #2b6cb0;
 
-  --text-xs:   0.75rem;
-  --text-micro: 0.75rem;
-  --text-sm:   0.875rem;
-  --text-base: 1rem;
-  --text-lg:   1.125rem;
-  --text-xl:   1.375rem;
-  --text-2xl:  1.75rem;
-  --text-3xl:  2.25rem;
-  --text-4xl:  3rem;
-  --text-5xl:  4rem;
-  --text-6xl:  5rem;
-  --text-display: clamp(2.25rem, 1.4rem + 3vw, 3.5rem);
+  /* One-off colours that carry meaning in their own component */
+  --amber-ink: #1a1200;        /* text on the impersonation banner */
+  --amber-night: #2a1f08;      /* warning wells in dark mode */
+  --orange-night: #292018;
+  --red-night: #2a0f0f;
+  --mac-red: #ff5f57;          /* landing page browser-window mock */
+  --mac-yellow: #febc2e;
+  --mac-green: #28c840;
+  --sky-ink: #2563a8;
+  --honey-600: #9a6700;
+  --honey-300: #e2b85e;
+  --brick-500: #a64040;
+  --coral-300: #f28b82;
+  --cream-50: #fffdf5;
 
-  --leading-tight:  1.1;
-  --leading-snug:   1.25;
-  --leading-normal: 1.5;
-  --leading-relaxed: 1.65;
-
-  --tracking-tight:  -0.02em;
-  --tracking-normal: 0;
-  --tracking-wide:   0.04em;
-  --tracking-widest: 0.12em;
-
-  --space-1:  0.25rem;
-  --space-2:  0.5rem;
-  --space-3:  0.75rem;
-  --space-4:  1rem;
-  --space-5:  1.5rem;
-  --space-6:  2rem;
-  --space-7:  3rem;
-  --space-8:  4rem;
-  --space-9:  6rem;
-  --space-10: 8rem;
-  --space-0: 0;
-
-  --radius-xs:  6px;
-  --radius-sm:  10px;
-  --radius-md:  14px;
-  --radius-lg:  20px;
-  --radius-xl:  28px;
-  --radius-2xl: 40px;
-  --radius-pill: 999px;
-
-  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --duration-instant: 100ms;
-  --duration-fast:    180ms;
-  --duration-base:    260ms;
-  --duration-slow:    420ms;
-  --duration-slower:  700ms;
-
-  --content-narrow:  640px;
-  --content-default: 900px;
-  --content-wide:    1200px;
-  --content-full:    1440px;
-
-  --nav-height: 68px;
-
-  --gutter-mobile: var(--space-4);
-  --gutter-tablet: var(--space-5);
-  --gutter-desktop: var(--space-6);
+  /* Tailwind v3 scales (the legacy page stylesheets were written in these) */
+  --slate-50:#f8fafc;--slate-100:#f1f5f9;--slate-200:#e2e8f0;--slate-300:#cbd5e1;--slate-400:#94a3b8;--slate-500:#64748b;--slate-600:#475569;--slate-700:#334155;--slate-800:#1e293b;--slate-900:#0f172a;--slate-950:#020617;
+  --gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-300:#d1d5db;--gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;--gray-700:#374151;--gray-800:#1f2937;--gray-900:#111827;--gray-950:#030712;
+  --red-50:#fef2f2;--red-100:#fee2e2;--red-200:#fecaca;--red-300:#fca5a5;--red-400:#f87171;--red-500:#ef4444;--red-600:#dc2626;--red-700:#b91c1c;--red-800:#991b1b;--red-900:#7f1d1d;--red-950:#450a0a;
+  --orange-50:#fff7ed;--orange-100:#ffedd5;--orange-200:#fed7aa;--orange-300:#fdba74;--orange-400:#fb923c;--orange-500:#f97316;--orange-600:#ea580c;--orange-700:#c2410c;--orange-800:#9a3412;--orange-900:#7c2d12;--orange-950:#431407;
+  --amber-50:#fffbeb;--amber-100:#fef3c7;--amber-200:#fde68a;--amber-300:#fcd34d;--amber-400:#fbbf24;--amber-500:#f59e0b;--amber-600:#d97706;--amber-700:#b45309;--amber-800:#92400e;--amber-900:#78350f;--amber-950:#451a03;
+  --yellow-50:#fefce8;--yellow-100:#fef9c3;--yellow-200:#fef08a;--yellow-300:#fde047;--yellow-400:#facc15;--yellow-500:#eab308;--yellow-600:#ca8a04;--yellow-700:#a16207;--yellow-800:#854d0e;--yellow-900:#713f12;--yellow-950:#422006;
+  --lime-50:#f7fee7;--lime-100:#ecfccb;--lime-200:#d9f99d;--lime-300:#bef264;--lime-400:#a3e635;--lime-500:#84cc16;--lime-600:#65a30d;--lime-700:#4d7c0f;--lime-800:#3f6212;--lime-900:#365314;--lime-950:#1a2e05;
+  --grass-50:#f0fdf4;--grass-100:#dcfce7;--grass-200:#bbf7d0;--grass-300:#86efac;--grass-400:#4ade80;--grass-500:#22c55e;--grass-600:#16a34a;--grass-700:#15803d;--grass-800:#166534;--grass-900:#14532d;--grass-950:#052e16;
+  --emerald-50:#ecfdf5;--emerald-100:#d1fae5;--emerald-200:#a7f3d0;--emerald-300:#6ee7b7;--emerald-400:#34d399;--emerald-500:#10b981;--emerald-600:#059669;--emerald-700:#047857;--emerald-800:#065f46;--emerald-900:#064e3b;--emerald-950:#022c22;
+  --teal-50:#f0fdfa;--teal-100:#ccfbf1;--teal-200:#99f6e4;--teal-300:#5eead4;--teal-400:#2dd4bf;--teal-500:#14b8a6;--teal-600:#0d9488;--teal-700:#0f766e;--teal-800:#115e59;--teal-900:#134e4a;--teal-950:#042f2e;
+  --cyan-50:#ecfeff;--cyan-100:#cffafe;--cyan-200:#a5f3fc;--cyan-300:#67e8f9;--cyan-400:#22d3ee;--cyan-500:#06b6d4;--cyan-600:#0891b2;--cyan-700:#0e7490;--cyan-800:#155e75;--cyan-900:#164e63;--cyan-950:#083344;
+  --sky-50:#f0f9ff;--sky-100:#e0f2fe;--sky-200:#bae6fd;--sky-300:#7dd3fc;--sky-400:#38bdf8;--sky-500:#0ea5e9;--sky-600:#0284c7;--sky-700:#0369a1;--sky-800:#075985;--sky-900:#0c4a6e;--sky-950:#082f49;
+  --blue-50:#eff6ff;--blue-100:#dbeafe;--blue-200:#bfdbfe;--blue-300:#93c5fd;--blue-400:#60a5fa;--blue-500:#3b82f6;--blue-600:#2563eb;--blue-700:#1d4ed8;--blue-800:#1e40af;--blue-900:#1e3a8a;--blue-950:#172554;
+  --indigo-50:#eef2ff;--indigo-100:#e0e7ff;--indigo-200:#c7d2fe;--indigo-300:#a5b4fc;--indigo-400:#818cf8;--indigo-500:#6366f1;--indigo-600:#4f46e5;--indigo-700:#4338ca;--indigo-800:#3730a3;--indigo-900:#312e81;--indigo-950:#1e1b4b;
+  --violet-50:#f5f3ff;--violet-100:#ede9fe;--violet-200:#ddd6fe;--violet-300:#c4b5fd;--violet-400:#a78bfa;--violet-500:#8b5cf6;--violet-600:#7c3aed;--violet-700:#6d28d9;--violet-800:#5b21b6;--violet-900:#4c1d95;--violet-950:#2e1065;
+  --purple-50:#faf5ff;--purple-100:#f3e8ff;--purple-200:#e9d5ff;--purple-300:#d8b4fe;--purple-400:#c084fc;--purple-500:#a855f7;--purple-600:#9333ea;--purple-700:#7e22ce;--purple-800:#6b21a8;--purple-900:#581c87;--purple-950:#3b0764;
+  --pink-50:#fdf2f8;--pink-100:#fce7f3;--pink-200:#fbcfe8;--pink-300:#f9a8d4;--pink-400:#f472b6;--pink-500:#ec4899;--pink-600:#db2777;--pink-700:#be185d;--pink-800:#9d174d;--pink-900:#831843;--pink-950:#500724;
+  --rose-50:#fff1f2;--rose-100:#ffe4e6;--rose-200:#fecdd3;--rose-300:#fda4af;--rose-400:#fb7185;--rose-500:#f43f5e;--rose-600:#e11d48;--rose-700:#be123c;--rose-800:#9f1239;--rose-900:#881337;--rose-950:#4c0519;
 }
 
-/* ==========================================================================
-   LIGHT THEME
-   Page = light gray; surfaces = pure white. This is what makes cards, hero,
-   and sections visibly distinct on white.
-   ========================================================================== */
+/* --------------------------------------------------------------------------
+   3. SCALES (theme independent)
+   -------------------------------------------------------------------------- */
+:root {
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", Inter,
+               Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: ui-serif, "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
+                  Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --fs-2xs: 0.6875rem;  /* 11px — badges, eyebrow labels */
+  --fs-xs:  0.75rem;    /* 12px */
+  --fs-sm:  0.875rem;   /* 14px — default UI text */
+  --fs-md:  1rem;       /* 16px — body, inputs */
+  --fs-lg:  1.125rem;   /* 18px */
+  --fs-xl:  1.375rem;   /* 22px */
+  --fs-2xl: 1.75rem;    /* 28px */
+  --fs-3xl: clamp(1.875rem, 1.4rem + 1.6vw, 2.5rem);
+  --fs-display: clamp(2.25rem, 1.4rem + 3vw, 3.5rem);
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-normal: 1.5;
+  --lh-loose: 1.7;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-widest: 0.12em;
+
+  /* Spacing — 4px base. Steps 1-4 are linear (4/8/12/16px); later steps
+     widen (24/32/48/64/96/128/160/192px) because page layouts need bigger
+     jumps. Values match tokens v4 so existing layouts do not shift. */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --space-9: 6rem;
+  --space-10: 8rem;
+  --space-11: 10rem;
+  --space-12: 12rem;
+
+  /* Radii */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 40px;
+  --radius-pill: 999px;
+  --radius-round: 50%;
+
+  /* Motion */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --dur-hero: 900ms;           /* deliberate hero / carousel cross-fade only */
+  --ease-standard: cubic-bezier(.2, .7, .2, 1);
+  --ease-emphasized: cubic-bezier(.2, .8, .2, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-linear: linear;
+
+  /* Z-index */
+  --z-base: 1;
+  --z-raised: 10;
+  --z-sticky: 20;
+  --z-drawer: 40;
+  --z-dropdown: 60;
+  --z-modal: 100;
+  --z-toast: 200;
+  --z-tooltip: 300;
+  --z-loader: 1000;
+
+  /* Layout */
+  --sidebar-w: 260px;
+  --topbar-h: 64px;
+  --content-narrow: 640px;
+  --content-default: 900px;
+  --content-wide: 1200px;
+  --content-full: 1440px;
+  --tap-min: 44px;
+
+  /* Breakpoints (documentation only — CSS cannot use variables in
+     @media): sm 480px · md 768px · lg 1024px · xl 1280px · 2xl 1536px */
+}
+
+/* --------------------------------------------------------------------------
+   2. SEMANTIC — LIGHT (default)
+   -------------------------------------------------------------------------- */
 :root,
-[data-theme="light"] {
+:root[data-theme="light"] {
   color-scheme: light;
 
-  --bg:            #f4f6f7;   /* page background — soft gray, not white */
-  --bg-subtle:     #f8fafc;
-  --bg-elevated:   #ffffff;   /* cards, hero, elevated surfaces */
-  --bg-sunken:     #e9edef;   /* deeper wells, alternate sections */
-  --bg-glass:      rgba(255, 255, 255, 0.72);
-  --bg-glass-strong: rgba(255, 255, 255, 0.92);
+  --bg: var(--ink-75);
+  --surface: var(--ink-0);
+  --surface-2: var(--ink-50);
+  --surface-sunken: var(--ink-100);
+  --surface-glass: rgba(255, 255, 255, 0.78);
+  --surface-glass-strong: rgba(255, 255, 255, 0.94);
 
-  --fg:            var(--ink-800);
-  --fg-muted:      var(--ink-500);
-  --fg-subtle:     var(--ink-400);
-  --fg-inverted:   #ffffff;
-  --fg-on-accent:  #ffffff;
-  --fg-on-danger:  #ffffff;
+  --text: var(--ink-800);
+  --text-muted: var(--ink-500);
+  --text-subtle: var(--ink-450);
+  --text-inverse: var(--ink-0);
+  --link: var(--brand-500);
+  --link-hover: var(--brand-600);
 
-  --border:        rgba(15, 23, 42, 0.10);
-  --border-strong: rgba(15, 23, 42, 0.18);
-  --divider:       rgba(15, 23, 42, 0.08);
+  --border: rgba(15, 23, 42, 0.11);
+  --border-strong: rgba(15, 23, 42, 0.2);
+  --divider: rgba(15, 23, 42, 0.08);
 
-  --primary:        var(--green-500);
-  --primary-hover:  var(--green-600);
-  --primary-active: var(--green-700);
-  --primary-fg:     #ffffff;
-  --primary-soft:   var(--green-50);
-  --primary-soft-fg: var(--green-700);
-  --border-focus:   var(--green-500);
+  --primary: var(--brand-500);
+  --primary-hover: var(--brand-600);
+  --primary-active: var(--brand-700);
+  --primary-fg: var(--ink-0);
+  --primary-subtle: var(--brand-50);
+  --primary-subtle-fg: var(--brand-700);
 
-  --accent-warn:    var(--amber-500);
-  --accent-warn-soft: #fef5e3;
-  --accent-danger:  var(--red-500);
-  --accent-danger-soft: #fdeaea;
-  --accent-info:    var(--blue-500);
-  --accent-info-soft: #e8f0fa;
+  --success: var(--grass-700);
+  --success-subtle: var(--grass-100);
+  --success-fg: var(--grass-800);
+  --warning: var(--amber-700);
+  --warning-subtle: var(--amber-100);
+  --warning-fg: var(--amber-800);
+  --danger: var(--red-700);
+  --danger-hover: var(--red-800);
+  --danger-subtle: var(--red-100);
+  --danger-fg: var(--red-800);
+  --info: var(--blue-700);
+  --info-subtle: var(--blue-100);
+  --info-fg: var(--blue-800);
+  --neutral-subtle: var(--ink-100);
+  --neutral-fg: var(--ink-600);
 
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 2px 6px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.07), 0 2px 4px rgba(15, 23, 42, 0.05);
-  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.10), 0 4px 12px rgba(15, 23, 42, 0.06);
-  --shadow-xl: 0 32px 80px rgba(15, 23, 42, 0.14);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-xl: 0 32px 80px rgba(15, 23, 42, 0.16);
+  --shadow-focus: 0 0 0 3px var(--surface), 0 0 0 5px var(--brand-500);
+  --shadow-focus-danger: 0 0 0 3px var(--surface), 0 0 0 5px var(--red-700);
 
-  --overlay: rgba(15, 23, 42, 0.32);
-  --overlay-blur: blur(8px);
+  --overlay: rgba(15, 23, 42, 0.42);
+  --overlay-blur: blur(6px);
+  --skeleton-base: var(--ink-100);
+  --skeleton-shine: var(--ink-50);
+  --hero-gradient: linear-gradient(135deg, var(--brand-700) 0%, var(--brand-500) 55%, var(--brand-glow-500) 100%);
+  --hero-scrim: linear-gradient(180deg, rgba(6, 28, 14, 0.25) 0%, rgba(6, 28, 14, 0.72) 100%);
 }
 
-/* ==========================================================================
-   DARK THEME
-   ========================================================================== */
-[data-theme="dark"] {
+/* --------------------------------------------------------------------------
+   2b. SEMANTIC — DARK
+   Same tokens, re-pointed. Applied by OS preference unless the user chose
+   light, or when the user chose dark.
+   -------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: var(--ink-950);
+    --surface: var(--ink-850);
+    --surface-2: #1c2228;
+    --surface-sunken: #0b0e10;
+    --surface-glass: rgba(20, 24, 28, 0.78);
+    --surface-glass-strong: rgba(20, 24, 28, 0.94);
+    --text: #edf0f2;
+    --text-muted: #a3abb5;
+    --text-subtle: #969ea8;
+    --text-inverse: var(--ink-950);
+    --link: var(--brand-glow-400);
+    --link-hover: var(--brand-glow-200);
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.17);
+    --divider: rgba(255, 255, 255, 0.06);
+    --primary: var(--brand-glow-600);
+    --primary-hover: var(--brand-glow-500);
+    --primary-active: var(--brand-500);
+    --primary-fg: var(--ink-0);
+    --primary-subtle: rgba(79, 191, 128, 0.14);
+    --primary-subtle-fg: #7ac896;
+    --success: var(--grass-400);
+    --success-subtle: rgba(74, 222, 128, 0.14);
+    --success-fg: var(--grass-300);
+    --warning: var(--amber-400);
+    --warning-subtle: rgba(251, 191, 36, 0.14);
+    --warning-fg: var(--amber-300);
+    --danger: var(--red-400);
+    --danger-hover: var(--red-300);
+    --danger-subtle: rgba(248, 113, 113, 0.15);
+    --danger-fg: var(--red-300);
+    --info: var(--blue-400);
+    --info-subtle: rgba(96, 165, 250, 0.15);
+    --info-fg: var(--blue-300);
+    --neutral-subtle: rgba(255, 255, 255, 0.07);
+    --neutral-fg: #c4cad1;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-xl: 0 32px 80px rgba(0, 0, 0, 0.65);
+    --shadow-focus: 0 0 0 3px var(--surface), 0 0 0 5px var(--brand-glow-400);
+    --shadow-focus-danger: 0 0 0 3px var(--surface), 0 0 0 5px var(--red-400);
+    --overlay: rgba(0, 0, 0, 0.62);
+    --skeleton-base: #1f262d;
+    --skeleton-shine: #2a323a;
+    --hero-gradient: linear-gradient(135deg, var(--brand-900) 0%, var(--brand-700) 55%, var(--brand-500) 100%);
+  }
+}
+:root[data-theme="dark"] {
   color-scheme: dark;
-
-  --bg:            #0c0f11;
-  --bg-subtle:     #0f172a;
-  --bg-elevated:   #161a1e;
-  --bg-sunken:     #090b0d;
-  --bg-glass:      rgba(18, 22, 26, 0.72);
-  --bg-glass-strong: rgba(18, 22, 26, 0.92);
-
-  --fg:            #edf0f2;
-  --fg-muted:      #9aa1ab;
-  --fg-subtle:     #6b737d;
-  --fg-inverted:   #0c0f11;
-  --fg-on-accent:  #ffffff;
-  --fg-on-danger:  #ffffff;
-
-  --border:        rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --divider:       rgba(255, 255, 255, 0.06);
-
-  --primary:        #2e8a55;
-  --primary-hover:  #3a9e65;
-  --primary-active: #4ab376;
-  --primary-fg:     #ffffff;
-  --primary-soft:   rgba(46, 138, 85, 0.14);
-  --primary-soft-fg: #7ac896;
-  --border-focus:   #6ee7b7;
-
-  --accent-warn:    #d69e2e;
-  --accent-warn-soft: rgba(214, 158, 46, 0.14);
-  --accent-danger:  #f56565;
-  --accent-danger-soft: rgba(245, 101, 101, 0.14);
-  --accent-info:    #63b3ed;
-  --accent-info-soft: rgba(99, 179, 237, 0.14);
-
+  --bg: var(--ink-950);
+  --surface: var(--ink-850);
+  --surface-2: #1c2228;
+  --surface-sunken: #0b0e10;
+  --surface-glass: rgba(20, 24, 28, 0.78);
+  --surface-glass-strong: rgba(20, 24, 28, 0.94);
+  --text: #edf0f2;
+  --text-muted: #a3abb5;
+  --text-subtle: #969ea8;
+  --text-inverse: var(--ink-950);
+  --link: var(--brand-glow-400);
+  --link-hover: var(--brand-glow-200);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.17);
+  --divider: rgba(255, 255, 255, 0.06);
+  --primary: var(--brand-glow-600);
+  --primary-hover: var(--brand-glow-500);
+  --primary-active: var(--brand-500);
+  --primary-fg: var(--ink-0);
+  --primary-subtle: rgba(79, 191, 128, 0.14);
+  --primary-subtle-fg: #7ac896;
+  --success: var(--grass-400);
+  --success-subtle: rgba(74, 222, 128, 0.14);
+  --success-fg: var(--grass-300);
+  --warning: var(--amber-400);
+  --warning-subtle: rgba(251, 191, 36, 0.14);
+  --warning-fg: var(--amber-300);
+  --danger: var(--red-400);
+  --danger-hover: var(--red-300);
+  --danger-subtle: rgba(248, 113, 113, 0.15);
+  --danger-fg: var(--red-300);
+  --info: var(--blue-400);
+  --info-subtle: rgba(96, 165, 250, 0.15);
+  --info-fg: var(--blue-300);
+  --neutral-subtle: rgba(255, 255, 255, 0.07);
+  --neutral-fg: #c4cad1;
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-xl: 0 32px 80px rgba(0, 0, 0, 0.65);
-
-  --overlay: rgba(0, 0, 0, 0.6);
-  --overlay-blur: blur(8px);
+  --shadow-focus: 0 0 0 3px var(--surface), 0 0 0 5px var(--brand-glow-400);
+  --shadow-focus-danger: 0 0 0 3px var(--surface), 0 0 0 5px var(--red-400);
+  --overlay: rgba(0, 0, 0, 0.62);
+  --skeleton-base: #1f262d;
+  --skeleton-shine: #2a323a;
+  --hero-gradient: linear-gradient(135deg, var(--brand-900) 0%, var(--brand-700) 55%, var(--brand-500) 100%);
 }
 
-/* Semantic v2 aliases keep the existing stylesheet API intact while new
-   shared components use names that describe purpose rather than palette. */
+/* --------------------------------------------------------------------------
+   4. LEGACY NAMES — keep every pre-v5 stylesheet working.
+   Declared on :root so they resolve against the active theme above.
+   -------------------------------------------------------------------------- */
 :root {
+  /* v4 colour names */
+  --bg-subtle: var(--surface-2);
+  --bg-elevated: var(--surface);
+  --bg-card: var(--surface);
+  --bg-sunken: var(--surface-sunken);
+  --bg-glass: var(--surface-glass);
+  --bg-glass-strong: var(--surface-glass-strong);
+  --bg-overlay: var(--overlay);
+  --fg: var(--text);
+  --fg-muted: var(--text-muted);
+  --fg-subtle: var(--text-subtle);
+  --fg-inverted: var(--text-inverse);
+  --fg-on-accent: var(--primary-fg);
+  --fg-on-danger: var(--white);
+  --muted: var(--text-muted);
+  --brand: var(--brand-500);
+  --border-focus: var(--primary);
+  --primary-soft: var(--primary-subtle);
+  --primary-soft-fg: var(--primary-subtle-fg);
   --accent: var(--primary);
   --accent-hover: var(--primary-hover);
-  --accent-subtle: var(--primary-soft);
-  --bg-overlay: var(--overlay);
-  --info: var(--accent-info);
-  --info-subtle: var(--accent-info-soft);
-  --success: var(--primary);
-  --success-subtle: var(--primary-soft);
-  --warning: var(--accent-warn);
-  --warning-subtle: var(--accent-warn-soft);
-  --danger: var(--accent-danger);
-  --danger-hover: var(--accent-danger);
-  --danger-subtle: var(--accent-danger-soft);
-  --focus-ring: 0 0 0 3px var(--primary-soft);
-  --focus-ring-danger: 0 0 0 3px var(--accent-danger-soft);
+  --accent-subtle: var(--primary-subtle);
+  --accent-warn: var(--warning);
+  --accent-warn-soft: var(--warning-subtle);
+  --accent-danger: var(--danger);
+  --accent-danger-soft: var(--danger-subtle);
+  --accent-info: var(--info);
+  --accent-info-soft: var(--info-subtle);
+  --focus-ring: var(--shadow-focus);
+  --focus-ring-danger: var(--shadow-focus-danger);
+
+  /* v4 brand scale names */
+  --green-50: var(--brand-50);
+  --green-100: var(--brand-100);
+  --green-200: var(--brand-200);
+  --green-300: var(--brand-300);
+  --green-400: var(--brand-400);
+  --green-500: var(--brand-500);
+  --green-600: var(--brand-600);
+  --green-700: var(--brand-700);
+  --green-800: var(--brand-800);
+  --green-900: var(--brand-900);
+
+  /* v4 type names */
+  --font-serif: var(--font-display);
+  --text-micro: var(--fs-xs);
+  --text-xs: var(--fs-xs);
+  --text-sm: var(--fs-sm);
+  --text-base: var(--fs-md);
+  --text-lg: var(--fs-lg);
+  --text-xl: var(--fs-xl);
+  --text-2xl: var(--fs-2xl);
+  --text-3xl: 2.25rem;
+  --text-4xl: 3rem;
+  --text-5xl: 4rem;
+  --text-6xl: 5rem;
+  --text-display: var(--fs-display);
+  --leading-tight: 1.1;
+  --leading-snug: var(--lh-snug);
+  --leading-normal: var(--lh-normal);
+  --leading-relaxed: 1.65;
+
+  /* v4 motion names */
+  --ease-out: var(--ease-standard);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --duration-instant: 100ms;
+  --duration-fast: var(--dur);
+  --duration-base: 260ms;
+  --duration-slow: var(--dur-slow);
+  --duration-slower: 600ms;
+
+  /* v4 layout names */
+  --nav-height: 68px;
+  --gutter-mobile: var(--space-4);
+  --gutter-tablet: var(--space-5);
+  --gutter-desktop: var(--space-6);
+  --topbar-offset-bottom: var(--topbar-h);   /* updated at runtime by app.js */
 }
 
 .no-transition,
 .no-transition * {
+  /* Utility: used for one frame while switching theme so every element
+     changes colour at once instead of fading at different speeds. */
   transition: none !important;
 }

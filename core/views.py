@@ -391,7 +391,7 @@ def _dashboard_for(user):
         }.get(user.role.code)
 
     # Chairman — no dedicated role exists; gate by permission.
-    if key is None and user.has_perm("dashboards.view_chairman"):
+    if key is None and user.has_perm("accounts.view_chairman_dashboard"):  # review L1
         key = "chairman"
 
     if not key:
@@ -448,25 +448,6 @@ def _safe_count(app_label, model_name):
     except Exception:
         return None
 
-def _count_or_none(app_label, model_name, qs_factory):
-    """Safely count a model's queryset, returning None if the app isn't ready."""
-    try:
-        from django.apps import apps as _apps
-        model = _apps.get_model(app_label, model_name)
-        if qs_factory:
-            return qs_factory().count()
-        return model.objects.count()
-    except Exception:
-        return None
-
-
-def user_scope_tickets(user):
-    """Tickets scoped to the user — defensive since the app may not exist yet."""
-    from tickets.models import Ticket
-    from django.db.models import Q
-    if user.is_superuser or user.has_perm("tickets.view_all_tickets"):
-        return Ticket.objects.all()
-    return Ticket.objects.filter(Q(raised_by=user) | Q(assigned_to=user))
 
 # ---------------------------------------------------------------------------
 # Signed-in home (with real widgets)
@@ -613,7 +594,9 @@ def protected_download(request, label, pk):
         model = apps.get_model(label)
     except (LookupError, ValueError):
         raise Http404
-    if not issubclass(model, RestrictedFileModel):
+    # Restricted-storage models: RestrictedFileModel subclasses, plus the
+    # attachment models that opt in with PROTECTED_DOWNLOAD (review H1).
+    if not (issubclass(model, RestrictedFileModel) or getattr(model, "PROTECTED_DOWNLOAD", False)):
         raise Http404
     obj = model._default_manager.filter(pk=pk).first()
     if obj is None or not obj.file:
@@ -632,6 +615,7 @@ def protected_download(request, label, pk):
         response = FileResponse(obj.file.open("rb"), content_type=ctype)
     response["Content-Disposition"] = disposition
     response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
     return response
 
 
@@ -647,6 +631,18 @@ def _client_ip(request):
 
 @require_POST
 def contact_submit(request):
+    # Review M18: each message sends an email, so cap it per client address
+    # (5 per hour) to stop a script draining the daily email quota.
+    from core import ratelimit
+    limit, window = ratelimit.CONTACT_MESSAGES
+    ip = ratelimit.client_ip(request)
+    if ratelimit.is_limited("contact", ip, limit):
+        return JsonResponse(
+            {"ok": False,
+             "error": "You have sent several messages recently. Please try again in an hour."},
+            status=429,
+        )
+
     form = ContactForm(request.POST)
     if not form.is_valid():
         first_errors = []
@@ -660,6 +656,7 @@ def contact_submit(request):
             status=400,
         )
 
+    ratelimit.hit("contact", ip, window)
     msg = form.save(commit=False)
     msg.ip_address = _client_ip(request)
     msg.user_agent = (request.META.get("HTTP_USER_AGENT", "") or "")[:255]
