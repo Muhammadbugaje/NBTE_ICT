@@ -1,0 +1,13 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th>Line</th><th>Date</th><th>Narration</th><th>Amount</th><th>Reference</th><th>Match</th><th class="qa-col-actions"><span class="sr-only">Action</span></th></tr></thead>
+    <tbody>{% for l in page.rows %}<tr>
+      <td data-label="Line">{{ l.row_number }}{% if l.statement_id %}<span class="qa-desc">#{{ l.statement_id }}</span>{% endif %}</td><td data-label="Date">{{ l.value_date|date:"j M Y"|default:"—" }}</td>
+      <td data-label="Narration"><span class="qa-small">{{ l.narration|truncatechars:110 }}</span></td><td data-label="Amount" class="qa-nowrap"><strong>{{ l.amount|naira }}</strong></td>
+      <td data-label="Reference">{% if l.extracted_reference %}<span class="qa-mono qa-small">{{ l.extracted_reference }}</span>{% if l.reference_check_failed %}<span class="qa-chip qa-tone-warn">Likely typo</span>{% endif %}{% else %}—{% endif %}{% if l.matched_obligation %}<span class="qa-desc">→ {{ l.matched_obligation.reference }}</span>{% endif %}{% for f in l.flags %} <span class="qa-chip qa-tone-danger">{{ f|humanize_code }}</span>{% endfor %}</td>
+      <td data-label="Match"><span class="qa-chip {{ l.match_status|tone }}">{{ l.get_match_status_display }}</span></td>
+      <td class="qa-col-actions">{% if l.match_status == "unmatched" or l.match_status == "ambiguous" %}<a class="btn btn-sm btn-primary" href="{% url 'qa_fin:line_match' l.pk %}" hx-get="{% url 'qa_fin:line_match' l.pk %}" hx-target="#qa-panel" hx-push-url="true">Match…</a>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">Nothing to show</h3><p class="nbte-empty-state__body">No lines with this status.</p></div>{% endif %}

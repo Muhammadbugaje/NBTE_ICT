@@ -1,0 +1,27 @@
+/* Staff avatar fallback: faint gender silhouette behind the initials.
+   Used by every no-photo staff avatar (directory card, detail, leadership).
+   The silhouette is drawn in currentColor at low opacity, so it follows the
+   avatar's text colour and works in light and dark mode. */
+.sil-avatar {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.sil-shape {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  color: currentColor;
+  opacity: .16;            /* whole figure at once, so overlaps do not double up */
+  pointer-events: none;
+}
+.sil-initials {
+  position: relative; z-index: 1;   /* always above the figure and readable */
+  line-height: 1;
+}
+@media (prefers-color-scheme: dark) {
+  .sil-shape { opacity: .22; }
+}
+[data-theme="dark"] .sil-shape { opacity: .22; }
+[data-theme="light"] .sil-shape { opacity: .16; }

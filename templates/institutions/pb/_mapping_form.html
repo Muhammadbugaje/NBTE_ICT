@@ -1,0 +1,16 @@
+{% load qa_tags %}
+<form id="pb-map-form" method="post" action="{% url 'qa_pb:mapping_new' %}" hx-post="{% url 'qa_pb:mapping_new' %}" hx-target="#pb-map-form" hx-swap="outerHTML" hx-on::after-request="if (event.detail.xhr.status === 204) this.reset()">
+  {% csrf_token %}
+  {% if fixed_body %}<input type="hidden" name="fixed_body" value="{{ fixed_body.pk }}"><input type="hidden" name="body" value="{{ fixed_body.pk }}">{% endif %}
+  <h3 class="qa-form-title">Map a programme</h3>
+  {% include "qa_core/partials/_form_errors.html" with form=map_form %}
+  <div class="qa-fields qa-fields--3">
+    {% if not fixed_body %}{% include "qa_core/partials/_field.html" with field=map_form.body %}{% endif %}
+    {% include "qa_core/partials/_field.html" with field=map_form.programme_name %}
+    {% include "qa_core/partials/_field.html" with field=map_form.level %}
+    {% include "qa_core/partials/_field.html" with field=map_form.note %}
+    {% include "qa_core/partials/_field.html" with field=map_form.is_active %}
+  </div>
+  <datalist id="pb-programme-names">{% for n in programme_names %}<option value="{{ n }}">{% endfor %}</datalist>
+  <div class="qa-form-actions"><button type="submit" class="btn btn-primary">{% icon "link" 16 %} Save mapping</button></div>
+</form>

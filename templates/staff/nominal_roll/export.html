@@ -1,0 +1,47 @@
+{% comment %}Nominal roll — Export tab panel, included by staff/nominal_roll/index.html.{% endcomment %}
+  {% if can_export %}
+  <section class="nbr-panel" role="tabpanel" id="nbr-panel-export" aria-labelledby="nbr-tab-export"{% if tab != 'export' %} hidden{% endif %}>
+    <div class="nbr-export-grid">
+      <form method="get" action="{% url 'staff:nominal_roll_export' %}" class="card nbr-card nbr-export-card">
+        <span class="nbr-export-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        </span>
+        <h2 class="nbr-card-title">Full nominal roll</h2>
+        <p class="nbr-card-lead">Every active staff member on one sheet, in the official column order, sorted by department and seniority.</p>
+        <div class="field">
+          <label for="nbr-export-dept">Department</label>
+          <select id="nbr-export-dept" name="department" class="input">
+            <option value="">All departments ({{ staff_total }})</option>
+            {% for d in departments %}<option value="{{ d.pk }}">{{ d.name }} ({{ d.n }})</option>{% endfor %}
+          </select>
+        </div>
+        <div class="nbr-actions">
+          <button type="submit" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download .xlsx
+          </button>
+        </div>
+      </form>
+
+      <form method="get" action="{% url 'staff:nominal_roll_export' %}" class="card nbr-card nbr-export-card">
+        <input type="hidden" name="layout" value="departments">
+        <span class="nbr-export-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+        </span>
+        <h2 class="nbr-card-title">One sheet per department</h2>
+        <p class="nbr-card-lead">The same columns, with each department on its own sheet — handy for sending a department its own list.</p>
+        <ul class="nbr-dept-chips" aria-label="Departments included">
+          {% for d in departments|slice:":8" %}<li><span class="badge">{{ d.name }}</span></li>{% endfor %}
+          {% if departments|length > 8 %}<li><span class="badge badge--neutral">+{{ departments|length|add:"-8" }} more</span></li>{% endif %}
+        </ul>
+        <div class="nbr-actions">
+          <button type="submit" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download .xlsx
+          </button>
+        </div>
+      </form>
+    </div>
+    <p class="nbr-note nbr-note-center">Dates are written as real Excel dates shown like <code>7-Mar-58</code>. Exports are recorded in the audit log.</p>
+  </section>
+  {% endif %}

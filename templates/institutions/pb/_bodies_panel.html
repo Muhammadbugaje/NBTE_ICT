@@ -1,0 +1,19 @@
+{% load qa_tags %}
+{% include "institutions/pb/_subnav.html" %}
+<header class="qa-hero"><div>
+  <h1 data-qa-focus>Professional bodies</h1>
+  <p>Regulatory councils that assess some programmes with NBTE. A QA request for a mapped programme becomes a joint QA exercise, and the body is told when the case opens.</p>
+  <div class="qa-hero__actions">
+    {% if can_manage %}<a class="btn btn-primary" href="{% url 'qa_pb:body_new' %}" hx-get="{% url 'qa_pb:body_new' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "plus" 16 %} Add a body</a>{% endif %}
+    <a class="btn btn-ghost" href="{% url 'qa_pb:export' %}" download>{% icon "download" 16 %} Export to Excel</a>
+  </div>
+</div></header>
+<section class="qa-card" aria-label="Professional bodies">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_pb:list' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Body, acronym, contact or programme" autocomplete="off"></label>
+    <select class="input qa-select" name="status" aria-label="Status"><option value="">Any status</option><option value="active"{% if filters.status == "active" %} selected{% endif %}>Active</option><option value="inactive"{% if filters.status == "inactive" %} selected{% endif %}>Inactive</option></select>
+    <select class="input qa-select" name="level" aria-label="Level"><option value="">Any level</option>{% for lv in levels %}<option value="{{ lv.code }}"{% if filters.level == lv.code %} selected{% endif %}>{{ lv.code|upper }} programmes</option>{% endfor %}</select>
+    <select class="input qa-select" name="contact" aria-label="E-mail"><option value="">Any e-mail</option><option value="ok"{% if filters.contact == "ok" %} selected{% endif %}>Has an e-mail</option><option value="missing"{% if filters.contact == "missing" %} selected{% endif %}>No e-mail on file</option></select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "institutions/pb/_bodies_rows.html" %}</div>
+</section>

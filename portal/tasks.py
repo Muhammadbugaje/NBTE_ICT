@@ -83,22 +83,11 @@ def _fanout_announcement(ann):
 
 @shared_task(name="portal.fire_due_reminders")
 def fire_due_reminders():
-    """Fire reminders whose remind_at has arrived."""
-    from .models import Reminder
-    from .services import fire_reminder
-    from django.db.models import Q
+    """Fire reminders whose remind_at has arrived (runs every 60 seconds from
+    Celery Beat). The logic is `portal.services.fire_due_reminders(now=None)`."""
+    from .services import fire_due_reminders as _fire
 
-    now = timezone.now()
-    due = Reminder.objects.filter(
-        is_fired=False, is_dismissed=False, remind_at__lte=now,
-    ).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
-
-    total = 0
-    for rem in due:
-        try:
-            total += fire_reminder(rem)
-        except Exception:
-            logger.exception("Reminder fire failed for %s", rem.pk)
+    total = _fire()
     if total:
         logger.info("Fired %d reminder deliveries.", total)
     return total

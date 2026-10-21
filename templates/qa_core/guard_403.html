@@ -1,0 +1,30 @@
+{% extends "errors/_base.html" %}
+{% comment %}
+  ExternalUserGuardMiddleware (Master Plan §3): an institution or resource-person
+  account reached the internal NBTE host. Standalone page: it must render on the
+  internal host without the staff shell or any internal URL.
+{% endcomment %}
+{% block title %}Use the QA portal{% endblock %}
+{% block code %}Error 403{% endblock %}
+{% block heading %}This sign-in belongs on the QA portal{% endblock %}
+{% block lead %}{{ message }} The NBTE internal system is for NBTE staff; institutions and resource persons use the NBTE Quality Assurance Portal.{% endblock %}
+{% block art %}
+<svg viewBox="0 0 240 160" width="240" height="160" role="presentation" focusable="false">
+  <circle cx="120" cy="80" r="62" fill="none" stroke="currentColor" stroke-opacity=".18" stroke-width="2" stroke-dasharray="4 8"/>
+  <rect x="70" y="52" width="58" height="62" rx="10" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"/>
+  <rect x="70" y="52" width="58" height="14" rx="7" fill="var(--surface-sunken)"/>
+  <rect x="112" y="40" width="58" height="62" rx="10" fill="var(--surface)" stroke="var(--primary)" stroke-width="2.5"/>
+  <rect x="112" y="40" width="58" height="14" rx="7" fill="var(--primary-subtle)"/>
+  <path d="M128 76h22m-8-8 8 8-8 8" fill="none" stroke="var(--primary)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+{% endblock %}
+{% block actions %}
+  {% if impersonating %}
+    <form method="post" action="/impersonate/stop/">
+      {% csrf_token %}
+      <button class="btn btn-primary" type="submit">Stop impersonating</button>
+    </form>
+  {% else %}
+    <a class="btn btn-primary" href="{{ portal_url }}">Go to the QA portal sign-in</a>
+  {% endif %}
+{% endblock %}

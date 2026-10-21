@@ -1,0 +1,39 @@
+{% include "qa_core/settings/_tabs.html" %}
+
+<div class="qa-split qa-section-head">
+  <div>
+    <h2 data-qa-focus>Formulas</h2>
+    <p class="qa-muted qa-small">Fees and other computed values. Each is checked against a safe allow-list when saved, and every bill keeps a snapshot of the formula it used — so a change here never alters an issued bill.</p>
+  </div>
+  <form class="qa-search qa-search--compact" role="search" method="get" action="{% url 'qa:settings_formulas' %}"
+        hx-get="{% url 'qa:settings_formulas' %}" hx-target="#qa-panel" hx-push-url="true"
+        hx-trigger="input changed delay:350ms from:find input, submit" hx-sync="this:replace" data-qa-no-overlay>
+    <label class="sr-only" for="qa-formula-q">Search formulas</label>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="input" id="qa-formula-q" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Search formulas" autocomplete="off">
+  </form>
+</div>
+
+<details class="qa-help" data-qa-remember="formula-help">
+  <summary>What can a formula contain?</summary>
+  <div class="qa-help__body">
+    <p>Numbers, text in quotes, the variables listed on each formula, <code>+ - * / // %</code>, <code>**</code> (exponent up to 4), comparisons, <code>and</code> / <code>or</code> / <code>not</code>, <code>x if condition else y</code>, and the functions <code>min max round ceil floor abs clamp</code>. <code>cfg('qa.some.key')</code> reads another setting. Nothing else is allowed — no attribute access, imports or code.</p>
+    <p>Example: <code>programmes * (2000000 if ownership == 'private' else 1000000)</code></p>
+  </div>
+</details>
+
+{% if entries %}
+  <div class="qa-stack">
+    {% for e in entries %}
+      {% include "qa_core/settings/_formula_card.html" %}
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="nbte-empty-state nbte-empty-state--filtered qa-empty" data-qa-announce="No formulas match">
+    <h3 class="nbte-empty-state__title">No formulas match “{{ filters.q }}”</h3>
+    <p class="nbte-empty-state__body">Clear the search to see every formula.</p>
+    <div class="nbte-empty-state__action">
+      <a class="btn btn-subtle" href="{% url 'qa:settings_formulas' %}" hx-get="{% url 'qa:settings_formulas' %}" hx-target="#qa-panel" hx-push-url="true">Clear search</a>
+    </div>
+  </div>
+{% endif %}

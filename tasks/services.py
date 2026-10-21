@@ -90,6 +90,8 @@ from accounts.models import User
 from notifications.models import Notification
 from notifications.services import notify
 
+from .hooks import external_close_active, is_externally_managed
+from .signals import task_state_changed
 from .models import (
     Task,
     TaskActivity,
@@ -102,6 +104,26 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ===========================================================================
+# QA hook points (Master Plan §8)
+# ===========================================================================
+def _emit_state_changed(task, old, actor, action, **metadata):
+    """Send `task_state_changed` synchronously (inside the caller's
+    transaction, so a receiver that raises rolls the action back)."""
+    task_state_changed.send(
+        sender=Task, task=task, old=old, new=task.state,
+        actor=actor, action=action, metadata=metadata,
+    )
+
+
+def _refuse_if_externally_managed(task, verb):
+    if is_externally_managed(task):
+        raise PermissionDenied(
+            f"This task is managed by another module and cannot be {verb} here. "
+            "Use its \"Open in QA\" link."
+        )
 
 
 # ===========================================================================
@@ -509,6 +531,7 @@ def open_task(task, user):
             "Add at least one assignee or subtask before opening."
         )
 
+    old_state = task.state
     task.state = Task.OPEN
     task.save(update_fields=["state", "updated_at"])
     schedule_recurrence(task)
@@ -521,6 +544,7 @@ def open_task(task, user):
                          "A task you'll review has been opened.")
 
     _send_task_email(task, event="assigned")
+    _emit_state_changed(task, old_state, user, "open_task")
     return task
 
 
@@ -648,6 +672,7 @@ def reassign(task, user, from_user, to_user):
     if old_row is None:
         raise ValidationError("From-user is not assigned to this task.")
 
+    old_state = task.state
     old_row.delete()
     _attach_assignee(task, user, to_user, silent=True)
     log_activity(
@@ -658,6 +683,8 @@ def reassign(task, user, from_user, to_user):
     _notify_assignee(task, to_user, user, event="reassigned")
     _notify_assignee(task, from_user, user, event="unassigned")
     _send_task_email(task, event="assigned", to_user=to_user)
+    _emit_state_changed(task, old_state, user, "reassign",
+                        from_user_id=from_user.pk, to_user_id=to_user.pk)
     return task
 
 
@@ -853,6 +880,7 @@ def return_to_assigner(task, user, reason):
     row.note = reason
     row.save(update_fields=["state", "note", "updated_at"])
 
+    old_state = task.state
     task.state = Task.RETURNED
     task.save(update_fields=["state", "updated_at"])
     log_activity(task, "returned", actor=user,
@@ -860,6 +888,7 @@ def return_to_assigner(task, user, reason):
     _notify_creator(task, user,
                     f"Task returned by {user.get_full_name() or user.email}.")
     _send_task_email(task, event="returned")
+    _emit_state_changed(task, old_state, user, "return_to_assigner", reason=reason[:500])
     return task
 
 
@@ -886,9 +915,13 @@ def resend_task(task, user, note=""):
 
 @transaction.atomic
 def mark_assignee_done(task, user, note=""):
+    if not external_close_active():
+        # QA-linked tasks (Phase 4) are completed from QA, never from Tasks.
+        _refuse_if_externally_managed(task, "marked done")
     row = _my_row(task, user)
     if row.state == TaskAssignee.DONE:
         return task
+    old_state = task.state
 
     # Stop any timer this user has running on this task — no point
     # counting time on work that's already finished.
@@ -937,6 +970,7 @@ def mark_assignee_done(task, user, note=""):
             log_activity(task, "completed", actor=user, message="Task completed.")
             _on_task_completed(task)
 
+    _emit_state_changed(task, old_state, user, "mark_assignee_done", assignee_id=user.pk)
     return task
 
 
@@ -947,6 +981,7 @@ def review_task(task, user, approve, notes=""):
     if task.state != Task.AWAITING_REVIEW:
         raise ValidationError("This task is not awaiting review.")
 
+    old_state = task.state
     task.reviewed_by = user
     task.reviewed_at = timezone.now()
     task.review_notes = (notes or "").strip()
@@ -977,6 +1012,7 @@ def review_task(task, user, approve, notes=""):
             _notify_assignee(task, row.user, user, event="review_rejected")
         _send_task_email(task, event="review_rejected")
 
+    _emit_state_changed(task, old_state, user, "review_task", approved=bool(approve))
     return task
 
 
@@ -984,9 +1020,11 @@ def review_task(task, user, approve, notes=""):
 def cancel_task(task, user, reason=""):
     if not can_cancel_task(task, user):
         raise PermissionDenied("You cannot cancel this task.")
+    _refuse_if_externally_managed(task, "cancelled")
     if task.state == Task.CANCELLED:
         return task
 
+    old_state = task.state
     task.state = Task.CANCELLED
     task.cancelled_at = timezone.now()
     task.save(update_fields=["state", "cancelled_at", "updated_at"])
@@ -995,6 +1033,7 @@ def cancel_task(task, user, reason=""):
     for row in task.assignee_rows.select_related("user"):
         _notify_assignee(task, row.user, user, event="cancelled")
     _send_task_email(task, event="cancelled")
+    _emit_state_changed(task, old_state, user, "cancel_task", reason=(reason or "")[:500])
     return task
 
 
@@ -1002,6 +1041,7 @@ def cancel_task(task, user, reason=""):
 def delete_task(task, user, reason=""):
     if not can_delete_task(task, user):
         raise PermissionDenied("You cannot delete this task.")
+    _refuse_if_externally_managed(task, "deleted")
     if not reason or len(reason.strip()) < 5:
         raise ValidationError("A reason is required to delete a task.")
     log_activity(
@@ -1421,9 +1461,15 @@ def _send_task_email(task, event, to_user=None):
 # ===========================================================================
 # Reminder sweep (Celery Beat)
 # ===========================================================================
-def reminder_sweep():
+def reminder_sweep(now=None):
     """Fire in-app (optionally email) reminders for approaching and
-    overdue tasks. Returns counts."""
+    overdue tasks. Returns counts.
+
+    `now` lets tests / `manage.py fire_reminders --tasks` pretend it is another
+    moment. Each task is reminded at most once per local day: the sweep runs
+    hourly from Celery Beat and used to repeat the "due in N days" reminder on
+    every run (24 identical notifications a day).
+    """
     if _cfg_int("tasks.reminders.enabled", 1) != 1:
         return {"skipped": "disabled"}
 
@@ -1437,9 +1483,13 @@ def reminder_sweep():
     email_enabled = _cfg_int("tasks.reminders.email_enabled", 0) == 1
     overdue_daily = _cfg_int("tasks.reminders.overdue_daily", 1) == 1
 
-    today = timezone.localdate()
-    now = timezone.now()
+    now = now or timezone.now()
+    today = timezone.localtime(now).date()
     fired_due = fired_overdue = 0
+
+    def _already_reminded_today(task):
+        last = task.last_reminder_at
+        return bool(last and timezone.localtime(last).date() == today)
 
     for days in days_list:
         target = today + timedelta(days=days)
@@ -1448,6 +1498,8 @@ def reminder_sweep():
             .filter(state__in=Task.ACTIVE_STATES, due_date=target)
             .prefetch_related("assignee_rows__user")
         ):
+            if _already_reminded_today(task):
+                continue
             for row in task.assignee_rows.all():
                 _fire_reminder(task, row.user, days, email_enabled)
             task.last_reminder_at = now

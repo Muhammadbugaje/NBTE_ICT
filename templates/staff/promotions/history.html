@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Promotion history · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Promotions{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="nbr-page promo-page">
+  <a href="{% url 'staff:promotions' %}" class="nbr-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Promotions
+  </a>
+  <header class="nbte-page-header nbr-header">
+    <div class="nbte-page-header__text">
+      <span class="nbte-page-header__eyebrow">People · Promotions</span>
+      <h1 class="nbte-page-header__title">Promotion history</h1>
+      <p class="nbte-page-header__description">Every promotion and rollback, newest first. A rollback never deletes the original — it adds a reversing entry.</p>
+    </div>
+  </header>
+
+  <form method="get" class="nbr-toolbar" role="search" aria-label="Filter promotions">
+    <div class="field">
+      <label for="ph-from">From</label>
+      <input type="date" id="ph-from" name="from" value="{{ f_from }}" class="input">
+    </div>
+    <div class="field">
+      <label for="ph-to">To</label>
+      <input type="date" id="ph-to" name="to" value="{{ f_to }}" class="input">
+    </div>
+    <div class="field">
+      <label for="ph-dept">Department</label>
+      <select id="ph-dept" name="department" class="input" data-autosubmit>
+        <option value="">All departments</option>
+        {% for d in departments %}<option value="{{ d.pk }}"{% if f_dept == d.pk|stringformat:"d" %} selected{% endif %}>{{ d.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="ph-approver">Approved by</label>
+      <select id="ph-approver" name="approver" class="input" data-autosubmit>
+        <option value="">Anyone</option>
+        {% for u in approvers %}<option value="{{ u.pk }}"{% if f_approver == u.pk|stringformat:"d" %} selected{% endif %}>{{ u.get_full_name|default:u.email }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="nbr-toolbar-actions">
+      <button type="submit" class="btn btn-ghost">Filter</button>
+      {% if filters_active %}<a href="{% url 'staff:promotion_history' %}" class="btn btn-ghost">Clear</a>{% endif %}
+    </div>
+  </form>
+
+  {% if page.object_list %}
+    <div class="card nbr-card nbr-card-flush">
+      <table class="table table--stack promo-history" data-no-wrap>
+        <thead>
+          <tr>
+            <th scope="col">Effective</th>
+            <th scope="col">Staff</th>
+            <th scope="col">Change</th>
+            <th scope="col" class="nbr-num">Grade</th>
+            <th scope="col">Approved by</th>
+            <th scope="col">Reason</th>
+            <th scope="col"><span class="nbr-sr">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in page.object_list %}
+            <tr{% if p.is_reversal or p.was_reversed %} class="promo-history-row--muted"{% endif %}>
+              <td data-label="Effective"><time datetime="{{ p.effective_date|date:'Y-m-d' }}">{{ p.effective_date|date:"j M Y" }}</time></td>
+              <td data-label="Staff">
+                <a href="{% url 'staff:detail' p.staff.pk %}" class="promo-name">{{ p.staff.last_name }} {{ p.staff.first_name }}</a>
+                <span class="nbr-sheet-sub">{{ p.staff.employee_no }}{% if p.staff.department %} · {{ p.staff.department.name }}{% endif %}</span>
+              </td>
+              <td data-label="Change">
+                <span class="promo-change">{{ p.from_designation.name|default:"—" }} <span aria-hidden="true">→</span><span class="nbr-sr">to</span> <strong>{{ p.to_designation.name }}</strong></span>
+                <span class="promo-tags">
+                  {% if p.is_reversal %}<span class="badge badge-warn">Rollback</span>{% endif %}
+                  {% if p.was_reversed %}<span class="badge badge--neutral">Rolled back</span>{% endif %}
+                  {% if p.cascade_source %}<span class="badge badge-info" title="Cascaded with {{ p.cascade_source.staff.full_name }}">Cascade</span>{% endif %}
+                </span>
+              </td>
+              <td data-label="Grade" class="nbr-num">{{ p.from_grade_level|default:"—" }} → {{ p.to_grade_level|default:"—" }}</td>
+              <td data-label="Approved by">{% if p.approved_by %}{{ p.approved_by.get_full_name|default:p.approved_by.email }}{% else %}—{% endif %}</td>
+              <td data-label="Reason" class="promo-reason">{{ p.reason|default:"—"|truncatechars:90 }}</td>
+              <td data-label="Actions">
+                {% if p.rollback_ok %}
+                  <button type="button" class="btn btn-ghost btn-sm btn-danger" data-promo-rollback
+                          data-rollback-url="{% url 'staff:promotion_rollback' p.pk %}"
+                          data-rollback-name="{{ p.staff.full_name }}"
+                          data-rollback-change="{{ p.to_designation.name }} → {{ p.from_designation.name }}">Roll back</button>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page.paginator.num_pages > 1 %}
+      <nav class="pagination nbr-pagination" aria-label="Pages">
+        {% if page.has_previous %}<a href="{% querystring page=page.previous_page_number %}" rel="prev">Previous</a>{% endif %}
+        <span aria-current="page">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="{% querystring page=page.next_page_number %}" rel="next">Next</a>{% endif %}
+      </nav>
+    {% endif %}
+  {% elif filters_active %}
+    {% url 'staff:promotion_history' as clear_url %}
+    {% include "partials/empty_state.html" with variant="filtered" title="No promotions match" body="Try a wider date range or another department." action_url=clear_url action_label="Clear filters" action_class="btn-ghost" only %}
+  {% else %}
+    {% url 'staff:promotions' as promo_url %}
+    {% include "partials/empty_state.html" with title="No promotions yet" body="Promotions you confirm are listed here with who approved them." action_url=promo_url action_label="Promote staff" only %}
+  {% endif %}
+</div>
+
+<div class="modal-root" id="promo-rollback-modal" aria-hidden="true" data-promo-rollback-modal>
+  <div class="modal-backdrop"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="promo-rollback-title" aria-describedby="promo-rollback-body">
+    <button type="button" class="modal-close" aria-label="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <h3 class="modal-title" id="promo-rollback-title">Roll back this promotion?</h3>
+    <p id="promo-rollback-body"><strong data-rollback-name></strong> goes back: <span data-rollback-change></span>. The grade level and date of present appointment are restored too, and a reversing entry is added to the history.</p>
+    <form method="post" action="" data-rollback-form>
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <div class="field">
+        <label for="promo-rollback-reason">Reason (required)</label>
+        <textarea id="promo-rollback-reason" name="reason" rows="3" class="input" required placeholder="e.g. Promotion entered in error"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-danger">Roll back</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/promotions.js' %}?v=1" defer></script>
+{% endblock %}

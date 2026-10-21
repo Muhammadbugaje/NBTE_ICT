@@ -40,6 +40,7 @@
       <li><code>0</code> or <code>A</code> — Absent</li>
       <li><code>E</code> — Excused</li>
       <li><code>H</code> — Holiday</li>
+      <li>Present, Late, Excused and Holiday days are all <strong>credited</strong> towards attendance; only Absent days are not. Approved leave (<code>LV</code>) is filled in automatically from approved leave requests.</li>
       <li>Blank cell — skip (no record created)</li>
     </ul>
 
@@ -118,6 +119,19 @@
         </div>
       </div>
 
+      {% if preview.total_counted %}
+        <p class="att-upload-aggregate">
+          <strong>Aggregate of this file</strong> (working days only):
+          {{ preview.totals.present|default:0 }} present ·
+          {{ preview.totals.late|default:0 }} late ·
+          {{ preview.totals.absent|default:0 }} absent ·
+          {{ preview.totals.excused|default:0 }} excused ·
+          {{ preview.totals.holiday|default:0 }} holiday
+          — <strong>{{ preview.total_credited }} of {{ preview.total_counted }} days credited</strong>
+          (present, late, excused and holiday all count; only absent does not).
+        </p>
+      {% endif %}
+
       <div class="att-table-wrap att-table-wrap-compact">
         <table class="att-table">
           <thead>
@@ -128,6 +142,7 @@
                 <th class="att-preview-day-head">{{ d }}</th>
               {% endfor %}
               {% if preview.days|length > 12 %}<th class="att-preview-day-head">…</th>{% endif %}
+              <th class="att-preview-day-head" title="Credited days / days counted">Credited</th>
             </tr>
           </thead>
           <tbody>
@@ -145,6 +160,7 @@
                   </td>
                 {% endfor %}
                 {% if preview.days|length > 12 %}<td class="att-preview-cell">…</td>{% endif %}
+                <td class="att-preview-cell">{% if row.counted %}<strong>{{ row.credited }}</strong>/{{ row.counted }}{% else %}—{% endif %}</td>
               </tr>
             {% endfor %}
           </tbody>

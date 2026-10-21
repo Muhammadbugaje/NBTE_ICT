@@ -1,0 +1,54 @@
+{% load qa_tags %}
+{% include "qa_core/settings/_tabs.html" %}
+<section class="qa-card" aria-labelledby="cxs-h">
+  <header class="qa-card__head"><div><h2 id="cxs-h" data-qa-focus>Complaints</h2>
+    <p>Layers pick a flow of stages; routing rules pick who handles each stage (first true rule wins, otherwise the general triage queue in <span class="qa-mono">qa.complaints.fallback_department</span>); escalation rules pick who is told after a missed deadline. Stage deadlines and actions are edited under <a href="{% url 'qa:settings_workflows' %}">Workflows</a>.</p></div></header>
+  <nav class="qa-tabs" aria-label="Complaint settings sections" style="margin:0 16px">
+    {% for s in sections %}<a href="{% url 'qa_set:complaints' %}?section={{ s.key }}" hx-get="{% url 'qa_set:complaints' %}?section={{ s.key }}" hx-target="#qa-panel" hx-push-url="true" class="{% if s.active %}is-active{% endif %}"{% if s.active %} aria-current="page"{% endif %}>{{ s.label }}</a>{% endfor %}
+  </nav>
+  <div class="qa-table-wrap"><table class="qa-table">
+    {% if section == "layers" %}
+      <thead><tr><th scope="col">Layer</th><th scope="col">Who may raise it</th><th scope="col">Priority</th><th scope="col">Flow</th><th scope="col">Questions</th><th scope="col"><span class="sr-only">Edit</span></th></tr></thead>
+      <tbody>{% for r in rows %}<tr class="{% if not r.is_active %}is-muted{% endif %}"><td><strong>{{ r }}</strong><br><span class="qa-small qa-muted">{{ r.description }}</span></td>
+        <td>{% if r.applies_to_user_types %}{{ r.applies_to_user_types|join:", "|humanize_code }}{% else %}Everyone{% endif %}</td><td>{{ r.get_default_priority_display }}</td>
+        <td class="qa-mono">{{ r.flow.code|default:"complaint" }}</td><td>{{ r.custom_fields|length }}</td>
+        <td><a class="btn btn-xs btn-subtle" href="{% url 'qa_set:complaints_edit' 'layers' r.pk %}" hx-get="{% url 'qa_set:complaints_edit' 'layers' r.pk %}" hx-target="#cxs-edit">{% if editable %}Edit{% else %}View{% endif %}</a></td></tr>
+      {% empty %}<tr><td colspan="6" class="qa-muted">No layers. Run <span class="qa-mono">manage.py seed_startup</span>.</td></tr>{% endfor %}</tbody>
+    {% elif section == "routing" %}
+      <thead><tr><th scope="col" class="num">Order</th><th scope="col">Layer</th><th scope="col">Stage</th><th scope="col">When</th><th scope="col">Goes to</th><th scope="col"><span class="sr-only">Edit</span></th></tr></thead>
+      <tbody>{% for r in rows %}<tr class="{% if not r.is_active %}is-muted{% endif %}"><td class="num">{{ r.order }}</td><td>{{ r.layer|default:"Every layer" }}</td><td class="qa-mono">{{ r.stage_code|default:"every task stage" }}</td>
+        <td class="qa-mono">{{ r.condition|default:"always" }}</td>
+        <td>{{ r.get_target_kind_display }}{% if r.target_department %}: <strong>{{ r.target_department.name }}</strong>{% endif %}{% if r.target_role %}: <strong>{{ r.target_role.name }}</strong>{% endif %}{% if r.target_user %}: <strong>{{ r.target_user|who }}</strong>{% endif %}{% if r.note %}<br><span class="qa-small qa-muted">{{ r.note }}</span>{% endif %}</td>
+        <td><a class="btn btn-xs btn-subtle" href="{% url 'qa_set:complaints_edit' 'routing' r.pk %}" hx-get="{% url 'qa_set:complaints_edit' 'routing' r.pk %}" hx-target="#cxs-edit">{% if editable %}Edit{% else %}View{% endif %}</a></td></tr>
+      {% empty %}<tr><td colspan="6" class="qa-muted">No routing rules: every complaint goes to the general triage queue.</td></tr>{% endfor %}</tbody>
+    {% elif section == "escalation" %}
+      <thead><tr><th scope="col" class="num">Level</th><th scope="col">After the deadline</th><th scope="col">Who is told</th><th scope="col">Only if</th><th scope="col">Scope</th><th scope="col"><span class="sr-only">Edit</span></th></tr></thead>
+      <tbody>{% for r in rows %}<tr class="{% if not r.is_active %}is-muted{% endif %}"><td class="num">{{ r.level }}</td><td>{% if r.after_breach_minutes %}{{ r.after_breach_minutes }} min{% else %}At once{% endif %}</td>
+        <td>{{ r.get_target_kind_display }}{% if r.target_role %}: {{ r.target_role.name }}{% endif %}{% if r.target_user %}: {{ r.target_user|who }}{% endif %}</td><td>{{ r.get_only_if_display }}</td>
+        <td>{% if r.flow %}<span class="qa-mono">{{ r.flow.code }}</span>{% else %}Every flow{% endif %}{% if r.stage_code %} · <span class="qa-mono">{{ r.stage_code }}</span>{% endif %}</td>
+        <td><a class="btn btn-xs btn-subtle" href="{% url 'qa_set:complaints_edit' 'escalation' r.pk %}" hx-get="{% url 'qa_set:complaints_edit' 'escalation' r.pk %}" hx-target="#cxs-edit">{% if editable %}Edit{% else %}View{% endif %}</a></td></tr>
+      {% empty %}<tr><td colspan="6" class="qa-muted">No escalation rules: a missed deadline only notifies the handler.</td></tr>{% endfor %}</tbody>
+    {% else %}
+      <thead><tr><th scope="col">Article</th><th scope="col">For</th><th scope="col">Layer</th><th scope="col" class="num">Helpful</th><th scope="col"><span class="sr-only">Edit</span></th></tr></thead>
+      <tbody>{% for r in rows %}<tr class="{% if not r.is_published %}is-muted{% endif %}"><td><strong>{{ r.title }}</strong><br><span class="qa-small qa-muted">{{ r.summary }}</span></td><td>{{ r.get_audience_display }}</td><td>{{ r.layer|default:"—" }}</td>
+        <td class="num">{{ r.helpful }} / {{ r.not_helpful }}</td>
+        <td><a class="btn btn-xs btn-subtle" href="{% url 'qa_set:complaints_edit' 'kb' r.pk %}" hx-get="{% url 'qa_set:complaints_edit' 'kb' r.pk %}" hx-target="#cxs-edit">{% if editable %}Edit{% else %}View{% endif %}</a></td></tr>
+      {% empty %}<tr><td colspan="5" class="qa-muted">No articles yet.</td></tr>{% endfor %}</tbody>
+    {% endif %}
+  </table></div>
+</section>
+<div id="cxs-edit" class="qa-region" data-qa-region aria-live="polite"></div>
+{% if editable and form %}
+<section class="qa-card" aria-labelledby="cxs-new">
+  <details{% if open_new %} open{% endif %}>
+    <summary class="qa-card__head" style="cursor:pointer"><h2 id="cxs-new">{% icon "plus" 16 %} Add {% if section == "layers" %}a layer{% elif section == "routing" %}a routing rule{% elif section == "escalation" %}an escalation level{% else %}an article{% endif %}</h2></summary>
+    <div class="qa-card__body">
+      <form class="qa-form" method="post" action="{% url 'qa_set:complaints' %}?section={{ section }}" hx-post="{% url 'qa_set:complaints' %}?section={{ section }}" hx-target="#qa-panel">{% csrf_token %}
+        <input type="hidden" name="section" value="{{ section }}">
+        {% include "complaints/settings/_form_fields.html" with f=form %}
+        <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add</button></div>
+      </form>
+    </div>
+  </details>
+</section>
+{% elif not editable %}{% include "qa_core/partials/_callout.html" with message="You can read these tables. Changing them needs "|add:perm|add:"." %}{% endif %}

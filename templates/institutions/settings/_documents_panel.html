@@ -1,0 +1,34 @@
+{% load qa_tags %}
+{% include "qa_core/settings/_tabs.html" %}
+<section class="qa-card" aria-labelledby="set-docs">
+  <header class="qa-card__head">
+    <div><h2 id="set-docs" data-qa-focus>Document rules (Requirement 1)</h2><p>Which statutory documents a process needs, by ownership and institution type, and which department reviews each. A blank ownership or type means “any”.</p></div>
+    <form hx-get="{% url 'qa_set:documents' %}" hx-target="#qa-panel" hx-push-url="true" hx-trigger="change" data-qa-no-overlay>
+      <label class="sr-only" for="doc-proc">Process</label>
+      <select class="input qa-select" id="doc-proc" name="process"><option value="">Every process</option>{% for p in processes %}<option value="{{ p }}"{% if process == p %} selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+    </form>
+  </header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th>Document</th><th>Process</th><th>Ownership</th><th>Type</th><th>Reviewed by</th><th>Required</th><th class="qa-col-actions"><span class="sr-only">Edit</span></th></tr></thead>
+    <tbody>{% for r in rules %}<tr class="{% if editing and editing.pk == r.pk %}is-editing{% endif %}">
+      <td data-label="Document"><strong>{{ r.document_kind.name }}</strong>{% if not r.is_active %} <span class="qa-chip">Off</span>{% endif %}{% if r.refresh_after_months %}<span class="qa-desc">Ask again after {{ r.refresh_after_months }} months</span>{% endif %}</td>
+      <td data-label="Process" class="qa-mono">{{ r.process }}</td><td data-label="Ownership">{{ r.ownership.name|default:"Any" }}</td><td data-label="Type">{{ r.institution_type.name|default:"Any" }}</td>
+      <td data-label="Reviewed by">{{ r.reviewing_department.name|default:"—" }}</td>
+      <td data-label="Required">{% if r.is_mandatory %}<span class="qa-chip qa-tone-success">Mandatory</span>{% else %}<span class="qa-chip">Optional</span>{% endif %}</td>
+      <td class="qa-col-actions">{% if editable %}<a class="btn btn-sm btn-subtle" href="?edit={{ r.pk }}" hx-get="{% url 'qa_set:documents' %}?edit={{ r.pk }}" hx-target="#qa-panel">Edit</a>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="7" class="qa-muted">No rules.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% if editable %}
+<section class="qa-card" aria-labelledby="set-docs-form">
+  <header class="qa-card__head"><h2 id="set-docs-form">{% if editing %}Edit rule{% else %}Add a rule{% endif %}</h2></header>
+  <div class="qa-card__body">
+    <form method="post" hx-post="{% url 'qa_set:documents' %}" hx-target="#qa-panel" class="qa-form">
+      {% csrf_token %}{% if editing %}<input type="hidden" name="id" value="{{ editing.pk }}">{% endif %}
+      {% include "qa_core/partials/_form_errors.html" %}
+      <div class="qa-fields">{% for field in form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">Save rule</button>{% if editing %}<a class="btn btn-subtle" href="{% url 'qa_set:documents' %}" hx-get="{% url 'qa_set:documents' %}" hx-target="#qa-panel">Cancel</a>{% endif %}</div>
+    </form>
+  </div>
+</section>
+{% else %}{% include "qa_core/partials/_callout.html" with message="Only holders of institutions.manage_document_requirements can change document rules." %}{% endif %}

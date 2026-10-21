@@ -1,0 +1,6 @@
+<span id="ssq-save-status" class="qa-save-status is-{{ state|default:'idle' }}" role="status" aria-live="polite" data-qa-no-skeleton data-ssq-state="{{ state|default:'idle' }}">
+  {% if state == "saved" %}<span class="qa-save-status__dot" aria-hidden="true"></span>All changes saved{% if saved_at %} · {{ saved_at|date:"H:i:s" }}{% endif %}
+  {% elif state == "partial" %}<span class="qa-save-status__dot" aria-hidden="true"></span>Saved — {{ field_errors|length }} answer{{ field_errors|length|pluralize }} need{{ field_errors|length|pluralize:"s," }} fixing
+  {% elif state == "error" %}<span class="qa-save-status__dot" aria-hidden="true"></span>Not saved: {{ message }}
+  {% else %}<span class="qa-save-status__dot" aria-hidden="true"></span>Answers save automatically{% if ssq.last_saved_at %} · last saved {{ ssq.last_saved_at|date:"j M, H:i" }}{% endif %}{% endif %}
+</span>

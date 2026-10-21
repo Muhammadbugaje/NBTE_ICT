@@ -82,11 +82,24 @@
   </div>
 </form>
 
+{# Batch label printing: tick assets (kept across pages), then print #}
+<div class="asset-select-bar" data-asset-select-bar hidden
+     data-print-url="{% url 'assets:print_labels' %}">
+  <label class="asset-select-all"><input type="checkbox" data-asset-select-page> Select this page</label>
+  <span><strong data-asset-select-count>0</strong> selected</span>
+  <button type="button" class="btn btn-primary btn-sm" data-asset-select-print>Print labels</button>
+  <button type="button" class="btn btn-ghost btn-sm" data-asset-select-clear>Clear</button>
+</div>
+
 {# The list container — HTMX swaps this in place on filter changes #}
 <div id="asset-list-container" class="asset-list-container">
   {% if page.object_list %}
     <div class="asset-list">
       {% for asset in page.object_list %}
+        <div class="asset-card-wrap">
+        <label class="asset-select" title="Select for label printing">
+          <input type="checkbox" data-asset-select value="{{ asset.asset_tag }}" aria-label="Select {{ asset.asset_tag }}">
+        </label>
         <a href="{% url 'assets:detail' asset.asset_tag %}" class="asset-card">
           <div class="asset-card-tag">
             <span>{{ asset.asset_tag|slice:":8" }}</span>
@@ -112,6 +125,7 @@
             <span class="badge badge-state-{{ asset.state }}">{{ asset.get_state_display }}</span>
           </div>
         </a>
+        </div>
       {% endfor %}
     </div>
 
@@ -149,4 +163,8 @@
     </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/asset-select.js' %}?v=1"></script>
 {% endblock %}

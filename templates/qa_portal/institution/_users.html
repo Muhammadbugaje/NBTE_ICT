@@ -1,0 +1,18 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="pp-users">
+  <header class="qa-card__head"><div><h2 id="pp-users">Users</h2><p>People who can sign in for {{ inst.code }}.</p></div></header>
+  <ul class="qa-rowlist" role="list">
+    {% for m in members %}<li><div class="qa-rowlink"><span class="qa-pa__avatar" aria-hidden="true">{{ m.user|initials }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ m.user|who }}</span><span class="qa-rowlink__meta">{{ m.institution_role.name|default:"" }}{% if m.job_title %} · {{ m.job_title }}{% endif %}</span></span><span class="qa-rowlink__side">{% if m.is_primary_contact %}<span class="qa-chip qa-chip--direct">Primary</span>{% endif %}{% if not m.user.has_usable_password %}<span class="qa-chip qa-tone-warn">Invited</span>{% endif %}</span></div></li>{% endfor %}
+  </ul>
+  {% if can_manage_users %}
+    <div class="qa-card__body" style="border-top:1px solid var(--divider)">
+      <details{% if invite_form.errors %} open{% endif %}><summary class="btn btn-sm btn-subtle">{% icon "plus" 14 "2.4" %} Invite a user</summary>
+        <form method="post" action="{% url 'qa_portal:institution_users' %}" hx-post="{% url 'qa_portal:institution_users' %}" hx-target="#qa-users" class="qa-form qa-mt">
+          {% csrf_token %}{% include "qa_core/partials/_form_errors.html" with form=invite_form %}
+          {% for field in invite_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}
+          <button class="btn btn-primary btn-block" type="submit">Send invitation</button>
+          <p class="qa-small qa-muted">They receive a one-time link to set their own password.</p>
+        </form></details>
+    </div>
+  {% endif %}
+</section>

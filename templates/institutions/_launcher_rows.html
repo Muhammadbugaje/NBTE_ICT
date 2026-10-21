@@ -1,0 +1,19 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for i in page.rows %}
+      <li>
+        {% if i.available and policy.is_enabled %}
+          <a class="qa-rowlink" href="{% url 'qa_inst:action' i.code policy.action_code %}" hx-get="{% url 'qa_inst:action' i.code policy.action_code %}" hx-target="#qa-panel" hx-push-url="true">
+        {% else %}<div class="qa-rowlink" aria-disabled="true" title="{{ i.why }}">{% endif %}
+          <span class="qa-rowlink__badge">{{ i.code }}</span>
+          <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ i.name }}</span><span class="qa-rowlink__meta"><span>{{ i.handling_department.name }}</span>{% if not i.available %}<span>· {{ i.why }}</span>{% endif %}</span></span>
+          <span class="qa-rowlink__side"><span class="qa-chip {{ i.status|tone }}">{{ i.status_label }}</span>{% if i.available and policy.is_enabled %}<span class="qa-pa__cta">Start {% icon "arrow" 14 "2.4" %}</span>{% endif %}</span>
+        {% if i.available and policy.is_enabled %}</a>{% else %}</div>{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "search" 28 %}</span><h3 class="nbte-empty-state__title">No institutions match</h3><p class="nbte-empty-state__body">Try another name or code.</p></div>
+{% endif %}

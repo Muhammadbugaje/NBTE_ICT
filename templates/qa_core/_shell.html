@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% load static %}
+{% comment %}
+  Shell for the Phase 2 internal QA screens (institutions, applications,
+  Finance). The page body lives in #qa-panel, which HTMX swaps for
+  navigation inside the section (§20: no full reloads; URL pushed).
+{% endcomment %}
+{% block title %}{% block qa_title %}Quality Assurance{% endblock %} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}{% block qa_page_title %}Quality Assurance{% endblock %}{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/qa.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/qa-p2.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/qa-p3.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/qa-p4.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/qa-p5.css' %}?v=2">
+{% endblock %}
+{% block content %}
+<div class="qa-page">
+  <div id="qa-panel" class="qa-region" data-qa-region>
+    {% block panel %}{% endblock %}
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+  <script>document.body.setAttribute("data-qa-timeout", "{{ qa_timeout_ms|default:15000 }}");</script>
+  <script src="{% static 'js/qa.js' %}?v=3" defer></script>
+{% endblock %}

@@ -3,8 +3,9 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.messages import get_messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -18,6 +19,15 @@ from .models import (
 MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 EDIT_WINDOW = timedelta(minutes=15)
 READ_EDIT_WINDOW = timedelta(minutes=5)
+
+# Deterministic avatar colour palette. Both the full render and the AJAX
+# fragment go through _prepare_message_for_render, so a message keeps the
+# same colour whether it arrived by page load or by fetch.
+_AVATAR_COLORS = ["c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7"]
+
+
+def _avatar_color(seed):
+    return _AVATAR_COLORS[(seed or 0) % len(_AVATAR_COLORS)]
 
 
 def _thread_participant(thread, user):
@@ -45,6 +55,50 @@ def _message_can_be_changed_by_everyone(message, thread, now=None):
     if first_read_at is not None:
         deadline = min(deadline, first_read_at + READ_EDIT_WINDOW)
     return now <= deadline
+
+
+def _prepare_message_for_render(message, thread, user):
+    """Populate the derived attributes the message partial needs.
+
+    Used by both thread_detail (full render) and reply (AJAX fragment) so
+    the two paths produce identical markup.
+    """
+    message.can_change_for_everyone = (
+        message.sender_id == user.pk
+        and _message_can_be_changed_by_everyone(message, thread)
+    )
+    if message.reply_to_id:
+        quoted = message.reply_to
+        quoted_is_hidden = (
+            quoted.is_deleted_for_everyone
+            or quoted.hidden_for.filter(user=user).exists()
+        )
+        if quoted_is_hidden:
+            message.reply_preview = "Message unavailable"
+            message.reply_sender = "Unavailable"
+        else:
+            message.reply_preview = quoted.body
+            message.reply_sender = (
+                quoted.sender.get_full_name() or quoted.sender.email
+                if quoted.sender_id else "System"
+            )
+    message.seen_by_someone = any(
+        receipt.user_id != message.sender_id
+        for receipt in message.read_receipts.all()
+    )
+    # Stable avatar colour — same for page-load and AJAX renders.
+    message.msg_color = _avatar_color(message.sender_id or message.pk or 0)
+    return message
+
+
+def _render_message_fragment(message, thread, user, request):
+    """Render one message article to an HTML string, for AJAX insertion."""
+    _prepare_message_for_render(message, thread, user)
+    return render_to_string(
+        "messaging/partials/message.html",
+        {"m": message, "thread": thread},
+        request=request,
+    )
 
 
 def _uploaded_attachments(request):
@@ -88,7 +142,6 @@ def _my_threads(user):
 def inbox(request):
     threads = list(_my_threads(request.user))
     for t in threads:
-        # Attach derived data (templates can't access underscore-prefixed attrs).
         t.unread = t.unread_count_for(request.user)
         t.last_msg = t.last_message(request.user)
         t.display_title = t.display_title_for(request.user)
@@ -116,9 +169,6 @@ def inbox(request):
 def thread_detail(request, pk):
     thread = get_object_or_404(Thread, pk=pk)
 
-    # Privacy guard: a superuser can see that a thread exists (via
-    # search), but must not read its contents unless they're a
-    # participant. Show a friendly message and bounce them back.
     participant = thread.participants.filter(
         user=request.user, is_deleted=False,
     ).first()
@@ -162,35 +212,10 @@ def thread_detail(request, pk):
     thread_is_archived = bool(getattr(participant, "is_archived", False))
     thread.display_title = thread.display_title_for(request.user)
     participants = list(thread.participants.select_related("user"))
-    for message in thread_messages:
-        message.can_change_for_everyone = (
-            message.sender_id == request.user.pk
-            and _message_can_be_changed_by_everyone(message, thread)
-        )
-        if message.reply_to_id:
-            quoted_message = message.reply_to
-            quoted_is_hidden = (
-                quoted_message.is_deleted_for_everyone
-                or quoted_message.hidden_for.filter(user=request.user).exists()
-            )
-            if quoted_is_hidden:
-                message.reply_preview = "Message unavailable"
-                message.reply_sender = "Unavailable"
-            else:
-                message.reply_preview = quoted_message.body
-                message.reply_sender = (
-                    quoted_message.sender.get_full_name()
-                    or quoted_message.sender.email
-                    if quoted_message.sender_id
-                    else "System"
-                )
-        message.seen_by_someone = any(
-            receipt.user_id != message.sender_id
-            for receipt in message.read_receipts.all()
-        )
 
-    # Keep validation errors visible in the conversation without turning
-    # chat messages or stale action notices into global pop-up toasts.
+    for message in thread_messages:
+        _prepare_message_for_render(message, thread, request.user)
+
     flash_messages = list(get_messages(request))
     thread_errors = [
         str(message) for message in flash_messages
@@ -204,7 +229,9 @@ def thread_detail(request, pk):
         "thread_is_archived": thread_is_archived,
         "thread_errors": thread_errors,
         "suppress_global_toasts": True,
+        "current_user_color": _avatar_color(request.user.pk),
     })
+
 
 # ---------------------------------------------------------------------------
 # Compose
@@ -215,12 +242,20 @@ def compose(request):
     to_param = request.GET.get("to")
     if to_param:
         try:
-            preselected = User.objects.filter(pk=int(to_param), is_active=True).first()
+            preselected = User.objects.filter(
+                pk=int(to_param), is_active=True,
+            ).first()
         except (TypeError, ValueError):
             preselected = None
 
+    # Only active users who also have a Staff profile — messaging is
+    # staff-to-staff. If Staff uses a different FK name, adjust user_id.
+    from staff.models import Staff
+    staff_user_ids = Staff.objects.values_list("user_id", flat=True)
+
     users = (
-        User.objects.filter(is_active=True)
+        User.objects
+        .filter(pk__in=staff_user_ids, is_active=True)
         .exclude(pk=request.user.pk)
         .select_related("department")
         .order_by("first_name", "last_name", "email")
@@ -269,7 +304,7 @@ def compose_send(request):
 
 
 # ---------------------------------------------------------------------------
-# Reply
+# Reply — full-page POST and AJAX JSON share this handler
 # ---------------------------------------------------------------------------
 @login_required
 @require_POST
@@ -277,26 +312,37 @@ def reply(request, pk):
     thread = get_object_or_404(Thread, pk=pk)
     participant = _thread_participant(thread, request.user)
 
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
     body = (request.POST.get("body") or "").strip()
     try:
         uploads = _uploaded_attachments(request)
     except ValueError as exc:
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         messages.error(request, str(exc))
         return redirect("messaging:thread", pk=pk)
 
     if not body and not uploads:
-        messages.error(request, "Write a message or attach a file.")
+        err = "Write a message or attach a file."
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": err}, status=400)
+        messages.error(request, err)
         return redirect("messaging:thread", pk=pk)
 
     reply_to_id = request.POST.get("reply_to")
     reply_to = None
     if reply_to_id:
-        reply_to = get_object_or_404(
-            Message.objects.filter(
+        try:
+            reply_to = Message.objects.filter(
                 thread=thread, is_deleted_for_everyone=False,
-            ).exclude(hidden_for__user=request.user),
-            pk=reply_to_id,
-        )
+            ).exclude(hidden_for__user=request.user).get(pk=reply_to_id)
+        except (Message.DoesNotExist, ValueError):
+            err = "The message you're replying to is no longer available."
+            if is_ajax:
+                return JsonResponse({"ok": False, "error": err}, status=400)
+            messages.error(request, err)
+            return redirect("messaging:thread", pk=pk)
 
     now = timezone.now()
     message = Message.objects.create(
@@ -308,6 +354,15 @@ def reply(request, pk):
     thread.save(update_fields=["last_message_at"])
     participant.last_read_at = now
     participant.save(update_fields=["last_read_at"])
+
+    if is_ajax:
+        html = _render_message_fragment(message, thread, request.user, request)
+        return JsonResponse({
+            "ok": True,
+            "message_id": message.pk,
+            "html": html,
+            "sent_at_iso": now.isoformat(),
+        })
 
     return redirect("messaging:thread", pk=pk)
 
@@ -410,7 +465,7 @@ def archived(request):
     for t in threads:
         t.unread = t.unread_count_for(request.user)
         t.last_msg = t.last_message(request.user)
-        t.display_title = t.display_title_for(request.user)   # <-- ADD
+        t.display_title = t.display_title_for(request.user)
 
     threads.sort(
         key=lambda t: (t.last_msg.sent_at if t.last_msg else t.updated_at),
@@ -431,10 +486,9 @@ def unarchive(request, pk):
         participants__is_deleted=False,
     )
 
-    # Flip the participant flag for this user only.
     ThreadParticipant.objects.filter(
         thread=thread, user=request.user
     ).update(is_archived=False)
 
     messages.success(request, "Thread restored to your inbox.")
-    return redirect("messaging:thread", pk=thread.pk)
+    return redirect("messaging:thread", pk=thread.pk)   

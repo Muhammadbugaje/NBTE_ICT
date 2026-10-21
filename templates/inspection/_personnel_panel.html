@@ -1,0 +1,28 @@
+{% load qa_tags %}
+{% include "inspection/_subnav.html" with section="personnel" %}
+<header class="qa-hero"><div>
+  <span class="qa-eyebrow">{% icon "users" 14 "2.4" %} Edit QA Personnel (two officers)</span>
+  <h1 data-qa-focus>QA personnel</h1>
+  <p>NBTE staff registered for QA duty (verification, team lead). Registration checks the §9 seniority and designation rules; a second officer confirms.</p>
+</div></header>
+<section class="qa-card" aria-label="QA personnel">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_insp:personnel' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Name or e-mail" autocomplete="off"></label>
+    <select class="input qa-select" name="discipline" aria-label="Discipline"><option value="">Any discipline</option>{% for d in disciplines %}<option value="{{ d.code }}"{% if filters.discipline == d.code %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="active" aria-label="Active"><option value="">Active or not</option><option value="1"{% if filters.active == "1" %} selected{% endif %}>Active</option><option value="0"{% if filters.active == "0" %} selected{% endif %}>Inactive</option></select>
+    <select class="input qa-select" name="lead" aria-label="Team lead"><option value="">Any</option><option value="1"{% if filters.lead == "1" %} selected{% endif %}>Can lead a visit</option></select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "inspection/_personnel_rows.html" %}</div>
+</section>
+{% if can_edit %}
+<section class="qa-card" aria-labelledby="qp-h">
+  <header class="qa-card__head"><div><h2 id="qp-h">Register or change an entry</h2><p>Sent for confirmation by a second officer (Edit QA Personnel).</p></div></header>
+  <div class="qa-card__body">
+    <form class="qa-form" method="post" action="{% url 'qa_insp:personnel' %}" hx-post="{% url 'qa_insp:personnel' %}" hx-target="#qa-panel" novalidate>{% csrf_token %}
+      {% include "qa_core/partials/_form_errors.html" with form=form %}
+      <div class="qa-fields">{% for field in form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "shield" 16 %} Send for confirmation</button></div>
+    </form>
+  </div>
+</section>
+{% endif %}

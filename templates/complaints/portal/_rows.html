@@ -1,0 +1,18 @@
+{% load qa_tags %}
+{% if rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for c in rows %}
+      <li><a class="qa-rowlink qa-rowlink--nobadge cx-rowlink" href="{% url 'qa_portal:complaint' c.pk %}" hx-get="{% url 'qa_portal:complaint' c.pk %}" hx-target="#qa-main" hx-push-url="true">
+        <span class="qa-rowlink__main">
+          <span class="qa-rowlink__title">{{ c.subject }}</span>
+          <span class="qa-rowlink__meta"><span class="cx-ref">{{ c.reference }}</span><span>· {{ c.layer.name }}</span><span>· raised {{ c.created_at|date:"j M Y" }}</span>{% if c.current_department %}<span>· {{ c.current_department.name }}</span>{% endif %}</span>
+        </span>
+        <span class="qa-rowlink__side">
+          <span class="qa-chip{% if c.status == 'awaiting_raiser' %} qa-tone-warn{% elif c.status == 'resolved' %} qa-tone-success{% elif c.closed_at %} qa-tone-neutral{% else %} qa-tone-pending{% endif %}">{% if c.status == "awaiting_raiser" %}Waiting for your reply{% else %}{{ c.public_stage }}{% endif %}</span>
+        </span></a></li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#cx-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "message" 28 %}</span><h3 class="nbte-empty-state__title">No complaints here</h3><p class="nbte-empty-state__body">When something is wrong, raise a complaint and follow it here. The help articles answer the most common questions straight away.</p></div>
+{% endif %}

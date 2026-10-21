@@ -6,7 +6,7 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=8">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=6">
 {% endblock %}
 
 {% block content %}
@@ -86,12 +86,47 @@
         {% if form.visibility.errors %}<div class="memo-field-error">{{ form.visibility.errors|join:" " }}</div>{% endif %}
       </div>
 
-      {# ---- Per-kind panels ---- #}
+      {# ---- specific_user: searchable single-select ---- #}
       <div class="memo-target-panel" data-target-panel="specific_user">
-        <label for="{{ form.target_user.id_for_label }}" class="memo-label">
-          Send to
-        </label>
-        {{ form.target_user }}
+        <label class="memo-label">Send to</label>
+        <div class="memo-user-picker" data-memo-user-picker>
+          <div class="memo-user-picker-control">
+            <span class="memo-user-picker-chip" data-memo-user-chip hidden>
+              <span data-memo-user-chip-name></span>
+              <button type="button" class="memo-user-picker-chip-x"
+                      data-memo-user-chip-clear aria-label="Remove recipient">×</button>
+            </span>
+            <input type="text" class="memo-user-picker-search"
+                   placeholder="Search a person by name, email or department…"
+                   data-memo-user-search autocomplete="off">
+          </div>
+
+          <div hidden class="memo-user-picker-panel" data-memo-user-panel>
+            <ul class="memo-user-picker-list" data-memo-user-list>
+              {% for u in form.target_user.field.queryset %}
+                <li data-pk="{{ u.pk }}"
+                    data-search-text="{{ u.get_full_name|default:u.username|default:u.email|lower }} {{ u.email|lower }} {{ u.username|default:''|lower }} {{ u.department.name|default:''|lower }}">
+                  <button type="button" class="memo-user-picker-option">
+                    <span class="msg-avatar msg-avatar-sm msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}">
+                      {{ u.first_name|slice:":1"|upper }}{{ u.last_name|slice:":1"|upper }}
+                    </span>
+                    <span class="memo-user-picker-info">
+                      <strong>{{ u.get_full_name|default:u.username|default:u.email }}</strong>
+                      <small>
+                        {{ u.email }}
+                        {% if u.department %} · {{ u.department.name }}{% endif %}
+                      </small>
+                    </span>
+                  </button>
+                </li>
+              {% empty %}
+                <li class="memo-user-picker-empty">No one to send to.</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          {{ form.target_user }}
+        </div>
         {% if form.target_user.errors %}
           <div class="memo-field-error">{{ form.target_user.errors|join:" " }}</div>
         {% endif %}
@@ -177,5 +212,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/memo.js' %}?v=2" defer></script>
+<script src="{% static 'js/memo.js' %}?v=3" defer></script>
 {% endblock %}

@@ -1,0 +1,13 @@
+{% load qa_tags %}
+{% include "inspection/_subnav.html" with section="endorsements" %}
+<header class="qa-hero"><div><span class="qa-eyebrow">{% icon "check" 14 "2.4" %} B14 endorsement chain</span><h1 data-qa-focus>Endorsement queue</h1>
+  <p>Post-visit reports move Division Head → Deputy Director → Director. Each layer endorses, adds content, or returns the report (with a remark) to the person who submitted it.</p></div></header>
+<section class="qa-card" aria-label="Reports">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_insp:endorsements' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Institution, inspection or programme" autocomplete="off"></label>
+    <select class="input qa-select" name="status" aria-label="Where">{% for v, l in statuses %}<option value="{{ v }}"{% if filters.status|default:"" == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="recommendation" aria-label="Recommendation"><option value="">Any recommendation</option>{% for v, l in recommendations %}<option value="{{ v }}"{% if filters.recommendation == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="mine" aria-label="Whose"><option value="">Everyone's</option><option value="1"{% if filters.mine == "1" %} selected{% endif %}>Waiting on me</option></select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "inspection/_endorsements_rows.html" %}</div>
+</section>

@@ -1,0 +1,7 @@
+{% load qa_tags %}
+<li id="ssq-nav-{{ p.section.key }}" class="qa-ssq__nav-item{% if p.section.key == section_key %} is-active{% endif %}{% if p.complete %} is-complete{% endif %}"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <a href="?section={{ p.section.key }}" hx-get="{% url 'qa_portal:ssq' req.pk ssq.pk %}?section={{ p.section.key }}" hx-target="#ssq-section" hx-push-url="true" data-ssq-nav{% if p.section.key == section_key %} aria-current="step"{% endif %}>
+    <span class="qa-ssq__nav-mark" aria-hidden="true">{% if p.complete %}{% icon "check" 14 "3" %}{% else %}{{ forloop.counter|default:"" }}{% endif %}</span>
+    <span class="qa-ssq__nav-text"><span>{{ p.section.title }}</span><small>{% if p.total %}{{ p.filled }} of {{ p.total }} required{% else %}optional{% endif %}{% if p.section.key not in editable_sections and editable_sections %} · {% icon "lock" 10 %} not yours{% endif %}</small></span>
+  </a>
+</li>

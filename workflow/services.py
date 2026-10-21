@@ -658,6 +658,11 @@ def _link_asset_from_form_data(request, requester, form_data):
     asset = Asset.objects.filter(asset_tag=asset_tag).first()
     if asset is None:
         return
+    # Defence in depth: the form already limits the choices, but never link
+    # (or mark damaged) an asset the requester is not allowed to see.
+    from assets.access import can_view_asset
+    if not can_view_asset(requester, asset):
+        return
 
     # Avoid duplicates if the request is resubmitted with the same asset.
     if request.asset_issues.filter(asset=asset, resolved_at__isnull=True).exists():

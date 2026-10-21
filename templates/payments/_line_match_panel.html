@@ -1,0 +1,21 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_fin:unmatched' %}" hx-get="{% url 'qa_fin:unmatched' %}" hx-target="#qa-panel" hx-push-url="true">Unmatched lines</a><span aria-hidden="true">/</span><span aria-current="page">Line {{ line.row_number }}</span></nav>
+<header class="qa-detail-head"><div><span class="qa-eyebrow">{% icon "link" 14 "2.2" %} Manual match · statement #{{ line.statement_id }}</span><h1 data-qa-focus>{{ line.amount|naira }} on {{ line.value_date|date:"j M Y"|default:"—" }}</h1><p class="qa-detail-head__target">{{ line.narration }}</p></div>
+  <div class="qa-detail-head__chips"><span class="qa-chip {{ line.match_status|tone }}">{{ line.get_match_status_display }}</span>{% if line.reference_check_failed %}<span class="qa-chip qa-tone-warn">Reference fails the check digits</span>{% endif %}</div></header>
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+{% if line.match_status == "matched" %}{% include "qa_core/partials/_callout.html" with kind="success" title="Matched" message=line.match_remark %}{% endif %}
+{% if line.reference_check_failed and line.candidates %}<div class="qa-callout qa-callout--warn" role="status">{% icon "alert" 18 %}<div><strong>“{{ line.extracted_reference }}” looks like a typo</strong><p>Closest valid references: {% for c in line.candidates %}<span class="qa-mono">{{ c }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}</p></div></div>{% endif %}
+{% if line.match_status != "matched" and line.match_status != "ignored" %}
+<form method="post" action="{% url 'qa_fin:line_match' line.pk %}" hx-post="{% url 'qa_fin:line_match' line.pk %}" hx-target="#qa-panel" class="qa-card">
+  {% csrf_token %}
+  <header class="qa-card__head"><div><h2>Choose the bill</h2><p>Search by institution, code or reference. Suggestions use the candidates and the amount.</p></div>
+    <label class="qa-search" style="max-width:340px"><span class="sr-only">Search bills</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ q }}" placeholder="Search bills" hx-get="{% url 'qa_fin:line_match' line.pk %}" hx-target="#qa-panel" hx-trigger="input changed delay:400ms" hx-include="this" data-qa-no-overlay></label></header>
+  <ul class="qa-checks" role="list" style="padding:16px 22px">
+    {% for ob in candidates %}<li><label><input type="radio" name="obligation" value="{{ ob.pk }}"> <span><strong>{{ ob.reference }}</strong> · {{ ob.institution.name }} · balance {{ ob.balance|naira }} · {{ ob.status|humanize_code }}</span></label></li>{% empty %}<li class="qa-muted qa-small">No bills match. Search above.</li>{% endfor %}
+  </ul>
+  <div class="qa-card__body qa-stack">
+    <div class="qa-field"><label for="lm-remark">Remark (required)</label><textarea class="input" id="lm-remark" name="remark" rows="2" required minlength="3" placeholder="e.g. Teller TLR-0091 shows the reference with a missing digit"></textarea></div>
+    <div class="qa-form-actions"><button class="btn btn-primary" type="submit" name="verb" value="match">{% icon "link" 16 %} Match to the selected bill</button><button class="btn btn-subtle" type="submit" name="verb" value="ignore">Ignore this line</button></div>
+  </div>
+</form>
+{% endif %}

@@ -1,0 +1,25 @@
+{% load qa_tags %}
+{% if section %}
+<form id="ssq-form" class="qa-card qa-ssq__form" method="post" action="{% url 'qa_portal:ssq_save' req.pk ssq.pk %}"
+      hx-post="{% url 'qa_portal:ssq_save' req.pk ssq.pk %}" hx-trigger="ssq:save" hx-target="#ssq-save-status" hx-swap="outerHTML" hx-sync="this:queue last"
+      data-ssq-form data-ssq-delay="{{ autosave_ms }}" data-qa-no-overlay novalidate aria-labelledby="ssq-sec-h">
+  {% csrf_token %}<input type="hidden" name="section" value="{{ section.key }}">
+  <header class="qa-card__head"><div><h2 id="ssq-sec-h" data-qa-focus>{{ section.title }}</h2>{% if section.description %}<p>{{ section.description }}</p>{% endif %}</div>
+    {% if not editable %}<span class="qa-chip">{% icon "lock" 12 %} Read-only</span>{% endif %}</header>
+  <div class="qa-card__body qa-ssq__fields">
+    <fieldset class="qa-ssq__fieldset"{% if not editable %} disabled{% endif %}><legend class="sr-only">{{ section.title }}</legend>
+      {% for f in fields %}{% include "qa_portal/ssq/_field.html" %}{% endfor %}
+    </fieldset>
+  </div>
+  <noscript><div class="qa-card__body"><button class="btn btn-primary" type="submit">Save section</button></div></noscript>
+</form>
+{% for f in fields %}{% if f.type == "file" and editable %}
+  <form id="ssq-up-{{ f.key }}" hx-post="{% url 'qa_portal:ssq_upload' req.pk ssq.pk f.key %}" hx-encoding="multipart/form-data" hx-target="#ssq-section" data-qa-progress hidden>{% csrf_token %}</form>
+  <form id="ssq-reuse-{{ f.key }}" hx-post="{% url 'qa_portal:ssq_reuse' req.pk ssq.pk f.key %}" hx-target="#ssq-section" hidden>{% csrf_token %}</form>
+{% endif %}{% endfor %}
+<nav class="qa-ssq__pager" aria-label="Section pages">
+  {% if prev_section %}<a class="btn btn-subtle" href="?section={{ prev_section.key }}" hx-get="{% url 'qa_portal:ssq' req.pk ssq.pk %}?section={{ prev_section.key }}" hx-target="#ssq-section" hx-push-url="true" data-ssq-nav>{% icon "back" 16 %} {{ prev_section.title }}</a>{% else %}<span></span>{% endif %}
+  {% if next_section %}<a class="btn btn-primary" href="?section={{ next_section.key }}" hx-get="{% url 'qa_portal:ssq' req.pk ssq.pk %}?section={{ next_section.key }}" hx-target="#ssq-section" hx-push-url="true" data-ssq-nav>{{ next_section.title }} {% icon "arrow" 16 %}</a>{% endif %}
+</nav>
+{% if section_partial %}{% for p in progress %}{% include "qa_portal/ssq/_nav_item.html" with oob=True %}{% endfor %}{% endif %}
+{% else %}<p class="qa-muted">This questionnaire has no sections.</p>{% endif %}

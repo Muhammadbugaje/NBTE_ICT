@@ -1,0 +1,12 @@
+{% load qa_tags %}
+{% with fin_tab="webhooks" fin_title="Provider webhook log" fin_lead="Every Remita and Paystack callback, valid or not. A callback is acted on only after its signature (Paystack) or caller (Remita allow-list) checks out and a server-side verify agrees — and even then it is evidence for Finance, never a confirmation." %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
+<section class="qa-card" aria-label="Webhook log">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_fin:webhooks' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input, change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference or outcome"></label>
+    <select class="input qa-select" name="provider" aria-label="Provider"><option value="">Any provider</option><option value="paystack"{% if filters.provider == "paystack" %} selected{% endif %}>Paystack</option><option value="remita"{% if filters.provider == "remita" %} selected{% endif %}>Remita</option></select>
+    <select class="input qa-select" name="valid" aria-label="Signature"><option value="">Any signature</option><option value="yes"{% if filters.valid == "yes" %} selected{% endif %}>Valid</option><option value="no"{% if filters.valid == "no" %} selected{% endif %}>Invalid</option></select>
+    <select class="input qa-select" name="period" aria-label="Period"><option value="">Any time</option><option value="1d"{% if filters.period == "1d" %} selected{% endif %}>Last 24 hours</option><option value="7d"{% if filters.period == "7d" %} selected{% endif %}>Last 7 days</option><option value="30d"{% if filters.period == "30d" %} selected{% endif %}>Last 30 days</option></select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "payments/_webhook_rows.html" %}</div>
+</section>

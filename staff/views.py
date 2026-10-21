@@ -39,7 +39,7 @@ def staff_list(request):
                 | Q(last_name__icontains=q)
                 | Q(employee_no__icontains=q)
                 | Q(email__icontains=q)
-                | Q(designation__icontains=q)
+                | Q(designation__name__icontains=q)
             )
         dept = search.cleaned_data.get("department")
         if dept:
@@ -94,7 +94,71 @@ def staff_detail(request, pk):
         "can_delete":       permissions.can_delete_staff(request.user, staff),
         "can_message":      permissions.can_message_staff(request.user, staff),
         "can_notify":       permissions.can_notify_staff(request.user, staff),
+        **_lifecycle_context(request, staff),
     })
+
+
+def _log_contact(request, staff, channel, subject, body):
+    """Staff file: record that this person was contacted from their page
+    (subject and a short preview only)."""
+    from core import audit
+    preview = (body or "").strip().replace("\n", " ")
+    audit.log("staff_contact", staff, actor=request.user, changes={
+        "channel": channel, "subject": (subject or "")[:200],
+        "preview": preview[:140] + ("…" if len(preview) > 140 else ""),
+    }, note=f"{channel} sent from the staff page")
+
+
+def _lifecycle_context(request, staff):
+    """Nominal-roll facts and the promotion timeline / Promote button on the
+    detail page (nominal-roll release)."""
+    from django.utils import timezone
+
+    from accounts.scoping import scope_to_department
+
+    from .models import Designation
+
+    user = request.user
+    can_promote = user.has_perm("staff.promote_staff") and scope_to_department(
+        Staff.objects.filter(pk=staff.pk), user).exists()
+    can_transfer = user.has_perm("staff.transfer_staff") and scope_to_department(
+        Staff.objects.filter(pk=staff.pk), user).exists()
+    show_promotions = can_promote or can_transfer or permissions.can_view_hr_fields(user, staff)
+    promotions = []
+    if show_promotions:
+        promotions = list(staff.promotions.select_related(
+            "from_designation", "to_designation", "approved_by", "reverses")[:30])
+    quals = [q.strip() for q in (staff.qualifications or "").replace(";", ",").split(",") if q.strip()]
+    return {
+        "can_promote": can_promote,
+        "show_promotions": show_promotions,
+        "promotions": promotions,
+        "qualification_list": quals,
+        "promotion_targets": Designation.objects.filter(is_active=True).order_by("-rank", "name")
+                             if can_promote else [],
+        "today": timezone.localdate(),
+        "can_transfer": can_transfer,
+        "transfer_departments": _transfer_choices(user, "department") if can_transfer else [],
+        "transfer_offices": _transfer_choices(user, "office") if can_transfer else [],
+        **_staff_file(staff, show_promotions),
+    }
+
+
+def _staff_file(staff, visible):
+    if not visible:
+        return {"staff_file": [], "staff_file_counts": {}, "items_held": []}
+    from . import staff_file
+    events = staff_file.timeline(staff)
+    return {"staff_file": events, "staff_file_counts": staff_file.counts(events),
+            "staff_file_kinds": staff_file.KINDS, "items_held": staff_file.items_held(staff)}
+
+
+def _transfer_choices(user, kind):
+    """Destinations for the Transfer dialog: any active department / office
+    (the permission check is on the staff member being moved)."""
+    from .models import Department, Office
+    model = Office if kind == "office" else Department
+    return model.objects.filter(is_active=True).order_by("name")
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +388,7 @@ def staff_message(request, pk):
         return redirect("staff:detail", pk=staff.pk)
 
     messages.success(request, "Message sent.")
+    _log_contact(request, staff, "message", subject, body)
     try:
         return redirect("messaging:thread", pk=thread_pk)
     except Exception:
@@ -417,6 +482,7 @@ def staff_notify(request, pk):
             actor=request.user,
         )
         messages.success(request, "Notification sent.")
+        _log_contact(request, staff, "notification", title, body)
     except Exception as exc:
         messages.error(request, f"Could not send notification: {exc}")
     return redirect("staff:detail", pk=staff.pk)      

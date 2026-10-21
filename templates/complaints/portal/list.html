@@ -1,0 +1,25 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Complaints · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="cx-portal-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "message" 14 "2.2" %} Complaints</span>
+      <h1 data-qa-focus>Complaints</h1>
+      <p>Tell NBTE when something is wrong — a payment, an SSQ, a visit, the portal itself. Each complaint goes to the department that handles it and is answered within working-day deadlines.{% if open_count %} <strong>{{ open_count }} open.</strong>{% endif %}</p>
+    </div>
+    <div class="qa-row">
+      <a class="btn btn-subtle" href="{% url 'qa_portal:help' %}" hx-get="{% url 'qa_portal:help' %}" hx-target="#qa-main" hx-push-url="true">{% icon "help" 16 %} Help articles</a>
+      {% if not read_only %}<a class="btn btn-primary" href="{% url 'qa_portal:complaint_new' %}" hx-get="{% url 'qa_portal:complaint_new' %}" hx-target="#qa-main" hx-push-url="true">{% icon "plus" 16 %} Raise a complaint</a>{% endif %}
+    </div>
+  </header>
+  <section class="qa-card" aria-label="Your complaints">
+    <form class="qa-toolbar" role="search" hx-get="{% url 'qa_portal:complaints' %}" hx-target="#cx-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change">
+      <label class="qa-search"><span class="sr-only">Search complaints</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference or subject" autocomplete="off"></label>
+      <select class="input qa-select" name="status" aria-label="Status">{% for v, l in "open:Open,closed:Closed or withdrawn,all:All"|split_pairs %}<option value="{{ v }}"{% if status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    </form>
+    <div id="cx-rows" class="qa-region" data-qa-region aria-live="polite">{% include "complaints/portal/_rows.html" %}</div>
+  </section>
+</div>
+{% endblock %}

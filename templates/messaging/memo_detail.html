@@ -6,7 +6,7 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=8">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=5">
 {% endblock %}
 
 {% block content %}
@@ -31,9 +31,16 @@
           {% if current_actor %}
             Waiting on <strong>{{ current_actor.get_full_name|default:current_actor.email }}</strong>.
           {% else %}
-            No one is currently assigned to this step.
+            Nobody can act on this step yet: {{ parked_reason }}
+            {% if request.user.is_superuser %}You can act on it as an administrator below, or fix it and re-check.{% endif %}
           {% endif %}
         </p>
+        {% if can_recheck and not current_actor %}
+          <form method="post" action="{% url 'messaging:memo_recheck' memo.pk %}" class="memo-recheck-form">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-ghost">Re-check routing</button>
+          </form>
+        {% endif %}
       </div>
     </div>
   {% elif memo.status == "returned" %}
@@ -230,7 +237,7 @@
   {% if chain_rows %}
     <section class="memo-chain">
       <header class="memo-chain-head">
-        <h2>Approval chain</h2>
+        <h2>{% if memo.status == "draft" and not memo.route %}Expected approval chain{% else %}Approval chain{% endif %}</h2>
         {% if memo.route %}
           <p class="muted">
             Route: <strong>{{ memo.route.name }}</strong>
@@ -253,7 +260,11 @@
                   {% elif row.state == "returned" %}Returned
                   {% elif row.state == "rejected" %}Rejected
                   {% elif row.state == "current" %}Awaiting
+                  {% elif row.state == "parked" %}Nobody can act
                   {% elif row.state == "skipped" %}Skipped
+                  {% elif row.state == "will_skip" %}Will be skipped
+                  {% elif row.state == "blocked" %}Will need attention
+                  {% elif row.state == "not_reached" %}Not reached
                   {% else %}Pending{% endif %}
                 </span>
               </div>
@@ -262,11 +273,15 @@
                   <span>{{ row.decided_by.get_full_name|default:row.decided_by.email }}</span>
                   <span class="memo-dot">·</span>
                   <span>{{ row.decided_at|date:"M j, Y · H:i" }}</span>
+                {% elif row.state == "skipped" %}
+                  <span class="muted">{{ row.reason|default:"Skipped automatically." }}</span>{% if row.decided_at %} <span class="memo-dot">·</span> <span>{{ row.decided_at|date:"M j, Y · H:i" }}</span>{% endif %}
+                {% elif row.state == "will_skip" or row.state == "blocked" or row.state == "parked" %}
+                  <span class="muted">{{ row.reason }}</span>
                 {% elif row.actor %}
-                  <span>Will be actioned by</span>
+                  <span>{% if row.state == "current" %}Waiting on{% else %}Will be actioned by{% endif %}</span>
                   <strong>{{ row.actor.get_full_name|default:row.actor.email }}</strong>
-                {% else %}
-                  <span class="muted">No matching actor</span>
+                {% elif row.state == "not_reached" %}
+                  <span class="muted">The memo finished before this step.</span>
                 {% endif %}
               </div>
               {% if row.comment %}

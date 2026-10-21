@@ -438,8 +438,11 @@ def reminder_list(request):
 @login_required
 def reminder_detail(request, pk):
     rem = get_object_or_404(Reminder, pk=pk)
+    # The notification links here, so everyone it was delivered to (department,
+    # organisation or role reminders included) must be able to open it.
     if not (rem.creator_id == request.user.pk or request.user.is_superuser
-            or rem.recipients.filter(pk=request.user.pk).exists()):
+            or rem.recipients.filter(pk=request.user.pk).exists()
+            or rem.fanned.filter(user=request.user).exists()):
         raise Http404
     return render(request, "portal/reminders/detail.html", {"reminder": rem})
 

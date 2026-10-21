@@ -1,0 +1,38 @@
+<tbody id="tpl-{{ t.pk }}" class="qa-rule">
+  <tr class="is-editing">
+    <td colspan="4">
+      <div class="qa-formula-grid">
+        <form class="qa-edit" hx-post="{% url 'qa:template_edit' t.pk %}" hx-target="#tpl-{{ t.pk }}" hx-swap="outerHTML"
+              method="post" action="{% url 'qa:template_edit' t.pk %}" id="tpl-form-{{ t.pk }}">
+          {% csrf_token %}
+          <div class="qa-split">
+            <div><span class="qa-key">{{ t.code }}</span> <span class="qa-chip">{{ t.get_channel_display }}</span></div>
+          </div>
+          {% if errors %}<ul class="qa-errors" role="alert">{% for m in errors %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+          <label class="field">
+            <span>Subject</span>
+            <input class="input" name="subject" value="{{ subject }}" maxlength="255" {% if not can_manage %}readonly{% endif %} data-qa-focus>
+          </label>
+          <label class="field">
+            <span>Body</span>
+            <textarea class="input qa-mono" name="body" rows="6" spellcheck="false" {% if not can_manage %}readonly{% endif %}>{{ body }}</textarea>
+          </label>
+          <p class="qa-small qa-muted">Available: {% for k in sample.keys %}<code>{% templatetag openvariable %} {{ k }} {% templatetag closevariable %}</code>{% if not forloop.last %} {% endif %}{% endfor %}</p>
+          <div class="qa-edit__row">
+            {% if can_manage %}<button type="submit" class="btn btn-primary btn-sm">Save template</button>{% endif %}
+            <button type="button" class="btn btn-subtle btn-sm" hx-post="{% url 'qa:template_preview' t.pk %}"
+                    hx-include="#tpl-form-{{ t.pk }}" hx-target="#tpl-preview-{{ t.pk }}" data-qa-no-overlay>Preview</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-qa-no-busy
+                    hx-get="{% url 'qa:template_edit' t.pk %}?cancel=1" hx-target="#tpl-{{ t.pk }}" hx-swap="outerHTML">{% if can_manage %}Cancel{% else %}Close{% endif %}</button>
+          </div>
+        </form>
+        <div>
+          <span class="qa-label">Preview with sample values</span>
+          <div id="tpl-preview-{{ t.pk }}" class="qa-region" aria-live="polite">
+            <p class="qa-small qa-muted">Press Preview to render this template with sample values.</p>
+          </div>
+        </div>
+      </div>
+    </td>
+  </tr>
+</tbody>

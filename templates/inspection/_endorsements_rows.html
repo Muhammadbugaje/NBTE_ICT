@@ -1,0 +1,11 @@
+{% load qa_tags %}
+{% if page.rows %}
+<ul class="qa-rowlist" role="list">{% for r in page.rows %}
+  <li><a class="qa-rowlink" href="{% url 'qa_insp:report' r.pk %}" hx-get="{% url 'qa_insp:report' r.pk %}" hx-target="#qa-panel" hx-push-url="true">
+    <span class="qa-rowlink__badge">{{ r.inspection.case.institution.code }}</span>
+    <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.qa_request_programme.programme }}</span>
+      <span class="qa-rowlink__meta"><span>{{ r.inspection.case.institution.name }}</span><span>· <span class="qa-mono">{{ r.inspection.reference }}</span></span>{% if r.holders %}<span>· with {% for u in r.holders %}{{ u|who }}{% endfor %}</span>{% endif %}</span></span>
+    <span class="qa-rowlink__side">{% if r.layer %}<span class="qa-chip qa-tone-pending">{{ r.layer }}</span>{% else %}<span class="qa-chip {{ r.status|tone }}">{{ r.status|humanize_code }}</span>{% endif %}</span></a></li>
+{% endfor %}</ul>
+{% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">Nothing to endorse</h3><p class="nbte-empty-state__body">Reports appear here once a Team Lead submits them.</p></div>{% endif %}

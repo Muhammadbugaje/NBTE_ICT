@@ -1,0 +1,98 @@
+{% load qa_tags %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "trend" 14 "2.2" %} Quality Assurance · Complaints</span>
+    <h1 data-qa-focus>Complaint deadlines</h1>
+    <p>How quickly NBTE answers complaints over the last {{ days }} days: stages finished within their working-hours deadline, what is overdue now, and where complaints come from.</p>
+  </div>
+  <div class="qa-hero__actions">
+    <form hx-get="{% url 'qa_complaints:dashboard' %}" hx-target="#qa-panel" hx-push-url="true" hx-trigger="change">
+      <label class="sr-only" for="cx-days">Period</label>
+      <select class="input qa-select" id="cx-days" name="days">{% for n in "30 90 180 365"|split %}<option value="{{ n }}"{% if days|stringformat:"s" == n %} selected{% endif %}>Last {{ n }} days</option>{% endfor %}</select>
+    </form>
+    <a class="btn btn-subtle btn-sm" href="{% url 'qa_complaints:report_csv' %}" download>{% icon "download" 14 %} Export CSV</a>
+  </div>
+</header>
+
+<nav class="qa-tabs" aria-label="Complaint queues">
+  <a href="{% url 'qa_complaints:queue' %}" hx-get="{% url 'qa_complaints:queue' %}" hx-target="#qa-panel" hx-push-url="true">Queue</a>
+  <a href="{% url 'qa_complaints:dashboard' %}" class="is-active" aria-current="page">{% icon "trend" 16 %} SLA dashboard</a>
+</nav>
+
+<div class="cx-kpis">
+  <div class="cx-kpi{% if d.on_time_pct is not None and d.on_time_pct >= 90 %} cx-kpi--good{% elif d.on_time_pct is not None and d.on_time_pct < 70 %} cx-kpi--bad{% endif %}">
+    <strong data-countup="{{ d.on_time_pct|default:0 }}" data-countup-suffix="%">{% if d.on_time_pct is None %}—{% else %}{{ d.on_time_pct }}%{% endif %}</strong>
+    <span>Stages on time ({{ d.stages_measured }} measured)</span></div>
+  <div class="cx-kpi"><strong data-countup="{{ d.open }}">{{ d.open }}</strong><span>Open now</span></div>
+  <div class="cx-kpi{% if d.states.breached %} cx-kpi--bad{% endif %}"><strong data-countup="{{ d.states.breached }}">{{ d.states.breached }}</strong><span>Overdue now</span></div>
+  <div class="cx-kpi{% if d.states.near %} cx-kpi--warn{% endif %}"><strong data-countup="{{ d.states.near }}">{{ d.states.near }}</strong><span>Past half-way</span></div>
+  <div class="cx-kpi"><strong>{% if d.avg_hours is None %}—{% else %}{{ d.avg_hours|floatformat:0 }}h{% endif %}</strong><span>Average time to resolve ({{ d.resolved }} resolved)</span></div>
+</div>
+
+<div class="cx-split">
+  <div class="qa-stack">
+    <section class="qa-card" aria-labelledby="cx-trend-h">
+      <header class="qa-card__head"><div><h2 id="cx-trend-h">Raised and resolved, by week</h2><p>The last twelve weeks.</p></div></header>
+      <div class="qa-card__body"><div class="cx-chart"><canvas id="cx-trend" role="img" aria-label="Complaints raised and resolved per week"></canvas></div></div>
+    </section>
+    <section class="qa-card" aria-labelledby="cx-layer-h">
+      <header class="qa-card__head"><div><h2 id="cx-layer-h">By kind of complaint</h2><p>Raised in the period, still open, and how many missed a deadline.</p></div></header>
+      <div class="qa-table-wrap"><table class="qa-table qa-table--compact">
+        <thead><tr><th scope="col">Kind</th><th scope="col" class="num">Raised</th><th scope="col" class="num">Open</th><th scope="col" class="num">Missed a deadline</th></tr></thead>
+        <tbody>{% for r in d.by_layer %}<tr><td>{{ r.layer__name }}</td><td class="num">{{ r.total }}</td><td class="num">{{ r.open }}</td><td class="num">{{ r.breached }}{% if r.total %} <span class="qa-muted qa-small">({{ r.pct }}%)</span>{% endif %}</td></tr>
+        {% empty %}<tr><td colspan="4" class="qa-muted">No complaints in this period.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </section>
+  </div>
+  <div class="qa-stack">
+    <section class="qa-card" aria-labelledby="cx-state-h">
+      <header class="qa-card__head"><h2 id="cx-state-h">Open complaints by deadline</h2></header>
+      <div class="qa-card__body">
+        {% if d.open %}
+        <div class="cx-state-strip" role="img" aria-label="{{ d.states.on_track }} on track, {{ d.states.near }} past half-way, {{ d.states.breached }} overdue, {{ d.states.paused }} waiting for the raiser">
+          {% for key, n in d.states.items %}{% if n %}<span class="cx-c-{{ key }}" style="flex: {{ n }}"></span>{% endif %}{% endfor %}
+        </div>
+        <div class="cx-state-legend"><span><i class="cx-c-on_track"></i>On track {{ d.states.on_track }}</span><span><i class="cx-c-near"></i>Past half-way {{ d.states.near }}</span><span><i class="cx-c-breached"></i>Overdue {{ d.states.breached }}</span><span><i class="cx-c-paused"></i>Waiting for raiser {{ d.states.paused }}</span>{% if d.states.none %}<span><i class="cx-c-none"></i>No deadline {{ d.states.none }}</span>{% endif %}</div>
+        {% else %}<p class="qa-muted qa-small">No open complaints.</p>{% endif %}
+      </div>
+    </section>
+    <section class="qa-card" aria-labelledby="cx-dept-h">
+      <header class="qa-card__head"><h2 id="cx-dept-h">Open, by department</h2></header>
+      <div class="qa-card__body">
+        <ul class="cx-bars">{% for r in d.by_dept %}<li><span>{{ r.current_department__name|default:"Unrouted" }}</span><strong>{{ r.n }}</strong><span class="qa-progress"><span style="--pct: {{ r.w }}%"></span></span></li>{% empty %}<li class="qa-muted">Nothing open.</li>{% endfor %}</ul>
+      </div>
+    </section>
+    <section class="qa-card" aria-labelledby="cx-lvl-h">
+      <header class="qa-card__head"><h2 id="cx-lvl-h">Escalations in the period</h2></header>
+      <div class="qa-card__body"><dl class="qa-meta">{% for lv, n in d.levels %}<dt>Level {{ lv }}{% if lv == 1 %} · Director{% elif lv == 2 %} · Deputy / Division Head{% else %} · Executive Secretary{% endif %}</dt><dd>{{ n }}</dd>{% endfor %}</dl></div>
+    </section>
+    {% if d.overdue %}
+    <section class="qa-card" aria-labelledby="cx-over-h">
+      <header class="qa-card__head"><h2 id="cx-over-h">Overdue now</h2></header>
+      <ul class="qa-rowlist" role="list">{% for c in d.overdue %}<li><a class="qa-rowlink qa-rowlink--nobadge cx-rowlink" href="{% url 'qa_complaints:detail' c.pk %}" hx-get="{% url 'qa_complaints:detail' c.pk %}" hx-target="#qa-panel" hx-push-url="true"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ c.subject }}</span><span class="qa-rowlink__meta"><span class="cx-ref">{{ c.reference }}</span><span>· {{ c.current_department.name|default:"—" }}</span></span></span><span class="qa-rowlink__side">{% include "complaints/_sla.html" with s=c.sla %}</span></a></li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{{ chart|json_script:"cx-trend-data" }}
+<script>
+  (function draw() {
+    var el = document.getElementById("cx-trend"), src = document.getElementById("cx-trend-data");
+    if (!el || !src) return;
+    if (!window.Chart) { return window.setTimeout(draw, 120); }
+    if (el._chart) el._chart.destroy();
+    var d = JSON.parse(src.textContent), css = getComputedStyle(document.documentElement);
+    var ok = (css.getPropertyValue("--success") || "#1f8a4c").trim(), muted = (css.getPropertyValue("--text-muted") || "#666").trim();
+    var ink = (css.getPropertyValue("--primary") || "#1f6b3e").trim();
+    el._chart = new Chart(el, {
+      type: "bar",
+      data: { labels: d.labels, datasets: [
+        { label: "Raised", data: d.raised, backgroundColor: ink, borderRadius: 4, maxBarThickness: 18 },
+        { label: "Resolved", data: d.resolved, backgroundColor: ok + "66", borderColor: ok, borderWidth: 1, borderRadius: 4, maxBarThickness: 18 }
+      ] },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 500 },
+        plugins: { legend: { position: "bottom", labels: { color: muted, boxWidth: 10 } } },
+        scales: { x: { grid: { display: false }, ticks: { color: muted } }, y: { beginAtZero: true, ticks: { precision: 0, color: muted } } } }
+    });
+  })();
+</script>

@@ -1,0 +1,87 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Application · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page" id="qa-application">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Onboarding application (SOP-01)</span>
+    <h1 data-qa-focus>{% if app %}Application {{ app.reference }}{% else %}Your application{% endif %}</h1>
+    <p>{% if app %}Status: <span class="qa-chip {{ app.status|tone }}">{{ public_status }}</span>{% else %}Register {{ inst.name }} with NBTE. Fill in your profile, upload the statutory documents, then submit — NBTE’s departments review everything at the same time.{% endif %}</p>
+  </header>
+
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Something needs attention" message=error %}{% endif %}
+  {% if hold %}{% include "qa_core/partials/_callout.html" with kind="warn" title="Application on hold" message=hold.reason %}{% endif %}
+
+  {% if not app %}
+    <section class="qa-card"><div class="qa-card__body qa-stack">
+      <ol class="qa-twostep">
+        <li><strong>Complete your profile</strong> — ownership, type, location and contacts.{% if gaps %} <a href="{% url 'qa_portal:institution' %}">{{ gaps|length }} item{{ gaps|length|pluralize }} missing</a>{% endif %}</li>
+        <li><strong>Upload documents</strong> — {{ summary.ready }} of {{ summary.mandatory }} required uploaded. <a href="{% url 'qa_portal:documents' %}">Open the checklist</a></li>
+        <li><strong>Submit</strong> — Legal, Finance, Academic Planning and Physical Planning review in parallel.</li>
+        <li><strong>Pay the institutional fee</strong> — your slip appears under Payments once all four clear.</li>
+      </ol>
+      {% if inst.status == "proposed" or inst.status == "under_review" %}
+      <form method="post" action="{% url 'qa_portal:application_start' %}" hx-post="{% url 'qa_portal:application_start' %}" hx-target="#qa-main" hx-select="#qa-application" hx-swap="innerHTML">{% csrf_token %}
+        <button class="btn btn-primary" type="submit"{% if request.is_impersonating %} disabled{% endif %}>{% icon "plus" 16 %} Start application</button></form>
+      {% else %}<p class="qa-small qa-muted">Your institution is already on NBTE’s register; onboarding applications are for new (proposed) institutions.</p>{% endif %}
+    </div></section>
+  {% else %}
+    <section class="qa-card" aria-label="Progress"><div class="qa-card__body">
+      <ol class="qa-steps qa-steps--h">{% for m in board %}<li class="qa-step is-{{ m.state }}"><span class="qa-step__label">{{ m.label }}{% if m.state == "current" %}<span class="qa-step__note">You are here</span>{% endif %}</span></li>{% endfor %}</ol>
+    </div></section>
+
+    <div class="qa-cols">
+      <div class="qa-stack">
+        {% if app.status == "draft" %}
+          <section class="qa-card" aria-labelledby="qa-submit-h">
+            <header class="qa-card__head"><div><h2 id="qa-submit-h">Ready to submit?</h2><p>{% if app.round > 1 %}NBTE returned this application. Fix what was asked, then submit again — only the departments that returned it look again.{% else %}Everything below must be complete before you can submit.{% endif %}</p></div></header>
+            <div class="qa-card__body qa-stack">
+              {% if blockers %}<ul class="qa-checks" role="list">{% for b in blockers %}<li class="is-missing">{% icon "alert" 16 %} {{ b }}</li>{% endfor %}</ul>
+              {% else %}<p class="qa-small qa-row qa-gap-sm">{% icon "check" 16 "2.4" %} Your profile and required documents are complete.</p>{% endif %}
+              <form method="post" action="{% url 'qa_portal:application_submit' %}" hx-post="{% url 'qa_portal:application_submit' %}" hx-target="#qa-main" hx-select="#qa-application" hx-swap="innerHTML" class="qa-stack">{% csrf_token %}
+                <label class="qa-field--check"><input type="checkbox" name="declaration" required> I confirm the information and documents submitted are true and that I am authorised to submit on behalf of {{ inst.name }}.</label>
+                <div class="qa-form-actions"><button class="btn btn-primary" type="submit"{% if blockers or request.is_impersonating %} disabled{% endif %}>Submit application</button>
+                  <a class="btn btn-subtle" href="{% url 'qa_portal:documents' %}">Documents</a></div>
+              </form>
+            </div>
+          </section>
+        {% endif %}
+
+        {% if clearances %}
+          <section class="qa-card" aria-labelledby="qa-clr-h">
+            <header class="qa-card__head"><div><h2 id="qa-clr-h">Departmental clearance{% if app.round > 1 %} · round {{ app.round }}{% endif %}</h2><p>All four departments must clear before your fee becomes payable.</p></div></header>
+            <div class="qa-card__body"><div class="qa-branches">{% for c in clearances %}
+              <div class="qa-branch is-{{ c.status }}"><span class="qa-branch__dept">{{ c.department.name }}</span>
+                <span class="qa-chip {{ c.status|tone }}">{{ c.get_status_display }}</span>
+                <span class="qa-branch__meta">{% if c.decided_at %}{{ c.decided_at|date:"j M Y" }}{% else %}Since {{ c.opened_at|date:"j M Y" }}{% endif %}</span>
+                {% if c.status == "returned" and c.remark %}<span class="qa-doc__remark">{{ c.remark }}</span>{% endif %}</div>{% endfor %}
+            </div></div>
+          </section>
+        {% endif %}
+
+        {% if obligations %}
+          <section class="qa-card" aria-labelledby="qa-fee-h">
+            <header class="qa-card__head"><div><h2 id="qa-fee-h">Fees</h2><p>Pay on the Payments page. Finance confirms every payment before your application moves on.</p></div></header>
+            <ul class="qa-rowlist" role="list">{% for ob in obligations %}<li><a class="qa-rowlink" href="{% url 'qa_portal:payment' ob.pk %}"><span class="qa-rowlink__badge qa-rowlink__badge--money">₦</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ ob.description }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ ob.reference }}</span> · due {{ ob.due_at|date:"j M Y" }}</span></span><span class="qa-rowlink__side"><span class="qa-rowlink__amount">{{ ob.amount|naira }}</span><span class="qa-chip {{ ob.status|tone }}">{{ ob.status|humanize_code }}</span></span></a></li>{% endfor %}</ul>
+          </section>
+        {% endif %}
+
+        {% if app.status == "programme_selection" or programmes %}
+          <div id="qa-programmes" hx-get="{% url 'qa_portal:programmes' %}" hx-trigger="load" hx-swap="innerHTML" data-qa-no-overlay>{% include "qa_portal/application/_programmes.html" %}</div>
+        {% endif %}
+      </div>
+
+      <aside class="qa-stack">
+        {% include "qa_portal/documents/_summary.html" %}
+        <section class="qa-card"><div class="qa-card__body"><dl class="qa-dl">
+          <div><dt>Reference</dt><dd class="qa-mono">{{ app.reference }}</dd></div>
+          <div><dt>Cycle</dt><dd>{{ app.cycle.name|default:"—" }}</dd></div>
+          <div><dt>Submitted</dt><dd>{{ app.submitted_at|date:"j M Y"|default:"Not yet" }}</dd></div>
+          <div><dt>Handled by</dt><dd>{{ inst.handling_department.name|default:"NBTE" }}</dd></div>
+        </dl></div></section>
+        <a class="btn btn-subtle" href="{% url 'qa_portal:timeline' %}?kind=application">{% icon "clock" 16 %} Application history</a>
+      </aside>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -37,7 +37,14 @@ _POWER = ["accounts.view_analytics_dashboard"]
 _ASSETS_VIEW = ["assets.view_asset"]
 _ASSETS_MANAGE = ["assets.view_asset", "assets.add_asset", "assets.change_asset"]
 _WORKFLOW_VIEW_ALL = ["accounts.view_all_requests"]
+# Department-scoped read access (assets, tickets, requests). Directors, deputies
+# and office heads get these; "all" is only for the ES / super admin / explicit grants.
+_WORKFLOW_DEPT = ["accounts.view_department_requests"]
+_ASSETS_ALL = ["assets.view_all_assets"]
+_ASSETS_DEPT = ["assets.view_department_assets"]
 _WORKFLOW_APPROVE = ["accounts.approve_requests"]
+_ATT_ALL = ["attendance.view_all_attendance"]
+_ATT_DEPT = ["attendance.view_department_attendance"]
 _GROUP_ADMIN = ["auth.view_group", "auth.add_group", "auth.change_group",
                 "auth.delete_group", "accounts.assign_groups"]
 
@@ -50,20 +57,21 @@ DEFAULT_GROUPS = [
     ("Director",
      "Department director: staff records, audit read, cross-department view, asset management, approvals.",
      _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
-     + _ASSETS_MANAGE + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE,
+     + _ASSETS_MANAGE + _ASSETS_DEPT + _WORKFLOW_DEPT + _WORKFLOW_APPROVE + _ATT_DEPT,
      ["director"]),
     ("Deputy Director",
      "Deputy director: staff records, cross-department view, analytics, approvals.",
-     _VIEW_STAFF + _VIEW_HISTORY + _CROSS_DEPARTMENT + _POWER + _ASSETS_VIEW + _WORKFLOW_APPROVE,
+     _VIEW_STAFF + _VIEW_HISTORY + _CROSS_DEPARTMENT + _POWER + _ASSETS_VIEW + _ASSETS_DEPT + _WORKFLOW_DEPT
+     + _WORKFLOW_APPROVE + _ATT_DEPT,
      ["deputy-director"]),
     ("Office Head",
      "Head of an ICT office: staff directory, analytics, approvals.",
-     _VIEW_STAFF + _POWER + _ASSETS_VIEW + _WORKFLOW_APPROVE,
+     _VIEW_STAFF + _POWER + _ASSETS_VIEW + _ASSETS_DEPT + _WORKFLOW_DEPT + _WORKFLOW_APPROVE,
      ["office-head-ts", "office-head-dev", "office-head-admin"]),
     ("Executive Secretary",
      "Executive Secretary: everything a director sees, across the whole Board.",
      _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
-     + _ASSETS_MANAGE + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE,
+     + _ASSETS_MANAGE + _ASSETS_ALL + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE + _ATT_ALL,
      ["executive-secretary"]),
     ("Chairman",
      "Governing Council Chairman: the Chairman dashboard and analytics. Assign to the Chairman's account directly.",
@@ -77,8 +85,8 @@ DEFAULT_GROUPS = [
       "notifications.view_emaillog",
       "staff.view_staff", "staff.add_staff", "staff.change_staff",
       "staff.change_staff_state", "staff.view_staffstatushistory"]
-     + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER + _ASSETS_MANAGE
-     + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE + _GROUP_ADMIN,
+     + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER + _ASSETS_MANAGE + _ASSETS_ALL
+     + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE + _GROUP_ADMIN + _ATT_ALL,
      ["super-admin"]),
 ]
 

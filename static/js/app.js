@@ -75,20 +75,40 @@
   /* ============================================================
      THEME
      ============================================================ */
+  /* The page follows the device's light/dark setting. Pressing the toggle
+     sets a manual choice, remembered together with the device setting at
+     that moment (OS_KEY). As soon as the device setting changes — now or
+     between visits — the device wins again and the toggle follows it. */
   var Theme = {
     STORAGE_KEY: "nbte-theme",
+    OS_KEY: "nbte-theme-os",
     prefersDark: function () {
       try {
-        return window.matchMedia &&
-               window.matchMedia("(prefers-color-scheme: dark)").matches;
+        return !!(window.matchMedia &&
+               window.matchMedia("(prefers-color-scheme: dark)").matches);
       } catch (e) { return false; }
     },
+    system: function () { return this.prefersDark() ? "dark" : "light"; },
     get: function () {
       try {
         var stored = localStorage.getItem(this.STORAGE_KEY);
-        if (stored === "light" || stored === "dark") return stored;
+        var osAtChoice = localStorage.getItem(this.OS_KEY);
+        if ((stored === "light" || stored === "dark") && osAtChoice === this.system()) return stored;
+        this.forget();
       } catch (e) {}
-      return this.prefersDark() ? "dark" : "light";
+      return this.system();
+    },
+    remember: function (theme) {
+      try {
+        localStorage.setItem(this.STORAGE_KEY, theme);
+        localStorage.setItem(this.OS_KEY, this.system());
+      } catch (e) {}
+    },
+    forget: function () {
+      try {
+        localStorage.removeItem(this.STORAGE_KEY);
+        localStorage.removeItem(this.OS_KEY);
+      } catch (e) {}
     },
     apply: function (theme, opts) {
       opts = opts || {};
@@ -104,7 +124,9 @@
       } else {
         html.setAttribute("data-theme", theme);
       }
-      try { localStorage.setItem(this.STORAGE_KEY, theme); } catch (e) {}
+      // Only a press of the toggle is remembered (apply() used to store every
+      // theme it set, so the device setting was never followed again).
+      if (opts.remember) this.remember(theme);
       try {
         window.dispatchEvent(new CustomEvent("theme:change", {
           detail: { theme: theme }
@@ -114,38 +136,51 @@
     toggle: function () {
       var next = document.documentElement.getAttribute("data-theme") === "dark"
         ? "light" : "dark";
-      this.apply(next, { animate: true });
+      if (next === this.system()) this.forget();   // back in step with the device
+      this.apply(next, { animate: true, remember: next !== this.system() });
     },
     init: function () {
       this.apply(this.get());
       try {
         var mq = window.matchMedia &&
                  window.matchMedia("(prefers-color-scheme: dark)");
-        if (mq && mq.addEventListener) {
-          mq.addEventListener("change", function (e) {
-            try {
-              if (!localStorage.getItem(Theme.STORAGE_KEY)) {
-                Theme.apply(e.matches ? "dark" : "light");
-              }
-            } catch (err) {}
-          });
-        }
+        var onChange = function (e) {
+          // The device switched light/dark: follow it and drop any manual choice.
+          Theme.forget();
+          Theme.apply(e.matches ? "dark" : "light", { animate: true });
+        };
+        if (mq && mq.addEventListener) mq.addEventListener("change", onChange);
+        else if (mq && mq.addListener) mq.addListener(onChange);   // older Safari
       } catch (e) {}
+      // Another open tab pressed the toggle: keep this one in step.
+      window.addEventListener("storage", function (e) {
+        if (e.key === Theme.STORAGE_KEY || e.key === Theme.OS_KEY) Theme.apply(Theme.get());
+      });
     }
   };
 
   /* ============================================================
      PAGE LOADER
      ============================================================ */
+  // Phase 6: the loader is hidden by default (content is never covered on
+  // load) and only appears when a navigation is slow (over 400 ms).
   var PageLoader = {
+    timer: null,
     hide: function () {
       var el = document.getElementById("page-loader");
+      if (this.timer) { clearTimeout(this.timer); this.timer = null; }
       if (!el) return;
-      setTimeout(function () { el.classList.add("hidden"); }, 120);
+      el.classList.remove("is-shown");
+      el.classList.add("hidden");
     },
     show: function () {
       var el = document.getElementById("page-loader");
-      if (el) el.classList.remove("hidden");
+      if (!el) return;
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = setTimeout(function () {
+        el.classList.remove("hidden");
+        el.classList.add("is-shown");
+      }, 400);
     }
   };
 
@@ -575,7 +610,8 @@
     groups.forEach(function (group) {
       var key = group.getAttribute("data-group");
       var head = group.querySelector(".app-nav-group-head");
-      if (!head || !key) return;
+      if (!head || !key || group.hasAttribute("data-nav-bound")) return;
+      group.setAttribute("data-nav-bound", "");
 
       if (Object.prototype.hasOwnProperty.call(saved, key)) {
         setGroupOpen(group, saved[key], false);
@@ -778,7 +814,8 @@
     document.body.addEventListener("htmx:responseError", handleHtmxResponseError);
     document.body.addEventListener("htmx:sendError", handleHtmxSendError);
     document.body.addEventListener("htmx:beforeSwap", function (evt) {
-      if (evt.detail.xhr && evt.detail.xhr.status >= 400) {
+      // 422 = a form with inline validation errors (QA §20): let it swap in.
+      if (evt.detail.xhr && evt.detail.xhr.status >= 400 && evt.detail.xhr.status !== 422) {
         evt.detail.shouldSwap = false;
       }
     });
@@ -969,6 +1006,7 @@
     safeCall("topbar offset", initTopbarOffset);
     safeCall("theme init", function () { Theme.init(); });
     safeCall("page loader hide", function () { PageLoader.hide(); });
+    window.addEventListener("pageshow", function () { PageLoader.hide(); });
     safeCall("impersonation restore", function () { Impersonation.restore(); });
     safeCall("scroll reveal", initScrollReveal);
     safeCall("sticky nav", initStickyNav);
@@ -976,6 +1014,12 @@
     safeCall("dropdown init", function () { Dropdown.init(); });
     safeCall("sidebar groups", initSidebarGroups);
     safeCall("sidebar active scroll", initSidebarActiveScroll);
+    // Phase 6: the workspace switcher swaps the whole sidebar over HTMX;
+    // bind the new groups and keep the active item in view.
+    // initSidebarGroups skips groups it already bound, so this is cheap.
+    document.body.addEventListener("htmx:afterSettle", function () {
+      safeCall("sidebar groups (swap)", initSidebarGroups);
+    });
     safeCall("server messages", initServerMessages);
     safeCall("csrf refresh", initCSRFRefresh);
     safeCall("password reveals", initPasswordReveals);

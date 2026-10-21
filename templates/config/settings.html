@@ -1,181 +1,186 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 {% block title %}Settings{% endblock %}
 {% block page_title %}Settings{% endblock %}
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/settings.css' %}?v=3">
 {% endblock %}
 {% block content %}
-<div class="settings-page">
-  <header class="settings-hero">
+{% comment %}
+  Phase 7 redesign: one card per area, a section navigator (a sticky list on
+  wide screens, a pill strip on phones), every setting as a row with a clear
+  title, what it does, and its control. Yes/no settings are switches.
+{% endcomment %}
+<div class="settings-page sh">
+  <header class="settings-hero" data-reveal>
     <span class="settings-eyebrow">System configuration</span>
     <h1>Settings</h1>
-    <p>Manage operational rules for your workspace. Secrets and site identity remain protected in environment configuration.</p>
+    <p>Rules the NBTE system runs on: e-mail delivery, leave, tasks, tickets and workflows. Secrets and site identity stay in the server's environment. Quality-assurance rules have their own page.</p>
   </header>
 
-  <section class="settings-section settings-delivery" aria-labelledby="settings-delivery-title">
-    <div class="settings-section-head">
-      <div>
-        <span class="settings-kicker">Delivery health</span>
-        <h2 id="settings-delivery-title">Email usage today</h2>
-        <p>
-          All categories try Brevo first, with Gmail as a fallback if configured.
-          Test sends are recorded here and in the server logs.
-        </p>
-        <p class="settings-email-route">
-          Current route:
-          {% if email_provider_order %}
-            {% for provider in email_provider_order %}<strong>{{ provider }}</strong>{% if not forloop.last %} &rarr; {% endif %}{% endfor %}
-          {% else %}
-            <strong>No email provider is ready</strong>
-          {% endif %}
-        </p>
-        <p class="settings-email-route">
-          Sender domain:
-          {% if email_sender_domain %}
-            <strong>{{ email_sender_domain }}</strong> — confirm this sender is verified in Brevo.
-          {% else %}
-            <strong>Not configured</strong>
-          {% endif %}
-        </p>
-      </div>
-      <form method="post" action="{% url 'config:test_email' %}">
-        {% csrf_token %}
-        <button class="btn btn-primary" type="submit">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-          Send test email
-        </button>
-      </form>
-    </div>
-    <div class="settings-quota-grid">
-      {% for q in quota %}
-        <article class="settings-quota-card">
-          <span class="settings-quota-provider">{{ q.provider }}</span>
-          <div class="settings-quota-numbers">
-            <strong>{{ q.used }}</strong>
-            <span>of {{ q.limit }} sent</span>
+  <div class="sh-layout">
+    <nav aria-label="Settings sections">
+      <ul class="sh-nav" data-sh-nav>
+        <li><a href="#sh-email" class="is-active">E-mail delivery</a></li>
+        <li><a href="#sh-leave">Leave policy</a></li>
+        {% if qa_settings_count %}<li><a href="#sh-qa">Quality assurance <span class="sh-nav__count">{{ qa_settings_count }}</span></a></li>{% endif %}
+        {% for group, items in grouped %}<li><a href="#sh-g-{{ group|slugify }}">{{ group }} <span class="sh-nav__count">{{ items|length }}</span></a></li>{% endfor %}
+      </ul>
+    </nav>
+
+    <div class="sh">
+      <section class="sh-section" id="sh-email" aria-labelledby="settings-delivery-title" data-reveal>
+        <header class="sh-section__head">
+          <div>
+            <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span>
+            <h2 id="settings-delivery-title">E-mail delivery</h2>
+            <p>All categories try Brevo first, with Gmail as a fallback if configured. Test sends are recorded here and in the server logs.</p>
           </div>
-          <div class="settings-quota-track" role="img" aria-label="{{ q.used }} of {{ q.limit }} messages used">
-            <span style="--quota-used: {% if q.limit %}{% widthratio q.used q.limit 100 %}{% else %}0{% endif %}%"></span>
+          <form method="post" action="{% url 'config:test_email' %}">
+            {% csrf_token %}
+            <button class="btn btn-primary" type="submit">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              Send test email
+            </button>
+          </form>
+        </header>
+        <div class="sh-row">
+          <div><span class="sh-row__title">Current route</span><span class="sh-row__desc">The order the system tries providers in.</span></div>
+          <div class="sh-row__control"><span class="sh-row__value">{% if email_provider_order %}{% for provider in email_provider_order %}{{ provider }}{% if not forloop.last %} → {% endif %}{% endfor %}{% else %}No email provider is ready{% endif %}</span></div>
+        </div>
+        <div class="sh-row">
+          <div><span class="sh-row__title">Sender domain</span><span class="sh-row__desc">Confirm this sender is verified in Brevo.</span></div>
+          <div class="sh-row__control"><span class="sh-row__value">{{ email_sender_domain|default:"Not configured" }}</span></div>
+        </div>
+        <div class="sh-quota">
+          {% for q in quota %}
+            <article>
+              <span>{{ q.provider|capfirst }} today</span>
+              <div><strong>{{ q.used }}</strong> <span>of {{ q.limit }} sent</span></div>
+              <div class="sh-quota__track" role="img" aria-label="{{ q.used }} of {{ q.limit }} messages used"><span style="--used: {% if q.limit %}{% widthratio q.used q.limit 100 %}{% else %}0{% endif %}%"></span></div>
+            </article>
+          {% empty %}
+            <p class="settings-muted">No email providers are configured.</p>
+          {% endfor %}
+        </div>
+        <div class="sh-section__foot"><strong>Recent test sends</strong><span>{{ recent_email_tests|length }} shown</span></div>
+        <ul class="sh-list">
+          {% for test in recent_email_tests %}
+            <li>
+              <div>
+                <strong>{{ test.created_at|date:"j M Y, H:i" }}</strong>
+                <small>{{ test.provider|default:"No provider" }} · {{ test.attempts }} attempt{{ test.attempts|pluralize }}{% for attempt in test.attempt_trail %} · {{ attempt.provider }}: {% if attempt.ok %}accepted{% else %}failed{% endif %}{% if attempt.error %} ({{ attempt.error|truncatechars:120 }}){% endif %}{% empty %}{% if test.last_error %} · {{ test.last_error|truncatechars:120 }}{% endif %}{% endfor %}</small>
+              </div>
+              <span class="sh-chip {% if test.status == 'sent' %}is-ok{% else %}is-bad{% endif %}">{% if test.status == "sent" %}Accepted{% else %}{{ test.get_status_display }}{% endif %}</span>
+            </li>
+          {% empty %}
+            <li class="settings-muted">No settings-page email tests have been run yet.</li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <section class="sh-section" id="sh-leave" aria-labelledby="settings-leave-policy-title" data-reveal>
+        <header class="sh-section__head">
+          <div>
+            <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+            <h2 id="settings-leave-policy-title">Annual leave days by role</h2>
+            <p>The default annual allowance for each system role. A person-specific override always takes precedence.</p>
           </div>
-        </article>
+          <span class="sh-chip">{{ leave_roles|length }} role{{ leave_roles|length|pluralize }}</span>
+        </header>
+        {% if leave_role_entitlement_error %}<p class="settings-policy-error" role="alert">{{ leave_role_entitlement_error }}</p>{% endif %}
+        <form method="post" action="{% url 'config:save_leave_role_entitlements' %}">
+          {% csrf_token %}
+          <div class="sh-roles">
+            {% for row in leave_role_entitlement_rows %}
+              <label for="{{ row.field.id_for_label }}">
+                <strong>{{ row.role.name }}</strong>
+                <span>{{ row.role.code }} · Rank {{ row.role.rank }}</span>
+                {{ row.field }}
+              </label>
+            {% empty %}
+              <p class="settings-muted">Create system roles to configure role-based leave defaults.</p>
+            {% endfor %}
+          </div>
+          <div class="sh-section__foot">
+            <span>Leave a role blank if no default is set. Existing individual overrides remain unchanged.</span>
+            <button class="btn btn-primary" type="submit">Save role defaults</button>
+          </div>
+        </form>
+      </section>
+
+      {% if qa_settings_count %}
+      <section class="sh-feature" id="sh-qa" aria-labelledby="settings-qa-link-title" data-reveal>
+        <div>
+          <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+          <h2 id="settings-qa-link-title">Quality assurance rules</h2>
+          <p>{{ qa_settings_count }} QA setting{{ qa_settings_count|pluralize }} — fees, deadlines, eligibility, portal registration, complaints — are managed on their own page, where dual-control changes go to a second officer and policy-fixed rules are locked.</p>
+        </div>
+        <div><a class="btn btn-primary" href="{% url 'qa:settings' %}">Open QA settings</a></div>
+      </section>
+      {% endif %}
+
+      {% for group, items in grouped %}
+        <section class="sh-section" id="sh-g-{{ group|slugify }}" aria-labelledby="sh-g-{{ group|slugify }}-title" data-reveal>
+          <header class="sh-section__head">
+            <div>
+              <h2 id="sh-g-{{ group|slugify }}-title">{{ group }}</h2>
+            </div>
+            <span class="sh-chip">{{ items|length }} setting{{ items|length|pluralize }}</span>
+          </header>
+          <div class="sh-section__body">
+            {% for e in items %}
+              <form method="post" action="{% url 'config:save' e.pk %}" class="sh-row">
+                {% csrf_token %}
+                <div>
+                  <label class="sh-row__title" for="setting-{{ e.pk }}">{{ e.key|setting_title }}</label>
+                  {% if e.description %}<span class="sh-row__desc">{{ e.description }}</span>{% endif %}
+                  <span class="sh-row__key">{{ e.key }}{% if e.scope and e.scope != "global" %} · {{ e.scope }}{% endif %}</span>
+                </div>
+                <div class="sh-row__control">
+                  {% if e.value_type == "bool" or e.value_type == "int" and e.key|slice:"-8:" == ".enabled" or e.value_type == "int" and "_enabled" in e.key %}
+                    <input type="hidden" name="value" value="{% if e.value_type == 'bool' %}false{% else %}0{% endif %}">
+                    <label class="sh-switch">
+                      <input type="checkbox" id="setting-{{ e.pk }}" name="value" value="{% if e.value_type == 'bool' %}true{% else %}1{% endif %}" data-autosubmit{% if e.value == "1" or e.value == "true" %} checked{% endif %}>
+                      <span class="sh-switch__track" aria-hidden="true"></span>
+                      <span class="sh-switch__label">{% if e.value == "1" or e.value == "true" %}On{% else %}Off{% endif %}</span>
+                    </label>
+                    <noscript><button class="btn btn-sm btn-subtle" type="submit">Save</button></noscript>
+                  {% else %}
+                    <input class="input" id="setting-{{ e.pk }}" type="{% if e.value_type == 'int' %}number{% else %}text{% endif %}" name="value" value="{{ e.value }}">
+                    <button class="btn btn-sm btn-subtle" type="submit">Save</button>
+                  {% endif %}
+                </div>
+              </form>
+            {% endfor %}
+          </div>
+        </section>
       {% empty %}
-        <p class="settings-muted">No email providers are configured.</p>
+        <div class="settings-empty">
+          <h2>No settings registered yet</h2>
+          <p>Seed the available business rules to begin configuring the system.</p>
+          <code>python manage.py seed_config</code>
+        </div>
       {% endfor %}
     </div>
-    <div class="settings-test-history">
-      <h3>Recent test sends</h3>
-      <div class="settings-table-wrap">
-        <table class="settings-table">
-          <thead>
-            <tr><th scope="col">Time</th><th scope="col">Result</th><th scope="col">Provider</th><th scope="col">Attempts</th><th scope="col">Details</th></tr>
-          </thead>
-          <tbody>
-            {% for test in recent_email_tests %}
-              <tr>
-                <td>{{ test.created_at|date:"M j, Y H:i" }}</td>
-                <td><span class="settings-scope">{% if test.status == "sent" %}Accepted{% else %}{{ test.get_status_display }}{% endif %}</span></td>
-                <td>{{ test.provider|default:"—" }}</td>
-                  <td>{{ test.attempts }}</td>
-                  <td>
-                    {% for attempt in test.attempt_trail %}
-                      <span>{{ attempt.provider }}: {% if attempt.ok %}accepted{% else %}failed{% endif %}</span>{% if attempt.error %}<small>{{ attempt.error|truncatechars:120 }}</small>{% endif %}{% if not forloop.last %}<br>{% endif %}
-                    {% empty %}
-                      {% if test.last_error %}{{ test.last_error|truncatechars:160 }}{% else %}No provider attempted{% endif %}
-                    {% endfor %}
-                  </td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="5" class="settings-muted">No settings-page email tests have been run yet.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <section class="settings-section settings-leave-policy" aria-labelledby="settings-leave-policy-title">
-    <header class="settings-section-head">
-      <div>
-        <span class="settings-kicker">Leave policy</span>
-        <h2 id="settings-leave-policy-title">Annual leave days by role</h2>
-        <p>Set the default annual allowance for each system role. Roles and ranking levels are loaded from the role directory automatically; a person-specific override takes precedence.</p>
-      </div>
-      <span class="settings-group-count">{{ leave_roles|length }} role{{ leave_roles|length|pluralize }}</span>
-    </header>
-    {% if leave_role_entitlement_error %}
-      <p class="settings-policy-error" role="alert">{{ leave_role_entitlement_error }}</p>
-    {% endif %}
-    <form method="post" action="{% url 'config:save_leave_role_entitlements' %}" class="settings-role-policy-form">
-      {% csrf_token %}
-      <div class="settings-role-policy-grid">
-        {% for row in leave_role_entitlement_rows %}
-          <div class="settings-role-policy-card">
-            <div class="settings-role-policy-info">
-              <strong>{{ row.role.name }}</strong>
-              <span>{{ row.role.code }} · Rank {{ row.role.rank }}</span>
-            </div>
-            <label for="{{ row.field.id_for_label }}" class="settings-role-policy-input">
-              <span>Days per year</span>
-              {{ row.field }}
-            </label>
-          </div>
-        {% empty %}
-          <p class="settings-muted">Create system roles to configure role-based leave defaults.</p>
-        {% endfor %}
-      </div>
-      <div class="settings-role-policy-footer">
-        <p>Leave a role blank if no default is set. Existing individual overrides remain unchanged.</p>
-        <button class="btn btn-primary" type="submit">Save role defaults</button>
-      </div>
-    </form>
-  </section>
-
-  <div class="settings-groups">
-    {% for group, items in grouped %}
-      <section class="settings-section settings-group">
-        <header class="settings-section-head settings-group-head">
-          <div>
-            <span class="settings-kicker">Configuration group</span>
-            <h2>{{ group }}</h2>
-          </div>
-          <span class="settings-group-count">{{ items|length }} setting{{ items|length|pluralize }}</span>
-        </header>
-        <div class="settings-table-wrap">
-          <table class="settings-table">
-            <thead>
-              <tr><th scope="col">Setting</th><th scope="col">Scope</th><th scope="col">Value</th></tr>
-            </thead>
-            <tbody>
-              {% for e in items %}
-                <tr>
-                  <td class="settings-description">
-                    <code>{{ e.key }}</code>
-                    {% if e.description %}<span>{{ e.description }}</span>{% endif %}
-                  </td>
-                  <td><span class="settings-scope">{{ e.scope|default:"Global" }}</span></td>
-                  <td>
-                    <form method="post" action="{% url 'config:save' e.pk %}" class="settings-edit-form">
-                      {% csrf_token %}
-                      <label class="visually-hidden" for="setting-{{ e.pk }}">{{ e.key }} value</label>
-                      <input id="setting-{{ e.pk }}" type="text" name="value" value="{{ e.value }}">
-                      <span class="settings-value-type">{{ e.get_value_type_display }}</span>
-                      <button class="btn btn-primary btn-sm" type="submit">Save</button>
-                    </form>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    {% empty %}
-      <div class="settings-empty">
-        <h2>No settings registered yet</h2>
-        <p>Seed the available business rules to begin configuring the system.</p>
-        <code>python manage.py seed_config</code>
-      </div>
-    {% endfor %}
   </div>
 </div>
+<script>
+  /* Highlight the section in view in the navigator. */
+  (function () {
+    var links = document.querySelectorAll("[data-sh-nav] a");
+    if (!("IntersectionObserver" in window) || !links.length) return;
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute("href").slice(1)] = a; });
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        links.forEach(function (a) { a.classList.remove("is-active"); });
+        var a = byId[en.target.id];
+        if (a) { a.classList.add("is-active"); if (a.scrollIntoView && window.innerWidth < 1100) a.parentNode.parentNode.scrollLeft = a.offsetLeft - 16; }
+      });
+    }, { rootMargin: "-30% 0px -60% 0px" });
+    Object.keys(byId).forEach(function (id) { var el = document.getElementById(id); if (el) io.observe(el); });
+  })();
+</script>
 {% endblock %}

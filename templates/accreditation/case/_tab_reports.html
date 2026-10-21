@@ -1,0 +1,23 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="rp-h">
+  <header class="qa-card__head"><div><h2 id="rp-h">Post-visit reports</h2><p>Stage 12: one report per programme, written by someone who attended (B17), endorsed Division Head → Deputy Director → Director. Stage 13: the Directorate's recommendation per programme.</p></div>
+    {% if inspection %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_insp:inspection' inspection.pk %}">{% icon "eye" 14 %} {{ inspection.reference }}</a>{% endif %}</header>
+  {% if reports %}
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th scope="col">Programme</th><th scope="col">Where</th><th scope="col">Team recommendation</th><th scope="col">Directorate (stage 13)</th></tr></thead>
+    <tbody>{% for r in reports %}<tr>
+      <td><a href="{% url 'qa_insp:report' r.pk %}"><strong>{{ r.qa_request_programme.programme }}</strong></a><br><span class="qa-small qa-muted">v{{ r.version }}{% if r.submitted_by %} · {{ r.submitted_by|who }}{% endif %}</span></td>
+      <td>{% if r.layer %}<span class="qa-chip qa-tone-pending">{{ r.layer }}</span>{% else %}<span class="qa-chip {{ r.status|tone }}">{{ r.status|humanize_code }}</span>{% endif %}</td>
+      <td>{{ r.get_recommendation_display|default:"—" }}</td>
+      <td>{% if can_recommend %}
+        <form class="qa-inline-form" method="post" action="{% url 'qa_case:recommend' case.pk r.pk %}" hx-post="{% url 'qa_case:recommend' case.pk r.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="reports">
+          <div class="qa-field"><label for="rec-{{ r.pk }}">Recommendation</label><select class="input" id="rec-{{ r.pk }}" name="recommendation" required>{% for v, l in recommendations %}<option value="{{ v }}"{% if r.recommendation == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+          <div class="qa-field"><label for="note-{{ r.pk }}">Note <span class="qa-muted">(optional)</span></label><input class="input" id="note-{{ r.pk }}" name="note" value="{{ r.recommendation_note }}"></div>
+          <button class="btn btn-primary btn-sm" type="submit">{% if r.recommended_by %}Update{% else %}Confirm{% endif %}</button>
+        </form>{% if r.recommended_by %}<p class="qa-small qa-muted">Confirmed by {{ r.recommended_by|who }}</p>{% endif %}
+      {% elif r.recommended_by %}{{ r.get_recommendation_display }} — {{ r.recommended_by|who }}{% if r.recommendation_note %}<br><span class="qa-small qa-muted">{{ r.recommendation_note }}</span>{% endif %}
+      {% else %}<span class="qa-muted">—</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="qa-card__body"><p class="qa-muted">The reports open when the case reaches stage 12 (after the visit is recorded and funds are released).</p></div>{% endif %}
+</section>

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from django import forms
+from django.db import models
 
 from .models import (
     Department, Office, Staff, StaffCategory, StaffState,
@@ -78,6 +79,10 @@ class StaffForm(forms.ModelForm):
             "contact_preference",
             "emergency_contact_name", "emergency_contact_phone",
             "birth_month", "birth_day", "date_joined_service",
+            # Nominal roll fields
+            "gender", "state_of_origin", "lga", "date_of_birth",
+            "date_first_appointment", "date_joined_board",
+            "date_present_appointment", "date_confirmation", "qualifications",
         ]
         widgets = {
             "employee_no":     forms.TextInput(attrs={"class": INPUT_CLASS}),
@@ -86,7 +91,17 @@ class StaffForm(forms.ModelForm):
             "email":           forms.EmailInput(attrs={"class": INPUT_CLASS}),
             "phone":           forms.TextInput(attrs={"class": INPUT_CLASS}),
             "subsection":      forms.TextInput(attrs={"class": INPUT_CLASS}),
-            "designation":     forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "designation":     forms.Select(attrs={"class": INPUT_CLASS}),
+            "gender":          forms.Select(attrs={"class": INPUT_CLASS}),
+            "state_of_origin": forms.Select(attrs={"class": INPUT_CLASS}),
+            "lga":             forms.TextInput(attrs={"class": INPUT_CLASS, "list": "nbr-lga-options",
+                                                      "autocomplete": "off"}),
+            "date_of_birth":   forms.DateInput(attrs={"class": INPUT_CLASS, "type": "date"}, format="%Y-%m-%d"),
+            "date_first_appointment":   forms.DateInput(attrs={"class": INPUT_CLASS, "type": "date"}, format="%Y-%m-%d"),
+            "date_joined_board":        forms.DateInput(attrs={"class": INPUT_CLASS, "type": "date"}, format="%Y-%m-%d"),
+            "date_present_appointment": forms.DateInput(attrs={"class": INPUT_CLASS, "type": "date"}, format="%Y-%m-%d"),
+            "date_confirmation":        forms.DateInput(attrs={"class": INPUT_CLASS, "type": "date"}, format="%Y-%m-%d"),
+            "qualifications":  forms.Textarea(attrs={"class": INPUT_CLASS, "rows": 3}),
             "grade_level":     forms.TextInput(attrs={"class": INPUT_CLASS}),
             "office_location": forms.TextInput(attrs={"class": INPUT_CLASS}),
             "duties":          forms.Textarea(attrs={"class": INPUT_CLASS, "rows": 3}),
@@ -121,6 +136,16 @@ class StaffForm(forms.ModelForm):
                 self.initial.setdefault("department", dept.pk)
             else:
                 self.fields["department"].queryset = Department.objects.none()
+
+        # Nominal roll lookups: active designations (most senior first) and states.
+        from .models import Designation, StateOfOrigin
+        if "designation" in self.fields:
+            qs = Designation.objects.filter(is_active=True)
+            if self.instance.pk and self.instance.designation_id:
+                qs = Designation.objects.filter(models.Q(is_active=True) | models.Q(pk=self.instance.designation_id))
+            self.fields["designation"].queryset = qs.order_by("-rank", "name")
+        if "state_of_origin" in self.fields:
+            self.fields["state_of_origin"].queryset = StateOfOrigin.objects.filter(is_active=True)
 
         # Sensible default: only active states are selectable for a new record.
         if not self.instance.pk:

@@ -1,0 +1,59 @@
+<tbody id="ref-{{ f.pk }}" class="qa-rule">
+  <tr class="is-editing">
+    <td colspan="4">
+      <form class="qa-edit" hx-post="{% url 'qa:reference_edit' f.pk %}" hx-target="#ref-{{ f.pk }}" hx-swap="outerHTML"
+            method="post" action="{% url 'qa:reference_edit' f.pk %}">
+        {% csrf_token %}
+        <div class="qa-split">
+          <div><strong>{{ f.name }}</strong> <code class="qa-muted">{{ f.code }}</code></div>
+          <span class="qa-chip qa-chip--dual">Dual control</span>
+        </div>
+        {% if errors %}<ul class="qa-errors" role="alert">{% for m in errors %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+        <div class="qa-form-grid">
+          <label class="field qa-form-grid__wide">
+            <span>Pattern</span>
+            <input class="input qa-mono" name="pattern" value="{{ data.pattern }}" spellcheck="false" required data-qa-focus>
+          </label>
+          <label class="field">
+            <span>Counter resets</span>
+            <select class="input" name="reset_period">
+              {% for value, label in choices.reset %}<option value="{{ value }}"{% if data.reset_period == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Check digit</span>
+            <select class="input" name="check_digit">
+              {% for value, label in choices.check %}<option value="{{ value }}"{% if data.check_digit == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Numbering</span>
+            <select class="input" name="sequence_scope">
+              {% for value, label in choices.scope %}<option value="{{ value }}"{% if data.sequence_scope == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Allowed characters</span>
+            <input class="input qa-mono" name="allowed_chars" value="{{ data.allowed_chars }}" spellcheck="false" placeholder="blank = any">
+          </label>
+          <label class="qa-check">
+            <input type="checkbox" name="is_active"{% if data.is_active %} checked{% endif %}> Active
+          </label>
+          <label class="field qa-form-grid__wide">
+            <span>Reason for the second officer</span>
+            <input class="input" name="reason" maxlength="500" placeholder="Why this format should change">
+          </label>
+        </div>
+        <div class="qa-edit__note">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          <span>The pattern must keep exactly one <code>{SEQ}</code>. A second officer confirms the change; references already issued keep their old shape.</span>
+        </div>
+        <div class="qa-edit__row">
+          <button type="submit" class="btn btn-primary btn-sm">Send for confirmation</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-qa-no-busy
+                  hx-get="{% url 'qa:reference_edit' f.pk %}?cancel=1" hx-target="#ref-{{ f.pk }}" hx-swap="outerHTML">Cancel</button>
+        </div>
+      </form>
+    </td>
+  </tr>
+</tbody>

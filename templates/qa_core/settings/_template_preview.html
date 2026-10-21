@@ -1,0 +1,14 @@
+{% if error %}
+  <div class="qa-callout qa-callout--danger" data-qa-announce="Template error">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <div><strong>This template would fail</strong><p>{{ error }}</p></div>
+  </div>
+{% else %}
+  <div class="qa-preview" data-qa-announce="Preview updated">
+    <p class="qa-preview__subject">{{ subject|force_escape|default:"(no subject)" }}</p>
+    {% if t.channel == "email" %}
+      {# Template HTML is written by settings admins: show it in a sandboxed frame (no scripts, no same-origin) rather than in this page. #}
+      <iframe class="qa-preview__frame" title="Email body preview" sandbox srcdoc="{{ body|force_escape }}"></iframe>
+    {% else %}<p>{{ body|striptags|force_escape }}</p>{% endif %}
+  </div>
+{% endif %}

@@ -1,0 +1,8 @@
+<section class="qa-card"><div class="qa-card__body qa-stack">
+  <div class="qa-meter{% if summary.complete %} is-complete{% endif %}">
+    <div class="qa-meter__row"><span><strong class="qa-strong">{{ summary.ready }} of {{ summary.mandatory }}</strong> required documents in</span><span>{{ summary.percent }}%</span></div>
+    <div class="qa-progress" role="progressbar" aria-valuenow="{{ summary.percent }}" aria-valuemin="0" aria-valuemax="100" aria-label="Required documents uploaded"><span style="--pct: {{ summary.percent }}%"></span></div>
+  </div>
+  {% if summary.complete %}<p class="qa-small">Everything required is uploaded.{% if section == "documents" %} <a href="{% url 'qa_portal:application' %}">Go to your application</a>.{% endif %}</p>
+  {% else %}<p class="qa-small qa-muted">Still needed: {% for r in summary.missing %}{{ r.kind.name }}{% if not forloop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+</div></section>

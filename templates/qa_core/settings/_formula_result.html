@@ -1,0 +1,15 @@
+{% if error %}
+  <div class="qa-result qa-result--error" data-qa-announce="Formula error: {{ error }}">
+    <span class="qa-result__meta">Could not evaluate</span>
+    <span class="qa-result__value">{{ error }}</span>
+  </div>
+{% else %}
+  <div class="qa-result" data-qa-announce="Result {{ result_display|default:result }}">
+    <span class="qa-result__meta">Result{% if e.returns == "decimal" %} (₦ where this is a fee){% endif %}</span>
+    <span class="qa-result__value">{% if result_display %}{{ result_display }}{% elif result is True %}Yes{% elif result is False %}No{% else %}{{ result }}{% endif %}</span>
+    <span class="qa-result__meta">
+      {% for name, value in inputs.items %}<code>{{ name }}</code> = {{ value }}{% if not forloop.last %} · {% endif %}{% endfor %}
+      {% if used_cfg %} · settings read: {% for k, v in used_cfg.items %}<code>{{ k }}</code> = {{ v }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+    </span>
+  </div>
+{% endif %}

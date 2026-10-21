@@ -1,0 +1,31 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}New QA request · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page" id="qa-new-request">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:qa_requests' %}" hx-get="{% url 'qa_portal:qa_requests' %}" hx-target="#qa-main" hx-push-url="true">QA requests</a><span aria-hidden="true">/</span><span aria-current="page">New</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "plus" 14 "2.2" %} New QA request</span>
+    <h1 data-qa-focus>What do you want NBTE to do?</h1>
+    <p>Choose the QA type, then the programmes. Only programmes that qualify can be ticked — the reason is shown for the others.</p>
+  </header>
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not created" message=error %}{% endif %}
+  <form method="post" action="{% url 'qa_portal:qa_request_new' %}" hx-post="{% url 'qa_portal:qa_request_new' %}" hx-target="#qa-main" class="qa-stack">
+    {% csrf_token %}
+    <section class="qa-card" aria-labelledby="nq-type"><header class="qa-card__head"><h2 id="nq-type">1. QA type</h2></header>
+      <div class="qa-card__body"><fieldset class="qa-choice-grid"><legend class="sr-only">QA type</legend>
+        {% for t in types %}
+          <label class="qa-choice{% if not t.available %} is-disabled{% endif %}{% if qa_type and qa_type.pk == t.type.pk %} is-selected{% endif %}">
+            <input type="radio" name="type" value="{{ t.type.code }}"{% if qa_type and qa_type.pk == t.type.pk %} checked{% endif %}{% if not t.available %} disabled{% endif %}
+                   hx-get="{% url 'qa_portal:qa_request_new' %}" hx-target="#qa-new-programmes" hx-trigger="change" hx-include="this" hx-push-url="false">
+            <span class="qa-choice__title">{{ t.type.name }}</span>
+            <span class="qa-choice__body">{{ t.type.description }}</span>
+            {% if not t.available %}<span class="qa-choice__note">{% icon "lock" 12 %} {{ t.reason }}</span>{% endif %}
+          </label>
+        {% endfor %}
+      </fieldset></div>
+    </section>
+    <div id="qa-new-programmes" class="qa-region" data-qa-region aria-live="polite">{% include "qa_portal/qa_requests/_new_programmes.html" %}</div>
+  </form>
+</div>
+{% endblock %}

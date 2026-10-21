@@ -35,6 +35,12 @@ app.conf.beat_schedule = {
         "schedule": timedelta(seconds=300),  # 5 minutes
     },    
     
+    # QA Phase 7: complaint SLA reminders, breaches, escalations, auto-close.
+    # Runs every minute; the task honours qa.complaints.sla_poll_minutes.
+    "complaints.sla_sweep": {
+        "task": "qa_core.complaints.sla_sweep",
+        "schedule": timedelta(minutes=1),
+    },
     "tasks.reminder_sweep": {
         "task": "tasks.tasks.reminder_sweep",
         "schedule": timedelta(hours=1),
@@ -79,6 +85,13 @@ app.conf.beat_schedule = {
         "schedule": 86400.0,
     },
       
+    # QA Phase 2: payments sweep (reminders, overdue Finance confirmations,
+    # provider polls). It never confirms a payment.
+    "qa.payments.sweep": {
+        "task": "payments.sweep",
+        "schedule": timedelta(minutes=15),
+    },
+
     # Review M12: the duplicate "attendance-auto-mark-absent" (18:30 Mon-Fri)
     # and "attendance-weekly-summary" (Mon 07:00) entries were removed; each
     # job now runs once, from the entries above.

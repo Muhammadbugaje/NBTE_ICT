@@ -1,0 +1,9 @@
+{% load qa_tags %}
+{% with fin_tab="waivers" fin_title="Waivers" fin_lead="A waiver moves no money: a Finance officer proposes it with a reason and the Director of Finance confirms it. Waived bills are reported separately and never count as revenue." %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
+<div class="qa-cols qa-cols--even">
+  <section class="qa-card"><header class="qa-card__head"><h2>Waiver requests</h2><a class="btn btn-sm btn-subtle" href="{% url 'qa:pending_list' %}?status=pending&action=payments.waive">Confirm list</a></header>
+    <div class="qa-card__body">{% for pa in pending %}<a class="qa-act" href="{% url 'qa:pending_detail' pa.pk %}"><span class="qa-act__icon">{% icon "flag" 16 %}</span><span class="qa-act__text"><strong>{{ pa.target_label }}</strong><small>{{ pa.reference }} · {{ pa.get_status_display }} · {{ pa.initiated_at|date:"j M Y" }}</small></span></a>{% empty %}<p class="qa-muted qa-small">No waiver requests.</p>{% endfor %}</div></section>
+  <section class="qa-card"><header class="qa-card__head"><h2>Waived bills</h2></header>
+    <ul class="qa-rowlist" role="list">{% for ob in waived %}<li><a class="qa-rowlink" href="{% url 'qa_fin:obligation' ob.pk %}"><span class="qa-rowlink__badge">{{ ob.institution.code }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ ob.description }}</span><span class="qa-rowlink__meta">{{ ob.waiver_reason|truncatechars:80 }}</span></span><span class="qa-rowlink__side"><span class="qa-rowlink__amount">{{ ob.amount|naira }}</span><span class="qa-small qa-muted">{{ ob.waived_at|date:"j M Y" }}</span></span></a></li>{% empty %}<li class="qa-card__body qa-muted qa-small">None.</li>{% endfor %}</ul></section>
+</div>

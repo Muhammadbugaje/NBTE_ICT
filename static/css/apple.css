@@ -1,0 +1,385 @@
+/* ==========================================================================
+   NBTE ICT — Phase 6 design layer (Apple Liquid Glass)
+
+   Loaded last, after every module stylesheet. tokens.css carries most of the
+   change (type, greys, hairlines, radii, shadows, motion); this file only
+   restyles the shared primitives whose *structure* changes:
+
+     1. Type: SF with negative tracking on titles; sentence-case labels.
+     2. Page headers: calm titles on the page ground, no gradient washes.
+     3. Surfaces: white + soft shadow; hairlines instead of borders.
+     4. Navigation: sidebar labels, segmented tabs, the case stepper.
+     5. Mobile: the floating liquid-glass tab bar.
+     6. Accessibility: reduced motion / transparency, more contrast.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- 1. type */
+body { letter-spacing: -0.003em; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--fw-bold); }
+h1 { letter-spacing: var(--tracking-tighter); }
+h2 { letter-spacing: -0.028em; }
+h3, h4 { letter-spacing: -0.02em; font-weight: var(--fw-semibold); }
+table, .qa-num, .app-nav-badge, .notif-badge, time { font-variant-numeric: tabular-nums; }
+
+/* Small labels: sentence case, never shouting (eyebrows, sidebar groups, brand). */
+.qa-eyebrow {
+  color: var(--text-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.app-nav-group-head {
+  color: var(--text-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.005em;
+  text-transform: none;
+}
+.app-brand-sub { color: var(--text-subtle); font-size: 0.6875rem; letter-spacing: 0; text-transform: none; }
+.app-nav-section { letter-spacing: 0; text-transform: none; font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+
+/* ------------------------------------------------------- 2. page headers */
+/* The QA page header was a tinted card with a gradient wash and a decorative
+   ring. Now: a large title on the page ground. Hierarchy from size and weight. */
+.qa-hero {
+  overflow: visible;
+  padding: clamp(4px, 1.2vw, 12px) 0 clamp(8px, 1.6vw, 16px);
+  margin-bottom: var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.qa-hero::after { content: none; }
+.qa-hero h1 { margin: 0 0 6px; font-size: clamp(1.75rem, 3.2vw, 2.5rem); line-height: 1.08; letter-spacing: var(--tracking-tighter); }
+.qa-hero p { color: var(--text-muted); max-width: 70ch; }
+
+.qa-inst-head {
+  padding: clamp(4px, 1.2vw, 12px) 0 clamp(8px, 1.6vw, 16px);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.qa-inst-head h1 { font-size: clamp(1.6rem, 3vw, 2.25rem); line-height: 1.1; letter-spacing: var(--tracking-tighter); }
+/* The institution code: a quiet monogram, not a big green tile. */
+.qa-inst-head__code {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  box-shadow: var(--shadow-sm);
+}
+@media (max-width: 767px) { .qa-inst-head__code { display: none; } }
+
+/* ------------------------------------------------------------ 3. surfaces */
+.card, .qa-card, .nbte-card {
+  border-color: transparent;
+  box-shadow: var(--shadow-sm);
+}
+.qa-card__head { border-bottom-color: var(--divider); }
+.qa-card-case { border-color: transparent; box-shadow: var(--shadow-xs), 0 0 0 1px var(--divider); }
+.qa-card-case:hover { box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+/* Coloured left bars become a small status mark, not a stripe. */
+.qa-card-case.is-overdue, .qa-card-case.is-flagged { border-inline-start: 0; }
+.qa-card-case.is-overdue .qa-card-case__ref::before,
+.qa-card-case.is-flagged .qa-card-case__ref::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-inline-end: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--danger);
+}
+.qa-card-case.is-flagged .qa-card-case__ref::before { background: var(--warning); }
+.qa-card--reply { border-inline-start: 0; }
+/* The current-stage card and the task's QA link: an accent ring, not a stripe. */
+.qa-stage-act, .tsk-qa-link {
+  border: 0;
+  border-inline-start: 0;
+  box-shadow: var(--shadow-sm), inset 0 0 0 1.5px color-mix(in srgb, var(--primary) 38%, transparent);
+}
+.qa-table th { color: var(--text-subtle); font-weight: var(--fw-semibold); letter-spacing: 0; text-transform: none; }
+.qa-table td, .qa-table th { border-bottom-color: var(--divider); }
+.qa-table tbody tr { transition: background-color var(--dur-fast) var(--ease-standard); }
+.qa-table tbody tr:hover { background: var(--surface-2); }
+.input, select.input, textarea.input { border-radius: var(--radius-sm); }
+.btn { letter-spacing: -0.01em; }
+.qa-chip { white-space: nowrap; }
+.btn-primary:hover { transform: none; }
+
+/* -------------------------------------------------------- 4. navigation */
+/* Active sidebar item: tinted fill only, no coloured bar. */
+.app-nav-item.active::before { content: none; }
+.app-nav-item.active { background: var(--primary-subtle); }
+
+/* Top bar: glass, with the hairline only once content scrolls beneath it. */
+.app-topbar { border-block-end-color: transparent; transition: border-color var(--dur) var(--ease-standard); }
+.app-topbar.is-scrolled { border-block-end-color: var(--divider); }
+
+/* Tabs: an Apple segmented control (grey track, white thumb, no green fill). */
+.qa-tabs {
+  border: 0;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  box-shadow: none;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+}
+.qa-tabs.is-scrolled-end { mask-image: none; -webkit-mask-image: none; }
+.qa-tabs a { min-height: 34px; color: var(--text-muted); font-weight: var(--fw-medium); }
+.qa-tabs a:hover { background: transparent; color: var(--text); }
+.qa-tabs a.is-active {
+  color: var(--text);
+  background: var(--surface);
+  font-weight: var(--fw-semibold);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 3px 8px rgba(0, 0, 0, 0.08);
+}
+@media (max-width: 767px) {
+  .qa-tabs { border-radius: var(--radius-pill); }
+  .qa-tabs a { min-height: 40px; }
+}
+
+/* Case stepper: on phones the dots scroll and a sentence names the stage. */
+.qa-stepper__summary { margin: 0 0 var(--space-3); font-size: var(--fs-sm); color: var(--text-muted); }
+.qa-stepper__summary strong { color: var(--text); font-weight: var(--fw-semibold); }
+@media (min-width: 1100px) { .qa-stepper__summary { display: none; } }
+@media (max-width: 1099px) {
+  .qa-stepper li.is-current .qa-stepper__label { display: none; }
+  .qa-stepper { scroll-snap-type: x proximity; scrollbar-width: none; }
+  .qa-stepper::-webkit-scrollbar { display: none; }
+  .qa-stepper li { scroll-snap-align: center; }
+}
+.qa-stepper li.is-done .qa-stepper__dot { background: var(--primary); border-color: var(--primary); }
+
+/* ------------------------------------------------------ 5. mobile tab bar */
+.app-tabbar { display: none; }
+@media (max-width: 1023px) {
+  .app-tabbar {
+    position: fixed;
+    z-index: calc(var(--z-drawer) - 2);
+    inset-inline: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    display: block;
+    transition: transform 420ms var(--ease-emphasized), opacity 300ms var(--ease-standard);
+  }
+  .app-tabbar.is-hidden { transform: translateY(calc(100% + 24px)); opacity: 0; }
+  .app-shell.sidebar-open ~ .app-tabbar, .app-tabbar.is-hidden-by-drawer { transform: translateY(calc(100% + 24px)); opacity: 0; }
+  .app-tabbar__inner {
+    position: relative;
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    max-width: 520px;
+    margin-inline: auto;
+    padding: 6px;
+    border-radius: 30px;
+    background: var(--surface-glass);
+    -webkit-backdrop-filter: saturate(180%) blur(22px);
+    backdrop-filter: saturate(180%) blur(22px);
+    border: 1px solid color-mix(in srgb, #fff 55%, transparent);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 2px 8px rgba(0, 0, 0, 0.08), 0 18px 48px rgba(0, 0, 0, 0.16);
+  }
+  .app-tab {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 52px;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: 24px;
+    background: transparent;
+    color: var(--text-subtle);
+    font: inherit;
+    text-decoration: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--dur) var(--ease-standard), background-color var(--dur) var(--ease-standard), transform 160ms var(--ease-standard);
+  }
+  .app-tab:active { transform: scale(0.92); }
+  .app-tab:hover { color: var(--text); text-decoration: none; }
+  .app-tab.is-active { color: var(--primary); background: color-mix(in srgb, var(--primary) 11%, transparent); }
+  .app-tab:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .app-tab__icon { position: relative; display: grid; place-items: center; }
+  .app-tab__label { font-size: 0.6875rem; font-weight: var(--fw-semibold); letter-spacing: -0.005em; line-height: 1.1; }
+  .app-tab__badge {
+    position: absolute;
+    top: -4px;
+    inset-inline-start: calc(100% - 8px);
+    min-width: 17px;
+    height: 17px;
+    padding: 0 5px;
+    border-radius: var(--radius-pill);
+    background: var(--danger);
+    color: #fff;
+    font-size: 0.625rem;
+    font-weight: var(--fw-bold);
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+  /* Room for the bar below the content, and no duplicate menu button. */
+  .app-main { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .app-topbar .app-topbar-btn[data-drawer-toggle] { display: none; }
+  .app-footer .view-switch, .app-footer [data-view-switch] { display: none; }
+}
+:root[data-theme="dark"] .app-tabbar__inner { border-color: rgba(255, 255, 255, 0.08); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 48px rgba(0, 0, 0, 0.6); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .app-tabbar__inner { border-color: rgba(255, 255, 255, 0.08); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 48px rgba(0, 0, 0, 0.6); }
+}
+
+/* ------------------------------------------------------ 6. accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .app-tabbar, .app-tab, .app-workspace__thumb, .qa-table tbody tr { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .app-tabbar__inner, .app-topbar, .app-sidebar { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --divider: rgba(0, 0, 0, 0.3); --border: rgba(0, 0, 0, 0.45); --text-subtle: #3a3a3c; --text-muted: #2c2c2e; }
+  .app-tabbar__inner { background: var(--surface); border-color: var(--text); }
+  .card, .qa-card { border-color: var(--border); }
+}
+@media print {
+  .app-tabbar, .app-workspace { display: none !important; }
+}
+
+/* Helper text that follows the stage card reads as its caption. */
+.qa-stage-act + .qa-small { margin: calc(-1 * var(--space-1)) var(--space-1) var(--space-4); padding-top: var(--space-1); }
+
+/* Without backdrop blur, glass would let text show through: go near-solid. */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .app-tabbar__inner, .app-topbar { background: var(--surface-glass-strong); }
+}
+
+/* Decorative colour strips across the top or side of cards: removed. The
+   card's title and status already say what it is. */
+.asset-header-card::before,
+.scanned-card::before,
+.confirm-card::before,
+.profile-hero::before,
+.wf-detail-head::before,
+[class*="wf-help-section-"]::before { content: none; display: none; }
+
+/* No fade-in entrances on content (it should simply be there). Motion is kept
+   for things the user summons: menus, dialogs, sheets, toasts, the tab bar. */
+.reveal, .reveal:not(.in) { opacity: 1; transform: none; transition: none; }
+.public-body main.is-entering { animation: none; }
+
+/* Home and dashboards: one quiet icon tile instead of a rainbow of tints.
+   The icon picks up the accent only when its card is hovered. */
+.module-icon, [class*="module-icon-"], .kpi-card-icon, [class*="kpi-icon-"],
+.home-action-icon, [class*="home-action-icon-"] {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+a:hover > .module-icon, a:hover .module-icon, .home-action:hover .home-action-icon, a.kpi-card:hover .kpi-card-icon {
+  color: var(--primary);
+}
+.kpi-lbl, .module-hint { white-space: normal; overflow: visible; text-overflow: clip; }
+.kpi-card-active { border-color: transparent; box-shadow: var(--shadow-sm), inset 0 0 0 1.5px color-mix(in srgb, var(--primary) 40%, transparent); }
+.module-counter-num { font-weight: var(--fw-bold); }
+
+/* Every dropdown: one flat field with a soft chevron (no native bevel). */
+select:not([multiple]):not([size]) {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-inline-end: 2.25rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 12px 12px;
+  border-color: var(--border);
+  cursor: pointer;
+}
+[dir="rtl"] select:not([multiple]):not([size]) { background-position: left 0.85rem center; padding-inline: 2.25rem 0.75rem; }
+input:where([type="text"], [type="email"], [type="password"], [type="search"], [type="number"], [type="url"],
+            [type="tel"], [type="date"], [type="datetime-local"], [type="time"], [type="month"]),
+select, textarea { border-color: var(--border); }
+
+/* Filter toolbars that rely on the base select width: let them sit in a row. */
+.tk-filters select, .att-switcher-form select, .hol-filter select, .gal-filter select, .tsk-filters select {
+  width: auto;
+  flex: 0 1 190px;
+  min-width: 140px;
+}
+.tk-filters { border-color: transparent; box-shadow: var(--shadow-sm); }
+
+/* Empty states: a quiet panel, not a dashed placeholder box. Drop zones keep
+   their dashes (the dashed edge says "drop a file here"). */
+.empty-state, .nbte-empty-state, .home-empty, .att-empty, .dash-empty, .hol-empty,
+.action-queue-empty, .assigned-requests-empty, .ss-leave-unset, .tk-empty, .tsk-empty, .msg-empty,
+.msg-filter-empty, .tsk-dashed-panel {
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.qa-card .nbte-empty-state, .qa-card .empty-state, .card .empty-state { box-shadow: none; background: transparent; }
+
+/* Attendance "today" card: the status colour lives in its icon, not a stripe. */
+.att-today::before { content: none; display: none; }
+
+/* The page loader never covers content on load; it appears only for a slow
+   navigation (app.js adds .is-shown after 400 ms). */
+.page-loader:not(.is-shown) { opacity: 0; visibility: hidden; pointer-events: none; }
+.page-loader.is-shown { background: color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+
+/* ---------------------------------------------- public site (landing.css) */
+/* A calm hero: the page ground, one column, the title carries it. No grid,
+   no glows, no watermark, no mock dashboard with invented numbers. */
+.hero { background: var(--bg); }
+:root[data-theme="dark"] .hero { background: var(--bg); }
+.hero-grid-pattern, .hero-blobs, .hero-logo-backdrop, .hero-visual { display: none; }
+.hero-inner { grid-template-columns: minmax(0, 1fr); max-width: 980px; }
+.hero h1 { font-size: clamp(2.6rem, 6.4vw, 4.75rem); line-height: 1.03; letter-spacing: -0.045em; }
+.hero-highlight, .auth-hero h2 em {
+  color: inherit;
+  background: none;
+  text-decoration: none;
+  font-style: normal;
+  -webkit-text-fill-color: currentColor;
+}
+.hero-highlight::before, .hero-highlight::after, .auth-hero h2 em::before, .auth-hero h2 em::after { content: none; }
+.hero-eyebrow { background: none; border: 0; box-shadow: none; padding: 0; color: var(--text-subtle); font-weight: var(--fw-semibold); }
+.hero-eyebrow-dot { display: none; }
+/* One accent: the portal link is a quiet secondary button, not gold. */
+.qa-portal-cta, .qa-portal-cta:hover {
+  background: var(--surface);
+  color: var(--text);
+  border-color: transparent;
+  box-shadow: var(--shadow-sm);
+}
+.qa-portal-cta svg { color: var(--primary); }
+.hero-trust-sep { display: none; }
+.hero-trust { gap: var(--space-5); color: var(--text-subtle); }
+.auth-hero-logo-backdrop { display: none; }
+
+/* Dashboards: KPI and list icons are grey; only a genuine alert (danger,
+   aged, overdue) keeps its colour. Numbers carry the meaning. */
+.dash-kpi-icon, [class*="dash-kpi-icon"], .dash-item-icon, [class*="dash-item-icon-"] {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+.dash-kpi-icon.dash-kpi-danger, .dash-item-icon-danger { background: var(--danger-subtle); color: var(--danger); }
+
+/* Inline line icons that replaced emoji: sit on the text baseline. */
+.ui-icon { display: inline-block; flex: none; vertical-align: -0.15em; }
+.howto-tip-emoji .ui-icon, .howto-callout-icon .ui-icon, .mm-help-section-icon .ui-icon,
+.mm-help-split-icon .ui-icon, .mm-help-cta-icon .ui-icon { color: var(--primary); vertical-align: middle; }
+
+/* Phone: filter dropdowns share two even columns. */
+@media (max-width: 640px) {
+  .tk-filters select, .att-switcher-form select, .hol-filter select, .gal-filter select, .tsk-filters select {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 0;
+  }
+}

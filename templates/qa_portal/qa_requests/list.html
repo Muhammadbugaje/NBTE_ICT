@@ -1,0 +1,23 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}QA requests · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "check" 14 "2.2" %} Quality assurance (SOP-02)</span>
+    <h1 data-qa-focus>QA requests</h1>
+    <p>Ask NBTE for accreditation, reaccreditation and the other QA exercises for your programmes. After the QA fee is confirmed you complete a self-study questionnaire (SSQ) for each programme.</p>
+    {% if can_create %}<div class="qa-row qa-gap-sm qa-mt-sm"><a class="btn btn-primary" href="{% url 'qa_portal:qa_request_new' %}" hx-get="{% url 'qa_portal:qa_request_new' %}" hx-target="#qa-main" hx-push-url="true">{% icon "plus" 16 %} New QA request</a></div>{% endif %}
+    {% if is_department %}<p class="qa-small qa-muted">Your account belongs to an academic department: you complete the SSQ sections your institution sends you.</p>{% endif %}
+  </header>
+  <section class="qa-card" aria-label="Your QA requests">
+    <form class="qa-toolbar" role="search" hx-get="{% url 'qa_portal:qa_requests' %}" hx-target="#qa-req-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change">
+      <label class="qa-search"><span class="sr-only">Search requests</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference or programme" autocomplete="off"></label>
+      <select class="input qa-select" name="show" aria-label="Show"><option value="open"{% if show == "open" %} selected{% endif %}>Open requests</option><option value="closed"{% if show == "closed" %} selected{% endif %}>Decided or cancelled</option><option value="all"{% if show == "all" %} selected{% endif %}>All</option></select>
+      <select class="input qa-select" name="type" aria-label="QA type"><option value="">Any QA type</option>{% for t in types %}<option value="{{ t.code }}"{% if filters.type == t.code %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+      <select class="input qa-select" name="level" aria-label="Level"><option value="">Any level</option>{% for lv in levels %}<option value="{{ lv.code }}"{% if filters.level == lv.code %} selected{% endif %}>{{ lv.code|upper }}</option>{% endfor %}</select>
+    </form>
+    <div id="qa-req-rows" class="qa-region" data-qa-region aria-live="polite">{% include "qa_portal/qa_requests/_rows.html" %}</div>
+  </section>
+</div>
+{% endblock %}

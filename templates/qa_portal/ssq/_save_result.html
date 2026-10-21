@@ -1,0 +1,5 @@
+{% load qa_tags %}{% include "qa_portal/ssq/_save_status.html" %}
+{% for p in progress %}{% if p.section.key == section_key %}{% include "qa_portal/ssq/_nav_item.html" with oob=True %}{% endif %}{% endfor %}
+{% for f in fields %}<p id="ssq-err-{{ f.key }}" class="qa-field-error" hx-swap-oob="true"{% if not field_errors|get_item:f.key %} hidden{% endif %}>{{ field_errors|get_item:f.key|default:"" }}</p>
+{% if f.prefilled or f.edited %}<span id="ssq-badge-{{ f.key }}" hx-swap-oob="true">{% include "qa_portal/ssq/_badge.html" %}</span>{% endif %}{% endfor %}
+<div id="ssq-submit" hx-swap-oob="true">{% include "qa_portal/ssq/_submit_panel.html" %}</div>

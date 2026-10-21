@@ -1,0 +1,53 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">Case Board</a>
+  <span aria-hidden="true">/</span><span aria-current="page">{{ case.reference }}</span>
+</nav>
+
+<header class="qa-inst-head">
+  <span class="qa-inst-head__code" aria-hidden="true">{{ inst.code }}</span>
+  <div>
+    <span class="qa-eyebrow">SOP-03 · {{ case.qa_request.qa_type.name|default:"QA case" }}</span>
+    <h1 data-qa-focus>{{ inst.name }}</h1>
+    <div class="qa-inst-head__meta">
+      {% for s in current %}<span class="qa-chip qa-tone-pending">{% if s.sop_stage_no %}{{ s.sop_stage_no }} · {% endif %}{{ s.label }}</span>{% empty %}<span class="qa-chip">{% if started %}Closed{% else %}Not started{% endif %}</span>{% endfor %}
+      <span class="qa-mono">{{ case.reference }}</span>
+      <span>{% icon "building" 14 %} {{ case.owning_department.name|default:"—" }}</span>
+      <span>{% icon "layers" 14 %} {{ case.programme_count }} programme{{ case.programme_count|pluralize }}</span>
+      {% if case.qa_request.is_joint_qa %}<span class="qa-chip qa-tone-info" title="A programme on this case is regulated by {% for b in case.qa_request.joint_bodies.all %}{{ b.name }}{% if not forloop.last %}, {% endif %}{% endfor %}">Joint QA</span>{% endif %}
+      {% if case.needs_reassignment %}<span class="qa-chip qa-tone-warn">Needs reassignment</span>{% endif %}
+    </div>
+  </div>
+</header>
+
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+{% if monitor %}<div class="qa-readonly-banner" role="status">{% icon "eye" 16 %} Read-only: the ICT monitor can see this case and its tasks but cannot act on it (R-13).</div>{% endif %}
+
+{% if not started %}
+  <section class="qa-card"><div class="qa-card__body qa-stack">
+    {% include "qa_core/partials/_callout.html" with title="SOP-03 has not started" message="This case was opened before the internal workflow existed. Starting it gives the owning department's Director the first task (choose the desk officer)." %}
+    {% if can_start %}<form method="post" action="{% url 'qa_case:start' case.pk %}" hx-post="{% url 'qa_case:start' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "arrow" 16 %} Start SOP-03</button></form>{% endif %}
+  </div></section>
+{% else %}
+  <section class="qa-card" aria-label="SOP-03 progress"><div class="qa-card__body">
+    {% for st in stepper %}{% if st.state == "current" %}{% with last=stepper|last %}<p class="qa-stepper__summary">Stage {{ st.no }} of {{ last.no }} · <strong>{{ st.label }}</strong></p>{% endwith %}{% endif %}{% endfor %}
+    <ol class="qa-stepper">{% for st in stepper %}<li class="is-{{ st.state }}"{% if st.state == "current" %} aria-current="step"{% endif %}><span class="qa-stepper__dot">{% if st.state == "done" %}✓{% else %}{{ st.no }}{% endif %}</span><span class="qa-stepper__label">{{ st.label }}</span></li>{% endfor %}</ol>
+  </div></section>
+  {% include "accreditation/case/_stage_actions.html" %}
+{% endif %}
+
+<nav class="qa-tabs qa-case-tabs" aria-label="Case sections">
+  {% for key, label in tabs %}
+    <a href="?tab={{ key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-get="{% url 'qa_case:detail' case.pk %}?tab={{ key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-target="#qa-panel" hx-push-url="true" class="{% if tab == key %}is-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}>{{ label }}{% for a in actions %}{% if a.can and a.tab == key and key != "overview" %}<span class="qa-dot" aria-label="(your stage)"></span>{% endif %}{% endfor %}</a>
+  {% endfor %}
+</nav>
+<div class="qa-stack">
+  {% if tab == "cost" %}{% include "accreditation/case/_tab_cost.html" %}
+  {% elif tab == "personnel" %}{% include "accreditation/case/_tab_personnel.html" %}
+  {% elif tab == "visit" %}{% include "accreditation/case/_tab_visit.html" %}
+  {% elif tab == "funds" %}{% include "accreditation/case/_tab_funds.html" %}
+  {% elif tab == "reports" %}{% include "accreditation/case/_tab_reports.html" %}
+  {% elif tab == "timeline" %}{% include "accreditation/case/_tab_timeline.html" %}
+  {% elif tab == "tasks" %}{% include "accreditation/case/_tab_tasks.html" %}
+  {% else %}{% include "accreditation/case/_tab_overview.html" %}{% endif %}
+</div>

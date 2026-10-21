@@ -1,0 +1,21 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Inspections · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "clock" 14 "2.2" %} Accreditation visits</span>
+    <h1 data-qa-focus>Inspections</h1>
+    <p>NBTE's scheduled and recorded visits to your institution. The dates are confirmed by the Executive Secretary; NBTE contacts you before a visit.</p>
+  </header>
+  <section class="qa-card" aria-label="Inspections">
+    <form class="qa-toolbar" role="search" hx-get="{% url 'qa_portal:inspections' %}" hx-target="#insp-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change">
+      <label class="qa-search"><span class="sr-only">Search inspections</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Inspection or case reference" autocomplete="off"></label>
+      <select class="input qa-select" name="status" aria-label="Status"><option value="">Any status</option>{% for v, l in statuses %}<option value="{{ v }}"{% if filters.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <select class="input qa-select" name="when" aria-label="When"><option value="">Past and upcoming</option><option value="upcoming"{% if filters.when == "upcoming" %} selected{% endif %}>Upcoming</option><option value="past"{% if filters.when == "past" %} selected{% endif %}>Past</option></select>
+      <select class="input qa-select" name="year" aria-label="Year"><option value="">Any year</option>{% for y in years %}<option value="{{ y }}"{% if filters.year == y|stringformat:"s" %} selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+    </form>
+    <div id="insp-rows" class="qa-region" data-qa-region aria-live="polite">{% include "qa_portal/inspections/_rows.html" %}</div>
+  </section>
+</div>
+{% endblock %}

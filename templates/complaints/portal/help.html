@@ -1,0 +1,18 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Help · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="cx-portal-hero">
+    <div><span class="qa-eyebrow">{% icon "help" 14 "2.2" %} Knowledge base</span><h1 data-qa-focus>Help articles</h1>
+      <p>Answers to the questions NBTE is asked most. If yours is not here, raise a complaint.</p></div>
+    <a class="btn btn-primary" href="{% url 'qa_portal:complaint_new' %}" hx-get="{% url 'qa_portal:complaint_new' %}" hx-target="#qa-main" hx-push-url="true">{% icon "plus" 16 %} Raise a complaint</a>
+  </header>
+  <section class="qa-card" aria-label="Articles">
+    <form class="qa-toolbar" role="search" hx-get="{% url 'qa_portal:help' %}" hx-target="#cx-kb-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search]">
+      <label class="qa-search"><span class="sr-only">Search help</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ q }}" placeholder="e.g. payment not confirmed, forgot password" autocomplete="off"></label>
+    </form>
+    <div id="cx-kb-rows" class="qa-region" data-qa-region aria-live="polite">{% include "complaints/portal/_kb_rows.html" %}</div>
+  </section>
+</div>
+{% endblock %}

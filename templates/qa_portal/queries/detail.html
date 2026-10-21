@@ -1,0 +1,39 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}{{ query.reference }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page" id="qa-query">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:queries' %}" hx-get="{% url 'qa_portal:queries' %}" hx-target="#qa-main" hx-push-url="true">Queries</a><span aria-hidden="true">/</span><span aria-current="page">{{ query.reference }}</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} {{ query.subject_label }}</span>
+    <h1 data-qa-focus>{{ query.title }}</h1>
+    <p class="qa-row qa-gap-sm"><span class="qa-chip {{ query.status|tone }}">{% if query.status == "open" %}Waiting for your answer{% else %}{{ query.get_status_display }}{% endif %}</span><span class="qa-mono qa-small">{{ query.reference }}</span><span class="qa-small">Respond by {{ query.due_at|date:"j M Y" }}</span>{% if query.is_overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}</p>
+  </header>
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not sent" message=error %}{% endif %}
+  <div class="qa-cols">
+    <div class="qa-stack">
+      <section class="qa-card"><header class="qa-card__head"><div><h2>NBTE asks</h2><p>{{ query.created_at|date:"j M Y, H:i" }}</p></div></header><div class="qa-card__body"><p>{{ query.body|linebreaksbr }}</p></div></section>
+      {% for r in responses %}
+        <section class="qa-card qa-card--reply"><header class="qa-card__head"><div><h2>Your response</h2><p>{{ r.responded_by.get_full_name|default:r.responded_by.email }} · {{ r.at|date:"j M Y, H:i" }}</p></div></header>
+          <div class="qa-card__body qa-stack"><p>{{ r.body|linebreaksbr }}</p>{% if r.file %}<a class="btn btn-sm btn-subtle" href="{{ r.portal_download_url }}">{% icon "download" 14 %} {{ r.display_name }} ({{ r.size_label }})</a>{% endif %}</div></section>
+      {% endfor %}
+      {% if can_respond %}
+        <section class="qa-card" aria-labelledby="qr-h"><header class="qa-card__head"><div><h2 id="qr-h">{% if responses %}Add to your response{% else %}Respond{% endif %}</h2><p>NBTE’s officer is notified as soon as you send it.</p></div></header>
+          <div class="qa-card__body">
+            <form class="qa-form qa-stack" method="post" enctype="multipart/form-data" action="{% url 'qa_portal:query' query.pk %}" hx-post="{% url 'qa_portal:query' query.pk %}" hx-encoding="multipart/form-data" hx-target="#qa-main" data-qa-progress>{% csrf_token %}
+              <div class="qa-field"><label for="qr-body">Your answer</label><textarea class="input" id="qr-body" name="body" rows="6" required minlength="3">{{ body|default:'' }}</textarea></div>
+              <div class="qa-field"><label for="qr-file">Attachment <span class="qa-muted">(optional, up to {{ max_mb }} MB)</span></label><input class="input" id="qr-file" type="file" name="file"></div>
+              <div class="qa-progress" data-qa-progress-bar hidden><span></span></div>
+              <div class="qa-form-actions"><button class="btn btn-primary" type="submit"{% if request.is_impersonating %} disabled{% endif %}>{% icon "mail" 16 %} Send response</button></div>
+            </form>
+          </div></section>
+      {% elif query.status == "closed" %}
+        {% include "qa_core/partials/_callout.html" with kind="success" title="Closed by NBTE" message=query.close_remark|default:"No further answer is needed." %}
+      {% endif %}
+    </div>
+    <aside class="qa-stack">
+      {% if query.qa_request_id %}<section class="qa-card"><div class="qa-card__body qa-stack"><p class="qa-small">About {{ query.subject_label }}</p><a class="btn btn-sm btn-subtle" href="{% url 'qa_portal:qa_request' query.qa_request_id %}" hx-get="{% url 'qa_portal:qa_request' query.qa_request_id %}" hx-target="#qa-main" hx-push-url="true">Open {{ query.qa_request.reference }}</a></div></section>{% endif %}
+    </aside>
+  </div>
+</div>
+{% endblock %}

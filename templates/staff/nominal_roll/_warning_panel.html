@@ -1,0 +1,22 @@
+{% comment %}
+  One collapsible warning list on the import preview.
+  Context: panel_id, title, items (list of nominal_roll.Warning_), tone (warn|info), open, hint.
+{% endcomment %}
+<section class="card nbr-card nbr-warning-card{% if tone == 'info' %} nbr-warning-card--info{% elif items %} nbr-warning-card--warn{% endif %}">
+  <button type="button" class="nbr-warning-head" data-collapse-trigger="{{ panel_id }}" aria-expanded="{% if open and items %}true{% else %}false{% endif %}">
+    <span class="nbr-warning-title">{{ title }} <span class="badge{% if items and tone != 'info' %} badge-warn{% endif %}">{{ items|length }}</span></span>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+  <div id="{{ panel_id }}">
+    {% if items %}
+      <p class="nbr-warning-hint">{{ hint }}</p>
+      <ul class="nbr-warning-list" tabindex="0" aria-label="{{ title }}">
+        {% for w in items %}
+          <li><span class="nbr-warning-where">{{ w.sheet_label }} · row {{ w.row }}</span> {{ w.message }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="nbr-warning-hint">None.</p>
+    {% endif %}
+  </div>
+</section>

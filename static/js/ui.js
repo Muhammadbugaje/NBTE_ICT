@@ -644,15 +644,19 @@
    */
   NBTE.themeToggle = function (btn) {
     if (!btn || !once(btn, "Theme")) return;
-    function sync() {
-      var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    // The theme can change without a click (the device switched light/dark,
+    // or another tab). theme:change carries the new theme: use it, because
+    // an animated switch only sets data-theme on the next frame.
+    function sync(e) {
+      var theme = e && e.detail && e.detail.theme;
+      var dark = (theme || document.documentElement.getAttribute("data-theme")) === "dark";
       btn.setAttribute("aria-pressed", dark ? "true" : "false");
       btn.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
     }
     btn.addEventListener("click", function (e) {
       e.preventDefault();
-      if (NBTE.Theme) NBTE.Theme.toggle();
-      sync();
+      if (NBTE.Theme) NBTE.Theme.toggle();   // fires theme:change → sync
+      else sync();
     });
     window.addEventListener("theme:change", sync);
     sync();

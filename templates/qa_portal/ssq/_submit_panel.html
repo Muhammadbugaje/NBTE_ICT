@@ -1,0 +1,20 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="ssq-sub-h">
+  <header class="qa-card__head"><div><h2 id="ssq-sub-h">{% if is_department %}Send back{% else %}Submit to NBTE{% endif %}</h2>
+    <p>{% if problem_count %}{{ problem_count }} required answer{{ problem_count|pluralize }} still empty.{% else %}Every required answer is in.{% endif %}</p></div></header>
+  <div class="qa-card__body qa-stack">
+    {% if problem_count %}
+      <ul class="qa-checks qa-small qa-ssq-missing" role="list">{% for m in problem_list %}<li class="is-missing">{% icon "alert" 14 %} <span><a href="?section={{ m.section.key }}" hx-get="{% url 'qa_portal:ssq' req.pk ssq.pk %}?section={{ m.section.key }}" hx-target="#ssq-section" hx-push-url="true" data-ssq-nav>{{ m.field.label }}</a> <span class="qa-muted">· {{ m.section.title }}</span></span></li>{% endfor %}{% if problem_count > 6 %}<li class="qa-muted">… and {{ problem_count|add:"-6" }} more</li>{% endif %}</ul>
+    {% endif %}
+    {% if is_department and ssq.status == "returned_to_department" and ssq.assigned_department_user_id == request.user.pk %}
+      <form method="post" action="{% url 'qa_portal:ssq_department_submit' req.pk ssq.pk %}" hx-post="{% url 'qa_portal:ssq_department_submit' req.pk ssq.pk %}" hx-target="#ssq-workspace" data-ssq-flush>{% csrf_token %}
+        <button class="btn btn-primary btn-block" type="submit">{% icon "check" 16 "2.4" %} Send to my institution</button></form>
+    {% elif can_submit %}
+      <form class="qa-stack" method="post" action="{% url 'qa_portal:ssq_submit' req.pk ssq.pk %}" hx-post="{% url 'qa_portal:ssq_submit' req.pk ssq.pk %}" hx-target="#ssq-workspace" data-ssq-flush hx-trigger="qa:confirmed" data-qa-confirm="Your answers and files are frozen as version {{ ssq.version }} of this SSQ. You cannot change them unless NBTE returns it." data-qa-confirm-title="Submit the SSQ to NBTE?" data-qa-confirm-label="Submit">{% csrf_token %}
+        <label class="qa-field--check qa-small"><input type="checkbox" name="declaration" required> I confirm these answers and documents are true and complete.</label>
+        <button class="btn btn-primary btn-block" type="submit"{% if problem_count or request.is_impersonating %} disabled{% endif %}>Submit SSQ</button></form>
+    {% elif not is_department and ssq.status == "draft" %}
+      <p class="qa-small qa-muted">Only your chief executive or institution administrator can submit SSQs to NBTE.</p>
+    {% endif %}
+  </div>
+</section>

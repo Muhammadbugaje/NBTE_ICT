@@ -1,0 +1,13 @@
+{% load qa_tags %}
+{% if rows %}
+  <ul class="qa-rowlist" role="list">{% for r in rows %}
+    <li><a class="qa-rowlink" href="{% url 'qa_portal:qa_request' r.pk %}" hx-get="{% url 'qa_portal:qa_request' r.pk %}" hx-target="#qa-main" hx-push-url="true">
+      <span class="qa-rowlink__badge">{{ r.programmes|length }}</span>
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.qa_type.name }}</span>
+        <span class="qa-rowlink__meta"><span class="qa-mono">{{ r.reference }}</span><span>· {% for p in r.programmes %}{{ p.programme }}{% if not forloop.last %}, {% endif %}{% empty %}no programmes{% endfor %}</span></span></span>
+      <span class="qa-rowlink__side"><span class="qa-chip {{ r.status|tone }}">{{ r.public }}</span></span></a></li>
+  {% endfor %}</ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-req-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">No QA requests {% if show == "open" %}open{% else %}here{% endif %}</h3><p class="nbte-empty-state__body">Start one when a programme is due for accreditation or reaccreditation — reaccreditation opens {{ window|default:"6" }} months before expiry.</p></div>
+{% endif %}

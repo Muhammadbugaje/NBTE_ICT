@@ -1,0 +1,35 @@
+{% load qa_tags %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "message" 14 "2.2" %} Quality Assurance · Complaints</span>
+    <h1 data-qa-focus>Complaint queue</h1>
+    <p>Complaints from institutions and resource persons, routed to the department that handles them. Every stage has a working-hours deadline; a missed deadline is escalated to the department's Director automatically. Most urgent first.</p>
+  </div>
+  <div class="qa-hero__stats cx-hero-stats" aria-label="Summary">
+    <a class="qa-stat qa-stat--link{% if tab == 'mine' %} qa-stat--info{% endif %}" href="{% url 'qa_complaints:queue' %}?tab=mine" hx-get="{% url 'qa_complaints:queue' %}?tab=mine" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.mine }}</strong><span>Assigned to me</span></a>
+    <a class="qa-stat qa-stat--link" href="{% url 'qa_complaints:queue' %}?tab=department" hx-get="{% url 'qa_complaints:queue' %}?tab=department" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.department }}</strong><span>My department</span></a>
+    <a class="qa-stat qa-stat--link" href="{% url 'qa_complaints:queue' %}?tab=escalated" hx-get="{% url 'qa_complaints:queue' %}?tab=escalated" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.escalated }}</strong><span>Escalated to me</span></a>
+    <a class="qa-stat qa-stat--link{% if counts.breached %} qa-stat--danger{% endif %}" href="{% url 'qa_complaints:queue' %}?tab=all&amp;sla=breached" hx-get="{% url 'qa_complaints:queue' %}?tab=all&amp;sla=breached" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.breached }}</strong><span>Overdue</span></a>
+  </div>
+</header>
+
+{% include "complaints/_nav.html" %}
+
+<section class="qa-card" aria-label="Complaints">
+  <form class="qa-toolbar qa-toolbar--wrap" role="search" method="get" action="{% url 'qa_complaints:queue' %}"
+        hx-get="{% url 'qa_complaints:queue' %}" hx-target="#qa-rows" hx-push-url="true"
+        hx-trigger="input changed delay:350ms from:find input[type=search], change, submit" hx-sync="this:replace" data-qa-no-overlay>
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <label class="qa-search"><span class="sr-only">Search complaints</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference, subject, institution or e-mail" autocomplete="off"></label>
+    <label class="sr-only" for="cx-status">Status</label>
+    <select class="input qa-select" id="cx-status" name="status">{% for v, l in status_filters %}<option value="{{ v }}"{% if filters.status == v or not filters.status and v == "open" %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <label class="sr-only" for="cx-sla">Deadline</label>
+    <select class="input qa-select" id="cx-sla" name="sla">{% for v, l in sla_filters %}<option value="{{ v }}"{% if filters.sla == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <label class="sr-only" for="cx-layer">Layer</label>
+    <select class="input qa-select" id="cx-layer" name="layer"><option value="">Every kind</option>{% for l in layers %}<option value="{{ l.code }}"{% if filters.layer == l.code %} selected{% endif %}>{{ l.name }}</option>{% endfor %}</select>
+    <label class="sr-only" for="cx-prio">Priority</label>
+    <select class="input qa-select" id="cx-prio" name="priority"><option value="">Any priority</option>{% for v, l in priorities %}<option value="{{ v }}"{% if filters.priority == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <noscript><button class="btn btn-sm btn-subtle" type="submit">Apply</button></noscript>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "complaints/_queue_rows.html" %}</div>
+</section>

@@ -41,7 +41,7 @@ def test_self_edit_cannot_change_department(client, ict, roles):
     u.refresh_from_db()
     staff.refresh_from_db()
     assert u.department_id is None
-    assert staff.grade_level == "" and staff.designation == ""
+    assert staff.grade_level == "" and staff.designation is None  # FK since the nominal-roll release
 
 
 def test_self_edit_can_change_contact_fields(client, ict, roles):

@@ -1,0 +1,137 @@
+{% extends "qa_portal/public/base.html" %}
+{% load static qa_tags %}
+{% block title %}Register an institution · {{ portal_name }}{% endblock %}
+{% block description %}Register a proposed TVET institution with NBTE and start onboarding (SOP-01).{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/qa.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/qa-p2.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/apple.css' %}?v=1">
+{% endblock %}
+{% block dock %}{% endblock %}
+{% block content %}
+
+<section class="vv-hero vv-hero--compact" aria-labelledby="rg-title">
+  <div class="vv-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="vv-grid" aria-hidden="true"></div>
+  <div class="vv-wrap rg-hero">
+    <div class="vv-enter">
+      <p class="vv-eyebrow"><img src="{% static 'img/NBTE_logo.png' %}" alt="" width="24" height="24">Onboarding · SOP-01</p>
+      {% if enabled %}
+      <h1 class="vv-h1 rg-title" id="rg-title">Register your institution.</h1>
+      <p class="vv-lede">Create your institution's record and your administrator account. It takes about fifteen minutes; you upload documents afterwards.</p>
+      {% else %}
+      <h1 class="vv-h1 rg-title" id="rg-title">Joining the QA portal.</h1>
+      <p class="vv-lede">NBTE's Quality Assurance Directorate creates each institution's account. Contact the Directorate to begin; you then upload documents yourself.</p>
+      {% endif %}
+    </div>
+    <ol class="rg-path" aria-label="Where registration fits">
+      <li class="is-here"><b>1</b><span>Register<small>{% if enabled %}You are here{% else %}Through NBTE{% endif %}</small></span></li>
+      <li><b>2</b><span>Upload documents<small>Your application</small></span></li>
+      <li><b>3</b><span>NBTE clearance<small>Four departments</small></span></li>
+      <li><b>4</b><span>Institutional fee<small>Then programmes</small></span></li>
+    </ol>
+  </div>
+</section>
+
+<div class="vv-wrap rg-body">
+{% if not enabled %}
+  <div class="rg-closed vv-tile vv-hue-gold" role="status">
+    <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg></span>
+    <h2>Registration is managed by NBTE</h2>
+    <p>{{ registration_closed_message }} You will then receive an e-mail to set your password.</p>
+    <div class="vv-tile__foot rg-closed__cta">
+      {% if contact_email %}<a class="vv-btn vv-btn--green" href="mailto:{{ contact_email }}">E-mail {{ contact_email }}</a>{% endif %}
+      {% if contact_phone %}<a class="vv-btn vv-btn--line" href="tel:{{ contact_phone|cut:' ' }}">Call {{ contact_phone }}</a>{% endif %}
+      <a class="vv-btn vv-btn--line" href="{% url 'qa_portal:how_to' %}">See how the process works</a>
+    </div>
+  </div>
+{% else %}
+  <div class="rg-layout">
+    <aside class="rg-rail" aria-label="Registration sections">
+      <nav class="rg-steps" data-rg-steps>
+        <a href="#rg-institution" class="is-active"><b>1</b>Institution</a>
+        <a href="#rg-location"><b>2</b>Location and contacts</a>
+        <a href="#rg-account"><b>3</b>Your account</a>
+        <a href="#rg-declare"><b>4</b>Declaration</a>
+      </nav>
+      <div class="rg-aside-card">
+        <h2>Already registered with NBTE?</h2>
+        <p>Do not register again. Use the set-password link NBTE e-mailed to your institution, or <a href="{% url 'qa_portal:login' %}">log in</a>.</p>
+      </div>
+      <div class="rg-aside-card">
+        <h2>Need help?</h2>
+        <p><a href="{% url 'qa_portal:how_to' %}#onboarding">How onboarding works</a></p>
+        {% if contact_email %}<p><a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>{% endif %}
+        {% if contact_phone %}<p><a href="tel:{{ contact_phone|cut:' ' }}">{{ contact_phone }}</a></p>{% endif %}
+      </div>
+    </aside>
+
+    <form method="post" action="{% url 'qa_portal:register' %}" novalidate class="qa-form rg-form">
+      {% csrf_token %}
+      {% include "qa_core/partials/_form_errors.html" %}
+
+      <fieldset class="rg-card" id="rg-institution">
+        <legend class="rg-legend"><span class="rg-legend__in"><b>1</b><span>Institution<small>As it appears on official documents.</small></span></span></legend>
+        <div class="qa-fields">
+          {% include "qa_core/partials/_field.html" with field=form|bf:"name" wide=True %}
+          {% for n in "ownership institution_type category year_established cac_rc_number website"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="rg-card" id="rg-location">
+        <legend class="rg-legend"><span class="rg-legend__in"><b>2</b><span>Location and contacts<small>The permanent site, and how NBTE reaches the institution.</small></span></span></legend>
+        <div class="qa-fields">
+          <div class="qa-field{% if form.state.errors %} has-error{% endif %}"><label for="{{ form.state.id_for_label }}">State <span class="qa-muted" aria-hidden="true">*</span></label>
+            <select class="input" name="state" id="{{ form.state.id_for_label }}" hx-get="{% url 'qa_portal:lga_options' %}" hx-target="#qa-lga-options" hx-trigger="change">
+              {% for v, l in form.state.field.choices %}<option value="{{ v }}"{% if form.state.value|stringformat:"s" == v|stringformat:"s" %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+            {% for e in form.state.errors %}<div class="qa-field__error" role="alert">{{ e }}</div>{% endfor %}</div>
+          {% for n in "lga address_line1 address_town official_email phone head_name"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
+        </div>
+        <datalist id="qa-lga-options">{% for lga in lgas %}<option value="{{ lga }}"></option>{% endfor %}</datalist>
+      </fieldset>
+
+      <fieldset class="rg-card" id="rg-account">
+        <legend class="rg-legend"><span class="rg-legend__in"><b>3</b><span>Your account<small>You become the institution administrator, usually the Registrar or head of the QA unit.</small></span></span></legend>
+        <div class="qa-fields">
+          {% for n in "admin_first_name admin_last_name admin_email admin_job_title admin_department"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
+          <div class="rg-split is-wide">
+            {% include "qa_core/partials/_field.html" with field=form|bf:"password1" %}
+            {% include "qa_core/partials/_field.html" with field=form|bf:"password2" %}
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="sr-only" aria-hidden="true"><label>Website <input type="text" name="website_hp" tabindex="-1" autocomplete="off"></label></div>
+
+      <fieldset class="rg-card rg-card--submit" id="rg-declare">
+        <legend class="rg-legend"><span class="rg-legend__in"><b>4</b><span>Declaration</span></span></legend>
+        {% include "qa_core/partials/_field.html" with field=form|bf:"declaration" %}
+        <div class="rg-submit">
+          <button class="vv-btn vv-btn--green rg-submit__btn" type="submit">Register institution
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+          <p>Next you will be signed in and taken to your application.</p>
+        </div>
+      </fieldset>
+    </form>
+  </div>
+{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  /* Highlight the section in view in the side rail. */
+  (function () {
+    var nav = document.querySelector("[data-rg-steps]");
+    if (!nav || !("IntersectionObserver" in window)) return;
+    var links = Array.prototype.slice.call(nav.querySelectorAll("a"));
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        links.forEach(function (a) { a.classList.toggle("is-active", a.getAttribute("href") === "#" + e.target.id); });
+      });
+    }, { rootMargin: "-35% 0px -55% 0px" });
+    links.forEach(function (a) { var t = document.querySelector(a.getAttribute("href")); if (t) io.observe(t); });
+  })();
+</script>
+{% endblock %}

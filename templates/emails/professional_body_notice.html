@@ -1,0 +1,23 @@
+{% extends "email/base_email.html" %}
+{% comment %}Phase 6: tells a professional body that NBTE opened a joint QA case on a programme it regulates.{% endcomment %}
+{% block subject %}NBTE joint QA exercise: {{ institution.name }}{% endblock %}
+{% block preheader %}{{ institution.name }} requested quality assurance for a programme your council regulates.{% endblock %}
+{% block badge %}
+  <span style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;padding:5px 10px;border-radius:999px;">Joint QA exercise</span>
+{% endblock %}
+{% block header_title %}Joint QA exercise: {{ institution.name }}{% endblock %}
+{% block intro %}{% endblock %}
+{% block content %}
+  <tr>
+    <td style="padding:8px 30px 26px;font-size:14px;line-height:1.7;color:#0f172a;">
+      <p>Dear {{ body.contact_person|default:"Registrar" }},</p>
+      <p>{{ institution.name }} has requested a {{ qa_type }} from the National Board for Technical Education for the
+        following programme(s), which {{ body.name }} regulates:</p>
+      <ul>{% for p in programmes %}<li>{{ p }}</li>{% endfor %}</ul>
+      <p>NBTE has opened case <strong>{{ case.reference }}</strong> and will run it as a joint QA exercise. The handling
+        department will contact you about the visit dates and your council's nominee for the team.</p>
+      <p>Please reply to this e-mail if you have any questions.</p>
+      <p>NBTE Quality Assurance</p>
+    </td>
+  </tr>
+{% endblock %}

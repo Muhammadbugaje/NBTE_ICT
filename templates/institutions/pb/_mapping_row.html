@@ -1,0 +1,11 @@
+{% load qa_tags %}<tr id="pb-map-{{ m.pk }}">
+  {% if show_body %}<td><a href="{% url 'qa_pb:body_detail' m.body_id %}" hx-get="{% url 'qa_pb:body_detail' m.body_id %}" hx-target="#qa-panel" hx-push-url="true">{{ m.body.acronym|default:m.body.name }}</a></td>{% endif %}
+  <td><strong>{{ m.programme_name }}</strong></td>
+  <td>{% if m.level %}{{ m.level.code|upper }}{% else %}Every level{% endif %}</td>
+  <td>{{ m.note|default:"—" }}</td>
+  <td>{% if m.is_active and m.body.is_active %}<span class="qa-small">Active</span>{% elif not m.body.is_active %}<span class="qa-small qa-muted">Body inactive</span>{% else %}<span class="qa-small qa-muted">Off</span>{% endif %}</td>
+  {% if can_manage %}<td class="qa-actions-cell">
+    <form hx-post="{% url 'qa_pb:mapping_toggle' m.pk %}" hx-target="#pb-map-{{ m.pk }}" hx-swap="outerHTML">{% csrf_token %}<input type="hidden" name="show_body" value="{% if show_body %}1{% else %}0{% endif %}">
+      <button type="submit" class="btn btn-subtle btn-sm">{% if m.is_active %}Turn off{% else %}Turn on{% endif %}</button></form>
+  </td>{% endif %}
+</tr>

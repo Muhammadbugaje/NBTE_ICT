@@ -1,3 +1,4 @@
+{% load staff_tags %}
 <a href="{% url 'staff:leadership_tenure' tenure.pk %}" class="lead-card">
   <div class="lead-card-photo">
     {% if tenure.photo %}
@@ -5,7 +6,7 @@
     {% elif tenure.staff.photo %}
       <img src="{{ tenure.staff.photo_thumb_url }}" alt="">
     {% else %}
-      <span>{{ tenure.staff.first_name|slice:":1"|upper }}{{ tenure.staff.last_name|slice:":1"|upper }}</span>
+      {% staff_avatar_fallback tenure.staff %}
     {% endif %}
     {% if tenure.is_acting %}<span class="lead-card-badge">Acting</span>{% endif %}
   </div>

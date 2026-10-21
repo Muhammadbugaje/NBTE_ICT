@@ -1,0 +1,17 @@
+{% load qa_tags %}
+{% if totals %}<div class="qa-card__body"><h3 class="qa-h3">Totals per person (this selection)</h3>
+  <ul class="qa-totals" role="list">{% for t in totals %}<li><strong>{{ t.person_name }}</strong><span>{{ t.visits|default:0 }} visit{{ t.visits|default:0|pluralize }} · {{ t.ssqs|default:0 }} SSQ{{ t.ssqs|default:0|pluralize }} · last {{ t.last|date:"j M Y" }}</span></li>{% endfor %}</ul></div>{% endif %}
+{% if page.rows %}
+<div class="qa-table-wrap"><table class="qa-table">
+  <thead><tr><th scope="col">Person</th><th scope="col">Duty</th><th scope="col">Institution · programme</th><th scope="col">Served</th><th scope="col" class="num">Visits</th><th scope="col" class="num">SSQs</th><th scope="col">Source</th></tr></thead>
+  <tbody>{% for r in page.rows %}<tr class="{% if r.visit_count < 0 or r.ssq_count < 0 %}is-compensating{% endif %}">
+    <td><strong>{{ r.person_name }}</strong><br><span class="qa-small qa-muted">{{ r.get_person_type_display }}</span></td>
+    <td>{{ r.get_duty_display }}{% if r.role_on_team and r.role_on_team != r.get_duty_display %}<br><span class="qa-small qa-muted">{{ r.role_on_team }}</span>{% endif %}</td>
+    <td>{{ r.institution.name|default:"—" }}{% if r.programme %}<br><span class="qa-small qa-muted">{{ r.programme.name }}{% if r.discipline %} · {{ r.discipline.name }}{% endif %}</span>{% endif %}</td>
+    <td>{{ r.served_from|date:"j M Y" }}{% if r.served_to != r.served_from %}–{{ r.served_to|date:"j M Y" }}{% endif %}</td>
+    <td class="num">{{ r.visit_count }}</td><td class="num">{{ r.ssq_count }}</td>
+    <td class="qa-small">{% if r.voids_id %}<span class="qa-chip qa-tone-warn">Compensating</span><br>{% endif %}{{ r.source|humanize_code }}{% if r.reason %} — {{ r.reason }}{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "clock" 28 %}</span><h3 class="nbte-empty-state__title">No service recorded</h3><p class="nbte-empty-state__body">Rows appear when visits are recorded and SSQ reviews complete. Try clearing the filters.</p></div>{% endif %}

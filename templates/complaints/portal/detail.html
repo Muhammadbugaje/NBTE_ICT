@@ -1,0 +1,85 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}{{ c.reference }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:complaints' %}" hx-get="{% url 'qa_portal:complaints' %}" hx-target="#qa-main" hx-push-url="true">Complaints</a><span aria-hidden="true">/</span><span aria-current="page">{{ c.reference }}</span></nav>
+  <header class="qa-detail-head">
+    <div>
+      <span class="qa-eyebrow">{% icon "message" 14 "2.2" %} {{ c.layer.name }}</span>
+      <h1 data-qa-focus>{{ c.subject }}</h1>
+      <p class="qa-detail-head__target">{{ c.reference }} · raised {{ c.created_at|date:"j M Y, H:i" }}</p>
+    </div>
+    <div class="qa-detail-head__chips">
+      <span class="qa-chip{% if waiting_for_me %} qa-tone-warn{% elif c.status == 'resolved' %} qa-tone-success{% elif c.closed_at %} qa-tone-neutral{% else %} qa-tone-pending{% endif %}" data-qa-announce="Status: {{ stage_label }}">{% if waiting_for_me %}Waiting for your reply{% else %}{{ stage_label }}{% endif %}</span>
+    </div>
+  </header>
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+  {% if waiting_for_me %}<div class="qa-callout qa-callout--warn" role="status">{% icon "alert" 18 "2.2" %}<div><strong>NBTE needs more information</strong><p>Answer below. The deadline is paused until you reply.</p></div></div>{% endif %}
+  {% if c.status == "resolved" and actions %}<div class="qa-callout qa-callout--success" role="status">{% icon "check" 18 "2.2" %}<div><strong>NBTE says this is resolved</strong><p>{{ c.resolution|default:"" }} Confirm it, or reopen it within {{ reopen_days }} days of the resolution if the problem is still there.</p></div></div>{% endif %}
+
+  <div class="qa-detail">
+    <div class="qa-stack">
+      <section class="qa-card" aria-labelledby="cx-conv">
+        <header class="qa-card__head"><h2 id="cx-conv">Conversation</h2>{% if c.related_label %}<span class="cx-related">{% icon "link" 14 %} {{ c.related_label }}</span>{% endif %}</header>
+        <div class="qa-card__body">
+          <ol class="cx-thread">
+            {% for m in messages_list %}
+              <li class="cx-msg{% if m.is_system %} cx-msg--system{% elif m.author and m.author.user_type == 'staff' %} cx-msg--staff{% endif %}">
+                <span class="cx-msg__avatar" aria-hidden="true">{% if m.author and m.author.user_type == "staff" or m.is_system or not m.author %}NB{% else %}{{ m.author|initials }}{% endif %}</span>
+                <div class="cx-msg__bubble">
+                  <div class="cx-msg__head"><strong>{% if m.is_system or not m.author %}NBTE{% elif m.author.user_type == "staff" %}NBTE{% if officer and m.author == officer %} · {{ m.author|who }}{% endif %}{% else %}{{ m.author|who }}{% endif %}</strong><time datetime="{{ m.created_at|date:'c' }}">{{ m.created_at|date:"j M, H:i" }}</time></div>
+                  <div class="cx-msg__body">{{ m.body }}</div>
+                  {% if m.attachments.all %}<div class="cx-msg__files">{% for f in m.attachments.all %}<a class="qa-chip" href="{% url 'qa_portal:complaint_file' c.pk f.pk %}">{% icon "download" 12 %} {{ f.display_name }}</a>{% endfor %}</div>{% endif %}
+                </div>
+              </li>
+            {% endfor %}
+          </ol>
+          {% if can_reply %}
+          <form class="cx-compose" method="post" action="{% url 'qa_portal:complaint_reply' c.pk %}" hx-post="{% url 'qa_portal:complaint_reply' c.pk %}" hx-target="#qa-main" hx-encoding="multipart/form-data" enctype="multipart/form-data">{% csrf_token %}
+            <label for="cx-reply" class="qa-label">{% if waiting_for_me %}Your answer{% else %}Add a message{% endif %}</label>
+            <textarea class="input" id="cx-reply" name="body" required minlength="2">{{ body|default:'' }}</textarea>
+            <div class="cx-compose__row"><input class="input" type="file" name="files" multiple aria-label="Attach files" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+              <button class="btn btn-primary btn-sm" type="submit">{% icon "message" 14 %} Send</button></div>
+          </form>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+    <aside class="qa-stack" aria-label="Progress">
+      <section class="qa-card" aria-labelledby="cx-prog">
+        <header class="qa-card__head"><h2 id="cx-prog">Progress</h2></header>
+        <div class="qa-card__body qa-stack">
+          <ol class="cx-steps">{% for s in steps %}<li class="is-{{ s.state }}"{% if s.state == "now" %} aria-current="step"{% endif %}>{{ s.label }}</li>{% endfor %}</ol>
+          <dl class="qa-meta qa-meta--tight">
+            <dt>Handled by</dt><dd>{{ department.name|default:"NBTE" }}{% if officer %} · {{ officer|who }}{% endif %}</dd>
+            <dt>Status</dt><dd>{{ stage_label }}</dd>
+            {% if c.closed_at %}<dt>Closed</dt><dd>{{ c.closed_at|date:"j M Y" }}</dd>{% endif %}
+          </dl>
+        </div>
+      </section>
+      {% if actions %}
+      <section class="qa-card" aria-labelledby="cx-yours">
+        <header class="qa-card__head"><h2 id="cx-yours">Your options</h2></header>
+        <div class="qa-card__body cx-actions">
+          {% for t in actions %}
+            <details class="cx-action{% if t.action_code == 'confirm' %} cx-action--primary{% elif t.action_code == 'withdraw' %} cx-action--danger{% endif %}"{% if t.action_code == "confirm" %} open{% endif %}>
+              <summary>{% if t.action_code == "confirm" %}It is resolved — close it{% elif t.action_code == "reopen" %}It is not resolved — reopen{% else %}{{ t.label }}{% endif %}</summary>
+              <form method="post" action="{% url 'qa_portal:complaint_action' c.pk t.action_code %}" hx-post="{% url 'qa_portal:complaint_action' c.pk t.action_code %}" hx-target="#qa-main">{% csrf_token %}
+                {% if t.action_code == "confirm" %}
+                  <fieldset class="qa-field"><legend class="qa-label">How was it handled? <span class="qa-muted">(optional)</span></legend>
+                    <div class="cx-seg" role="radiogroup">{% for n in "1 2 3 4 5"|split %}<label><input type="radio" name="satisfaction" value="{{ n }}"><span>{{ n }}</span></label>{% endfor %}</div></fieldset>
+                {% endif %}
+                <div class="qa-field"><label for="cx-r-{{ t.action_code }}">{% if t.action_code == "reopen" %}What is still wrong{% else %}Comment (optional){% endif %}</label><textarea class="input" id="cx-r-{{ t.action_code }}" name="remark" rows="2"{% if t.action_code == "reopen" %} required minlength="3"{% endif %}></textarea></div>
+                <button class="btn {% if t.action_code == 'withdraw' %}btn-subtle qa-btn-reject{% else %}btn-primary{% endif %} btn-sm" type="submit">{% if t.action_code == "confirm" %}Close the complaint{% elif t.action_code == "reopen" %}Reopen{% else %}Withdraw{% endif %}</button>
+              </form>
+            </details>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+      <section class="qa-card qa-card--muted"><div class="qa-card__body qa-small"><p>Need a quick answer? <a href="{% url 'qa_portal:help' %}" hx-get="{% url 'qa_portal:help' %}" hx-target="#qa-main" hx-push-url="true">Browse the help articles</a>.</p></div></section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

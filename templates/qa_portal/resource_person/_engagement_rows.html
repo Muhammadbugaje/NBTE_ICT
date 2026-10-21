@@ -1,0 +1,23 @@
+{% load qa_tags %}
+{% if page.rows %}
+<ul class="qa-rowlist" role="list">{% for m in page.rows %}
+  <li class="qa-rowlink qa-rowlink--static qa-engagement qa-rowlink--nobadge">
+    <span class="qa-rowlink__main">
+      <span class="qa-rowlink__title">{{ m.qa_request_programme.programme }}</span>
+      <span class="qa-rowlink__meta"><span>{{ m.case.institution.name }}</span><span>· {{ m.get_duty_display }}</span><span>· {{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</span></span>
+      {% if m.can_write %}
+      <form class="qa-form qa-engagement__form" method="post" action="{% url 'qa_portal:rp_engagements' %}?{{ request.GET.urlencode }}" hx-post="{% url 'qa_portal:rp_engagements' %}?{{ request.GET.urlencode }}" hx-target="#qa-main" novalidate>{% csrf_token %}<input type="hidden" name="mapping" value="{{ m.pk }}">
+        <div class="qa-field{% if error_for == m.pk %} has-error{% endif %}"><label for="fd-{{ m.pk }}">My findings</label>
+          <textarea class="input" id="fd-{{ m.pk }}" name="findings" rows="4"{% if error_for == m.pk %} aria-invalid="true" aria-describedby="fd-{{ m.pk }}-err"{% endif %}>{% if error_for == m.pk %}{{ draft }}{% else %}{{ m.findings }}{% endif %}</textarea>
+          {% if error_for == m.pk %}{% for e in errors.findings %}<p class="qa-field__error" role="alert" id="fd-{{ m.pk }}-err">{{ e }}</p>{% endfor %}{% endif %}
+        </div>
+        <div class="qa-form-actions"><button class="btn btn-primary btn-sm" type="submit">{% if m.findings %}Update{% else %}Submit{% endif %} findings</button></div>
+      </form>
+      {% elif m.findings %}<span class="qa-small"><strong>My findings:</strong> {{ m.findings|truncatechars:240 }}</span>
+      {% else %}<span class="qa-small qa-muted">{{ m.write_why }}</span>{% endif %}
+    </span>
+    <span class="qa-rowlink__side"><span class="qa-chip {{ m.status|tone }}">{% if m.status == "released" %}Completed{% elif m.status == "proposed" %}Awaiting confirmation{% else %}{{ m.get_status_display }}{% endif %}</span></span>
+  </li>
+{% endfor %}</ul>
+{% include "qa_core/partials/_pagination.html" with target="#rp-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "clock" 28 %}</span><h3 class="nbte-empty-state__title">No engagements here</h3><p class="nbte-empty-state__body">When NBTE maps you to a visit or an SSQ review, it appears here and you get a notification.</p></div>{% endif %}

@@ -1,0 +1,59 @@
+{% load qa_tags %}
+{% include "inspection/_subnav.html" with section="endorsements" %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_insp:inspection' inspection.pk %}" hx-get="{% url 'qa_insp:inspection' inspection.pk %}" hx-target="#qa-panel" hx-push-url="true">{{ inspection.reference }}</a><span aria-hidden="true">/</span><span aria-current="page">Post-visit report</span></nav>
+<header class="qa-inst-head">
+  <span class="qa-inst-head__code" aria-hidden="true">{{ case.institution.code }}</span>
+  <div><span class="qa-eyebrow">SOP-03 stage 12 · <a href="{% url 'qa_case:detail' case.pk %}">{{ case.reference }}</a></span>
+    <h1 data-qa-focus>{{ report.qa_request_programme.programme }}</h1>
+    <div class="qa-inst-head__meta"><span class="qa-chip {{ report.status|tone }}">{{ report.status|humanize_code }}</span><span>{{ case.institution.name }}</span><span>v{{ report.version }}</span>{% if report.submitted_by %}<span>Submitted by {{ report.submitted_by|who }}</span>{% endif %}</div></div>
+</header>
+<section class="qa-card" aria-label="Endorsement chain"><div class="qa-card__body">
+  <ol class="qa-stepper qa-stepper--chain">{% for st in chain %}<li class="is-{{ st.state }}"{% if st.state == "current" %} aria-current="step"{% endif %}><span class="qa-stepper__dot">{% if st.state == "done" %}✓{% else %}{{ forloop.counter }}{% endif %}</span><span class="qa-stepper__label">{{ st.label }}</span></li>{% endfor %}</ol>
+  {% if holders %}<p class="qa-small qa-muted">With: {% for u in holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if link and link.due_at %} · due {{ link.due_at|date:"j M, H:i" }}{% endif %}</p>{% endif %}
+</div></section>
+{% for c in pinned %}<div class="qa-pinned-remark" role="note"><strong>{% icon "flag" 14 %} Pinned remark</strong><span>{{ c.body }}</span><small>{{ c.author|who }} · {{ c.pinned_at|date:"j M Y, H:i" }}</small></div>{% endfor %}
+<div class="qa-cols">
+  <div class="qa-stack">
+    <section class="qa-card" aria-labelledby="rep-h"><header class="qa-card__head"><div><h2 id="rep-h">Findings</h2><p>{% if can_write %}Write the findings section by section, then submit. Only someone who attended the visit can (B17).{% else %}{{ write_why }}{% endif %}</p></div></header>
+      <div class="qa-card__body">
+      {% if can_write %}
+        <form class="qa-form" method="post" action="{% url 'qa_insp:report_save' report.pk %}" hx-post="{% url 'qa_insp:report_save' report.pk %}" hx-target="#qa-panel" novalidate>{% csrf_token %}
+          {% include "qa_core/partials/_form_errors.html" with form=form %}
+          <div class="qa-fields">{% for field in form %}{% include "qa_core/partials/_field.html" with wide=True %}{% endfor %}</div>
+          <div class="qa-form-actions"><button class="btn btn-subtle" type="submit" name="op" value="save">Save draft</button>
+            <button class="btn btn-primary" type="submit" name="op" value="submit">{% icon "check" 16 %} {% if report.status == "returned" %}Re-submit{% else %}Submit{% endif %} to the Division Head</button></div>
+        </form>
+      {% else %}
+        <dl class="qa-dl">{% for key, label, help in sections %}<div><dt>{{ label }}</dt><dd>{{ report.findings|get_item:key|default:"—"|linebreaksbr }}</dd></div>{% endfor %}
+          <div><dt>Summary</dt><dd>{{ report.summary|default:"—"|linebreaksbr }}</dd></div>
+          <div><dt>Team recommendation</dt><dd>{{ report.get_recommendation_display|default:"—" }}</dd></div>
+          {% if report.recommended_by %}<div><dt>Directorate recommendation (stage 13)</dt><dd>{{ report.get_recommendation_display }} — {{ report.recommendation_note|default:"" }} ({{ report.recommended_by|who }})</dd></div>{% endif %}</dl>
+      {% endif %}
+      </div>
+    </section>
+    {% if rp_findings %}
+    <section class="qa-card" aria-labelledby="rpf-h"><header class="qa-card__head"><div><h2 id="rpf-h">Findings from the team's resource persons</h2><p>Submitted on the portal; fold them into the sections above.</p></div></header>
+      <ul class="qa-rowlist" role="list">{% for m in rp_findings %}<li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ m.person }}</span><span class="qa-small">{{ m.findings|linebreaksbr }}</span></span></li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+  </div>
+  <aside class="qa-stack">
+    {% if layer %}
+    <section class="qa-card qa-stage-act{% if not can_endorse %} is-blocked{% endif %}" aria-labelledby="end-h"><header class="qa-stage-act__head"><h2 id="end-h">{{ layer }}</h2></header>
+      <div class="qa-stage-act__body">{% if can_endorse %}
+        <form class="qa-form" method="post" action="{% url 'qa_insp:report_endorse' report.pk %}" hx-post="{% url 'qa_insp:report_endorse' report.pk %}" hx-target="#qa-panel" novalidate>{% csrf_token %}
+          {% include "qa_core/partials/_form_errors.html" with form=endorse_form %}
+          {% for field in endorse_form %}{% if field.name == "content" %}{% include "qa_core/partials/_field.html" with wide=True %}{% endif %}{% endfor %}
+          <div class="qa-stage-act__btns qa-stage-act__btns--three">
+            <button class="btn btn-primary btn-block" type="submit" name="action" value="endorse">{% icon "check" 16 "2.4" %} Endorse</button>
+            <button class="btn btn-subtle btn-block" type="submit" name="action" value="add_content">{% icon "plus" 16 %} Add content</button>
+            <button class="btn btn-subtle btn-block qa-btn-reject" type="submit" name="action" value="return">{% icon "back" 16 %} Return with remark</button>
+          </div></form>
+      {% else %}<p class="qa-small qa-muted">{{ endorse_why }}</p>{% endif %}</div>
+    </section>
+    {% endif %}
+    <section class="qa-card" aria-labelledby="hist-h"><header class="qa-card__head"><h2 id="hist-h">Endorsements</h2></header>
+      <div class="qa-card__body"><ol class="qa-tl">{% for e in endorsements %}<li><span class="qa-tl__text"><strong>{{ e.get_layer_display }}</strong> {{ e.get_action_display|lower }}{% if e.content %} — “{{ e.content }}”{% endif %}</span><small>{{ e.actor|who }} · <time datetime="{{ e.at|date:'c' }}">{{ e.at|date:"j M Y, H:i" }}</time></small></li>{% empty %}<li class="qa-muted">Not submitted yet.</li>{% endfor %}</ol></div>
+    </section>
+  </aside>
+</div>

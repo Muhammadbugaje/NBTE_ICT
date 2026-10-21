@@ -55,7 +55,7 @@ class MemoForm(forms.ModelForm):
     target_user = forms.ModelChoiceField(
         queryset=get_user_model().objects.none(),
         required=False,
-        widget=forms.Select(attrs={"class": "input"}),
+        widget=forms.HiddenInput(),          # was: forms.Select(attrs={"class": "input"})
         label="Send to",
     )
 

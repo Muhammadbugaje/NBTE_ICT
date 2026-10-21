@@ -1,0 +1,8 @@
+{% load qa_tags %}
+<nav class="qa-tabs" aria-label="Complaint queues">
+  {% for key, label in tabs %}
+    <a href="{% url 'qa_complaints:queue' %}?tab={{ key }}" hx-get="{% url 'qa_complaints:queue' %}?tab={{ key }}" hx-target="#qa-panel" hx-push-url="true"
+       class="{% if tab == key %}is-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}>{{ label }}{% if counts|get_item:key %} <span class="app-nav-badge">{{ counts|get_item:key }}</span>{% endif %}</a>
+  {% endfor %}
+  {% if can_report %}<a href="{% url 'qa_complaints:dashboard' %}" hx-get="{% url 'qa_complaints:dashboard' %}" hx-target="#qa-panel" hx-push-url="true" class="{% if tab == 'dashboard' %}is-active{% endif %}">{% icon "trend" 16 %} SLA dashboard</a>{% endif %}
+</nav>

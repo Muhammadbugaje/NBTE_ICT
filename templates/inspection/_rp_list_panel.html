@@ -1,0 +1,24 @@
+{% load qa_tags %}
+{% if queue %}{% include "inspection/_subnav.html" with section="nominations" %}{% else %}{% include "inspection/_subnav.html" with section="rp" %}{% endif %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "users" 14 "2.4" %} Quality Assurance · §5.5, §9</span>
+    <h1 data-qa-focus>{% if queue %}Nominations and vetting{% else %}Resource persons{% endif %}</h1>
+    <p>{% if queue %}People nominated as resource persons. A vetter (not the nominator) checks the CV and approves — the person becomes active — or does not approve, with a reason.{% else %}The assessors NBTE sends on visits. Eligibility follows the §9 rules and their settings (rank, posts, workload, visits per year); there is no manual override. A person whose rank or designation changed shows <em>No longer eligible</em>: existing work continues, new work is blocked.{% endif %}</p>
+    {% if can_nominate %}<div class="qa-hero__actions"><a class="btn btn-primary" href="{% url 'qa_insp:rp_new' %}" hx-get="{% url 'qa_insp:rp_new' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "plus" 16 %} Nominate a resource person</a></div>{% endif %}
+  </div>
+  {% if counts %}<div class="qa-hero__stats">
+    <div class="qa-stat"><strong>{{ counts.active }}</strong><span>Active</span></div>
+    <a class="qa-stat qa-stat--warn qa-stat--link" href="{% url 'qa_insp:nominations' %}" hx-get="{% url 'qa_insp:nominations' %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.nominated }}</strong><span>To vet</span></a>
+  </div>{% endif %}
+</header>
+<section class="qa-card" aria-label="Resource persons">
+  <form class="qa-toolbar" role="search" hx-get="{{ request.path }}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Name, e-mail or body" autocomplete="off"></label>
+    <select class="input qa-select" name="status" aria-label="Status">{% for v, l in statuses %}<option value="{{ v }}"{% if filters.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="source" aria-label="Source"><option value="">Any source</option>{% for v, l in sources %}<option value="{{ v }}"{% if filters.source == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="discipline" aria-label="Discipline"><option value="">Any discipline</option>{% for d in disciplines %}<option value="{{ d.code }}"{% if filters.discipline == d.code %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="eligibility" aria-label="Eligibility">{% for v, l in eligibility %}<option value="{{ v }}"{% if filters.eligibility == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "inspection/_rp_rows.html" %}</div>
+</section>

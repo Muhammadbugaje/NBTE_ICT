@@ -1,0 +1,19 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Payment simulator · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <section class="qa-sim" aria-labelledby="sim-h">
+    <span class="qa-chip qa-tone-warn">Test mode — no real money moves</span>
+    <h1 id="sim-h">{{ provider|title }} checkout simulator</h1>
+    <p class="qa-small qa-muted">Stands in for the {{ provider|title }} page while API keys are not configured. Every outcome sends a signed webhook; none of them confirms the payment — NBTE’s Director of Finance still has to.</p>
+    <div class="qa-money"><strong>{{ amount }}</strong><span class="qa-mono">{{ ref }}</span></div>
+    {% if attempt %}<p class="qa-small">{{ attempt.obligation.description }} · {{ attempt.obligation.reference }}</p>{% endif %}
+    <form method="post">{% csrf_token %}
+      <button class="btn btn-primary" name="outcome" value="success" type="submit">Pay successfully</button>
+      <button class="btn btn-subtle" name="outcome" value="webhook_only" type="submit">Pay, but close the window (webhook only)</button>
+      <button class="btn btn-danger" name="outcome" value="failed" type="submit">Decline the payment</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -5,7 +5,8 @@
 {% block meta_description %}The digital workspace of the {{ site_info.department_name }} at the {{ site_info.organisation_name }}.{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/landing.css' %}?v=12">
+  <link rel="stylesheet" href="{% static 'css/landing.css' %}?v=14">
+  <link rel="stylesheet" href="{% static 'css/vivid.css' %}?v=1">
 {% endblock %}
 
 {% block body %}
@@ -66,6 +67,7 @@
     <a href="#gallery">Gallery</a>
     <a href="#documents">Documents</a>
     <a href="#contact">Contact</a>
+    <a href="{{ qa_portal_url }}">Quality Assurance Portal</a>
     {% if user.is_authenticated %}
       <a href="{% url 'core:home' %}" class="btn btn-primary nav-sheet-cta">Dashboard</a>
     {% else %}
@@ -78,14 +80,14 @@
   </div>
 </header>
 
-<main class="public-main">
+<main class="public-main vv-scope">
 
   <!-- ============================= HERO ============================= -->
   {% showcase_images "hero" as hero_images %}
-  <section class="hero{% if hero_images %} has-carousel{% endif %}">
+  <section class="vv-hero main-hero{% if hero_images %} has-carousel{% endif %}" aria-labelledby="main-hero-title">
     {% if hero_images %}
-      {% comment %}Admin-uploaded hero images (showcase app). Without any, the
-      light illustrated hero below is shown unchanged.{% endcomment %}
+      {% comment %}Admin-uploaded hero images (showcase app) sit behind the
+      green stage as a photograph; without any, the stage is shown alone.{% endcomment %}
       <div class="carousel hero-carousel" data-carousel data-interval="8000" data-pause-on-hover
            aria-roledescription="carousel" aria-label="Featured images">
         <div class="carousel-track">
@@ -101,106 +103,66 @@
         {% if hero_images|length > 1 %}<div class="carousel-dots"></div>{% endif %}
       </div>
     {% endif %}
-    <div class="hero-logo-backdrop" aria-hidden="true">
-      <img src="{% static 'img/MBTE_logo.png' %}" alt="">
-    </div>
+    <div class="vv-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="vv-grid" aria-hidden="true"></div>
+    <div class="vv-gear vv-gear--a" aria-hidden="true">{% include "partials/vivid/gear.svg.html" %}</div>
+    <div class="vv-gear vv-gear--b" aria-hidden="true">{% include "partials/vivid/gear.svg.html" %}</div>
 
-    <div class="hero-blobs" aria-hidden="true">
-      <span class="hero-blob hero-blob-1"></span>
-      <span class="hero-blob hero-blob-2"></span>
-      <span class="hero-blob hero-blob-3"></span>
-    </div>
-
-    <div class="hero-grid-pattern" aria-hidden="true"></div>
-
-    <div class="hero-inner">
-      <div class="hero-copy">
-        <span class="hero-eyebrow">
-          <span class="hero-eyebrow-dot"></span>
-          {{ site_info.organisation_name }}
-        </span>
-
-        <h1>
-          The <span class="hero-highlight">{{ site_info.department_name }}'s</span>
-          <br>
-          digital workspace.
-        </h1>
-
-        <p class="hero-sub">
-          Helpdesk, assets, staff records, approvals, and internal
-          communication — one platform built for the way the directorate
-          actually works.
-        </p>
-
-        <div class="hero-actions">
+    <div class="vv-wrap vv-hero__in">
+      <div class="vv-enter">
+        <p class="vv-eyebrow"><img src="{% static 'img/NBTE_logo.png' %}" alt="" width="24" height="24">{{ site_info.organisation_name }} <span class="vv-live" aria-hidden="true"></span></p>
+        <h1 class="vv-h1" id="main-hero-title">One workspace to
+          <span class="vv-ticker vv-soft" aria-hidden="true"><span>
+            <span>report a fault.</span><span>issue a laptop.</span><span>approve leave.</span><span>send a memo.</span><span>report a fault.</span>
+          </span></span><span class="sr-only">run the directorate: report faults, issue equipment, approve leave and send memos.</span></h1>
+        <p class="vv-lede">Helpdesk, assets, staff records, approvals and internal communication for the {{ site_info.department_name }}, built around the way the directorate works.</p>
+        <div class="vv-cta">
           {% if user.is_authenticated %}
-            <a href="{% url 'core:home' %}" class="btn btn-primary btn-lg">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
-              Open my dashboard
-            </a>
+            <a href="{% url 'core:home' %}" class="vv-btn vv-btn--gold">Open my dashboard
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
           {% else %}
-            <button type="button" class="btn btn-primary btn-lg"
-                    data-open-modal="signin-modal"
-                    data-login-url="{% url 'accounts:login' %}">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-              Sign in to your workspace
-            </button>
+            <button type="button" class="vv-btn vv-btn--gold" data-open-modal="signin-modal" data-login-url="{% url 'accounts:login' %}">Sign in to your workspace
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
           {% endif %}
-          <a href="#about" class="btn btn-ghost btn-lg">Learn more</a>
+          <a href="{{ qa_portal_url }}" class="vv-btn vv-btn--glass" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+            Quality Assurance Portal</a>
         </div>
-
-        <div class="hero-trust">
-          <span class="hero-trust-item">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            Secure access
-          </span>
-          <span class="hero-trust-sep" aria-hidden="true">·</span>
-          <span class="hero-trust-item">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            Live oversight
-          </span>
-          <span class="hero-trust-sep" aria-hidden="true">·</span>
-          <span class="hero-trust-item">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-            Governed approvals
-          </span>
-        </div>
+        <p class="vv-note qa-portal-cta-note">Institutions and resource persons: register, apply and pay NBTE fees on the <a href="{{ qa_portal_url }}">QA Portal</a>.</p>
       </div>
 
-      <div class="hero-visual" aria-hidden="true">
-        <div class="hero-mockup-shell">
-          <div class="hero-mockup">
-            <div class="hero-mockup-bar"><span></span><span></span><span></span></div>
-
-            <div class="hero-mockup-header">
-              <div class="hero-mockup-avatar"></div>
-              <div class="hero-mockup-lines">
-                <span style="width:60%;"></span>
-                <span style="width:40%;"></span>
+      <div class="vv-art main-art" aria-hidden="true">
+        <div class="main-window">
+          <div class="main-window__bar"><i></i><i></i><i></i><span>Digital NBTE</span></div>
+          <div class="main-window__body">
+            <div class="main-window__nav"><img src="{% static 'img/NBTE_logo.png' %}" alt="" width="32" height="32"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="main-window__main">
+              <p class="main-window__hello">Good morning.</p>
+              <div class="main-window__tiles">
+                <span class="vv-hue-coral"><i></i>Tickets</span><span class="vv-hue-gold"><i></i>Assets</span>
+                <span class="vv-hue-blue"><i></i>Leave</span><span class="vv-hue-violet"><i></i>Memos</span>
               </div>
-            </div>
-
-            <div class="hero-mockup-grid">
-              <div class="hero-mockup-tile">
-                <div class="kpi">128</div>
-                <div class="lbl">Open tickets</div>
-              </div>
-              <div class="hero-mockup-tile">
-                <div class="kpi">96%</div>
-                <div class="lbl">SLA compliance</div>
-              </div>
-              <div class="hero-mockup-chart">
-                <span style="height:42%; animation-delay:0ms;"></span>
-                <span style="height:68%; animation-delay:60ms;"></span>
-                <span style="height:55%; animation-delay:120ms;"></span>
-                <span style="height:82%; animation-delay:180ms;"></span>
-                <span style="height:70%; animation-delay:240ms;"></span>
-                <span style="height:92%; animation-delay:300ms;"></span>
-                <span style="height:60%; animation-delay:360ms;"></span>
-                <span style="height:78%; animation-delay:420ms;"></span>
-              </div>
+              <div class="main-window__rows"><i></i><i></i><i></i></div>
             </div>
           </div>
+        </div>
+
+        <div class="vv-float vv-float--light main-art__ticket">
+          <div class="main-ticket">
+            <span class="main-ticket__ref">Helpdesk ticket</span>
+            <b>Printer offline in the Registry</b>
+            <span class="main-ticket__status"><em class="s1">Open</em><em class="s2">Assigned</em><em class="s3">Resolved</em></span>
+          </div>
+        </div>
+        <div class="vv-float main-art__leave">
+          <div class="main-approve">
+            <b>Leave request · 5 days</b>
+            <ol><li class="is-done">Head of unit</li><li class="is-done">Director</li><li class="is-now">Executive Secretary</li></ol>
+          </div>
+        </div>
+        <div class="vv-float main-art__memo">
+          <div class="vv-toast"><span class="vv-toast__ico" style="background:#7a5cf0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span>
+            <span><b>New memo</b><small>From the Director's office</small></span></div>
         </div>
       </div>
     </div>
@@ -226,67 +188,85 @@
     </section>
   {% endif %}
 
+
+  <!-- ============================= MODULES ============================= -->
+  <div class="vv-marquee" aria-label="What the workspace covers">
+    <div class="vv-marquee__track">
+      {% for copy in "12" %}
+      <div class="vv-marquee__group"{% if not forloop.first %} aria-hidden="true"{% endif %}>
+        <span class="vv-chip vv-hue-coral"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg></i>Helpdesk</span>
+        <span class="vv-chip vv-hue-gold"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></i>Assets</span>
+        <span class="vv-chip vv-hue-blue"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></i>Staff directory</span>
+        <span class="vv-chip vv-hue-green"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></i>Leave</span>
+        <span class="vv-chip vv-hue-teal"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></i>Attendance</span>
+        <span class="vv-chip vv-hue-violet"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></i>Memos</span>
+        <span class="vv-chip vv-hue-blue"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></i>Messages</span>
+        <span class="vv-chip vv-hue-coral"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></i>Tasks</span>
+        <span class="vv-chip vv-hue-green"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></i>Quality assurance</span>
+        <span class="vv-chip vv-hue-gold"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></i>Announcements</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
   <!-- ============================= ABOUT ============================= -->
-  <section class="section" id="about">
-    <div class="container">
-      <div class="section-heading reveal">
-        <span class="section-eyebrow">What it is</span>
-        <h2>One workspace for the whole directorate.</h2>
-        <p class="lead">
-          Instead of scattered forms, phone calls, and paper — everything
-          the ICT Directorate needs to run day-to-day operations lives in one place.
-        </p>
+  <section class="vv-section" id="about" aria-labelledby="about-title">
+    <div class="vv-wrap">
+      <div class="vv-head" data-vv-reveal>
+        <p class="vv-kicker">What it is</p>
+        <h2 class="vv-h2" id="about-title">One workspace for the whole directorate.</h2>
+        <p class="vv-sub">Instead of scattered forms, phone calls and paper, everything the {{ site_info.department_name }} needs to run day-to-day operations lives in one place.</p>
       </div>
-
-      <div class="grid grid-3">
-        <article class="feature reveal reveal-delay-1">
-          <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          </div>
-          <h3>Helpdesk &amp; Tickets</h3>
-          <p>Report an IT issue in seconds. Tracked, assigned, and escalated against clear SLAs — every ticket has an owner.</p>
+      <div class="vv-bento vv-bento--6">
+        <article class="vv-tile vv-tile--hover vv-hue-coral" data-vv-reveal>
+          <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <h3>Helpdesk and tickets</h3>
+          <p>Report an IT issue in seconds. Every ticket is assigned, tracked against clear service targets and escalated automatically if the clock runs out.</p>
+          <span class="vv-tile__foot"><span class="vv-tag">Every ticket has an owner</span></span>
         </article>
-
-        <article class="feature reveal reveal-delay-2">
-          <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          </div>
+        <article class="vv-tile vv-tile--hover vv-hue-gold" data-vv-reveal>
+          <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
           <h3>Asset custody</h3>
-          <p>Every device, its current custodian, and the full issue/return history with condition tracking — nothing goes missing.</p>
+          <p>Every device, its current custodian and the full issue and return history with condition tracking, so nothing goes missing.</p>
+          <span class="vv-tile__foot"><span class="vv-tag">Labels with QR codes</span></span>
         </article>
-
-        <article class="feature reveal reveal-delay-3">
-          <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </div>
+        <article class="vv-tile vv-tile--hover vv-hue-blue" data-vv-reveal>
+          <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
           <h3>Staff directory</h3>
-          <p>A living record of everyone in the directorate — roles, reporting lines, current state, and their assigned work.</p>
+          <p>A living record of everyone: roles, reporting lines and the work assigned to them.</p>
         </article>
-
-        <article class="feature reveal reveal-delay-4">
-          <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          </div>
+        <article class="vv-tile vv-tile--hover vv-hue-green" data-vv-reveal>
+          <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
           <h3>Governed approvals</h3>
-          <p>Leave, proposals, and internal requests move through a configurable multi-step sign-off with a complete audit trail.</p>
+          <p>Leave, proposals and requests move through a multi-step sign-off with a complete audit trail.</p>
         </article>
-
-        <article class="feature reveal reveal-delay-5">
-          <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
-          </div>
+        <article class="vv-tile vv-tile--hover vv-hue-violet" data-vv-reveal>
+          <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span>
           <h3>Live analytics</h3>
-          <p>Directors and office heads see the numbers that matter — SLA compliance, workload, and trends — as they change.</p>
+          <p>Directors and heads of office see workload, service targets and trends as they change.</p>
         </article>
-
-        <article class="feature reveal reveal-delay-5">
-          <div class="feature-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v6H4zM4 14h16v6H4z"/></svg>
-          </div>
+        <article class="vv-tile vv-tile--hover vv-hue-teal" data-vv-reveal>
+          <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
           <h3>Internal portal</h3>
-          <p>Announcements, events, documents, gallery, awards — the everyday content that keeps a department together.</p>
+          <p>Announcements, events, documents, the gallery and awards: the everyday content that keeps a directorate together.</p>
         </article>
       </div>
+    </div>
+  </section>
+
+  <!-- ============================= HOW IT WORKS ============================= -->
+  <section class="vv-section--tight" id="how" aria-labelledby="how-title">
+    <div class="vv-wrap">
+      <div class="vv-head" data-vv-reveal>
+        <p class="vv-kicker vv-hue-blue">How it works</p>
+        <h2 class="vv-h2" id="how-title">From report to resolution, in four steps.</h2>
+      </div>
+      <ol class="vv-journey">
+        <li class="vv-hue-coral" data-vv-reveal><h3>Report or request</h3><p>Raise a ticket, request leave or log an asset movement from any device.</p></li>
+        <li class="vv-hue-gold" data-vv-reveal><h3>Routed automatically</h3><p>The right office sees it at once, with priority and service target set by the rules you configured.</p></li>
+        <li class="vv-hue-blue" data-vv-reveal><h3>Worked and tracked</h3><p>The assigned officer resolves it. Escalations fire automatically if the target is missed.</p></li>
+        <li class="vv-hue-green" data-vv-reveal><h3>Recorded for good</h3><p>Every action, comment and decision is kept in an audit trail you can hand to anyone.</p></li>
+      </ol>
     </div>
   </section>
 
@@ -355,34 +335,22 @@
     </div>
   </section>
 
-  <!-- ============================= HOW IT WORKS ============================= -->
-  <section class="section section-tight alt" id="how">
-    <div class="container">
-      <div class="section-heading center reveal">
-        <span class="section-eyebrow">How it works</span>
-        <h2>From report to resolution, in four clean steps.</h2>
-      </div>
 
-      <div class="timeline">
-        <div class="timeline-step reveal reveal-delay-1">
-          <span class="step-num">1</span>
-          <h3>Report or request</h3>
-          <p>Raise a ticket, submit a leave request, or log an asset movement from anywhere.</p>
-        </div>
-        <div class="timeline-step reveal reveal-delay-2">
-          <span class="step-num">2</span>
-          <h3>Routed automatically</h3>
-          <p>The right office sees it instantly, with priority and SLA already set by the rules you configured.</p>
-        </div>
-        <div class="timeline-step reveal reveal-delay-3">
-          <span class="step-num">3</span>
-          <h3>Worked &amp; tracked</h3>
-          <p>Assigned officers resolve it. Escalations fire automatically if the SLA clock runs out.</p>
-        </div>
-        <div class="timeline-step reveal reveal-delay-4">
-          <span class="step-num">4</span>
-          <h3>Recorded forever</h3>
-          <p>Every action, comment, and decision is preserved in an auditable trail you can hand to anyone.</p>
+  <!-- ============================= QA PORTAL ============================= -->
+  <section class="vv-section--tight" id="qa-portal" aria-labelledby="qa-portal-title">
+    <div class="vv-wrap">
+      <div class="vv-band vv-band--deep main-qa" data-vv-reveal>
+        <div class="vv-band__in main-qa__grid">
+          <div>
+            <p class="vv-kicker main-qa__kicker">For institutions and resource persons</p>
+            <h2 id="qa-portal-title">The NBTE Quality Assurance Portal.</h2>
+            <p>Polytechnics, colleges and innovation institutes register with NBTE, request accreditation, pay fees and follow every decision online, from any state.</p>
+            <div class="vv-cta">
+              <a class="vv-btn vv-btn--gold" href="{{ qa_portal_url }}" rel="noopener">Visit the QA Portal
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+            </div>
+          </div>
+          <div class="main-qa__map">{% include "partials/vivid/nigeria_map.svg.html" %}</div>
         </div>
       </div>
     </div>
@@ -404,7 +372,7 @@
         <a href="{% url 'portal:announcement_list' %}" class="link-btn">View all →</a>
       </div>
 
-      <div class="grid grid-3">
+      <div class="news-grid">
         {% for ann in announcements %}
           {% if ann.image %}
             {# ---- card with image ---- #}
@@ -450,6 +418,12 @@
             </span>
           </a>
         {% endfor %}
+        {% if announcements|length < 3 %}
+          <div class="preview-card preview-card--ghost{% if announcements|length <= 1 %} preview-card--span2{% endif %} reveal" aria-hidden="true">
+            <span class="preview-card--ghost__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
+            <p>Awaiting more announcements…</p>
+          </div>
+        {% endif %}
       </div>
 
       {# ---------- EVENTS ---------- #}
@@ -459,7 +433,7 @@
           <a href="{% url 'portal:event_list' %}" class="link-btn">See calendar →</a>
         </div>
 
-        <div class="grid grid-3">
+        <div class="news-grid">
           {% for ev in events %}
             {% if ev.image %}
               <a href="{% url 'portal:event_detail' ev.pk %}"
@@ -493,6 +467,12 @@
               </a>
             {% endif %}
           {% endfor %}
+          {% if events|length < 3 %}
+            <div class="preview-card preview-card--ghost{% if events|length == 1 %} preview-card--span2{% endif %} reveal" aria-hidden="true">
+              <span class="preview-card--ghost__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+              <p>Awaiting more events…</p>
+            </div>
+          {% endif %}
         </div>
       {% endif %}
     </div>
@@ -713,55 +693,39 @@
 </main>
 
 <!-- ============================= FOOTER ============================= -->
-<footer class="footer">
-  <div class="footer-inner">
-    <div class="footer-brand">
-      <img src="{% static 'img/MBTE_logo.png' %}" alt="{{ site_info.organisation_name }}">
-      <div>
-        <strong class="block text-sm text-strong">{{ site_info.department_name }}</strong>
-        <p>{{ site_info.organisation_name }}</p>
+<footer class="vv-foot vv-scope">
+  <div class="vv-wrap">
+    <div class="vv-foot__in">
+      <div class="vv-foot__brand">
+        <img src="{% static 'img/MBTE_logo.png' %}" alt="" width="52" height="52">
+        <div><strong>{{ site_info.department_name }}</strong>
+          <p>{{ site_info.organisation_name }}. The directorate's workspace for helpdesk, assets, people, approvals and communication.</p></div>
       </div>
-    </div>
-
-    <div class="footer-col">
-      <h5>Platform</h5>
-      <ul>
+      <div><h4>Platform</h4><ul>
         <li><a href="#about">About</a></li>
-        <li><a href="#governance">Governance</a></li>
         <li><a href="#how">How it works</a></li>
-        {% if user.is_authenticated %}
-          <li><a href="{% url 'core:home' %}">Dashboard</a></li>
-        {% else %}
-          <li>
-            <a href="#" data-open-modal="signin-modal"
-               data-login-url="{% url 'accounts:login' %}">Sign in</a>
-          </li>
-        {% endif %}
-      </ul>
-    </div>
-
-    <div class="footer-col">
-      <h5>Resources</h5>
-      <ul>
-        <li><a href="#documents">Documents</a></li>
+        <li><a href="{% url 'core:leadership_page' %}">Leadership</a></li>
+        <li><a href="{{ qa_portal_url }}">Quality Assurance Portal</a></li>
+        {% if user.is_authenticated %}<li><a href="{% url 'core:home' %}">Dashboard</a></li>
+        {% else %}<li><a href="#" data-open-modal="signin-modal" data-login-url="{% url 'accounts:login' %}">Sign in</a></li>{% endif %}
+      </ul></div>
+      <div><h4>Resources</h4><ul>
         <li><a href="#announcements">Announcements</a></li>
+        <li><a href="#documents">Documents</a></li>
         <li><a href="#gallery">Gallery</a></li>
-      </ul>
-    </div>
-
-    <div class="footer-col">
-      <h5>Contact</h5>
-      <ul>
+        <li><a href="#awards">Awards</a></li>
+      </ul></div>
+      <div><h4>Contact</h4><ul>
         {% if site_info.email %}<li><a href="mailto:{{ site_info.email }}">{{ site_info.email }}</a></li>{% endif %}
         {% if site_info.phone %}<li><a href="tel:{{ site_info.phone }}">{{ site_info.phone }}</a></li>{% endif %}
+        {% if site_info.address %}<li>{{ site_info.address }}</li>{% endif %}
         <li><a href="#contact">Send a message</a></li>
-      </ul>
+      </ul></div>
     </div>
-  </div>
-
-  <div class="footer-bottom">
-    <span>© {% now "Y" %} {{ site_info.organisation_name }}. All rights reserved.</span>
-    <span>{{ site_info.footer_note }}</span>
+    <div class="vv-foot__bottom">
+      <span>© {% now "Y" %} {{ site_info.organisation_name }}. All rights reserved.</span>
+      <span>{{ site_info.footer_note }}</span>
+    </div>
   </div>
 </footer>
 
@@ -830,6 +794,7 @@
 
 {% block extra_js %}
   <script src="{% static 'js/landing.js' %}?v=8" defer></script>
+  <script src="{% static 'js/vivid.js' %}?v=1" defer></script>
   <script>
     // Governance: expand / collapse the portrait rail
     (function () {

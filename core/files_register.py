@@ -75,3 +75,21 @@ def install_all():
         register_file_cleanup(MessageAttachment, ["file"])
     except Exception:
         logger.exception("file cleanup: messaging registration failed")
+
+    # ---- QA (Phase 2): restricted institution documents and payment files
+    try:
+        from institutions.models import InstitutionDocument, InstitutionImportBatch
+        from payments.models import BankStatementImport, PaymentAdvice, PaymentSlip, ProofOfPayment
+        for model in (InstitutionDocument, InstitutionImportBatch, PaymentSlip, ProofOfPayment,
+                      PaymentAdvice, BankStatementImport):
+            register_file_cleanup(model, ["file"])
+    except Exception:
+        logger.exception("file cleanup: QA registration failed")
+
+    # ---- QA (Phase 3): SSQ evidence and query responses
+    try:
+        from accreditation.models import Evidence, Response
+        for model in (Evidence, Response):
+            register_file_cleanup(model, ["file"])
+    except Exception:
+        logger.exception("file cleanup: QA Phase 3 registration failed")

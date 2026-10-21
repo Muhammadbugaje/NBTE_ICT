@@ -1,0 +1,173 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa_complaints:queue' %}" hx-get="{% url 'qa_complaints:queue' %}" hx-target="#qa-panel" hx-push-url="true">Complaints</a>
+  <span aria-hidden="true">/</span>
+  <span aria-current="page">{{ c.reference }}</span>
+</nav>
+
+<header class="qa-detail-head">
+  <div>
+    <span class="qa-eyebrow">{% icon "message" 14 "2.2" %} {{ c.layer }}</span>
+    <h1 data-qa-focus>{{ c.subject }}</h1>
+    <p class="qa-detail-head__target">{% if c.institution %}{{ c.institution.name }} ({{ c.institution.code }}) · {% endif %}{{ c.raised_by|who }} · {{ c.get_raiser_type_display }} · {{ c.created_at|date:"j M Y, H:i" }}</p>
+  </div>
+  <div class="qa-detail-head__chips">
+    <button type="button" class="qa-chip qa-chip--mono qa-chip--button" data-qa-copy="{{ c.reference }}" title="Copy reference">{{ c.reference }} {% icon "file" 12 "2.4" %}</button>
+    <span class="qa-chip{% if c.priority == 'critical' %} qa-tone-danger{% elif c.priority == 'high' %} qa-tone-warn{% else %} qa-tone-neutral{% endif %}">{{ c.get_priority_display }} priority</span>
+    <span class="qa-chip{% if c.closed_at %} qa-tone-neutral{% elif c.status == 'resolved' %} qa-tone-success{% else %} qa-tone-pending{% endif %}" data-qa-announce="Status: {{ current.stage_label|default:c.status }}">{% if current %}{{ current.stage_label }}{% else %}{{ c.status|humanize_code }}{% endif %}</span>
+    {% if c.reopened_count %}<span class="qa-chip qa-tone-warn">Reopened ×{{ c.reopened_count }}</span>{% endif %}
+  </div>
+</header>
+
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+
+<div class="qa-detail">
+  <div class="qa-stack">
+    <section class="qa-card" aria-labelledby="cx-about">
+      <header class="qa-card__head"><div><h2 id="cx-about">The complaint</h2><p>As the raiser wrote it.</p></div>
+        {% if c.related_label %}{% if related_url %}<a class="cx-related" href="{{ related_url }}">{% icon "link" 14 %} {{ c.related_label }}</a>{% else %}<span class="cx-related">{% icon "link" 14 %} {{ c.related_label }}</span>{% endif %}{% endif %}
+      </header>
+      <div class="qa-card__body">
+        <p class="cx-msg__body">{{ c.body }}</p>
+        {% if answers %}<dl class="qa-meta qa-mt">{% for label, value in answers %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
+        {% if c.resolution %}<div class="qa-callout qa-callout--success qa-mt" role="status">{% icon "check" 18 "2.2" %}<div><strong>Resolution</strong><p>{{ c.resolution }}</p></div></div>{% endif %}
+      </div>
+    </section>
+
+    <section class="qa-card" aria-labelledby="cx-thread-h">
+      <header class="qa-card__head"><div><h2 id="cx-thread-h">Conversation</h2><p>Replies go to the raiser. <span class="cx-lock">{% icon "lock" 12 "2.4" %} Internal notes</span> stay inside NBTE and never reach the portal.</p></div></header>
+      <div class="qa-card__body">
+        <ol class="cx-thread">
+          {% for m in messages_list %}{% if not forloop.first or m.body != c.body %}
+            <li class="cx-msg{% if m.is_system %} cx-msg--system{% elif m.author and m.author.user_type == 'staff' %} cx-msg--staff{% endif %}{% if m.visibility == 'internal' %} cx-msg--internal{% endif %}">
+              <span class="cx-msg__avatar" aria-hidden="true">{% if m.is_system or not m.author %}QA{% else %}{{ m.author|initials }}{% endif %}</span>
+              <div class="cx-msg__bubble">
+                <div class="cx-msg__head"><strong>{% if m.is_system or not m.author %}QA system{% else %}{{ m.author|who }}{% endif %}</strong><time datetime="{{ m.created_at|date:'c' }}">{{ m.created_at|date:"j M, H:i" }}</time>{% if m.visibility == "internal" %}<span class="cx-lock">{% icon "lock" 12 "2.4" %} Internal</span>{% endif %}</div>
+                <div class="cx-msg__body">{{ m.body }}</div>
+                {% if m.attachments.all %}<div class="cx-msg__files">{% for f in m.attachments.all %}<a class="qa-chip" href="{{ f.download_url }}">{% icon "download" 12 %} {{ f.display_name }}</a>{% endfor %}</div>{% endif %}
+              </div>
+            </li>
+          {% endif %}{% empty %}<li class="qa-muted qa-small">No messages yet.</li>{% endfor %}
+        </ol>
+        {% if can_write and c.is_open %}
+        <form class="cx-compose" method="post" action="{% url 'qa_complaints:message' c.pk %}" hx-post="{% url 'qa_complaints:message' c.pk %}" hx-target="#qa-panel" hx-encoding="multipart/form-data" enctype="multipart/form-data">{% csrf_token %}
+          <label class="sr-only" for="cx-body">Message</label>
+          <textarea class="input" id="cx-body" name="body" required placeholder="Write a reply or an internal note…"></textarea>
+          <div class="cx-compose__row">
+            <div class="cx-seg" role="radiogroup" aria-label="Who sees it">
+              <label><input type="radio" name="visibility" value="public" checked><span>Reply to the raiser</span></label>
+              <label><input type="radio" name="visibility" value="internal"><span>Internal note</span></label>
+            </div>
+            <div class="qa-row"><label class="btn btn-sm btn-subtle" for="cx-files">{% icon "upload" 14 %} Attach</label><input class="sr-only" id="cx-files" type="file" name="files" multiple>
+              <button class="btn btn-primary btn-sm" type="submit">{% icon "message" 14 %} Send</button></div>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  <aside class="qa-stack" aria-label="Deadline and actions">
+    <section class="qa-card" aria-labelledby="cx-clock-h">
+      <header class="qa-card__head"><h2 id="cx-clock-h">Deadline</h2></header>
+      <div class="qa-card__body">
+        {% if current and not c.closed_at %}
+        <div class="cx-clock cx-clock--{{ sla.state }}">
+          <div class="cx-clock__stage"><strong>{{ current.stage_label }}</strong>{% if current.escalation_level %}<span class="qa-chip qa-tone-danger">Escalated ×{{ current.escalation_level }}</span>{% endif %}</div>
+          {% if sla.state == "paused" %}
+            <div class="cx-clock__time">Clock stopped</div>
+            <p class="qa-small qa-muted">Waiting for the raiser's reply. The deadline resumes from where it stopped when they answer.</p>
+          {% elif sla.due %}
+            <div><small class="qa-muted" data-cx-countdown-label>{% if sla.state == "breached" %}Overdue by (clock time){% else %}Due in (clock time){% endif %}</small>
+              <div class="cx-clock__time" data-cx-countdown="{{ sla.due|date:'c' }}">{{ sla.left }}</div></div>
+            <span class="cx-sla cx-sla--{{ sla.state }}"><span class="cx-sla__bar" aria-hidden="true"><span style="--pct: {{ sla.pct }}%"></span></span><small>{{ sla.left }}</small></span>
+            <div class="cx-clock__foot"><span>Due {{ sla.due|date:"D j M, H:i" }}</span><span>{% if current.business_hours %}Working hours{% else %}Calendar hours{% endif %}</span></div>
+          {% else %}
+            <p class="qa-small qa-muted">This stage has no deadline.{% if c.status == "resolved" %} It closes by itself if the raiser does not reopen it.{% endif %}</p>
+          {% endif %}
+          <dl class="qa-meta qa-meta--tight">
+            <dt>Department</dt><dd>{{ current.assigned_department.name|default:"—" }}</dd>
+            <dt>Handler</dt><dd>{{ current.assigned_to|who:"Department queue" }}</dd>
+            {% if current.routed_by %}<dt>Routed by</dt><dd>Rule #{{ current.routed_by.order }}{% if current.routed_by.note %} — {{ current.routed_by.note }}{% endif %}</dd>{% endif %}
+          </dl>
+        </div>
+        {% elif c.closed_at %}
+          <p class="qa-small">Closed {{ c.closed_at|date:"j M Y, H:i" }}.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    {% if actions %}
+    <section class="qa-card" aria-labelledby="cx-act-h">
+      <header class="qa-card__head"><div><h2 id="cx-act-h">Act on this stage</h2><p>The steps this stage allows.</p></div></header>
+      <div class="qa-card__body cx-actions">
+        {% for t in actions %}
+          <details class="cx-action{% if forloop.first %} cx-action--primary{% endif %}{% if t.action_code == 'close' %} cx-action--danger{% endif %}"{% if forloop.first and not t.requires_remark %} open{% endif %}>
+            <summary>{{ t.label }}</summary>
+            <form method="post" action="{% url 'qa_complaints:act' c.pk t.action_code %}" hx-post="{% url 'qa_complaints:act' c.pk t.action_code %}" hx-target="#qa-panel">{% csrf_token %}
+              {% if t.action_code == "refer" %}
+                <div class="qa-field"><label for="cx-rd-{{ forloop.counter }}">Department</label><select class="input" id="cx-rd-{{ forloop.counter }}" name="refer_department"><option value="">Choose…</option>{% for d in refer_departments %}<option value="{{ d.pk }}">{{ d.name }}</option>{% endfor %}</select></div>
+                {% if refer_people %}<div class="qa-field"><label for="cx-rp-{{ forloop.counter }}">Or a person in your department</label><select class="input" id="cx-rp-{{ forloop.counter }}" name="refer_user"><option value="">—</option>{% for u in refer_people %}<option value="{{ u.pk }}">{{ u|who }}</option>{% endfor %}</select></div>{% endif %}
+              {% endif %}
+              <div class="qa-field"><label for="cx-rm-{{ forloop.counter }}">{% if t.action_code == "request_info" %}Your question to the raiser{% elif t.action_code == "resolve" %}What was done (the raiser sees this){% elif t.requires_remark %}Remark{% else %}Remark (optional){% endif %}</label>
+                <textarea class="input" id="cx-rm-{{ forloop.counter }}" name="remark" rows="3"{% if t.requires_remark %} required minlength="3"{% endif %}></textarea></div>
+              <button class="btn {% if t.action_code == 'close' %}btn-subtle qa-btn-reject{% else %}btn-primary{% endif %} btn-sm" type="submit">{{ t.label }}</button>
+            </form>
+          </details>
+        {% endfor %}
+      </div>
+    </section>
+    {% elif c.is_open and act_why %}
+      {% include "qa_core/partials/_callout.html" with message=act_why %}
+    {% endif %}
+
+    {% if can_escalate %}
+    <section class="qa-card" aria-labelledby="cx-esc-h">
+      <header class="qa-card__head"><div><h2 id="cx-esc-h">Escalate</h2><p>Adds the next level as a watcher with a task. The handler keeps the complaint.</p></div></header>
+      <div class="qa-card__body">
+        <form class="qa-form" method="post" action="{% url 'qa_complaints:escalate' c.pk %}" hx-post="{% url 'qa_complaints:escalate' c.pk %}" hx-target="#qa-panel">{% csrf_token %}
+          <div class="qa-field"><label for="cx-esc-r">Why</label><textarea class="input" id="cx-esc-r" name="reason" rows="2" required minlength="3"></textarea></div>
+          <button class="btn btn-subtle btn-sm" type="submit">{% icon "flag" 14 %} Escalate to the next level</button>
+        </form>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if can_hold %}
+    <section class="qa-card" aria-labelledby="cx-hold-h">
+      <header class="qa-card__head"><div><h2 id="cx-hold-h">Place the related record on hold</h2><p>{{ c.related_label }} — its workflow and deadlines stop until the hold is lifted.</p></div></header>
+      <div class="qa-card__body">
+        <form class="qa-form" method="post" action="{% url 'qa_complaints:hold' c.pk %}" hx-post="{% url 'qa_complaints:hold' c.pk %}" hx-target="#qa-panel">{% csrf_token %}
+          <div class="qa-field"><label for="cx-hold-r">Reason</label><textarea class="input" id="cx-hold-r" name="reason" rows="2" required minlength="3"></textarea></div>
+          <button class="btn btn-subtle btn-sm qa-btn-reject" type="submit">{% icon "ban" 14 %} Place on hold</button>
+        </form>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if escalations %}
+    <section class="qa-card" aria-labelledby="cx-ladder-h">
+      <header class="qa-card__head"><h2 id="cx-ladder-h">Escalations</h2></header>
+      <div class="qa-card__body">
+        <ol class="cx-ladder">{% for e in escalations %}
+          <li><span class="cx-ladder__lvl" aria-label="Level {{ e.level }}">L{{ e.level }}</span>
+            <div><strong>{{ e.escalated_to|who:"Nobody configured" }}</strong><small>{{ e.at|date:"j M, H:i" }} · {% if e.by %}by {{ e.by|who }}{% else %}automatic (deadline missed){% endif %} · {{ e.complaint_stage.stage_label }}</small>{% if e.reason %}<small>{{ e.reason }}</small>{% endif %}</div></li>
+        {% endfor %}</ol>
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="qa-card" aria-labelledby="cx-hist-h">
+      <header class="qa-card__head"><h2 id="cx-hist-h">Stages</h2></header>
+      <div class="qa-card__body">
+        <ol class="cx-stages">{% for s in stages %}
+          <li class="{% if not s.left_at %}is-current{% endif %}{% if s.breached_at %} is-breached{% endif %}">
+            <strong>{{ s.stage_label|default:s.stage_code }}</strong>
+            <small>{{ s.entered_at|date:"j M, H:i" }}{% if s.left_at %} → {{ s.left_at|date:"j M, H:i" }}{% else %} → now{% endif %}{% if s.assigned_department %} · {{ s.assigned_department.name }}{% endif %}{% if s.assigned_to %} · {{ s.assigned_to|who }}{% endif %}</small>
+            {% if s.due_at %}<small>Due {{ s.due_at|date:"j M, H:i" }}{% if s.breached_at %} · <strong>missed</strong>{% endif %}{% if s.pauses_sla %} · clock paused{% endif %}</small>{% elif s.pauses_sla %}<small>Clock paused (waiting for the raiser)</small>{% endif %}
+          </li>{% endfor %}</ol>
+        {% if watchers %}<p class="qa-small qa-muted qa-mt">Watching: {% for w in watchers %}{{ w|who }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+      </div>
+    </section>
+  </aside>
+</div>

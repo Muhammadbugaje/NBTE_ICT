@@ -17,7 +17,14 @@ _POWER = ["accounts.view_analytics_dashboard"]
 _ASSETS_VIEW = ["assets.view_asset"]
 _ASSETS_MANAGE = ["assets.view_asset", "assets.add_asset", "assets.change_asset"]
 _WORKFLOW_VIEW_ALL = ["accounts.view_all_requests"]
+# Department-scoped read access (assets, tickets, requests). Directors, deputies
+# and office heads get these; "all" is only for the ES / super admin / explicit grants.
+_WORKFLOW_DEPT = ["accounts.view_department_requests"]
+_ASSETS_ALL = ["assets.view_all_assets"]
+_ASSETS_DEPT = ["assets.view_department_assets"]
 _WORKFLOW_APPROVE = ["accounts.approve_requests"]
+_ATT_ALL = ["attendance.view_all_attendance"]
+_ATT_DEPT = ["attendance.view_department_attendance"]
 
 
 # code, name, requires_2fa, rank, max_open_tasks, permissions
@@ -27,33 +34,33 @@ ROLES = [
         "Executive Secretary",
         True, 999, 100,
         _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
-        + _ASSETS_MANAGE + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE,
+        + _ASSETS_MANAGE + _ASSETS_ALL + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE + _ATT_ALL,
     ),
     (
         "director",
         "Director of Department",
         True, 100, 50,
         _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
-        + _ASSETS_MANAGE + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE,
+        + _ASSETS_MANAGE + _ASSETS_DEPT + _WORKFLOW_DEPT + _WORKFLOW_APPROVE + _ATT_DEPT,
     ),
     (
         "deputy-director",
         "Deputy Director",
         True, 80, 30,
         _VIEW_STAFF + _VIEW_HISTORY + _CROSS_DEPARTMENT + _POWER
-        + _ASSETS_VIEW + _WORKFLOW_APPROVE,
+        + _ASSETS_VIEW + _ASSETS_DEPT + _WORKFLOW_DEPT + _WORKFLOW_APPROVE + _ATT_DEPT,
     ),
     (
         "office-head-ts",
         "Office Head, Technical Support",
         False, 60, 20,
-        _VIEW_STAFF + _POWER + _ASSETS_VIEW + _WORKFLOW_APPROVE,
+        _VIEW_STAFF + _POWER + _ASSETS_VIEW + _ASSETS_DEPT + _WORKFLOW_DEPT + _WORKFLOW_APPROVE,
     ),
     (
         "office-head-dev",
         "Office Head, Programming/Dev Support",
         False, 60, 20,
-        _VIEW_STAFF + _POWER + _ASSETS_VIEW + _WORKFLOW_APPROVE,
+        _VIEW_STAFF + _POWER + _ASSETS_VIEW + _ASSETS_DEPT + _WORKFLOW_DEPT + _WORKFLOW_APPROVE,
     ),
     (
         "office-head-admin",
@@ -64,7 +71,8 @@ ROLES = [
             "staff.change_staff_state", "staff.view_staffstatushistory",
             "staff.view_staffattachment", "staff.add_staffattachment",
         ]
-        + _CROSS_DEPARTMENT + _POWER + _ASSETS_MANAGE + _WORKFLOW_APPROVE,
+        + _CROSS_DEPARTMENT + _POWER + _ASSETS_MANAGE + _ASSETS_DEPT + _WORKFLOW_DEPT
+        + _WORKFLOW_APPROVE,
     ),
     (
         "division-head",
@@ -96,7 +104,7 @@ ROLES = [
             "staff.change_staff_state", "staff.view_staffstatushistory",
         ]
         + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
-        + _ASSETS_MANAGE + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE,
+        + _ASSETS_MANAGE + _ASSETS_ALL + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE + _ATT_ALL,
     ),
     (
         "staff",
@@ -105,6 +113,14 @@ ROLES = [
         _ASSETS_VIEW,
     ),
 ]
+
+
+# Granted by data migrations, not by an admin. See the fresh-install check below.
+_MIGRATION_GRANTED = (
+    "view_all_assets", "view_department_assets",
+    "view_all_requests", "view_department_requests",
+    "view_all_attendance", "view_department_attendance",
+)
 
 
 class Command(BaseCommand):
@@ -128,7 +144,12 @@ class Command(BaseCommand):
             # Executive Secretary role is created bare by migration 0007)
             # gets its baseline even without --sync. Roles an admin has
             # already configured are only touched with --sync.
-            fresh = created or not role.permissions.exists()
+            # Permissions that migrations attach to existing roles at install
+            # time (attendance 0005, assets 0004, accounts 0013) do not count
+            # as "an admin configured this role".
+            configured = role.permissions.exclude(
+                codename__in=_MIGRATION_GRANTED).exists()
+            fresh = created or not configured
             if fresh or opts["sync"]:
                 if role.rank != rank:
                     role.rank = rank

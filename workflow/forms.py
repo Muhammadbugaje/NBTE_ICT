@@ -343,18 +343,20 @@ def validate_schema(schema):
 def _asset_choices(requester, category_codes=None):
     """Return [(asset_tag, display), …] scoped to what the requester can see.
 
-    Regular users see only assets assigned to them. Users with
-    `accounts.access_all_departments` (or superusers) see every asset.
+    Uses the one shared asset visibility rule (assets/access.py): own assets for
+    staff, own-department assets for a director / deputy / office head, every
+    asset for holders of `assets.view_all_assets` and super admin. A missing
+    requester sees nothing.
     """
     try:
+        from assets.access import visible_assets_queryset
         from assets.models import Asset
     except ImportError:
         return []
-    qs = Asset.objects.filter(is_deleted=False)
-    if requester is not None \
-            and not requester.is_superuser \
-            and not requester.has_perm("accounts.access_all_departments"):
-        qs = qs.filter(current_custodian=requester)
+    if requester is None:
+        qs = Asset.objects.none()
+    else:
+        qs = visible_assets_queryset(requester)
     if category_codes:
         qs = qs.filter(category__code__in=category_codes)
     qs = qs.select_related("category").order_by("asset_tag")

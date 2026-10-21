@@ -251,3 +251,21 @@ def tasks_dashboard_widget(context):
         "capacity_remaining": remaining,
     }
 
+
+
+# ---------------------------------------------------------------------------
+# QA task links (Phase 4): "Open in QA" for tasks the QA system manages
+# ---------------------------------------------------------------------------
+@register.filter
+def qa_open_url(task):
+    """The QA screen for a task linked to a QA stage, or "" (not linked)."""
+    try:
+        link = task.qa_link
+    except Exception:  # no link (RelatedObjectDoesNotExist) or the QA apps are absent
+        return ""
+    try:
+        from qa_core.task_bridge import qa_url
+
+        return qa_url(link)
+    except Exception:
+        return ""

@@ -1,0 +1,26 @@
+{% load qa_tags %}
+{% if form.errors and not result %}
+  <section class="qa-card"><div class="qa-card__body">{% for e in form.file.errors %}<p class="qa-field__error" role="alert">{{ e }}</p>{% endfor %}{% include "qa_core/partials/_form_errors.html" %}</div></section>
+{% elif result %}
+  {% if result.ok %}
+  <section class="qa-card" aria-labelledby="pb-res">
+    <header class="qa-card__head"><div><h2 id="pb-res">{% if result.dry_run %}The file is ready to import{% else %}Import complete{% endif %}</h2>
+      <p>{% if result.dry_run %}Nothing has been saved. Choose Import to apply these changes.{% elif result.changed %}The changes below are saved.{% else %}Everything in the file was already on record. Nothing changed.{% endif %}</p></div></header>
+    <dl class="qa-dl qa-dl--stats">
+      <div><dt>Bodies added</dt><dd class="qa-num">{{ result.bodies_created }}</dd></div>
+      <div><dt>Bodies updated</dt><dd class="qa-num">{{ result.bodies_updated }}</dd></div>
+      <div><dt>Mappings added</dt><dd class="qa-num">{{ result.mappings_created }}</dd></div>
+      <div><dt>Mappings updated</dt><dd class="qa-num">{{ result.mappings_updated }}</dd></div>
+      <div><dt>Unchanged rows</dt><dd class="qa-num">{{ result.bodies_unchanged|add:result.mappings_unchanged }}</dd></div>
+    </dl>
+  </section>
+  {% else %}
+  <section class="qa-card" aria-labelledby="pb-err">
+    <header class="qa-card__head"><div><h2 id="pb-err">Fix {{ result.errors|length }} problem{{ result.errors|length|pluralize }} and upload again</h2><p>Nothing was saved.</p></div></header>
+    <div class="qa-table-wrap"><table class="qa-table">
+      <thead><tr><th scope="col">Sheet</th><th scope="col" class="qa-num">Row</th><th scope="col">Problem</th></tr></thead>
+      <tbody>{% for e in result.errors|slice:":500" %}<tr><td>{{ e.sheet }}</td><td class="qa-num">{{ e.row }}</td><td>{{ e.message }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
+{% endif %}

@@ -1,0 +1,17 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="imp-up">
+  <header class="qa-card__head"><div><h2 id="imp-up">Upload a sheet</h2><p>.xlsx, up to 10 MB and 2,000 rows.</p></div></header>
+  <div class="qa-card__body">
+    <form method="post" enctype="multipart/form-data" action="{% url 'qa_inst:import' %}" hx-post="{% url 'qa_inst:import' %}" hx-encoding="multipart/form-data" hx-target="#qa-import-result" data-qa-progress>
+      {% csrf_token %}
+      {% include "qa_core/partials/_form_errors.html" %}
+      <div class="qa-fields">
+        {% include "qa_core/partials/_field.html" with field=form.kind %}
+        {% include "qa_core/partials/_field.html" with field=form.file %}
+      </div>
+      <div class="qa-progress qa-mt" hidden data-qa-progress-bar><span></span></div>
+      <div class="qa-form-actions"><button type="submit" class="btn btn-primary">{% icon "upload" 16 %} Check the sheet</button></div>
+    </form>
+  </div>
+</section>
+{% if batch %}{% include "institutions/import/_batch.html" %}{% endif %}

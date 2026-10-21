@@ -760,3 +760,18 @@
     rescan:        rescanAfterSwap,
   };
 })();
+/* Phase 4: "Open in QA" inside a task card (the card itself is a link to the
+   task, so this is a span that navigates without opening the task). */
+(function () {
+  "use strict";
+  function go(e) {
+    var el = e.target.closest && e.target.closest(".tsk-qa-open[data-qa-href]");
+    if (!el) return;
+    if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    e.stopPropagation();
+    window.location.href = el.getAttribute("data-qa-href");
+  }
+  document.addEventListener("click", go, true);
+  document.addEventListener("keydown", go, true);
+})();

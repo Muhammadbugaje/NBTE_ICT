@@ -299,7 +299,7 @@ class DocumentForm(forms.ModelForm):
         fields = [
             "title", "summary", "description",
             "category",
-            "department", "visibility", "recipients",
+            "department", "visibility", "roles", "recipients",
             "source_type", "external_url",
             "cover_image",
             "effective_date", "review_date", "review_reminder_days",
@@ -313,6 +313,10 @@ class DocumentForm(forms.ModelForm):
             "category":    forms.Select(attrs={"class": INPUT}),
             "department":  forms.Select(attrs={"class": INPUT}),
             "visibility":  forms.Select(attrs={"class": INPUT}),
+            "roles":       forms.SelectMultiple(attrs={
+                "class": INPUT + " js-picker-source", "size": 6,
+                "data-picker-label": "roles",
+            }),
             "recipients":  forms.SelectMultiple(attrs={
                 "class": INPUT + " js-picker-source", "size": 6,
                 "data-picker-label": "people",
@@ -355,6 +359,14 @@ class DocumentForm(forms.ModelForm):
             self.add_error("initial_file", "Please upload a file.")
         if cleaned.get("is_featured") and cleaned.get("visibility") != Scope.PUBLIC:
             self.add_error("is_featured", "Only public documents can be featured.")
+
+        vis = cleaned.get("visibility")
+        if vis == Scope.DEPARTMENT and not cleaned.get("department"):
+            self.add_error("department", "Choose the department this document is for.")
+        if vis == Scope.ROLE and not cleaned.get("roles"):
+            self.add_error("roles", "Choose at least one role.")
+        if vis == Scope.INDIVIDUAL and not cleaned.get("recipients"):
+            self.add_error("recipients", "Choose at least one person.")
         return cleaned
 
 

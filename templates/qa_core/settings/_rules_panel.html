@@ -1,0 +1,72 @@
+{% include "qa_core/settings/_tabs.html" %}
+
+{% if featured %}
+<section class="sh-feature" aria-labelledby="sh-registration-title">
+  <div>
+    <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg></span>
+    <h2 id="sh-registration-title">Institution self-registration</h2>
+    <p>When this is on, the QA portal shows the registration form. When it is off, the form is hidden and visitors are asked to contact the QA Directorate at the e-mail address or phone number below.</p>
+    <span id="sh-registration-state" class="sh-feature__state{% if registration_on %} is-on{% endif %}">{% if registration_on %}Registration is open on the portal{% else %}Registration is managed by NBTE{% endif %}</span>
+  </div>
+  <div class="sh-section sh-feature__rows"><div class="sh-section__body">
+    {% for e in featured %}{% include "qa_core/settings/_rule_row.html" %}{% endfor %}
+  </div></div>
+</section>
+{% endif %}
+
+<section class="qa-card" aria-labelledby="qa-rules-title">
+  <header class="qa-card__head">
+    <div>
+      <h2 id="qa-rules-title" data-qa-focus>Rules &amp; thresholds</h2>
+      <p>{{ counts.total }} rules · {{ counts.dual }} need a second officer to change · {{ counts.locked }} fixed by policy</p>
+    </div>
+    <span class="qa-chip-legend" aria-hidden="true">
+      <span class="qa-chip qa-chip--direct">Direct</span>
+      <span class="qa-chip qa-chip--dual">Dual control</span>
+      <span class="qa-chip qa-chip--locked">Fixed</span>
+    </span>
+  </header>
+
+  <form class="qa-toolbar" role="search" method="get" action="{% url 'qa:settings_rules' %}"
+        hx-get="{% url 'qa:settings_rules' %}" hx-target="#qa-rows" hx-push-url="true"
+        hx-trigger="input changed delay:350ms from:find input[type=search], change, submit"
+        hx-sync="this:replace" data-qa-no-overlay>
+    <label class="qa-search">
+      <span class="sr-only">Search rules</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Search by key or description" autocomplete="off">
+    </label>
+    <label class="sr-only" for="qa-rules-group">Group</label>
+    <select class="input qa-select" id="qa-rules-group" name="group">
+      <option value="">All groups</option>
+      {% for g in groups %}<option value="{{ g }}"{% if filters.group == g %} selected{% endif %}>{{ g|cut:"QA · " }}</option>{% endfor %}
+    </select>
+    <label class="sr-only" for="qa-rules-type">Type</label>
+    <select class="input qa-select" id="qa-rules-type" name="type">
+      <option value="">Any type</option>
+      {% for t in types %}<option value="{{ t }}"{% if filters.type == t %} selected{% endif %}>{{ t|capfirst }}</option>{% endfor %}
+    </select>
+    <label class="sr-only" for="qa-rules-control">Control</label>
+    <select class="input qa-select" id="qa-rules-control" name="control">
+      <option value="">Any control</option>
+      <option value="direct"{% if filters.control == "direct" %} selected{% endif %}>Direct edit</option>
+      <option value="dual"{% if filters.control == "dual" %} selected{% endif %}>Dual control</option>
+      <option value="locked"{% if filters.control == "locked" %} selected{% endif %}>Fixed by policy</option>
+    </select>
+    <div class="qa-toolbar__end">
+      <label class="qa-check">
+        <input type="checkbox" name="editable" value="1"{% if filters.editable == "1" %} checked{% endif %}>
+        Only what I can edit
+      </label>
+      {% if filters.q or filters.group or filters.type or filters.control or filters.editable %}
+        <a class="btn btn-sm btn-ghost" href="{% url 'qa:settings_rules' %}"
+           hx-get="{% url 'qa:settings_rules' %}" hx-target="#qa-panel" hx-push-url="true">Clear</a>
+      {% endif %}
+      <noscript><button class="btn btn-sm btn-subtle" type="submit">Apply</button></noscript>
+    </div>
+  </form>
+
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">
+    {% include "qa_core/settings/_rules_rows.html" %}
+  </div>
+</section>

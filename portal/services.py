@@ -294,37 +294,96 @@ def expand_reminder_recipients(reminder: Reminder):
     return User.objects.filter(q, is_active=True).distinct()
 
 
-def fire_reminder(reminder: Reminder):
+def reminder_link(reminder: Reminder):
+    """Where the in-app notification for a reminder points: the reminder itself.
+    (A custom `reminder.url` is shown on that page.)"""
+    from django.urls import reverse
+    return reverse("portal:reminder_detail", kwargs={"pk": reminder.pk})
+
+
+def fire_reminder(reminder: Reminder, now=None):
+    """Deliver one reminder: one in-app Notification per recipient, once.
+
+    Exactly-once: the (reminder, user) receipt row is unique and is created in
+    the same transaction as the Notification, so either both exist or neither
+    does. A recipient whose delivery fails is retried on the next run (the ones
+    already delivered are not repeated); the reminder is only marked fired once
+    everyone has been delivered. Returns the number of NEW deliveries.
+    """
+    import logging
+    from django.db import transaction
     from notifications.models import Notification
     from notifications.services import notify
 
-    users = expand_reminder_recipients(reminder)
-    now = timezone.now()
+    log = logging.getLogger(__name__)
+    now = now or timezone.now()
     created = 0
+    failed = 0
+    link = reminder_link(reminder)
 
-    for u in users:
-        _, made = ReminderRecipient.objects.get_or_create(
-            reminder=reminder, user=u, defaults={"delivered_at": now},
-        )
-        if made:
-            created += 1
-            try:
-                notify(
+    for u in expand_reminder_recipients(reminder):
+        try:
+            with transaction.atomic():
+                _, made = ReminderRecipient.objects.get_or_create(
+                    reminder=reminder, user=u, defaults={"delivered_at": now},
+                )
+                if not made:
+                    continue
+                note = notify(
                     recipient=u,
                     title=reminder.title,
                     body=reminder.body[:400] if reminder.body else "",
-                    url=reminder.url or "",
+                    url=link,
                     category=Notification.SYSTEM,
                     level=Notification.INFO,
                     actor=reminder.creator,
                 )
-            except Exception:
-                pass
+                if note is None:
+                    raise RuntimeError("notification was not created")
+            created += 1
+        except Exception:
+            failed += 1
+            log.exception("Reminder %s: delivery to user %s failed", reminder.pk, u.pk)
 
-    reminder.is_fired = True
-    reminder.fired_at = now
-    reminder.save(update_fields=["is_fired", "fired_at"])
+    if not failed:
+        reminder.is_fired = True
+        reminder.fired_at = now
+        reminder.save(update_fields=["is_fired", "fired_at"])
     return created
+
+
+def fire_due_reminders(now=None):
+    """Fire every reminder that is due at `now` (default: the real time).
+
+    `now` exists so tests and the `fire_reminders` command can pretend it is a
+    different moment (same idea as the attendance services). Completed
+    (dismissed), deleted, already-fired and expired reminders never fire.
+    Returns the number of new deliveries.
+    """
+    import logging
+    from django.db import transaction
+
+    log = logging.getLogger(__name__)
+    now = now or timezone.now()
+    due_ids = list(
+        Reminder.objects.filter(
+            is_fired=False, is_dismissed=False, remind_at__lte=now,
+        ).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        .values_list("pk", flat=True)
+    )
+    total = 0
+    for pk in due_ids:
+        try:
+            with transaction.atomic():
+                # Lock the row so two overlapping runs cannot both fire it.
+                rem = (Reminder.objects.select_for_update()
+                       .filter(pk=pk, is_fired=False, is_dismissed=False).first())
+                if rem is None:
+                    continue
+                total += fire_reminder(rem, now=now)
+        except Exception:
+            log.exception("Reminder fire failed for %s", pk)
+    return total
 
 
 # ============================================================================

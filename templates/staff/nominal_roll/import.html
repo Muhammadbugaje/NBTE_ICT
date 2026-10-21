@@ -1,0 +1,63 @@
+{% comment %}Nominal roll — Import tab panel, included by staff/nominal_roll/index.html.{% endcomment %}
+  {% if can_import %}
+  <section class="nbr-panel" role="tabpanel" id="nbr-panel-import" aria-labelledby="nbr-tab-import"{% if tab != 'import' %} hidden{% endif %}>
+    <div class="nbr-split">
+      <div class="card nbr-card">
+        <h2 class="nbr-card-title">Upload the nominal roll</h2>
+        <p class="nbr-card-lead">Use the Excel file from HR as it is — title rows, department headings and the old sheets are all understood. Nothing is saved until you confirm on the next screen.</p>
+
+        {% if pending %}
+          <div class="alert alert-warn nbr-pending" role="status">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div>
+              <strong>{{ pending.name }}</strong> was uploaded but not imported yet.
+              <div class="nbr-pending-actions">
+                <a href="{% url 'staff:nominal_roll_preview' %}" class="btn btn-sm btn-primary">Continue to preview</a>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        <form method="post" action="{% url 'staff:nominal_roll_upload' %}" enctype="multipart/form-data" class="nbr-upload" data-nbr-upload>
+          {% csrf_token %}
+          <div class="sc-dropzone-wrap" data-nbr-dropzone>
+            <label class="sc-dropzone" for="nbr-file">
+              <span class="sc-dropzone-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+              </span>
+              <span class="sc-dropzone-title"><b>Choose the Excel file</b> or drag it here</span>
+              <span class="sc-dropzone-hint">.xlsx · up to 15 MB</span>
+              <input type="file" id="nbr-file" name="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+            </label>
+            <p class="nbr-file-chosen" data-nbr-file-name hidden></p>
+          </div>
+          <div class="nbr-actions">
+            <button type="submit" class="btn btn-primary" data-nbr-upload-submit>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload and preview
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <aside class="card nbr-card nbr-steps-card" aria-labelledby="nbr-how">
+        <h2 class="nbr-card-title" id="nbr-how">How it works</h2>
+        <ol class="nbr-steps">
+          <li>
+            <span class="nbr-step-no" aria-hidden="true">1</span>
+            <div><strong>Upload</strong><span>The file is checked, not saved.</span></div>
+          </li>
+          <li>
+            <span class="nbr-step-no" aria-hidden="true">2</span>
+            <div><strong>Preview</strong><span>See new and updated staff per sheet, date problems and duplicate file numbers. Pick the sheets to use.</span></div>
+          </li>
+          <li>
+            <span class="nbr-step-no" aria-hidden="true">3</span>
+            <div><strong>Confirm</strong><span>Everything is saved in one go — or nothing is. A report is kept in History.</span></div>
+          </li>
+        </ol>
+        <p class="nbr-note">Matching is by <strong>FILE NO</strong>; people who already have an account are merged, not duplicated. Empty cells never erase what is already saved. You can also create sign-in accounts on the preview screen — add an <strong>EMAIL</strong> column (it's in the template) so each person signs in with their email and gets their details by email.</p>
+      </aside>
+    </div>
+  </section>
+  {% endif %}

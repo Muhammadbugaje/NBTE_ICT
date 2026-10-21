@@ -1,0 +1,104 @@
+{% load qa_tags %}
+{% include "qa_core/settings/_tabs.html" %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_set:ssq_templates' %}" hx-get="{% url 'qa_set:ssq_templates' %}" hx-target="#qa-panel" hx-push-url="true">SSQ templates</a><span aria-hidden="true">/</span><span aria-current="page">{{ template.qa_type.name }} · v{{ template.version }}</span></nav>
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not saved" message=error %}{% endif %}
+
+<header class="qa-card qa-builder-head">
+  <div class="qa-card__body qa-row qa-gap-sm qa-wrap" style="justify-content:space-between">
+    <div>
+      <span class="qa-eyebrow">SSQ template · {{ template.qa_type.name }}</span>
+      <h2 class="qa-h2" data-qa-focus>{{ template.name }} <span class="qa-chip {{ template.status|tone }}">v{{ template.version }} · {{ template.get_status_display }}</span>{% if template.is_current %} <span class="qa-chip qa-tone-success">Current</span>{% endif %}</h2>
+      <p class="qa-small qa-muted">{{ sections|length }} section{{ sections|length|pluralize }} · {% if in_use %}used by {{ in_use }} SSQ{{ in_use|pluralize }}{% else %}not used yet{% endif %}{% if template.notes %} · {{ template.notes }}{% endif %}</p>
+    </div>
+    <div class="qa-row qa-gap-sm qa-wrap">
+      <button type="button" class="btn btn-subtle" hx-get="{% url 'qa_set:ssq_template_preview' template.pk %}" hx-target="#qa-builder-side" hx-swap="innerHTML">{% icon "eye" 16 %} Preview</button>
+      {% if editable %}
+        {% if can_publish %}<form method="post" action="{% url 'qa_set:ssq_template_publish' template.pk %}" hx-post="{% url 'qa_set:ssq_template_publish' template.pk %}" hx-target="#qa-panel" hx-trigger="qa:confirmed" data-qa-confirm="New QA requests of this type use version {{ template.version }}. SSQs already open keep their version. A published version can never be edited." data-qa-confirm-title="Publish version {{ template.version }}?" data-qa-confirm-label="Publish">{% csrf_token %}<button class="btn btn-primary" type="submit"{% if errors %} disabled title="Fix the problems first"{% endif %}>{% icon "check" 16 "2.4" %} Publish</button></form>{% endif %}
+        <form method="post" action="{% url 'qa_set:ssq_template_discard' template.pk %}" hx-post="{% url 'qa_set:ssq_template_discard' template.pk %}" hx-target="#qa-panel" hx-trigger="qa:confirmed" data-qa-confirm="The draft and its changes are deleted." data-qa-confirm-title="Discard this draft?" data-qa-confirm-label="Discard" data-qa-confirm-tone="danger">{% csrf_token %}<button class="btn btn-subtle qa-btn-reject" type="submit">Discard draft</button></form>
+      {% elif template.status != "draft" and not versions.0.status == "draft" %}
+        <form method="post" action="{% url 'qa_set:ssq_template_new' template.qa_type.pk %}" hx-post="{% url 'qa_set:ssq_template_new' template.qa_type.pk %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Start version {{ versions.0.version|add:1 }}</button></form>
+      {% endif %}
+    </div>
+  </div>
+</header>
+
+{% if errors %}
+  <div class="qa-callout qa-callout--warn" role="status">{% icon "alert" 18 "2.2" %}<div><strong>{{ errors|length }} problem{{ errors|length|pluralize }} before this can be published</strong><ul class="qa-small">{% for e in errors|slice:":12" %}<li>{{ e }}</li>{% endfor %}</ul></div></div>
+{% else %}
+  <p class="qa-small qa-row qa-gap-sm">{% icon "check" 14 "2.4" %} The schema is valid.</p>
+{% endif %}
+
+<div class="qa-cols qa-builder">
+  <div class="qa-stack">
+    {% for s in sections %}
+      <section class="qa-card qa-builder__section" aria-labelledby="bs-{{ s.key }}">
+        <header class="qa-card__head">
+          <div><h3 id="bs-{{ s.key }}">{{ forloop.counter }}. {{ s.title }} <span class="qa-mono qa-small qa-muted">{{ s.key }}</span></h3>
+            {% if s.description %}<p>{{ s.description }}</p>{% endif %}
+            <p class="qa-small qa-muted">{{ s.fields|length }} field{{ s.fields|length|pluralize }}{% if s.department is False %} · not sent to academic departments{% endif %}</p></div>
+          {% if editable %}<div class="qa-row qa-gap-xs">
+            <form hx-post="{% url 'qa_set:ssq_template_section' template.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="key" value="{{ s.key }}"><input type="hidden" name="op" value="up"><button class="btn btn-xs btn-subtle" type="submit" aria-label="Move section up"{% if forloop.first %} disabled{% endif %}>↑</button></form>
+            <form hx-post="{% url 'qa_set:ssq_template_section' template.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="key" value="{{ s.key }}"><input type="hidden" name="op" value="down"><button class="btn btn-xs btn-subtle" type="submit" aria-label="Move section down"{% if forloop.last %} disabled{% endif %}>↓</button></form>
+            <details class="qa-menu"><summary class="btn btn-xs btn-subtle">Edit section</summary><div class="qa-menu__panel" style="width:min(380px,calc(100vw - 32px))">
+              <form class="qa-form qa-stack" hx-post="{% url 'qa_set:ssq_template_section' template.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="op" value="update"><input type="hidden" name="key" value="{{ s.key }}">
+                <div class="qa-field"><label>Title</label><input class="input" name="title" value="{{ s.title }}" required></div>
+                <div class="qa-field"><label>Description</label><textarea class="input" name="description" rows="2">{{ s.description|default:'' }}</textarea></div>
+                <label class="qa-field--check"><input type="checkbox" name="department"{% if s.department is not False %} checked{% endif %}> May be sent to an academic department</label>
+                <button class="btn btn-sm btn-primary" type="submit">Save section</button></form></div></details>
+            <form hx-post="{% url 'qa_set:ssq_template_section' template.pk %}" hx-target="#qa-panel" hx-trigger="qa:confirmed" data-qa-confirm="The section and its {{ s.fields|length }} field(s) are removed from this draft." data-qa-confirm-title="Remove “{{ s.title }}”?" data-qa-confirm-label="Remove" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="key" value="{{ s.key }}"><input type="hidden" name="op" value="remove"><button class="btn btn-xs btn-subtle qa-btn-reject" type="submit">Remove</button></form>
+          </div>{% endif %}
+        </header>
+        <ul class="qa-builder__fields" role="list">
+          {% for f in s.fields %}
+            <li class="qa-builder__field">
+              <div class="qa-builder__field-main">
+                <strong>{{ f.label }}</strong>{% if f.required %} <span class="qa-chip qa-tone-warn">Required</span>{% endif %}
+                <div class="qa-small qa-muted"><span class="qa-mono">{{ f.key }}</span> · {{ f.type_label }}{% if f.prefill_from %} · prefill <span class="qa-mono">{{ f.prefill_from }}</span>{% endif %}{% if f.document_kind %} · document {{ f.document_kind }}{% endif %}{% if f.catalogue %} · catalogue {{ f.catalogue.kind }} (quantities only){% endif %}{% if f.columns %} · {{ f.columns|length }} column{{ f.columns|length|pluralize }}{% endif %}</div>
+              </div>
+              {% if editable %}<div class="qa-row qa-gap-xs">
+                <form hx-post="{% url 'qa_set:ssq_template_field' template.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="section" value="{{ s.key }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="op" value="up"><button class="btn btn-xs btn-subtle" type="submit" aria-label="Move up"{% if forloop.first %} disabled{% endif %}>↑</button></form>
+                <form hx-post="{% url 'qa_set:ssq_template_field' template.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="section" value="{{ s.key }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="op" value="down"><button class="btn btn-xs btn-subtle" type="submit" aria-label="Move down"{% if forloop.last %} disabled{% endif %}>↓</button></form>
+                <button type="button" class="btn btn-xs btn-subtle" hx-get="{% url 'qa_set:ssq_template_field' template.pk %}?section={{ s.key }}&key={{ f.key }}" hx-target="#qa-builder-side" hx-swap="innerHTML">{% icon "edit" 12 %} Edit</button>
+                <form hx-post="{% url 'qa_set:ssq_template_field' template.pk %}" hx-target="#qa-panel" hx-trigger="qa:confirmed" data-qa-confirm="The field is removed from this draft." data-qa-confirm-title="Remove “{{ f.label }}”?" data-qa-confirm-label="Remove" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="section" value="{{ s.key }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="op" value="remove"><button class="btn btn-xs btn-subtle qa-btn-reject" type="submit" aria-label="Remove {{ f.label }}">✕</button></form>
+              </div>{% endif %}
+            </li>
+          {% empty %}<li class="qa-muted qa-small">No fields yet.</li>{% endfor %}
+        </ul>
+        {% if editable %}
+          <div class="qa-card__body qa-row qa-gap-sm qa-wrap">
+            <label class="sr-only" for="nf-{{ s.key }}">Field type</label>
+            <select class="input qa-select" id="nf-{{ s.key }}" name="type">{% for code, label in field_types %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select>
+            <button type="button" class="btn btn-sm btn-subtle" hx-get="{% url 'qa_set:ssq_template_field' template.pk %}?section={{ s.key }}" hx-include="#nf-{{ s.key }}" hx-target="#qa-builder-side" hx-swap="innerHTML">{% icon "plus" 14 %} Add field</button>
+          </div>
+        {% endif %}
+      </section>
+    {% endfor %}
+    {% if editable %}
+      <section class="qa-card" aria-labelledby="ns-h"><header class="qa-card__head"><h3 id="ns-h">Add a section</h3></header>
+        <div class="qa-card__body"><form class="qa-form qa-row qa-gap-sm qa-wrap" hx-post="{% url 'qa_set:ssq_template_section' template.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="op" value="add">
+          <div class="qa-field"><label for="ns-key">Key</label><input class="input" id="ns-key" name="key" pattern="[a-z][a-z0-9_]*" placeholder="e.g. library" required></div>
+          <div class="qa-field"><label for="ns-title">Title</label><input class="input" id="ns-title" name="title" required></div>
+          <label class="qa-field--check"><input type="checkbox" name="department" checked> Department may complete it</label>
+          <button class="btn btn-sm btn-primary" type="submit">{% icon "plus" 14 %} Add section</button></form></div></section>
+    {% endif %}
+  </div>
+
+  <aside class="qa-stack">
+    <div id="qa-builder-side" class="qa-region" aria-live="polite">
+      <section class="qa-card"><div class="qa-card__body"><p class="qa-small qa-muted">{% if editable %}Choose <strong>Edit</strong> on a field or <strong>Add field</strong> to open the field editor here, or <strong>Preview</strong> to see what institutions see.{% else %}This version is {{ template.get_status_display|lower }} and cannot be edited. Use <strong>Preview</strong> to see it as institutions do.{% endif %}</p></div></section>
+    </div>
+    <details class="qa-card" data-qa-remember="ssq-json">
+      <summary class="qa-card__head" style="cursor:pointer"><h3>Advanced: JSON</h3></summary>
+      <div class="qa-card__body">
+        {% if editable %}
+        <form class="qa-form qa-stack" hx-post="{% url 'qa_set:ssq_template_json' template.pk %}" hx-target="#qa-panel">{% csrf_token %}
+          <div class="qa-field"><label for="tj-name">Name</label><input class="input" id="tj-name" name="name" value="{{ template.name }}"></div>
+          <div class="qa-field"><label for="tj-schema">Schema</label><textarea class="input qa-mono" id="tj-schema" name="schema" rows="18" spellcheck="false">{{ schema_json }}</textarea></div>
+          <button class="btn btn-sm btn-primary" type="submit">Save JSON</button></form>
+        {% else %}<pre class="qa-pre qa-small">{{ schema_json }}</pre>{% endif %}
+      </div>
+    </details>
+    <section class="qa-card"><header class="qa-card__head"><h3>Versions</h3></header>
+      <ul class="qa-rowlist" role="list">{% for v in versions %}<li><a class="qa-rowlink" href="{% url 'qa_set:ssq_template' v.pk %}" hx-get="{% url 'qa_set:ssq_template' v.pk %}" hx-target="#qa-panel" hx-push-url="true"><span class="qa-rowlink__badge">v{{ v.version }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ v.name }}</span><span class="qa-rowlink__meta">{{ v.published_at|date:"j M Y"|default:"not published" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ v.status|tone }}">{{ v.get_status_display }}</span></span></a></li>{% endfor %}</ul></section>
+  </aside>
+</div>

@@ -1,0 +1,28 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Notifications · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "bell" 14 "2.2" %} From NBTE</span>
+    <h1 data-qa-focus>Notifications</h1>
+    <p>Every message NBTE has sent you about your requests, payments, visits and complaints.{% if unread_total %} <strong>{{ unread_total }} unread.</strong>{% endif %}</p>
+  </header>
+  <section class="qa-card" aria-label="Notifications">
+    <div class="qa-toolbar">
+      <form hx-get="{% url 'qa_portal:notifications' %}" hx-target="#qa-notif-rows" hx-push-url="true" hx-trigger="change">
+        <select class="input qa-select" name="show" aria-label="Show">
+          <option value="">All notifications</option>
+          <option value="unread"{% if show == "unread" %} selected{% endif %}>Unread only</option>
+        </select>
+      </form>
+      {% if unread_total %}
+      <form method="post" action="{% url 'qa_portal:notifications' %}" class="qa-toolbar__end">{% csrf_token %}
+        <button class="btn btn-sm btn-subtle" type="submit">Mark all as read</button>
+      </form>
+      {% endif %}
+    </div>
+    <div id="qa-notif-rows" class="qa-region" data-qa-region aria-live="polite">{% include "qa_portal/_notification_rows.html" %}</div>
+  </section>
+</div>
+{% endblock %}

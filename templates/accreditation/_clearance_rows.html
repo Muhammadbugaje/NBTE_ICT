@@ -1,0 +1,16 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for c in page.rows %}
+      <li><a class="qa-rowlink" href="{% url 'qa_app:detail' c.application_id %}" hx-get="{% url 'qa_app:detail' c.application_id %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="qa-rowlink__badge">{{ c.application.institution.code }}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ c.application.institution.name }}</span>
+          <span class="qa-rowlink__meta"><span class="qa-mono">{{ c.application.reference }}</span><span>· {{ c.department.name }}</span><span>· round {{ c.round }}</span><span>· {{ c.application.institution.ownership.name|default:"" }}</span></span></span>
+        <span class="qa-rowlink__side"><span class="qa-chip {{ c.status|tone }}">{{ c.get_status_display }}</span>
+          {% if c.status == "pending" %}<span class="qa-small {% if c.waiting_days >= 3 %}qa-strong{% else %}qa-muted{% endif %}">{% if c.waiting_days %}Waiting {{ c.waiting_days }} day{{ c.waiting_days|pluralize }}{% else %}New today{% endif %}</span>{% elif c.decided_by %}<span class="qa-small qa-muted">by {{ c.decided_by|who }}</span>{% endif %}</span></a></li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">{% if status == "pending" %}All clear{% else %}Nothing here{% endif %}</h3><p class="nbte-empty-state__body">{% if status == "pending" %}No application is waiting for your department.{% else %}No clearances with this status.{% endif %}</p></div>
+{% endif %}

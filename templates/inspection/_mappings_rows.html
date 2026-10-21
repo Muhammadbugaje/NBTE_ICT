@@ -1,0 +1,14 @@
+{% load qa_tags %}
+{% if page.rows %}
+<div class="qa-table-wrap"><table class="qa-table">
+  <thead><tr><th scope="col">Person</th><th scope="col">Programme · case</th><th scope="col">Duty</th><th scope="col">Dates</th><th scope="col">Status</th></tr></thead>
+  <tbody>{% for m in page.rows %}<tr>
+    <td><strong>{{ m.person }}</strong><br><span class="qa-small qa-muted">{% if m.resource_person_id %}Resource person{% else %}QA personnel{% endif %}</span></td>
+    <td>{{ m.qa_request_programme.programme }}<br><a class="qa-small qa-mono" href="{% url 'qa_case:detail' m.case_id %}">{{ m.case.reference }}</a></td>
+    <td>{{ m.get_duty_display }}</td>
+    <td>{{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</td>
+    <td><span class="qa-chip {{ m.status|tone }}">{{ m.get_status_display }}</span>{% if m.created_via %}<br><span class="qa-small qa-muted qa-mono">{{ m.created_via.reference }}</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "link" 28 %}</span><h3 class="nbte-empty-state__title">No mappings</h3><p class="nbte-empty-state__body">Use the availability finder to map people to a case.</p></div>{% endif %}

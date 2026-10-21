@@ -1,0 +1,18 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="tab-tl">
+  <header class="qa-card__head"><div><h2 id="tab-tl" data-qa-focus-heading>Timeline</h2><p>The unified record. Internal events are visible to NBTE only.</p></div></header>
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_inst:detail' inst.code %}" hx-target="#qa-tab" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <input type="hidden" name="tab" value="timeline">
+    <label class="qa-search"><span class="sr-only">Search the timeline</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="tq" value="{{ tq }}" placeholder="Search events"></label>
+    <label class="sr-only" for="tl-vis">Visibility</label>
+    <select class="input qa-select" id="tl-vis" name="vis"><option value="">Public and internal</option><option value="public"{% if vis == "public" %} selected{% endif %}>Public</option><option value="internal"{% if vis == "internal" %} selected{% endif %}>Internal</option></select>
+  </form>
+  <div class="qa-card__body">
+    <ol class="qa-tl">
+      {% for e in page.rows %}
+        <li class="{% if e.visibility == 'internal' %}is-internal{% endif %}"><span class="qa-tl__text">{{ e.public_text|default:e.internal_text }}</span>{% if e.public_text and e.internal_text %}<small>NBTE note: {{ e.internal_text }}</small>{% endif %}<small>{{ e.at|date:"j M Y, H:i" }} · {% if e.actor %}{{ e.actor|who:"System" }}{% else %}System{% endif %}{% if e.visibility == "internal" %} · internal{% endif %} · <span class="qa-mono">{{ e.event_code }}</span></small></li>
+      {% empty %}<li><span class="qa-tl__text qa-muted">No events match.</span></li>{% endfor %}
+    </ol>
+  </div>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-tab" %}
+</section>

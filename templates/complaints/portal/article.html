@@ -1,0 +1,27 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}{{ article.title }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page qa-portal-page--narrow">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:help' %}" hx-get="{% url 'qa_portal:help' %}" hx-target="#qa-main" hx-push-url="true">Help articles</a><span aria-hidden="true">/</span><span aria-current="page">{{ article.title }}</span></nav>
+  <article class="qa-card cx-article">
+    <div class="qa-card__body">
+      <span class="qa-eyebrow">{% icon "help" 14 "2.2" %} {{ article.layer.name|default:"Help" }}</span>
+      <h1 data-qa-focus>{{ article.title }}</h1>
+      {% if article.summary %}<p class="qa-lead">{{ article.summary }}</p>{% endif %}
+      <div class="cx-article__body">{{ article.body }}</div>
+    </div>
+    <div class="qa-card__body" style="border-top:1px solid var(--border)">
+      {% if voted %}<p class="qa-small" role="status">Thank you for the feedback.</p>
+      {% else %}
+      <form class="qa-row" method="post" hx-post="{% url 'qa_portal:help_article' article.slug %}" hx-target="#qa-main">{% csrf_token %}
+        <span class="qa-small">Did this answer your question?</span>
+        <button class="btn btn-sm btn-subtle" type="submit" name="helpful" value="yes">{% icon "check" 14 %} Yes</button>
+        <button class="btn btn-sm btn-subtle" type="submit" name="helpful" value="no">{% icon "x" 14 %} No</button>
+      </form>
+      {% endif %}
+      <p class="qa-small qa-mt">Still stuck? <a href="{{ raise_url }}{% if article.layer %}?layer={{ article.layer.pk }}{% endif %}" hx-get="{{ raise_url }}" hx-target="#qa-main" hx-push-url="true">Raise a complaint</a>.</p>
+    </div>
+  </article>
+</div>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% load qa_tags %}
+{% if page.rows %}
+<div class="qa-table-wrap"><table class="qa-table">
+  <caption class="sr-only">Resource persons</caption>
+  <thead><tr><th scope="col">Name</th><th scope="col">Source · rank</th><th scope="col">Disciplines</th><th scope="col" class="num">Visits this year</th><th scope="col">Last served</th><th scope="col">Status</th></tr></thead>
+  <tbody>{% for rp in page.rows %}
+    <tr>
+      <td><a href="{% url 'qa_insp:rp_detail' rp.pk %}" hx-get="{% url 'qa_insp:rp_detail' rp.pk %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ rp.full_name }}</strong></a><br><span class="qa-small qa-muted">{{ rp.email }}</span></td>
+      <td>{{ rp.get_source_display }}<br><span class="qa-small qa-muted qa-mono">{{ rp.rank|default:"—" }}</span></td>
+      <td>{% for d in rp.disciplines.all %}<span class="qa-chip{% if d.is_primary %} qa-tone-info{% endif %}">{{ d.discipline.name }}</span> {% endfor %}</td>
+      <td class="num">{{ rp.totals.visits_this_year }}</td>
+      <td>{{ rp.totals.last_served|date:"j M Y"|default:"—" }}</td>
+      <td><span class="qa-chip {{ rp.status|tone }}">{{ rp.get_status_display }}</span>{% if rp.lapsed %} <span class="qa-chip qa-tone-warn qa-badge-lapsed">No longer eligible</span>{% endif %}</td>
+    </tr>{% endfor %}
+  </tbody>
+</table></div>
+{% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "users" 28 %}</span><h3 class="nbte-empty-state__title">Nobody here</h3><p class="nbte-empty-state__body">Try clearing the filters.</p></div>
+{% endif %}

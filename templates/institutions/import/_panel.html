@@ -1,0 +1,29 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_inst:list' %}" hx-get="{% url 'qa_inst:list' %}" hx-target="#qa-panel" hx-push-url="true">Institutions</a><span aria-hidden="true">/</span><span aria-current="page">Bulk import</span></nav>
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} New Institution · Bulk import / export</span>
+    <h1 data-qa-focus>Import institutions and programmes</h1>
+    <p>Download the template, fill it in, and upload it. The whole sheet is checked first — one bad row rejects the batch and nothing is changed. A valid sheet waits for a second officer, then is applied in one go. Rows update existing records by code (or name); nothing is ever duplicated.</p>
+    <div class="qa-hero__actions">
+      <a class="btn btn-subtle" href="{% url 'qa_inst:import_template' 'institutions' %}">{% icon "download" 16 %} Institutions template</a>
+      <a class="btn btn-subtle" href="{% url 'qa_inst:import_template' 'programmes' %}">{% icon "download" 16 %} Programmes template</a>
+      {% if can_export %}<a class="btn btn-subtle" href="{% url 'qa_inst:export' %}?kind=institutions">{% icon "sheet" 16 %} Export institutions</a>
+      <a class="btn btn-subtle" href="{% url 'qa_inst:export' %}?kind=programmes">{% icon "sheet" 16 %} Export programmes</a>{% endif %}
+    </div>
+  </div>
+</header>
+<div class="qa-cols">
+  <div id="qa-import-result">{% include "institutions/import/_upload.html" %}</div>
+  <aside class="qa-stack">
+    <section class="qa-card"><header class="qa-card__head"><h2>Rules</h2></header>
+      <div class="qa-card__body"><ol class="qa-twostep">
+        <li><strong>New institutions</strong> are always created as <em>proposed</em>, handled by NTIRD.</li>
+        <li><strong>Status</strong> cannot be changed by import — use the actions (approve, delist …).</li>
+        <li><strong>Matching</strong>: code first, then exact name; a category change on an approved institution moves it to the category's department.</li>
+        <li><strong>Re-importing</strong> an unchanged export changes nothing.</li>
+      </ol></div></section>
+    {% if recent %}<section class="qa-card"><header class="qa-card__head"><h2>Your recent imports</h2></header>
+      <ul class="qa-rowlist" role="list">{% for b in recent %}<li><a class="qa-rowlink" href="{% url 'qa_inst:import_batch' b.pk %}" hx-get="{% url 'qa_inst:import_batch' b.pk %}" hx-target="#qa-panel" hx-push-url="true"><span class="qa-rowlink__badge">#{{ b.pk }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ b.get_kind_display }}</span><span class="qa-rowlink__meta">{{ b.created_at|date:"j M Y, H:i" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {% if b.status == 'applied' %}qa-tone-success{% elif b.status == 'invalid' or b.status == 'rejected' or b.status == 'failed' %}qa-tone-danger{% else %}qa-tone-pending{% endif %}">{{ b.get_status_display }}</span></span></a></li>{% endfor %}</ul></section>{% endif %}
+  </aside>
+</div>

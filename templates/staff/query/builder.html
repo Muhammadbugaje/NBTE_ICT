@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Advanced query · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Advanced query{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="nbr-page qb-page">
+  <header class="nbte-page-header nbr-header">
+    <div class="nbte-page-header__text">
+      <span class="nbte-page-header__eyebrow">People</span>
+      <h1 class="nbte-page-header__title">{% if saved %}{{ saved.name }}{% else %}Advanced query{% endif %}</h1>
+      <p class="nbte-page-header__description">{% if saved and saved.description %}{{ saved.description }}{% else %}Combine conditions to find exactly the staff you need, then save the query or export the result as a nominal roll.{% endif %}</p>
+    </div>
+    <div class="nbte-page-header__actions">
+      <a href="{% url 'staff:query_saved' %}" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        Saved queries
+      </a>
+    </div>
+  </header>
+
+  {% if saved_queries %}
+    <nav class="qb-saved-strip" aria-label="Saved queries">
+      <span class="qb-saved-label">Saved:</span>
+      <ul>
+        {% for sq in saved_queries %}
+          <li><a href="{% url 'staff:query' %}?saved={{ sq.pk }}" class="qb-saved-chip{% if saved and saved.pk == sq.pk %} is-current{% endif %}"{% if saved and saved.pk == sq.pk %} aria-current="page"{% endif %}>{{ sq.name }}{% if sq.is_shared %}<span class="qb-shared-dot" title="Shared with everyone"></span>{% endif %}</a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+  {% endif %}
+
+  <form method="get" action="{% url 'staff:query' %}" class="card nbr-card qb-builder" data-qb-form aria-labelledby="qb-title">
+    <input type="hidden" name="run" value="1">
+    <div class="qb-builder-head">
+      <h2 class="nbr-card-title" id="qb-title">Conditions</h2>
+      <fieldset class="qb-logic">
+        <legend class="nbr-sr">Match</legend>
+        <label class="qb-logic-opt"><input type="radio" name="logic" value="AND"{% if logic == "AND" %} checked{% endif %}><span>All conditions <small>AND</small></span></label>
+        <label class="qb-logic-opt"><input type="radio" name="logic" value="OR"{% if logic == "OR" %} checked{% endif %}><span>Any condition <small>OR</small></span></label>
+      </fieldset>
+    </div>
+
+    <ol class="qb-rows" data-qb-rows>
+      {% for c in conditions %}
+        {% include "staff/query/_condition_row.html" with c=c index=forloop.counter %}
+      {% empty %}
+        {% include "staff/query/_condition_row.html" with c=None index=1 %}
+      {% endfor %}
+    </ol>
+
+    <template data-qb-template>
+      {% include "staff/query/_condition_row.html" with c=None index=0 %}
+    </template>
+
+    {% if error %}
+      <div class="alert alert-danger qb-error" role="alert">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>{{ error }}</div>
+      </div>
+    {% endif %}
+
+    <div class="qb-builder-foot">
+      <button type="button" class="btn btn-ghost" data-qb-add>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add condition
+      </button>
+      <span class="nbr-actionbar-spacer"></span>
+      {% if ran %}<a href="{% url 'staff:query' %}" class="btn btn-ghost">Start over</a>{% endif %}
+      <button type="submit" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Preview results
+      </button>
+    </div>
+    <p class="nbr-note qb-tip">Dates: <code>2024-01-31</code>, or relative — <code>today</code>, <code>today-12m</code>, <code>-30d</code>, <code>+1y</code>. Lists: separate values with commas.</p>
+  </form>
+
+  {% if page %}
+    <section class="qb-results" aria-labelledby="qb-results-title"{% if not saved %} data-qb-preview-toast{% endif %}>
+      <div class="qb-results-head">
+        <div>
+          <h2 class="qb-results-title" id="qb-results-title"><strong>{{ page.paginator.count }}</strong> staff match</h2>
+          {% if described %}
+            <ul class="qb-described" aria-label="Conditions">
+              {% for d in described %}<li>{% if not forloop.first %}<span class="qb-joiner">{{ logic }}</span>{% endif %}<span class="badge">{{ d }}</span></li>{% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+        <div class="qb-results-actions">
+          <button type="button" class="btn btn-ghost" data-modal-open="qb-save-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            {% if saved %}Save changes{% else %}Save query{% endif %}
+          </button>
+          {% if can_export %}
+            <a href="{% url 'staff:query_export' %}?{{ querystring }}" class="btn btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export .xlsx
+            </a>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if page.object_list %}
+        <div class="card nbr-card nbr-card-flush">
+          <table class="table table--stack qb-table" data-no-wrap>
+            <thead>
+              <tr>
+                <th scope="col">File no.</th>
+                <th scope="col">Name</th>
+                <th scope="col">Department</th>
+                <th scope="col">Designation</th>
+                <th scope="col" class="nbr-num">GL</th>
+                <th scope="col">State</th>
+                <th scope="col">State of origin</th>
+                <th scope="col">Present appointment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in page.object_list %}
+                <tr>
+                  <td data-label="File no." class="nbr-mono">{{ s.employee_no }}</td>
+                  <td data-label="Name"><a href="{% url 'staff:detail' s.pk %}" class="promo-name">{{ s.last_name }} {{ s.first_name }}</a></td>
+                  <td data-label="Department">{{ s.department.name|default:"—" }}</td>
+                  <td data-label="Designation">{{ s.designation.name|default:"—" }}</td>
+                  <td data-label="GL" class="nbr-num">{{ s.grade_level|default:"—" }}</td>
+                  <td data-label="State">{% if s.state %}<span class="badge{% if s.state.name == 'Probation' %} badge-warn{% elif s.state.name == 'Confirmed' %} badge-success{% endif %}">{{ s.state.name }}</span>{% else %}—{% endif %}</td>
+                  <td data-label="State of origin">{{ s.state_of_origin.name|default:"—" }}</td>
+                  <td data-label="Present appointment">{{ s.date_present_appointment|date:"j M Y"|default:"—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if page.paginator.num_pages > 1 %}
+          <nav class="pagination nbr-pagination" aria-label="Pages">
+            {% if page.has_previous %}<a href="{% querystring page=page.previous_page_number %}" rel="prev">Previous</a>{% endif %}
+            <span aria-current="page">Page {{ page.number }} of {{ page.paginator.num_pages }} · 50 per page</span>
+            {% if page.has_next %}<a href="{% querystring page=page.next_page_number %}" rel="next">Next</a>{% endif %}
+          </nav>
+        {% endif %}
+      {% else %}
+        {% include "partials/empty_state.html" with variant="filtered" title="Nobody matches" body="Loosen a condition, or switch from AND to OR." only %}
+      {% endif %}
+    </section>
+  {% elif not error %}
+    {% include "partials/empty_state.html" with title="Build a query" body="Pick a field, an operator and a value. Add more conditions and choose whether all or any must match, then preview the results." only %}
+  {% endif %}
+</div>
+
+{# Save dialog #}
+<div class="modal-root" id="qb-save-modal" aria-hidden="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="qb-save-title">
+    <button type="button" class="modal-close" aria-label="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <h3 class="modal-title" id="qb-save-title">Save this query</h3>
+    <form method="post" action="{% url 'staff:query_save' %}" data-qb-save-form>
+      {% csrf_token %}
+      <div data-qb-save-fields>
+        <input type="hidden" name="logic" value="{{ logic }}">
+        {% for c in conditions %}
+          <input type="hidden" name="field" value="{{ c.field }}"><input type="hidden" name="op" value="{{ c.op }}"><input type="hidden" name="value" value="{{ c.value }}"><input type="hidden" name="value2" value="{{ c.value2|default:'' }}">
+        {% endfor %}
+      </div>
+      <div class="field">
+        <label for="qb-name">Name</label>
+        <input type="text" id="qb-name" name="name" class="input" maxlength="120" required value="{{ saved.name|default:'' }}" placeholder="e.g. Probation over 12 months">
+        <span class="hint">Saving with a name you already used replaces that query.</span>
+      </div>
+      <div class="field">
+        <label for="qb-desc">Description <span class="promo-optional">optional</span></label>
+        <textarea id="qb-desc" name="description" rows="2" class="input">{{ saved.description|default:'' }}</textarea>
+      </div>
+      {% if can_share %}
+        <label class="check">
+          <input type="checkbox" name="is_shared"{% if saved.is_shared %} checked{% endif %}>
+          <span>Share with everyone who can run queries</span>
+        </label>
+      {% endif %}
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save query</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{{ schema|json_script:"qb-schema" }}
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/query-builder.js' %}?v=1" defer></script>
+{% endblock %}

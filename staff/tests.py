@@ -3,7 +3,7 @@ import pytest
 from accounts.models import Role, User
 from core.models import AuditLogEntry
 from django.contrib.auth.models import Permission
-from staff.models import Staff, StaffState, StaffStatusHistory
+from staff.models import Designation, Staff, StaffState, StaffStatusHistory
 
 pytestmark = pytest.mark.django_db
 
@@ -36,7 +36,7 @@ def test_unrelated_edit_does_not_create_history():
     st = StaffState.objects.create(name="Active")
     s = Staff.objects.create(employee_no="S2", first_name="A", last_name="B", state=st)
     s = Staff.objects.get(pk=s.pk)
-    s.designation = "Officer"
+    s.designation = Designation.objects.create(name="Officer")  # FK since the nominal-roll release
     s.save()
     assert s.status_history.count() == 1
 

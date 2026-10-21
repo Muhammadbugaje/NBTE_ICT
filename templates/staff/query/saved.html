@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Saved queries · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Advanced query{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="nbr-page qb-page">
+  <a href="{% url 'staff:query' %}" class="nbr-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Advanced query
+  </a>
+  <header class="nbte-page-header nbr-header">
+    <div class="nbte-page-header__text">
+      <span class="nbte-page-header__eyebrow">People · Advanced query</span>
+      <h1 class="nbte-page-header__title">Saved queries</h1>
+      <p class="nbte-page-header__description">Your own queries, plus the ones shared with everyone. Run one to open it in the builder with its conditions filled in.</p>
+    </div>
+    <div class="nbte-page-header__actions">
+      <a href="{% url 'staff:query' %}" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New query
+      </a>
+    </div>
+  </header>
+
+  {% if queries %}
+    <ul class="qb-saved-grid">
+      {% for sq in queries %}
+        <li>
+          <article class="card nbr-card qb-saved-card" aria-labelledby="sq{{ sq.pk }}">
+            <div class="qb-saved-card-head">
+              <h2 class="qb-saved-card-title" id="sq{{ sq.pk }}"><a href="{% url 'staff:query' %}?saved={{ sq.pk }}">{{ sq.name }}</a></h2>
+              {% if sq.is_shared %}<span class="badge badge-info">Shared</span>{% else %}<span class="badge badge--neutral">Private</span>{% endif %}
+            </div>
+            {% if sq.description %}<p class="qb-saved-card-desc">{{ sq.description }}</p>{% endif %}
+            <ul class="qb-described" aria-label="Conditions">
+              {% for d in sq.described %}<li>{% if not forloop.first %}<span class="qb-joiner">{{ sq.logic }}</span>{% endif %}<span class="badge">{{ d }}</span></li>{% empty %}<li><span class="badge">Everyone</span></li>{% endfor %}
+            </ul>
+            <p class="qb-saved-card-meta">{% if sq.owner_id != request.user.pk %}By {{ sq.owner.get_full_name|default:sq.owner.email }} · {% endif %}Updated {{ sq.updated_at|date:"j M Y" }}</p>
+            <div class="qb-saved-card-actions">
+              <a href="{% url 'staff:query' %}?saved={{ sq.pk }}&amp;run=1" class="btn btn-primary btn-sm">Run</a>
+              {% if sq.can_delete %}
+                <form method="post" action="{% url 'staff:query_delete' sq.pk %}" class="qb-inline-form" data-qb-delete data-qb-delete-name="{{ sq.name }}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-ghost btn-sm btn-danger">Delete</button>
+                </form>
+              {% endif %}
+            </div>
+          </article>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    {% url 'staff:query' as new_url %}
+    {% include "partials/empty_state.html" with title="No saved queries yet" body="Build a query, preview it, then press Save query to keep it here." action_url=new_url action_label="Build a query" only %}
+  {% endif %}
+</div>
+
+<div class="modal-root" id="qb-delete-modal" aria-hidden="true" data-qb-delete-modal>
+  <div class="modal-backdrop"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="qb-delete-title">
+    <button type="button" class="modal-close" aria-label="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <h3 class="modal-title" id="qb-delete-title">Delete this query?</h3>
+    <p>“<strong data-qb-delete-label></strong>” will be removed{% if perms.staff.manage_shared_queries %} for everyone it is shared with{% endif %}. The staff records are not affected.</p>
+    <div class="form-actions">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="button" class="btn btn-danger" data-qb-delete-confirm>Delete query</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/query-builder.js' %}?v=1" defer></script>
+{% endblock %}

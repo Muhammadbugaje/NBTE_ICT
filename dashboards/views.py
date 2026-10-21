@@ -24,6 +24,14 @@ def _guard(user, *allowed_role_codes, permission=None):
 
 
 def _render(request, template, key, title, ctx):
+    # Phase 7: the QA overview (revenue, institutions, deadlines, cases).
+    if "qa" not in ctx:
+        try:
+            from . import qa_metrics
+
+            ctx["qa"] = qa_metrics.overview()
+        except Exception:  # never break a dashboard over the QA panel
+            ctx["qa"] = None
     ctx["dashboard_key"] = key
     ctx["dashboard_title"] = title
     ctx["now"] = timezone.now()

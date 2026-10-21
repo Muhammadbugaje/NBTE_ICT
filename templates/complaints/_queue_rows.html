@@ -1,0 +1,20 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for c in page.rows %}
+      <li><a class="qa-rowlink cx-rowlink{% if c.sla.state == 'breached' %} is-overdue{% endif %}" href="{% url 'qa_complaints:detail' c.pk %}" hx-get="{% url 'qa_complaints:detail' c.pk %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="cx-prio cx-prio--{{ c.priority }}" title="{{ c.get_priority_display }} priority"><span class="sr-only">{{ c.get_priority_display }} priority</span></span>
+        <span class="qa-rowlink__main">
+          <span class="qa-rowlink__title">{{ c.subject }}</span>
+          <span class="qa-rowlink__meta"><span class="cx-ref">{{ c.reference }}</span><span>· {{ c.institution.name|default:c.raised_by.get_full_name }}</span><span>· {{ c.layer.name }}</span>{% if c.current_department %}<span>· {{ c.current_department.name }}</span>{% endif %}{% if c.priority == "critical" or c.priority == "high" %}<span>· <strong>{{ c.get_priority_display }}</strong></span>{% endif %}</span>
+        </span>
+        <span class="qa-rowlink__side">
+          <span class="qa-chip{% if c.closed_at %} qa-tone-neutral{% elif c.status == 'resolved' %} qa-tone-success{% elif c.status == 'awaiting_raiser' %} qa-tone-info{% else %} qa-tone-pending{% endif %}">{% if c.stage_row %}{{ c.stage_row.stage_label }}{% else %}{{ c.status|humanize_code }}{% endif %}</span>
+          {% if not c.closed_at %}{% include "complaints/_sla.html" with s=c.sla %}{% endif %}
+        </span></a></li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">Nothing here</h3><p class="nbte-empty-state__body">No complaint matches these filters. Try another queue or “Every status”.</p></div>
+{% endif %}

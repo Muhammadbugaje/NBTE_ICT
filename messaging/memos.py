@@ -210,12 +210,17 @@ def awaiting_memos_for(user):
     out = []
     for memo in candidates:
         try:
-            if routing.can_act_on_memo(memo, user):
+            # Superusers see their own steps and the memos nobody can act on,
+            # not every memo in flight.
+            if routing.can_act_on_memo(memo, user, admin_override=False) or (
+                    user.is_superuser and routing.is_parked(memo)):
                 out.append(memo)
         except Exception:
             logger.exception(
                 "Could not resolve memo actor for %s", memo.reference,
             )
+    rank = {Memo.URGENT: 0, Memo.HIGH: 1}
+    out.sort(key=lambda m: (rank.get(m.priority, 2), -m.updated_at.timestamp()))
     return out
 
 

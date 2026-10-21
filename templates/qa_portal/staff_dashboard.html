@@ -1,0 +1,44 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Staff dashboard · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <section class="qa-welcome qa-welcome--staff" aria-labelledby="qa-staff-title">
+    <div class="qa-welcome__text">
+      <span class="qa-eyebrow">NBTE staff · portal view</span>
+      <h1 id="qa-staff-title" data-qa-focus>Welcome{% if request.user.first_name %}, {{ request.user.first_name }}{% endif %}</h1>
+      <p>You are signed in to the institutions’ portal with your NBTE account. Institution records are not shown here — open the internal system to review requests, SSQs and queries.</p>
+      <div class="qa-row qa-gap-sm qa-wrap qa-mt-sm">
+        <a class="btn btn-primary btn-lg qa-go-internal" href="{{ internal_home }}" data-qa-go-internal>{% icon "arrow" 18 "2.4" %} Go to Internal System</a>
+        <a class="btn btn-subtle" href="{{ internal_requests }}">QA requests</a>
+        <a class="btn btn-subtle" href="{{ internal_queue }}">SSQ review queue</a>
+      </div>
+    </div>
+    <dl class="qa-inst-card" aria-label="Your account">
+      <div class="qa-inst-card__head"><span class="qa-inst-card__code">NBTE</span><span class="qa-chip qa-tone-info">Staff</span></div>
+      <dt class="sr-only">Name</dt><dd class="qa-inst-card__name">{{ request.user.get_full_name|default:request.user.email }}</dd>
+      <dt>Department</dt><dd>{{ request.user.department.name|default:"—" }}</dd>
+      <dt>Role</dt><dd>{{ request.user.role.name|default:"—" }}</dd>
+    </dl>
+  </section>
+
+  <div class="qa-board" aria-label="Your work">
+    <a class="qa-board__item" href="{{ internal_requests }}"><strong>{{ staff_counts.requests }}</strong><span>QA requests to act on</span></a>
+    <a class="qa-board__item" href="{{ internal_queue }}"><strong>{{ staff_counts.ssqs }}</strong><span>SSQs waiting for review</span></a>
+    <a class="qa-board__item" href="{{ internal_requests }}"><strong>{{ staff_counts.queries }}</strong><span>Answered queries to read</span></a>
+  </div>
+
+  <section class="qa-card qa-mt-sm" aria-labelledby="qa-staff-work">
+    <header class="qa-card__head"><div><h2 id="qa-staff-work">QA requests you can act on</h2><p>Each item opens in the internal system.</p></div><span class="qa-chip {% if staff_rows %}qa-tone-warn{% else %}qa-chip--success{% endif %}">{{ staff_rows|length }}</span></header>
+    {% if staff_rows %}
+      <ul class="qa-rowlist" role="list">{% for r in staff_rows %}
+        <li><a class="qa-rowlink" href="{{ r.url }}">
+          <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.title }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ r.meta }}</span></span></span>
+          <span class="qa-rowlink__side"><span class="qa-chip qa-tone-pending">{{ r.action }}</span>{% icon "arrow" 16 %}</span></a></li>
+      {% endfor %}</ul>
+    {% else %}
+      <div class="qa-card__body"><div class="qa-zero"><span class="qa-zero__icon" aria-hidden="true">{% icon "check" 26 "2.2" %}</span><div><strong>Nothing waiting for you</strong><p>Programme clearances, SSQs to review and answered queries in your scope appear here.</p></div></div></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_req:queries' %}" hx-get="{% url 'qa_req:queries' %}" hx-target="#qa-panel" hx-push-url="true">Queries</a><span aria-hidden="true">/</span><span aria-current="page">{{ query.reference }}</span></nav>
+<header class="qa-inst-head">
+  <span class="qa-inst-head__code" aria-hidden="true">{{ query.institution.code }}</span>
+  <div><span class="qa-eyebrow">Query · {{ query.subject_label }}</span><h1 data-qa-focus>{{ query.title }}</h1>
+    <div class="qa-inst-head__meta"><span class="qa-chip {{ query.status|tone }}">{{ query.get_status_display }}</span><span class="qa-mono">{{ query.reference }}</span><span>{{ query.institution.name }}</span><span>{% icon "clock" 14 %} due {{ query.due_at|date:"j M Y" }}</span>{% if query.is_overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}</div></div>
+</header>
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+<div class="qa-cols">
+  <div class="qa-stack">
+    <section class="qa-card"><header class="qa-card__head"><div><h2>NBTE asked</h2><p>{{ query.raised_by|who }} · {{ query.created_at|date:"j M Y, H:i" }}</p></div></header><div class="qa-card__body"><p>{{ query.body|linebreaksbr }}</p></div></section>
+    {% for r in responses %}
+      <section class="qa-card qa-card--reply"><header class="qa-card__head"><div><h2>{{ query.institution.code }} responded</h2><p>{{ r.responded_by|who }} · {{ r.at|date:"j M Y, H:i" }}</p></div></header>
+        <div class="qa-card__body qa-stack"><p>{{ r.body|linebreaksbr }}</p>{% if r.file %}<a class="btn btn-sm btn-subtle" href="{{ r.download_url }}">{% icon "download" 14 %} {{ r.display_name }} ({{ r.size_label }})</a>{% endif %}</div></section>
+    {% empty %}<section class="qa-card"><div class="qa-card__body"><p class="qa-muted qa-small">No response yet.</p></div></section>{% endfor %}
+  </div>
+  <aside class="qa-stack">
+    {% if subject %}<section class="qa-card"><div class="qa-card__body qa-stack"><p class="qa-small">About <strong>{{ query.subject_label }}</strong></p>
+      {% if query.qa_request_id %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_req:detail' query.qa_request_id %}" hx-get="{% url 'qa_req:detail' query.qa_request_id %}" hx-target="#qa-panel" hx-push-url="true">Open the QA request</a>{% endif %}</div></section>{% endif %}
+    {% if can_close and query.status != "closed" %}
+      <section class="qa-card"><header class="qa-card__head"><h2>Close the query</h2></header><div class="qa-card__body">
+        <form class="qa-form qa-stack" method="post" action="{% url 'qa_req:query_close' query.pk %}" hx-post="{% url 'qa_req:query_close' query.pk %}" hx-target="#qa-panel">{% csrf_token %}
+          <div class="qa-field"><label for="qc-r">Note (optional)</label><textarea class="input" id="qc-r" name="remark" rows="2"></textarea></div>
+          <button class="btn btn-primary" type="submit">{% icon "check" 16 %} Close query</button></form></div></section>
+    {% elif query.status == "closed" %}<section class="qa-card"><div class="qa-card__body"><p class="qa-small">Closed by {{ query.closed_by|who }} on {{ query.closed_at|date:"j M Y" }}{% if query.close_remark %} — {{ query.close_remark }}{% endif %}.</p></div></section>{% endif %}
+  </aside>
+</div>

@@ -1,0 +1,11 @@
+{% load qa_tags %}
+<form class="qa-form qa-stack" method="post" action="{% url 'qa_req:query_raise' kind subject.pk %}" hx-post="{% url 'qa_req:query_raise' kind subject.pk %}" hx-target="#qa-query-slot" hx-swap="innerHTML" aria-labelledby="qf-h">
+  {% csrf_token %}
+  <h3 id="qf-h" class="qa-h3">Raise a query</h3>
+  <p class="qa-small qa-muted">About: <strong>{{ subject_label }}</strong>. The institution is notified and answers on the portal.</p>
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not sent" message=error %}{% endif %}
+  <div class="qa-field"><label for="qf-title">Title</label><input class="input" id="qf-title" name="title" maxlength="200" required value="{{ values.title|default:'' }}" placeholder="e.g. Staff list does not match the payroll" data-qa-focus></div>
+  <div class="qa-field"><label for="qf-body">What do you need?</label><textarea class="input" id="qf-body" name="body" rows="5" required minlength="5">{{ values.body|default:'' }}</textarea></div>
+  <div class="qa-field qa-field--narrow"><label for="qf-days">Days to respond</label><input class="input" id="qf-days" name="due_days" type="number" min="1" max="120" value="{{ values.due_days|default:default_days }}"></div>
+  <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "mail" 16 %} Send query</button><button class="btn btn-subtle" type="button" onclick="this.closest('[id=qa-query-slot]').innerHTML=''">Cancel</button></div>
+</form>

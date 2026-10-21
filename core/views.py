@@ -494,6 +494,10 @@ def home(request):
         ctx["can_view_settings"] = user.has_perm("config.change_configentry")
         ctx["module_cards"] = _module_cards(user)
         ctx["dashboard"] = _dashboard_for(user)
+        # Phase 7: the work board (tasks, confirmations, recent QA activity).
+        from .workboard import build as build_workboard
+
+        ctx["workboard"] = build_workboard(user)
 
         if user.is_superuser or user.has_perm("config.view_configentry"):
             ctx["system_health"] = _quick_health()
@@ -598,7 +602,11 @@ def protected_download(request, label, pk):
     # attachment models that opt in with PROTECTED_DOWNLOAD (review H1).
     if not (issubclass(model, RestrictedFileModel) or getattr(model, "PROTECTED_DOWNLOAD", False)):
         raise Http404
-    obj = model._default_manager.filter(pk=pk).first()
+    # QA models are institution-scoped (Master Plan §4): their default manager
+    # refuses unscoped reads, so fetch by pk through the explicit `unscoped`
+    # manager and let `can_download()` make the row-level decision.
+    manager = getattr(model, "unscoped", None) or model._default_manager
+    obj = manager.filter(pk=pk).first()
     if obj is None or not obj.file:
         raise Http404
     if not obj.can_download(request.user):

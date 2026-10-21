@@ -60,35 +60,14 @@ SORTABLE_TICKETS = {
 # Visibility helpers
 # ---------------------------------------------------------------------------
 def _can_see_all(user):
-    return user.is_superuser or user.has_perm("accounts.access_all_departments")
+    from .access import can_view_all_tickets
+    return can_view_all_tickets(user)
 
 
 def _visible_tickets_qs(user):
-    """Return the queryset of tickets this user is permitted to see.
-
-    Scope:
-      - superuser / access_all_departments → everything
-      - any user → tickets they raised
-      - any user → tickets assigned to them
-      - department staff (director, deputy, office heads, admin-staff) →
-        tickets handled by their department
-      - otherwise → empty
-    """
-    base = Ticket.objects.select_related(
-        "category", "raised_by", "assigned_to", "handling_department", "asset",
-    )
-    if _can_see_all(user):
-        return base
-
-    q = Q(raised_by=user) | Q(assigned_to=user)
-    if user.department_id and user.role_id:
-        if user.role.code in (
-            "director", "deputy-director",
-            "office-head-admin", "office-head-ts", "office-head-dev",
-            "admin-staff",
-        ):
-            q |= Q(handling_department_id=user.department_id)
-    return base.filter(q).distinct()
+    """Tickets this user may see. The rule lives in tickets/access.py."""
+    from .access import visible_tickets_queryset
+    return visible_tickets_queryset(user)
 
 
 def _can_edit_ticket(user, ticket):
@@ -362,8 +341,14 @@ def ticket_detail(request, pk):
     ) or user.is_superuser
     can_attach = not ticket.is_closed or is_raiser or user.is_superuser
 
+    asset_link_ok = False
+    if ticket.asset_id:
+        from assets.access import can_view_asset
+        asset_link_ok = can_view_asset(user, ticket.asset)
+
     return render(request, "tickets/detail.html", {
         "ticket": ticket,
+        "asset_link_ok": asset_link_ok,
         "activities": activities,
         "comments": comments,
         "attachments": attachments,

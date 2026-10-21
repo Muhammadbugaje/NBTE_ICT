@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Import preview · Staff import & export · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Staff import &amp; export{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="nbr-page">
+  <a href="{% url 'staff:nominal_roll' %}" class="nbr-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Staff import &amp; export
+  </a>
+
+  <header class="nbte-page-header nbr-header">
+    <div class="nbte-page-header__text">
+      <span class="nbte-page-header__eyebrow">Import preview · dry run</span>
+      <h1 class="nbte-page-header__title nbr-filename">{{ upload.name }}</h1>
+      <p class="nbte-page-header__description">This is what the import would do. Nothing has been saved yet — change the options below and run the check again, or confirm.</p>
+    </div>
+  </header>
+
+  {% if result and result.aborted %}
+    <div class="alert alert-danger nbr-alert" role="alert">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      <div><strong>This import would stop without saving anything.</strong><div class="alert-body">{{ result.aborted }}</div></div>
+    </div>
+  {% endif %}
+
+  {% if result %}
+    <dl class="nbr-totals" aria-label="Totals">
+      <div class="nbr-total nbr-total--new"><dt>New staff</dt><dd>{{ result.new }}</dd></div>
+      <div class="nbr-total nbr-total--updated"><dt>Updated</dt><dd>{{ result.updated }}</dd></div>
+      <div class="nbr-total"><dt>Unchanged</dt><dd>{{ result.unchanged }}</dd></div>
+      <div class="nbr-total"><dt>Skipped</dt><dd>{{ result.skipped }}</dd></div>
+      <div class="nbr-total{% if result.date_warnings %} nbr-total--warn{% endif %}"><dt>Date warnings</dt><dd>{{ result.date_warnings|length }}</dd></div>
+      <div class="nbr-total{% if result.duplicate_warnings %} nbr-total--warn{% endif %}"><dt>Duplicate FILE NOs</dt><dd>{{ result.duplicate_warnings|length }}</dd></div>
+      {% if accounts %}<div class="nbr-total nbr-total--updated"><dt>Accounts to create</dt><dd>{{ result.accounts_planned }}</dd></div>{% endif %}
+      {% if result.linked_accounts %}<div class="nbr-total"><dt>Merged with accounts</dt><dd>{{ result.linked_accounts|length }}</dd></div>{% endif %}
+    </dl>
+    <p class="nbr-note">Staff records now: <strong>{{ result.staff_before }}</strong> · after this import: <strong>{{ result.staff_after }}</strong></p>
+  {% endif %}
+
+  <form method="post" action="{% url 'staff:nominal_roll_preview' %}" class="nbr-preview-form" data-nbr-preview>
+    {% csrf_token %}
+    <input type="hidden" name="sheets_submitted" value="1">
+
+    <div class="nbr-split nbr-split--options">
+      <fieldset class="card nbr-card nbr-fieldset">
+        <legend class="nbr-card-title">Sheets to import</legend>
+        <p class="nbr-card-lead">Older sheets are applied first, so the newest sheet wins for anyone listed twice.</p>
+        <ul class="nbr-sheet-checks">
+          {% for name, label, rows in choices %}
+            <li>
+              <label class="check nbr-sheet-check">
+                <input type="checkbox" name="sheet" value="{{ name }}"{% if name in selected %} checked{% endif %}>
+                <span class="nbr-sheet-check-text">
+                  <span class="nbr-sheet-check-name">{{ label }}</span>
+                  <span class="nbr-sheet-check-meta">{{ rows }} row{{ rows|pluralize }}</span>
+                </span>
+              </label>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if empty_sheets %}
+          <p class="nbr-note">Empty, never imported: {{ empty_sheets|join:", " }}.</p>
+        {% endif %}
+      </fieldset>
+
+      <fieldset class="card nbr-card nbr-fieldset">
+        <legend class="nbr-card-title">Upsert mode</legend>
+        <p class="nbr-card-lead">What to do when a row's FILE NO is already in the system.</p>
+        <div class="nbr-modes">
+          {% for value, label, help in modes %}
+            <label class="nbr-mode">
+              <input type="radio" name="mode" value="{{ value }}"{% if mode == value %} checked{% endif %}>
+              <span class="nbr-mode-body">
+                <span class="nbr-mode-label">{{ label }}{% if value == "update" %} <span class="badge badge-primary">Default</span>{% endif %}</span>
+                <span class="nbr-mode-help">{{ help }}</span>
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+    </div>
+
+    {% if can_create_accounts %}
+      <fieldset class="card nbr-card nbr-fieldset nbr-accounts" aria-describedby="nbr-accounts-help">
+        <legend class="nbr-card-title">Sign-in accounts</legend>
+        <label class="check nbr-accounts-toggle">
+          <input type="checkbox" name="create_accounts" data-nbr-accounts{% if accounts %} checked{% endif %}>
+          <span>Create a sign-in account for everyone in this import who doesn't have one</span>
+        </label>
+        <p class="nbr-card-lead" id="nbr-accounts-help">The <strong>email</strong> on the staff record is the sign-in name, so people can also reset a forgotten password themselves (add an <strong>EMAIL</strong> column to the file — it's in the template). Anyone without an email signs in with their <strong>file number</strong> until an email is added to their record; it then becomes their sign-in automatically, and they can change it on their profile. Everyone must change the password at first sign-in. New accounts get the <em>Staff</em> role and their department.</p>
+        {% if result and accounts %}
+          <p class="nbr-accounts-split">
+            <span class="badge badge-success">{{ result.accounts_with_email }} with an email</span>
+            <span class="badge badge--neutral">{{ result.accounts_planned }} to create in total</span>
+          </p>
+        {% endif %}
+        <div class="nbr-modes nbr-accounts-schemes" data-nbr-accounts-options{% if not accounts %} hidden{% endif %}>
+          {% for value, label, help in password_schemes %}
+            <label class="nbr-mode">
+              <input type="radio" name="password_scheme" value="{{ value }}"{% if accounts.scheme == value or not accounts and forloop.first %} checked{% endif %}>
+              <span class="nbr-mode-body">
+                <span class="nbr-mode-label">{{ label }}</span>
+                <span class="nbr-mode-help">{{ help }}</span>
+              </span>
+            </label>
+          {% endfor %}
+          <label class="check nbr-email-details">
+            <input type="checkbox" name="email_details"{% if not accounts or accounts.email %} checked{% endif %}>
+            <span>Email each person their sign-in details (only people with an email; sent through the system's email provider)</span>
+          </label>
+          <div class="field nbr-starter">
+            <label for="nbr-starter">Starter password <span class="promo-optional">only for “one starter password”</span></label>
+            <input type="text" id="nbr-starter" name="starter_password" class="input" minlength="8" autocomplete="off" value="{{ accounts.password|default:'' }}">
+          </div>
+        </div>
+        {% if account_error %}<p class="nbr-stale" role="alert">{{ account_error }}</p>{% endif %}
+      </fieldset>
+    {% endif %}
+
+    {% if result %}
+      <section class="card nbr-card nbr-card-flush" aria-labelledby="nbr-sheet-summary">
+        <h2 class="nbr-card-title nbr-card-title--pad" id="nbr-sheet-summary">Sheet by sheet</h2>
+        <table class="table table--stack nbr-summary" data-no-wrap>
+          <thead>
+            <tr>
+              <th scope="col">Sheet</th>
+              <th scope="col" class="nbr-num">Rows</th>
+              <th scope="col" class="nbr-num">New</th>
+              <th scope="col" class="nbr-num">Updated</th>
+              <th scope="col" class="nbr-num">Unchanged</th>
+              <th scope="col" class="nbr-num">Superseded</th>
+              <th scope="col" class="nbr-num">Skipped</th>
+              <th scope="col" class="nbr-num">Date warnings</th>
+              <th scope="col">Lookups created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in result.sheets %}
+              <tr>
+                <td data-label="Sheet">
+                  <span class="nbr-sheet-name">{{ s.label }}</span>
+                  {% if s.title and s.title != s.label %}<span class="nbr-sheet-sub">{{ s.title }}</span>{% endif %}
+                </td>
+                <td data-label="Rows" class="nbr-num">{{ s.total_rows }}</td>
+                <td data-label="New" class="nbr-num nbr-num--new">{{ s.new }}</td>
+                <td data-label="Updated" class="nbr-num">{{ s.updated }}</td>
+                <td data-label="Unchanged" class="nbr-num">{{ s.unchanged }}</td>
+                <td data-label="Superseded" class="nbr-num" title="Rows that a newer sheet overrides">{{ s.superseded }}</td>
+                <td data-label="Skipped" class="nbr-num">{{ s.skipped }}</td>
+                <td data-label="Date warnings" class="nbr-num{% if s.date_warnings %} nbr-num--warn{% endif %}">{{ s.date_warnings }}</td>
+                <td data-label="Lookups created">
+                  {% if s.lookups_total %}
+                    <ul class="nbr-lookups">
+                      {% for kind, names in s.lookups.items %}
+                        {% if names %}<li><span class="badge" title="{{ names|join:', ' }}">{{ names|length }} {{ kind|lower }}</span></li>{% endif %}
+                      {% endfor %}
+                    </ul>
+                  {% else %}<span class="nbr-sheet-sub">none</span>{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <div class="nbr-warnings">
+        {% include "staff/nominal_roll/_warning_panel.html" with panel_id="nbr-w-dates" title="Date warnings" items=result.date_warnings tone="warn" open=True hint="Fix these in the Excel file and upload it again, or ignore them — the date is either corrected as described or left empty." %}
+        {% include "staff/nominal_roll/_warning_panel.html" with panel_id="nbr-w-dups" title="Duplicate FILE NOs" items=result.duplicate_warnings tone="warn" open=True hint="Two different people share a FILE NO. Only the first is imported; give the other person their correct FILE NO." %}
+        {% include "staff/nominal_roll/_warning_panel.html" with panel_id="nbr-w-other" title="Other warnings" items=result.other_warnings tone="warn" open=False hint="Values that were ignored or read in a particular way." %}
+        {% if result.missing_from_latest %}
+          <section class="card nbr-card nbr-warning-card">
+            <button type="button" class="nbr-warning-head" data-collapse-trigger="nbr-w-missing" aria-expanded="false">
+              <span class="nbr-warning-title">Not on the latest full roll <span class="badge">{{ result.missing_from_latest|length }}</span></span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="nbr-w-missing">
+              <p class="nbr-warning-hint">These people appear only on older sheets — they may have retired or transferred. Untick the older sheets to leave them out, or import them and set their state afterwards.</p>
+              <ul class="nbr-warning-list">
+                {% for emp, name, sheet in result.missing_from_latest %}
+                  <li><span class="nbr-warning-where">{{ emp }}</span> {{ name }} <span class="nbr-sheet-sub">last on “{{ sheet }}”</span></li>
+                {% endfor %}
+              </ul>
+            </div>
+          </section>
+        {% endif %}
+        {% if result.linked_accounts %}
+          <section class="card nbr-card nbr-warning-card nbr-warning-card--info">
+            <button type="button" class="nbr-warning-head" data-collapse-trigger="nbr-w-linked" aria-expanded="true">
+              <span class="nbr-warning-title">Merged with existing account records <span class="badge">{{ result.linked_accounts|length }}</span></span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="nbr-w-linked">
+              <p class="nbr-warning-hint">These people already had a sign-in account (record numbers starting USR-). Their account record takes the file number and the nominal-roll details instead of getting a second record. Check each pair is the same person.</p>
+              <ul class="nbr-warning-list">
+                {% for old, new, name in result.linked_accounts %}<li><span class="nbr-warning-where">{{ old }} → {{ new }}</span> {{ name }}</li>{% endfor %}
+              </ul>
+            </div>
+          </section>
+        {% endif %}
+        {% include "staff/nominal_roll/_warning_panel.html" with panel_id="nbr-w-notes" title="Notes" items=result.info_notes tone="info" open=False hint="For information only — for example dates where day and month could be swapped (read day-first)." %}
+      </div>
+    {% elif not choices %}
+      {% include "partials/empty_state.html" with title="No staff rows found" body="None of the sheets in this file has rows with a SURNAME and FILE NO. Check that you uploaded the nominal roll." only %}
+    {% else %}
+      <div class="alert alert-warn nbr-alert" role="status">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>Tick at least one sheet, then run the check again.</div>
+      </div>
+    {% endif %}
+
+    <div class="nbr-actionbar">
+      <button type="submit" name="discard" value="1" class="btn btn-ghost btn-danger" formnovalidate>Discard upload</button>
+      <span class="nbr-actionbar-spacer"><span class="nbr-stale" data-nbr-stale role="status" hidden>Options changed — run the dry-run again before confirming.</span></span>
+      <button type="submit" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Dry-run again
+      </button>
+      <button type="submit" class="btn btn-primary" formaction="{% url 'staff:nominal_roll_confirm' %}" data-nbr-confirm{% if not result or result.aborted %} disabled{% endif %}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+        Confirm import
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/nominal-roll.js' %}?v=1" defer></script>
+{% endblock %}

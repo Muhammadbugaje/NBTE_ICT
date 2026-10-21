@@ -160,6 +160,38 @@ def working_days_in_month(year, month):
     return days
 
 
+def global_holidays_on(day):
+    """Holidays that apply to the whole organisation (public / all-staff).
+    Department- and role-scoped holidays are checked per user instead."""
+    from portal.models import Scope
+    return [h for h in holidays_on(day)
+            if h.visibility in (Scope.PUBLIC, Scope.STAFF)]
+
+
+def non_working_reason(day, user=None):
+    """Return a user-facing message when attendance must NOT be recorded on
+    `day`, or "" when it is a normal working day.
+
+    One rule shared by GPS check-in, manual (code) check-in and the rotating
+    code generator, so a weekend / off day / holiday is refused everywhere.
+    Pass `user` to also honour department- or role-scoped holidays.
+    """
+    if not is_working_day(day):
+        return ("Today is not a working day, so attendance can't be "
+                "recorded. See you on the next working day.")
+    holidays = holidays_on(day)
+    if holidays:
+        if user is None:
+            applicable = [h for h in holidays if h in global_holidays_on(day)]
+        else:
+            applicable = [h for h in holidays if is_holiday_for(user, day, [h])]
+        if applicable:
+            name = getattr(applicable[0], "name", "") or "a holiday"
+            return (f"Today is a holiday ({name}), so attendance can't be "
+                    f"recorded. Enjoy the day off.")
+    return ""
+
+
 # ===========================================================================
 # Logging
 # ===========================================================================
@@ -233,8 +265,9 @@ def check_in_user(user, lat, lng, now=None):
     now = now or timezone.now()
     today = timezone.localtime(now).date()
 
-    if not is_working_day(today):
-        return CheckInResult(ok=False, message="Today is not a working day.")
+    blocked = non_working_reason(today, user)
+    if blocked:
+        return CheckInResult(ok=False, message=blocked)
 
     existing = (
         AttendanceRecord.objects.select_for_update()
@@ -402,6 +435,17 @@ class ParsedRow:
     email: str
     statuses: dict
     errors: list[str] = field(default_factory=list)
+    # Per-status day counts this row would write (working days only), and
+    # how many of them are credited. Filled by parse_matrix for the preview.
+    counts: dict = field(default_factory=dict)
+
+    @property
+    def credited(self):
+        return sum(v for k, v in self.counts.items() if k in CREDITED_STATUSES)
+
+    @property
+    def counted(self):
+        return sum(self.counts.values())
 
 
 @dataclass
@@ -414,6 +458,45 @@ class ParseResult:
     emails_ok: int
     emails_missing: int
     columns_detected: list[int]
+    # Aggregate of every valid row: {status: days}. See ParsedRow.counts.
+    totals: dict = field(default_factory=dict)
+
+    @property
+    def total_credited(self):
+        return sum(v for k, v in self.totals.items() if k in CREDITED_STATUSES)
+
+    @property
+    def total_counted(self):
+        return sum(self.totals.values())
+
+
+def _count_cells(statuses, year, month):
+    """Count the days an upload row would record, per status.
+
+    Mirrors apply_matrix: blank / unrecognised cells, approved-leave cells
+    (system-managed) and non-working days are not counted.
+    """
+    counts = {}
+    for day_num, raw in statuses.items():
+        status = _CELL_TO_STATUS.get(raw or "")
+        if status is None or status == AttendanceRecord.ON_LEAVE:
+            continue
+        try:
+            d = date_cls(year, month, day_num)
+        except ValueError:
+            continue
+        if not is_working_day(d):
+            continue
+        counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
+def _sum_counts(count_dicts):
+    total = {}
+    for c in count_dicts:
+        for k, v in c.items():
+            total[k] = total.get(k, 0) + v
+    return total
 
 
 def parse_matrix(file_obj, month, year, department=None):
@@ -497,12 +580,17 @@ def parse_matrix(file_obj, month, year, department=None):
         else:
             emails_ok += 1
 
+        counts = {}
+        if user is not None and not errors:
+            counts = _count_cells(statuses, year, month)
+
         parsed_rows.append(ParsedRow(
             row_number=r_idx,
             user=user,
             email=email_cell,
             statuses=statuses,
             errors=errors,
+            counts=counts,
         ))
 
     days_in_month = calendar.monthrange(year, month)[1]
@@ -524,6 +612,7 @@ def parse_matrix(file_obj, month, year, department=None):
         emails_ok=emails_ok,
         emails_missing=emails_missing,
         columns_detected=[d for _, d in day_columns],
+        totals=_sum_counts(r.counts for r in parsed_rows),
     )
 
 
@@ -536,6 +625,15 @@ class ApplyResult:
     updated: int = 0
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
+    # Per-status count of the days written by this upload, so the screen can
+    # show the aggregate straight away (present / late / absent / excused /
+    # holiday) together with how many of them are credited.
+    counts: dict = field(default_factory=dict)
+
+    @property
+    def credited(self):
+        return sum(v for k, v in self.counts.items()
+                   if k in CREDITED_STATUSES)
 
 
 _CELL_TO_STATUS = {
@@ -616,6 +714,7 @@ def apply_matrix(parsed, actor, overwrite=True):
                 result.created += 1
             else:
                 result.updated += 1
+            result.counts[status] = result.counts.get(status, 0) + 1
 
     log(actor, date_cls(parsed.year, parsed.month, 1),
         f"Matrix applied: +{result.created} ~{result.updated} skip{result.skipped}",
@@ -626,41 +725,249 @@ def apply_matrix(parsed, actor, overwrite=True):
 # ===========================================================================
 # Stats
 # ===========================================================================
+# ---------------------------------------------------------------------------
+# Aggregation rules (one place, used by every screen and every export)
+#
+#   Present + Late                         -> physically attended
+#   Excused + Holiday + On approved leave  -> NOT attended, but credited: they
+#                                             count towards the total exactly
+#                                             like a present day and are never
+#                                             held against the person.
+#   Absent                                 -> the only status that is not credited.
+#
+#   Attendance %  = credited days / counted working days (capped at 100)
+#
+# ONLY RECORDED DAYS ARE COUNTED. A working day with no attendance record at
+# all (for example before the system started being used) is not counted as
+# present, absent or anything else: it is simply not part of the calculation.
+# Only working days up to today are looked at.
+# ---------------------------------------------------------------------------
+CREDITED_STATUSES = frozenset({
+    AttendanceRecord.PRESENT, AttendanceRecord.LATE,
+    AttendanceRecord.EXCUSED, AttendanceRecord.HOLIDAY,
+    AttendanceRecord.ON_LEAVE,
+})
+NEUTRAL_STATUSES = frozenset({
+    AttendanceRecord.EXCUSED, AttendanceRecord.HOLIDAY,
+    AttendanceRecord.ON_LEAVE,
+})
+
+
+def pct_of(credited, expected):
+    if not expected:
+        return 0
+    return min(100, round((credited / expected) * 100))
+
+
+def period_records(users, first_day, last_day):
+    """Records for `users` in [first_day, last_day], with what the reports
+    need to say *who approved* a leave day (no per-row queries)."""
+    return list(
+        AttendanceRecord.objects
+        .filter(user__in=list(users), date__gte=first_day, date__lte=last_day)
+        .select_related("user", "recorded_by", "location", "leave_application__request")
+        .prefetch_related("leave_application__request__approvals__actor")
+    )
+
+
+def leave_approver(record):
+    """Name of the person who approved the leave behind an ON_LEAVE record,
+    or "" when unknown."""
+    app = getattr(record, "leave_application", None)
+    if app is None:
+        return ""
+    try:
+        approvals = [a for a in app.request.approvals.all() if a.decision == "approve"]
+    except Exception:
+        return ""
+    if not approvals:
+        return ""
+    last = max(approvals, key=lambda a: (a.decided_at, a.pk or 0))
+    actor = getattr(last, "actor", None)
+    if actor is None:
+        return ""
+    return actor.get_full_name() or actor.email
+
+
+def credit_authority(record):
+    """Who is behind a credited-but-not-present day: the leave approver for
+    approved leave, the person who recorded it for an excused day."""
+    if record.status == AttendanceRecord.ON_LEAVE:
+        return leave_approver(record)
+    if record.status == AttendanceRecord.EXCUSED and record.recorded_by_id:
+        return record.recorded_by.get_full_name() or record.recorded_by.email
+    return ""
+
+
+def record_detail(record):
+    """Short human description for reports: why a non-present day is credited."""
+    st = record.status
+    if st == AttendanceRecord.ON_LEAVE:
+        who = leave_approver(record)
+        return "On approved leave" + (f" — approved by {who}" if who else "")
+    if st == AttendanceRecord.EXCUSED:
+        who = ""
+        if record.recorded_by_id:
+            who = record.recorded_by.get_full_name() or record.recorded_by.email
+        note = (record.notes or "").strip()
+        bits = ["Excused"]
+        if who:
+            bits.append(f"by {who}")
+        text = " ".join(bits)
+        return text + (f" — {note}" if note else "")
+    if st == AttendanceRecord.HOLIDAY:
+        return "Holiday"
+    return record.get_status_display()
+
+
+def format_date_range(start, end):
+    """"Wed 14 Oct 2026" or "Wed 14 Oct – Fri 16 Oct 2026"."""
+    if start == end:
+        return start.strftime("%a %d %b %Y")
+    if start.year == end.year:
+        return f"{start.strftime('%a %d %b')} – {end.strftime('%a %d %b %Y')}"
+    return f"{start.strftime('%a %d %b %Y')} – {end.strftime('%a %d %b %Y')}"
+
+
+def _contiguous(prev_day, next_day, user_id, by_user_date):
+    """True when nothing but non-working days (or the person's own holiday
+    records) lies between the two dates, i.e. they are back-to-back working
+    days. Friday -> Monday counts as consecutive."""
+    d = prev_day + timedelta(days=1)
+    while d < next_day:
+        if is_working_day(d):
+            gap = by_user_date.get((user_id, d))
+            if gap is None or gap.status != AttendanceRecord.HOLIDAY:
+                return False
+        d += timedelta(days=1)
+    return True
+
+
+def group_credited_days(records):
+    """Collapse excused / holiday / approved-leave records into one row per
+    unbroken stretch: same person, same status, same approver (or recorder).
+
+    14, 15 and 16 Oct approved by the same person become ONE row
+    "Wed 14 Oct – Fri 16 Oct 2026" (3 days). A different approver, a different
+    status or a real gap starts a new row.
+    """
+    recs = sorted(
+        records,
+        key=lambda r: ((r.user.get_full_name() or r.user.email).lower(), r.user_id, r.date),
+    )
+    by_user_date = {(r.user_id, r.date): r for r in recs}
+    groups = []
+    for r in recs:
+        who = credit_authority(r)
+        last = groups[-1] if groups else None
+        if (
+            last is not None
+            and last["user"].pk == r.user_id
+            and last["status"] == r.status
+            and last["authority"] == who
+            and _contiguous(last["end"], r.date, r.user_id, by_user_date)
+        ):
+            last["end"] = r.date
+            last["days"] += 1
+            note = (r.notes or "").strip()
+            if note and note not in last["notes"]:
+                last["notes"].append(note)
+            continue
+        note = (r.notes or "").strip()
+        groups.append({
+            "user": r.user,
+            "status": r.status,
+            "status_label": r.get_status_display(),
+            "authority": who,
+            "start": r.date,
+            "end": r.date,
+            "days": 1,
+            "notes": [note] if note else [],
+        })
+    for g in groups:
+        g["dates"] = format_date_range(g["start"], g["end"])
+        g["notes_text"] = "; ".join(g["notes"])
+    return groups
+
+
+def _holidays_overlapping(first_day, last_day):
+    from django.db.models import Q
+    from portal.models import Holiday
+    return list(
+        Holiday.objects.filter(is_active=True)
+        .filter(Q(is_recurring=True) | Q(date_start__lte=last_day, date_end__gte=first_day))
+        .prefetch_related("roles")
+    )
+
+
+def _blank_tally():
+    return {"present": 0, "late": 0, "absent": 0, "excused": 0,
+            "holiday": 0, "on_leave": 0, "credited": 0, "expected": 0,
+            "pct": 0, "holiday_dates": set()}
+
+
+def summarize_period(users, first_day, last_day, records=None, today=None):
+    """Per-user tallies for [first_day, last_day] -> {user_id: tally}.
+
+    Counts ONLY days that have an attendance record (on working days up to
+    today). No record = not counted at all.
+
+    tally keys: present, late, absent, excused, holiday, on_leave,
+    credited (everything except absent), expected (recorded days counted),
+    pct, holiday_dates (always empty: unrecorded holidays are not counted).
+    """
+    today = today or timezone.localdate()
+    users = list(users)
+    if records is None:
+        records = period_records(users, first_day, last_day)
+
+    stop = min(last_day, today)
+    out = {u.pk: _blank_tally() for u in users}
+    for r in records:
+        t = out.get(r.user_id)
+        if t is None:
+            continue
+        if r.date < first_day or r.date > stop or not is_working_day(r.date):
+            continue
+        if r.status not in ("present", "late", "absent", "excused", "holiday", "on_leave"):
+            continue
+        t["expected"] += 1
+        t[r.status] += 1
+    for t in out.values():
+        t["credited"] = t["expected"] - t["absent"]
+        t["pct"] = pct_of(t["credited"], t["expected"])
+    return out
+
+
+def combine_tallies(tallies):
+    """Sum several tallies (department / directorate aggregate)."""
+    agg = _blank_tally()
+    agg.pop("holiday_dates")
+    for t in tallies:
+        for k in ("present", "late", "absent", "excused", "holiday",
+                  "on_leave", "credited", "expected"):
+            agg[k] += t[k]
+    agg["pct"] = pct_of(agg["credited"], agg["expected"])
+    return agg
+
+
 def attendance_stats(user, days=30):
     """Return summary numbers for a user over the last `days` calendar days."""
     end = timezone.localdate()
     start = end - timedelta(days=days - 1)
 
-    records = AttendanceRecord.objects.filter(
-        user=user, date__gte=start, date__lte=end,
-    ).order_by("date")
+    records = period_records([user], start, end)
+    records.sort(key=lambda r: r.date)
+    tally = summarize_period([user], start, end, records=records, today=end)[user.pk]
 
     working_days = [
         d for d in (start + timedelta(days=i) for i in range((end - start).days + 1))
         if is_working_day(d)
     ]
-    total_expected = len(working_days)
-
     by_date = {r.date: r for r in records}
 
-    present = late = absent = excused = holiday = on_leave = 0
-    for d in working_days:
-        r = by_date.get(d)
-        if r is None:
-            continue
-        if r.status == AttendanceRecord.PRESENT:
-            present += 1
-        elif r.status == AttendanceRecord.LATE:
-            late += 1
-        elif r.status == AttendanceRecord.ABSENT:
-            absent += 1
-        elif r.status == AttendanceRecord.EXCUSED:
-            excused += 1
-        elif r.status == AttendanceRecord.HOLIDAY:
-            holiday += 1
-        elif r.status == AttendanceRecord.ON_LEAVE:
-            on_leave += 1
-
+    # Streak: consecutive working days attended. Excused / holiday / approved
+    # leave days neither add to the streak nor break it.
     streak = 0
     cursor = end
     for _ in range(days):
@@ -670,27 +977,30 @@ def attendance_stats(user, days=30):
         r = by_date.get(cursor)
         if r is not None and r.is_present:
             streak += 1
-            cursor -= timedelta(days=1)
+        elif r is not None and r.status in NEUTRAL_STATUSES:
+            pass
+        elif cursor == end and r is None:
+            pass  # today, not checked in yet
         else:
             break
-
-    denom = total_expected - holiday - on_leave or 1
-    pct = round(((present + late) / denom) * 100) if total_expected else 0
+        cursor -= timedelta(days=1)
 
     return {
         "window_days": days,
         "start": start,
         "end": end,
-        "total_expected": total_expected,
-        "present": present,
-        "late": late,
-        "absent": absent,
-        "excused": excused,
-        "holiday": holiday,
-        "on_leave": on_leave,
-        "present_pct": pct,
+        "total_expected": tally["expected"],
+        "working_days": len(working_days),
+        "present": tally["present"],
+        "late": tally["late"],
+        "absent": tally["absent"],
+        "excused": tally["excused"],
+        "holiday": tally["holiday"],
+        "on_leave": tally["on_leave"],
+        "credited": tally["credited"],
+        "present_pct": tally["pct"],
         "streak": streak,
-        "records": list(records),
+        "records": records,
     }
 
 
@@ -698,44 +1008,31 @@ def department_summary(department, start, end):
     """Aggregate stats for every active user in a department for [start, end]."""
     from accounts.models import User
 
-    users = (
+    users = list(
         User.objects.filter(is_active=True, department=department)
         .order_by("first_name", "last_name", "email")
     )
-    days = [
-        start + timedelta(days=i)
-        for i in range((end - start).days + 1)
+    total_working = sum(
+        1 for i in range((end - start).days + 1)
         if is_working_day(start + timedelta(days=i))
-    ]
-    total_working = len(days)
+    )
+    records = period_records(users, start, end)
+    tallies = summarize_period(users, start, end, records=records)
 
     out = []
     for u in users:
-        by_date = {
-            r.date: r
-            for r in AttendanceRecord.objects.filter(
-                user=u, date__gte=start, date__lte=end,
-            )
-        }
-        present = late = absent = 0
-        for d in days:
-            r = by_date.get(d)
-            if r is None:
-                continue
-            if r.status in AttendanceRecord.STATUSES_PRESENT:
-                present += 1
-                if r.status == AttendanceRecord.LATE:
-                    late += 1
-            elif r.status == AttendanceRecord.ABSENT:
-                absent += 1
-        pct = round((present / total_working) * 100) if total_working else 0
+        t = tallies[u.pk]
         out.append({
             "user": u,
-            "present": present,
-            "late": late,
-            "absent": absent,
-            "pct": pct,
+            "present": t["present"], "late": t["late"], "absent": t["absent"],
+            "excused": t["excused"], "holiday": t["holiday"],
+            "on_leave": t["on_leave"], "credited": t["credited"],
+            "expected": t["expected"], "pct": t["pct"],
         })
+
+    detail = [r for r in records if r.status in NEUTRAL_STATUSES
+              and is_working_day(r.date) and r.date <= timezone.localdate()]
+    detail.sort(key=lambda r: (r.user.get_full_name() or r.user.email, r.date))
 
     return {
         "department": department,
@@ -743,6 +1040,9 @@ def department_summary(department, start, end):
         "end": end,
         "working_days": total_working,
         "users": out,
+        "total": combine_tallies([tallies[u.pk] for u in users]),
+        "detail_records": detail,
+        "detail_groups": group_credited_days(detail),
     }
 
 
@@ -821,7 +1121,9 @@ def auto_mark_absent(for_date=None, days_back=0):
 
     staff = list(
         Staff.objects
-        .filter(is_deleted=False, user__isnull=False)
+        # Deactivated accounts (people who left) must not collect "absent"
+        # records: they would drag every department percentage down.
+        .filter(is_deleted=False, user__isnull=False, user__is_active=True)
         .select_related("user", "state")
     )
     if not staff:
@@ -867,8 +1169,13 @@ def auto_mark_absent(for_date=None, days_back=0):
 
         if to_create:
             try:
+                before = AttendanceRecord.objects.filter(date=day).count()
                 AttendanceRecord.objects.bulk_create(to_create, ignore_conflicts=True)
-                total_created += len(to_create)
+                # With ignore_conflicts the list length over-counts rows that
+                # already existed (a concurrent check-in), so count what landed.
+                total_created += (
+                    AttendanceRecord.objects.filter(date=day).count() - before
+                )
             except Exception:
                 logger.exception("auto_mark_absent: bulk_create failed for %s", day)
                 for obj in to_create:
@@ -910,7 +1217,8 @@ def send_weekly_summary(for_date=None):
     )
 
     by_dept = defaultdict(lambda: {
-        "present": 0, "late": 0, "absent": 0, "excused": 0, "total": 0,
+        "present": 0, "late": 0, "absent": 0, "excused": 0,
+        "holiday": 0, "on_leave": 0, "total": 0,
     })
 
     user_ids = {r.user_id for r in records}
@@ -953,10 +1261,10 @@ def send_weekly_summary(for_date=None):
             continue
 
         stats = by_dept[dept.pk]
-        pct = (
-            round((stats["present"] + stats["late"]) / stats["total"] * 100)
-            if stats["total"] else 0
-        )
+        # Excused, holiday and approved-leave days are credited like present.
+        credited = (stats["present"] + stats["late"] + stats["excused"]
+                    + stats["holiday"] + stats["on_leave"])
+        pct = pct_of(credited, stats["total"])
 
         try:
             from core.email_utils import send_templated_email

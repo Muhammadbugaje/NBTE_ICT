@@ -1,0 +1,8 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="tl-h">
+  <header class="qa-card__head"><div><h2 id="tl-h">Timeline</h2><p>Every stage move, return (with its remark), reassignment and record change, newest first. It matches the history of the linked tasks.</p></div></header>
+  <div class="qa-card__body"><ol class="qa-tl">
+    {% for e in timeline %}<li><span class="qa-tl__text"><strong>{{ e.title }}</strong>{% if e.detail %} · {{ e.detail|humanize_code }}{% endif %}{% if e.remark %} — “{{ e.remark }}”{% endif %}</span><small>{{ e.actor|who:"System" }} · <time datetime="{{ e.at|date:'c' }}">{{ e.at|date:"j M Y, H:i" }}</time></small></li>
+    {% empty %}<li class="qa-muted">Nothing yet.</li>{% endfor %}
+  </ol></div>
+</section>

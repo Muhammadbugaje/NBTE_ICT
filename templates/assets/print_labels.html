@@ -1,146 +1,91 @@
-{% load static %}
-<!DOCTYPE html>
+{% load static l10n %}<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Asset labels · {{ SITE_NAME }}</title>
-  <style>
-    * { box-sizing: border-box; }
-    .label-actions { display: flex; gap: 10px; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #fff;
-    }
-    .toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 12px 16px;
-      margin-bottom: 20px;
-      background: #f4f6f7;
-      border-radius: 10px;
-      font-size: 14px;
-    }
-    .toolbar a { color: #1F6B3E; text-decoration: none; font-weight: 600; }
-    .toolbar button {
-      padding: 8px 16px;
-      background: #1F6B3E;
-      color: #fff;
-      border: 0;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    .sheet {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-    .label {
-      display: grid;
-      grid-template-columns: 90px 1fr;
-      gap: 12px;
-      padding: 12px;
-      border: 1.5px solid #1F6B3E;
-      border-radius: 8px;
-      page-break-inside: avoid;
-      background: #fff;
-    }
-    .label-qr {
-      display: grid;
-      place-items: center;
-      background: #fff;
-    }
-    .label-qr svg { width: 90px; height: 90px; }
-    .label-info {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      min-width: 0;
-    }
-    .label-brand {
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: .1em;
-      text-transform: uppercase;
-      color: #1F6B3E;
-      margin-bottom: 2px;
-    }
-    .label-tag {
-      font-family: monospace;
-      font-size: 12px;
-      font-weight: 700;
-      color: #181c20;
-      word-break: break-all;
-      margin-bottom: 4px;
-    }
-    .label-name {
-      font-size: 11px;
-      color: #3d434b;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .label-dept {
-      font-size: 9px;
-      color: #5a616b;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      margin-top: 4px;
-    }
-    .empty-note {
-      padding: 40px;
-      text-align: center;
-      color: #5a616b;
-    }
-    @media print {
-      .toolbar { display: none; }
-      body { padding: 8mm; }
-      .sheet { gap: 6mm; }
-      .label { border-color: #1F6B3E; }
-    }
-  </style>
+  <link rel="stylesheet" href="{% static 'css/asset-labels.css' %}?v=1">
+  {# The page size of the chosen style, so the browser print dialog opens with the right paper. #}
+  <style>@page { size: {{ style.page_size_css }}; margin: 0; }</style>
 </head>
-<body>
+<body class="lbl-body-page{% if guides and style.is_sheet %} show-guides{% endif %}" data-style-key="{{ style.key }}">
 
-<div class="toolbar">
-  <div>
-    <strong>{{ assets|length }} label{{ assets|length|pluralize }}</strong>
-    — print or save as PDF, then cut and stick on the items.
+<div class="lbl-toolbar no-print">
+  <div class="lbl-toolbar-main">
+    <div class="lbl-toolbar-title">
+      <strong>{{ total_labels }} label{{ total_labels|pluralize }}</strong>
+      · {{ style.name }} <span class="lbl-muted">({{ style.size_label }})</span>
+      {% if style.is_sheet %}<span class="lbl-muted">· {{ pages|length }} page{{ pages|length|pluralize }}</span>{% endif %}
+    </div>
+    <div class="lbl-toolbar-actions">
+      <button type="button" class="lbl-btn" data-label-print {% if not assets %}disabled{% endif %}>Print</button>
+      <a class="lbl-link" href="{% url 'assets:list' %}">Back to assets</a>
+    </div>
   </div>
-  <div class="label-actions">
-    <button data-print>Print</button>
-    <a href="{% url 'assets:list' %}">Back to assets</a>
-  </div>
+
+  <form method="get" class="lbl-options" data-label-options>
+    {% if tags_param %}<input type="hidden" name="tags" value="{{ tags_param }}">{% endif %}
+    {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+    <input type="hidden" name="style" value="{{ style.key }}">
+    <label class="lbl-field">Copies of each
+      <input type="number" name="copies" min="1" max="{{ max_copies }}" value="{{ copies }}">
+    </label>
+    {% if style.is_sheet %}
+      <label class="lbl-field">Skip first cells
+        <input type="number" name="skip" min="0" max="{{ style.per_page|add:'-1' }}" value="{{ skip }}">
+      </label>
+      <label class="lbl-field lbl-check">
+        <input type="checkbox" name="guides" value="1" {% if guides %}checked{% endif %}> Cut guides
+      </label>
+    {% endif %}
+  </form>
 </div>
 
+{% if notice %}<div class="lbl-notice no-print">{{ notice }}</div>{% endif %}
+
 {% if assets %}
-  <div class="sheet">
-    {% for asset in assets %}
-      <div class="label">
-        <div class="label-qr">
-          {% if asset.qr_svg %}
-            {{ asset.qr_svg|safe }}
-          {% endif %}
-        </div>
-        <div class="label-info">
-          <div class="label-brand">NBTE · ICT</div>
-          <div class="label-tag">{{ asset.asset_tag }}</div>
-          <div class="label-name">{{ asset.display_name }}</div>
-          {% if asset.owner_department %}
-            <div class="label-dept">{{ asset.owner_department.name }}</div>
-          {% endif %}
-        </div>
-      </div>
-    {% endfor %}
-  </div>
-{% else %}
-  <div class="empty-note">No assets match the requested filter.</div>
+<section class="lbl-picker no-print" aria-label="Label style">
+  {% for opt in options %}
+    <a class="lbl-pick{% if opt.active %} is-active{% endif %}" href="{{ opt.url }}"
+       data-style-key="{{ opt.style.key }}"{% if opt.active %} aria-current="true"{% endif %}>
+      <span class="lbl-pick-thumb" style="height:{{ opt.style.thumb_height_px|unlocalize }}px">
+        <span class="lbl-pick-thumb-inner"
+              style="width:{{ opt.style.thumb_native_width_px|unlocalize }}px;height:{{ opt.style.thumb_native_height_px|unlocalize }}px;transform:scale({{ opt.style.thumb_scale|unlocalize }})">
+          {% with asset=sample style=opt.style %}{% include style.template %}{% endwith %}
+        </span>
+      </span>
+      <span class="lbl-pick-name">{{ opt.style.name }}</span>
+      <span class="lbl-pick-size">{{ opt.style.size_label }}</span>
+      <span class="lbl-pick-desc">{{ opt.style.description }}</span>
+    </a>
+  {% endfor %}
+</section>
 {% endif %}
 
+{% if assets %}
+  {% if style.is_sheet %}
+    <div class="lbl-sheets">
+      {% for page in pages %}
+        <div class="lbl-sheet"
+             style="padding-top:{{ style.margin_top_mm|unlocalize }}mm;padding-left:{{ style.margin_left_mm|unlocalize }}mm;grid-template-columns:repeat({{ style.columns }},{{ style.width_mm|unlocalize }}mm);grid-auto-rows:{{ style.height_mm|unlocalize }}mm;column-gap:{{ style.gap_x_mm|unlocalize }}mm;row-gap:{{ style.gap_y_mm|unlocalize }}mm">
+          {% for _ in page.blanks %}<div class="lbl-blank"></div>{% endfor %}
+          {% for asset in page.assets %}{% include style.template %}{% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="lbl-roll">
+      {% for asset in labels %}
+        <div class="lbl-page" style="width:{{ style.width_mm|unlocalize }}mm;height:{{ style.height_mm|unlocalize }}mm">
+          {% include style.template %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% else %}
+  <div class="lbl-empty no-print">No assets match the requested filter.</div>
+{% endif %}
+
+<script src="{% static 'js/asset-labels.js' %}?v=1"></script>
 </body>
 </html>

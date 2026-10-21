@@ -1,0 +1,8 @@
+{% load qa_tags %}
+{% if queries %}
+  <ul class="qa-rowlist" role="list">{% for q in queries %}
+    <li><a class="qa-rowlink" href="{% url 'qa_req:query' q.pk %}" hx-get="{% url 'qa_req:query' q.pk %}" hx-target="#qa-panel" hx-push-url="true">
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ q.title }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ q.reference }}</span><span>· {{ q.subject_label }}</span><span>· due {{ q.due_at|date:"j M Y" }}</span></span></span>
+      <span class="qa-rowlink__side"><span class="qa-chip {{ q.status|tone }}">{{ q.get_status_display }}</span>{% if q.is_overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}</span></a></li>
+  {% endfor %}</ul>
+{% else %}<div class="qa-card__body"><p class="qa-muted qa-small">No queries yet.</p></div>{% endif %}

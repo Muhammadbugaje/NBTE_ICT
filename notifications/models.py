@@ -87,6 +87,8 @@ class Notification(models.Model):
     SYSTEM, MESSAGE, STAFF, TICKET, ASSET, REQUEST, TASK, IMPORT = (
         "system", "message", "staff", "ticket", "asset", "request", "task", "import",
     )
+    # QA (Master Plan §1, §8): choices-only addition; the column is unchanged.
+    QA = "qa"
     CATEGORY_CHOICES = [
         (SYSTEM, "System"),
         (MESSAGE, "Message"),
@@ -96,6 +98,7 @@ class Notification(models.Model):
         (REQUEST, "Request"),
         (TASK, "Task"),
         (IMPORT, "Import"),
+        (QA, "Quality assurance"),
     ]
 
     INFO, SUCCESS, WARNING, ERROR = "info", "success", "warning", "error"

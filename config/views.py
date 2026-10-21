@@ -43,10 +43,14 @@ def settings_index(request):
         {"role": role, "field": role_entitlement_form[f"role_{role.pk}"]}
         for role in roles
     ]
+    # QA keys (Master Plan §14) live on Settings → QA, which enforces
+    # `editable_by`, dual control and locked keys. They are not listed here.
     entries = list(
         ConfigEntry.objects.exclude(key=ROLE_ENTITLEMENT_CONFIG_KEY)
+        .exclude(key__startswith="qa.")
         .order_by("group", "key", "scope")
     )
+    qa_settings_count = ConfigEntry.objects.filter(key__startswith="qa.").count()
     grouped = [(g or "General", list(items)) for g, items in groupby(entries, key=lambda e: e.group)]
     from notifications import engine
 
@@ -69,6 +73,7 @@ def settings_index(request):
         "leave_role_entitlement_form": role_entitlement_form,
         "leave_role_entitlement_rows": role_entitlement_rows,
         "leave_role_entitlement_error": role_entitlement_error,
+        "qa_settings_count": qa_settings_count,
     })
 
 
@@ -142,6 +147,15 @@ def save_leave_role_entitlements(request):
 @require_POST
 def settings_save(request, pk):
     entry = get_object_or_404(ConfigEntry, pk=pk)
+    # QA (Master Plan §14): locked keys never change, and dual-control or
+    # permission-gated keys only change through Settings → QA, which routes
+    # them to a second officer. This generic page must not be a way around it.
+    if entry.is_locked:
+        messages.error(request, f"{entry.key} is fixed by policy and cannot be changed.")
+        return redirect("config:settings")
+    if entry.dual_control or entry.editable_by or entry.key.startswith("qa."):
+        messages.error(request, f"{entry.key} is managed on Settings → QA.")
+        return redirect("config:settings")
     entry.value = request.POST.get("value", "")
     try:
         entry.full_clean()

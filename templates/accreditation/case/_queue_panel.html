@@ -1,0 +1,17 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">Case Board</a><span aria-hidden="true">/</span><span aria-current="page">My stage work</span></nav>
+<section class="qa-card" aria-labelledby="q-h">
+  <header class="qa-card__head"><div><h2 id="q-h" data-qa-focus>My stage work</h2><p>SOP-03 stages waiting on you{% if role %} ({{ role }}){% endif %}. The ES sees the cost and visit approvals here; the Pay Officer sees fund releases.</p></div></header>
+  <nav class="qa-tabs" aria-label="Kind of stage">{% for v, l in kinds %}<a href="?kind={{ v }}" hx-get="{% url 'qa_case:queue' %}?kind={{ v }}" hx-target="#qa-panel" hx-push-url="true" class="{% if kind == v %}is-active{% endif %}"{% if kind == v %} aria-current="page"{% endif %}>{{ l }}</a>{% endfor %}</nav>
+  <ul class="qa-rowlist" role="list">
+    {% for link in page.rows %}
+    <li><a class="qa-rowlink" href="{% url 'qa_case:detail' link.case.pk %}?stage={{ link.stage_code }}" hx-get="{% url 'qa_case:detail' link.case.pk %}?stage={{ link.stage_code }}" hx-target="#qa-panel" hx-push-url="true">
+      <span class="qa-rowlink__badge">{{ link.stage_no|default:"—" }}</span>
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ link.stage_label }}</span>
+        <span class="qa-rowlink__meta"><span>{{ link.case.institution.name }}</span><span>· <span class="qa-mono">{{ link.case.reference }}</span></span><span>· task {{ link.task.reference }}</span></span></span>
+      <span class="qa-rowlink__side">{% if link.overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% elif link.due_at %}<span class="qa-chip">Due {{ link.due_at|date:"j M, H:i" }}</span>{% endif %}</span>
+    </a></li>
+    {% empty %}<li class="qa-card__body qa-muted">Nothing is waiting on you.</li>{% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with page=page target="#qa-panel" %}
+</section>

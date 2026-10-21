@@ -1,0 +1,18 @@
+{% load qa_tags %}
+<form id="pb-form" method="post" action="{% if body %}{% url 'qa_pb:body_edit' body.pk %}{% else %}{% url 'qa_pb:body_new' %}{% endif %}" hx-post="{% if body %}{% url 'qa_pb:body_edit' body.pk %}{% else %}{% url 'qa_pb:body_new' %}{% endif %}" hx-target="#pb-form" hx-swap="outerHTML" novalidate>
+  {% csrf_token %}
+  {% include "qa_core/partials/_form_errors.html" %}
+  <div class="qa-fields">
+    {% include "qa_core/partials/_field.html" with field=form.name %}
+    {% include "qa_core/partials/_field.html" with field=form.acronym %}
+    {% include "qa_core/partials/_field.html" with field=form.contact_person %}
+    {% include "qa_core/partials/_field.html" with field=form.email %}
+    {% include "qa_core/partials/_field.html" with field=form.phone %}
+    {% include "qa_core/partials/_field.html" with field=form.is_active %}
+    {% include "qa_core/partials/_field.html" with field=form.address %}
+  </div>
+  <div class="qa-form-actions">
+    <a class="btn btn-ghost" href="{% if body %}{% url 'qa_pb:body_detail' body.pk %}{% else %}{% url 'qa_pb:list' %}{% endif %}" hx-get="{% if body %}{% url 'qa_pb:body_detail' body.pk %}{% else %}{% url 'qa_pb:list' %}{% endif %}" hx-target="#qa-panel" hx-push-url="true">Cancel</a>
+    <button type="submit" class="btn btn-primary">{% if body %}Save changes{% else %}Add body{% endif %}</button>
+  </div>
+</form>

@@ -1,0 +1,21 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Queries · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} Queries from NBTE</span>
+    <h1 data-qa-focus>Queries</h1>
+    <p>When NBTE needs more information about a QA request, an SSQ or a document, it asks here. Answer before the date shown.{% if open_count %} <strong>{{ open_count }} waiting for your answer.</strong>{% endif %}</p>
+  </header>
+  <section class="qa-card" aria-label="Queries">
+    <form class="qa-toolbar" role="search" hx-get="{% url 'qa_portal:queries' %}" hx-target="#qa-query-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change">
+      <label class="qa-search"><span class="sr-only">Search queries</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference, title or request" autocomplete="off"></label>
+      <select class="input qa-select" name="status" aria-label="Status">{% for v, l in "active:Open or answered,open:Waiting for my answer,answered:Answered,closed:Closed,all:All"|split_pairs %}<option value="{{ v }}"{% if status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <select class="input qa-select" name="about" aria-label="About"><option value="">About anything</option><option value="request"{% if filters.about == "request" %} selected{% endif %}>A QA request or SSQ</option><option value="other"{% if filters.about == "other" %} selected{% endif %}>Your institution's record</option></select>
+      <select class="input qa-select" name="due" aria-label="Due"><option value="">Any due date</option><option value="overdue"{% if filters.due == "overdue" %} selected{% endif %}>Overdue</option><option value="week"{% if filters.due == "week" %} selected{% endif %}>Due within 7 days</option></select>
+    </form>
+    <div id="qa-query-rows" class="qa-region" data-qa-region aria-live="polite">{% include "qa_portal/queries/_rows.html" %}</div>
+  </section>
+</div>
+{% endblock %}

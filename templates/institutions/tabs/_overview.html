@@ -1,0 +1,70 @@
+{% load qa_tags %}
+<div class="qa-cols">
+  <div>
+    <section class="qa-card" aria-labelledby="ov-profile">
+      <header class="qa-card__head"><div><h2 id="ov-profile" data-qa-focus-heading>Profile</h2><p>Changes go through the actions menu (second officer).</p></div></header>
+      <div class="qa-card__body">
+        <dl class="qa-dl">
+          <div><dt>Code</dt><dd><span class="qa-chip qa-chip--mono">{{ inst.code }}</span></dd></div>
+          <div><dt>Status</dt><dd>{{ inst.status_label }}{% if inst.approved_at %} · since {{ inst.approved_at|date:"j M Y" }}{% endif %}</dd></div>
+          <div><dt>Ownership</dt><dd>{{ inst.ownership.name|default:"—" }}</dd></div>
+          <div><dt>Type / category</dt><dd>{{ inst.institution_type.name|default:"—" }} / {{ inst.category.name|default:"—" }}</dd></div>
+          <div><dt>Year established</dt><dd>{{ inst.year_established|default:"—" }}</dd></div>
+          <div><dt>CAC RC number</dt><dd>{{ inst.cac_rc_number|default:"—" }}</dd></div>
+          <div><dt>Website</dt><dd>{% if inst.website %}<a href="{{ inst.website }}" rel="noopener" target="_blank">{{ inst.website }}</a>{% else %}—{% endif %}</dd></div>
+          <div><dt>Origin</dt><dd>{{ inst.get_origin_display }}</dd></div>
+        </dl>
+      </div>
+    </section>
+    <section class="qa-card" aria-labelledby="ov-contacts">
+      <header class="qa-card__head"><h2 id="ov-contacts">Contacts &amp; addresses</h2></header>
+      <div class="qa-card__body">
+        <dl class="qa-dl">
+          {% for c in contacts %}<div><dt>{{ c.get_kind_display }}</dt><dd>{{ c.name }}{% if c.name and c.value %} · {% endif %}{{ c.value }}</dd></div>{% empty %}<div><dd class="qa-muted">No contacts recorded.</dd></div>{% endfor %}
+          {% for a in addresses %}<div class="is-wide"><dt>{{ a.get_kind_display }}</dt><dd>{{ a.one_line }}</dd></div>{% endfor %}
+        </dl>
+      </div>
+    </section>
+    <section class="qa-card" aria-labelledby="ov-recent">
+      <header class="qa-card__head"><h2 id="ov-recent">Recent activity</h2>
+        <a class="btn btn-sm btn-subtle" href="?tab=timeline" hx-get="{% url 'qa_inst:detail' inst.code %}?tab=timeline" hx-target="#qa-tab" hx-push-url="true">Full timeline</a></header>
+      <div class="qa-card__body">
+        <ol class="qa-tl">
+          {% for e in recent %}
+            <li class="{% if e.visibility == 'internal' %}is-internal{% endif %}"><span class="qa-tl__text">{{ e.public_text|default:e.internal_text }}</span><small>{{ e.at|date:"j M Y, H:i" }}{% if e.visibility == "internal" %} · internal{% endif %}</small></li>
+          {% empty %}<li><span class="qa-tl__text qa-muted">Nothing yet.</span></li>{% endfor %}
+        </ol>
+      </div>
+    </section>
+  </div>
+  <aside class="qa-stack">
+    <section class="qa-card"><div class="qa-card__body qa-stack">
+      <div class="qa-board">
+        <div class="qa-board__item"><strong>{{ programme_count }}</strong><span>Programmes</span></div>
+        <div class="qa-board__item"><strong>{{ doc_summary.ready }}/{{ doc_summary.mandatory }}</strong><span>Documents</span></div>
+      </div>
+      <div class="qa-meter{% if doc_summary.complete %} is-complete{% endif %}">
+        <div class="qa-meter__row"><span>Required documents</span><span>{{ doc_summary.percent }}%</span></div>
+        <div class="qa-progress" role="progressbar" aria-valuenow="{{ doc_summary.percent }}" aria-valuemin="0" aria-valuemax="100"><span style="--pct: {{ doc_summary.percent }}%"></span></div>
+      </div>
+    </div></section>
+    <section class="qa-card" aria-labelledby="ov-portal">
+      <header class="qa-card__head"><h2 id="ov-portal">Portal account</h2></header>
+      <div class="qa-card__body qa-stack">
+        {% if primary_user %}
+          <p class="qa-small"><strong>{{ primary_user|who }}</strong><br><span class="qa-muted">{{ primary_user.email }}</span></p>
+          <span class="qa-chip {% if primary_user.is_active %}qa-tone-success{% else %}qa-tone-neutral{% endif %}">{% if primary_user.is_active %}Active{% else %}Inactive — send credentials{% endif %}</span>
+        {% else %}<p class="qa-small qa-muted">No portal account yet.</p>{% endif %}
+        {% if impersonation %}<p class="qa-small qa-muted">You have a live view-as session until {{ impersonation.expires_at|time:"H:i" }}.</p>{% endif %}
+      </div>
+    </section>
+    <section class="qa-card" aria-labelledby="ov-pending">
+      <header class="qa-card__head"><h2 id="ov-pending">Waiting for confirmation</h2></header>
+      <div class="qa-card__body">
+        {% for pa in pending_here %}
+          <a class="qa-act" href="{% url 'qa:pending_detail' pa.pk %}"><span class="qa-act__icon">{% icon "clock" 16 %}</span><span class="qa-act__text"><strong>{{ pa.policy.label }}</strong><small>{{ pa.reference }} · {{ pa.initiated_at|timesince }} ago</small></span></a>
+        {% empty %}<p class="qa-small qa-muted">No pending changes on this institution.</p>{% endfor %}
+      </div>
+    </section>
+  </aside>
+</div>

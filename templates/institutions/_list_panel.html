@@ -1,0 +1,65 @@
+{% load qa_tags %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "building" 14 "2.2" %} Quality Assurance · Institutions</span>
+    <h1 data-qa-focus>Institutions (TVETs)</h1>
+    <p>Every TVET your department handles. Open one to see its record, documents and timeline, or to start a change — every change that matters waits for a second officer.</p>
+    <div class="qa-hero__actions">
+      {% if can_add %}<a class="btn btn-primary" href="{% url 'qa_inst:add_tvet' %}" hx-get="{% url 'qa_inst:add_tvet' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "plus" 16 "2.4" %} Add TVET</a>{% endif %}
+      {% if can_import %}<a class="btn btn-subtle" href="{% url 'qa_inst:import' %}" hx-get="{% url 'qa_inst:import' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "upload" 16 %} Import</a>{% endif %}
+      {% if can_export %}<a class="btn btn-subtle" href="{% url 'qa_inst:export' %}?kind=institutions">{% icon "download" 16 %} Export</a>{% endif %}
+    </div>
+  </div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <a class="qa-stat qa-stat--link" href="{% url 'qa_inst:list' %}" hx-get="{% url 'qa_inst:list' %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.total }}</strong><span>In your scope</span></a>
+    <a class="qa-stat qa-stat--info qa-stat--link" href="{% url 'qa_inst:list' %}?status=proposed" hx-get="{% url 'qa_inst:list' %}?status=proposed" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.proposed }}</strong><span>Proposed</span></a>
+    <a class="qa-stat qa-stat--success qa-stat--link" href="{% url 'qa_inst:list' %}?status=approved" hx-get="{% url 'qa_inst:list' %}?status=approved" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.approved }}</strong><span>Approved</span></a>
+    <a class="qa-stat qa-stat--warn qa-stat--link" href="{% url 'qa:pending_list' %}?status=pending"><strong>{{ counts.pending }}</strong><span>Changes pending</span></a>
+  </div>
+</header>
+
+<section class="qa-card" aria-label="Institutions">
+  <form class="qa-toolbar" role="search" method="get" action="{% url 'qa_inst:list' %}"
+        hx-get="{% url 'qa_inst:list' %}" hx-target="#qa-rows" hx-push-url="true"
+        hx-trigger="input changed delay:350ms from:find input[type=search], change, submit" hx-sync="this:replace" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search institutions</span>{% icon "search" 16 "2.2" %}
+      <input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Name, code, LGA or former name" autocomplete="off"></label>
+    <label class="sr-only" for="f-status">Status</label>
+    <select class="input qa-select" id="f-status" name="status"><option value="">Any status</option>{% for v, l in statuses %}<option value="{{ v }}"{% if filters.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <label class="sr-only" for="f-own">Ownership</label>
+    <select class="input qa-select" id="f-own" name="ownership"><option value="">Any ownership</option>{% for o in ownerships %}<option value="{{ o.code }}"{% if filters.ownership == o.code %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select>
+    <label class="sr-only" for="f-type">Type</label>
+    <select class="input qa-select" id="f-type" name="type"><option value="">Any type</option>{% for t in types %}<option value="{{ t.code }}"{% if filters.type == t.code %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+    <label class="sr-only" for="f-dept">Department</label>
+    <select class="input qa-select" id="f-dept" name="dept"><option value="">Any department</option>{% for d in departments %}<option value="{{ d.code }}"{% if filters.dept == d.code %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+    <label class="sr-only" for="f-zone">Zone</label>
+    <select class="input qa-select" id="f-zone" name="zone"><option value="">Any zone</option>{% for v, l in zones %}<option value="{{ v }}"{% if filters.zone == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <noscript><button class="btn btn-sm btn-subtle" type="submit">Apply</button></noscript>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "institutions/_rows.html" %}</div>
+</section>
+
+<section class="qa-card" aria-labelledby="qa-menu-title">
+  <header class="qa-card__head"><div><h2 id="qa-menu-title">Institution actions</h2><p>The New Institution and TVET Support menus. Two-step actions show <span class="qa-chip qa-chip--dual">2-step</span> and a link to their confirm list.</p></div></header>
+  <div class="qa-card__body">
+    {% for g in menu %}
+      <h3 class="qa-menu__group">{{ g.group }}</h3>
+      <div class="qa-grid-cards qa-mb">
+        {% for a in g.items %}
+          <div class="qa-actcard{% if not a.enabled %} is-disabled{% endif %}"{% if a.reason %} title="{{ a.reason }}"{% endif %}>
+            <div class="qa-actcard__top">
+              <span class="qa-act__icon">{% icon a.icon 18 %}</span>
+              {% if a.two_step %}<span class="qa-chip qa-chip--dual">2-step</span>{% else %}<span class="qa-chip">Single step</span>{% endif %}
+            </div>
+            <strong>{{ a.label }}</strong>
+            <p>{{ a.summary|default:a.reason }}</p>
+            <div class="qa-row qa-gap-sm">
+              {% if a.enabled %}<a class="btn btn-sm btn-primary" href="{{ a.url }}" hx-get="{{ a.url }}" hx-target="#qa-panel" hx-push-url="true">Start</a>{% else %}<span class="btn btn-sm btn-subtle" aria-disabled="true" tabindex="0" title="{{ a.reason }}">Not available</span>{% endif %}
+              {% if a.confirm_url %}<a class="btn btn-sm btn-subtle" href="{{ a.confirm_url }}">Confirm list</a>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+</section>

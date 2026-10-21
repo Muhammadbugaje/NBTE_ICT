@@ -1,0 +1,145 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa_app:list' %}" hx-get="{% url 'qa_app:list' %}" hx-target="#qa-panel" hx-push-url="true">Applications</a>
+  <span aria-hidden="true">/</span><a href="{% url 'qa_app:clearance' %}" hx-get="{% url 'qa_app:clearance' %}" hx-target="#qa-panel" hx-push-url="true">Clearance queue</a>
+  <span aria-hidden="true">/</span><span aria-current="page">{{ app.reference }}</span>
+</nav>
+
+<header class="qa-inst-head">
+  <span class="qa-inst-head__code" aria-hidden="true">{{ inst.code }}</span>
+  <div>
+    <span class="qa-eyebrow">SOP-01 onboarding application · round {{ app.round|default:"—" }}</span>
+    <h1 data-qa-focus>{{ inst.name }}</h1>
+    <div class="qa-inst-head__meta">
+      <span class="qa-chip {{ app.status|tone }}">{{ public_status }}</span>
+      <span class="qa-mono">{{ app.reference }}</span>
+      <span>{% icon "building" 14 %} {{ inst.ownership.name|default:"—" }} · {{ inst.institution_type.name|default:"—" }}</span>
+      {% if app.submitted_at %}<span>{% icon "clock" 14 %} Submitted {{ app.submitted_at|date:"j M Y, H:i" }}</span>{% endif %}
+    </div>
+  </div>
+</header>
+
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+{% if hold %}
+  <div class="qa-callout qa-callout--warn" role="status">{% icon "lock" 18 "2.2" %}
+    <div><strong>On hold</strong><p>{{ hold.reason }} — placed {{ hold.placed_at|date:"j M Y" }} by {{ hold.placed_by|who }}.</p>
+      {% if can_lift %}<form method="post" action="{% url 'qa_app:hold_lift' app.pk %}" hx-post="{% url 'qa_app:hold_lift' app.pk %}" hx-target="#qa-panel" data-qa-confirm="The application continues from where it stopped." data-qa-confirm-title="Lift the hold?" data-qa-confirm-label="Lift hold" hx-trigger="qa:confirmed">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit">Lift hold</button></form>{% endif %}</div></div>
+{% endif %}
+{% if app.status == "draft" and app.return_remark %}
+  {% include "qa_core/partials/_callout.html" with kind="danger" title="Returned to the institution" message=app.return_remark %}
+{% endif %}
+
+<section class="qa-card" aria-labelledby="gate-title">
+  <header class="qa-card__head"><div><h2 id="gate-title">Departmental clearance{% if app.round %} · round {{ app.round }}{% endif %}</h2><p>All four departments review at the same time. The fee is issued only when every one has cleared; any one can return the application to draft.</p></div></header>
+  <div class="qa-card__body">
+    {% if clearances %}
+      <div class="qa-branches">
+        {% for c in clearances %}
+          <div class="qa-branch is-{{ c.status }}">
+            <span class="qa-branch__dept">{{ c.department.name }}</span>
+            <span class="qa-chip {{ c.status|tone }}">{{ c.get_status_display }}</span>
+            {% if c.decided_by %}<span class="qa-branch__meta">{{ c.decided_by|who }} · {{ c.decided_at|date:"j M, H:i" }}</span>{% else %}<span class="qa-branch__meta">Opened {{ c.opened_at|date:"j M, H:i" }}</span>{% endif %}
+            {% if c.remark %}<span class="qa-small">“{{ c.remark }}”</span>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <p class="qa-gate-note">{% icon "shield" 14 %} Parallel gate: {% if branches %}{{ branches|length }} branch{{ branches|length|pluralize:"es" }} open{% if app.status == "clearance" %}, waiting for {% for code, state in branches.items %}{% if state == "active" %}{{ code|humanize_code }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}{% elif app.status == "draft" %}not open (draft){% else %}all four branches joined{% endif %}.</p>
+    {% else %}
+      <p class="qa-muted qa-small">The institution has not submitted this application yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+<div class="qa-cols">
+  <div>
+    {% if mine %}
+      <section class="qa-card" aria-labelledby="my-review" id="my-review">
+        <header class="qa-card__head"><div><h2 id="my-review">{{ mine.department.name }} — your review</h2><p>Accept or return each document your department is responsible for, then decide.</p></div>
+          <span class="qa-chip {{ mine.status|tone }}">{{ mine.get_status_display }}</span></header>
+        <ul class="qa-doclist" role="list">
+          {% for r in my_rows %}
+            <li class="qa-doc" data-state="{{ r.state }}">
+              <span class="qa-doc__icon">{% icon "file" 20 %}</span>
+              <div>
+                <div class="qa-doc__name">{{ r.kind.name }} <span class="qa-chip {{ r.state|tone }}">{{ r.state|doc_state_label }}</span>{% if not r.mandatory %}<span class="qa-chip">Optional</span>{% endif %}</div>
+                {% if r.document %}<div class="qa-doc__meta"><span>v{{ r.document.version }} · {{ r.document.display_name }} · {{ r.document.size_label }}</span><span>uploaded {{ r.document.created_at|date:"j M Y" }}</span></div>{% endif %}
+                {% if r.document.review_remark %}<div class="qa-doc__remark">{{ r.document.review_remark }}</div>{% endif %}
+              </div>
+              <div class="qa-doc__tools">
+                {% if r.document %}
+                  <a class="btn btn-sm btn-subtle" href="{{ r.document.download_url }}">{% icon "download" 14 %} Open</a>
+                  {% if can_decide and r.document.status == "submitted" %}
+                    <form method="post" action="{% url 'qa_app:document_review' r.document.pk %}" hx-post="{% url 'qa_app:document_review' r.document.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="decision" value="accept"><button class="btn btn-sm btn-primary" type="submit">{% icon "check" 14 "2.4" %} Accept</button></form>
+                    <details class="qa-menu"><summary class="btn btn-sm btn-subtle qa-btn-reject">Return…</summary>
+                      <div class="qa-menu__panel" style="width:min(360px,calc(100vw - 32px))">
+                        <form method="post" action="{% url 'qa_app:document_review' r.document.pk %}" hx-post="{% url 'qa_app:document_review' r.document.pk %}" hx-target="#qa-panel" class="qa-form">{% csrf_token %}<input type="hidden" name="decision" value="return">
+                          <div class="qa-field"><label for="ret-{{ r.document.pk }}">What is wrong with it?</label><textarea class="input" id="ret-{{ r.document.pk }}" name="remark" rows="3" required minlength="3"></textarea></div>
+                          <button class="btn btn-sm btn-primary" type="submit">Return document</button></form></div></details>
+                  {% endif %}
+                {% endif %}
+              </div>
+            </li>
+          {% empty %}<li class="qa-doc"><span class="qa-muted qa-small">No documents are assigned to your department by the document rules.</span></li>{% endfor %}
+        </ul>
+        <div class="qa-card__body qa-stack">
+          {% if can_decide %}
+            <div class="qa-field"><label for="clr-remark">Remark <span class="qa-muted">(required to return; the institution sees it)</span></label>
+              <textarea class="input" id="clr-remark" name="remark" rows="3" maxlength="2000" placeholder="e.g. CAC certificate name does not match the proprietor">{{ remark|default:'' }}</textarea></div>
+            <div class="qa-decide__actions">
+              <form method="post" action="{% url 'qa_app:decide' mine.pk %}" hx-post="{% url 'qa_app:decide' mine.pk %}" hx-target="#qa-panel" hx-include="#clr-remark" hx-trigger="qa:confirmed"
+                    data-qa-confirm="Documents still awaiting review are accepted with this clearance." data-qa-confirm-title="Clear for {{ mine.department.name }}?" data-qa-confirm-label="Clear">
+                {% csrf_token %}<input type="hidden" name="decision" value="clear"><input type="hidden" name="accept_documents" value="on">
+                <button class="btn btn-primary btn-block" type="submit">{% icon "check" 16 "2.4" %} Clear</button></form>
+              <form method="post" action="{% url 'qa_app:decide' mine.pk %}" hx-post="{% url 'qa_app:decide' mine.pk %}" hx-target="#qa-panel" hx-include="#clr-remark" hx-trigger="qa:confirmed"
+                    data-qa-require="#clr-remark" data-qa-require-msg="Write the remark the institution will see"
+                    data-qa-confirm="The application goes back to draft for every department, and the institution sees your remark." data-qa-confirm-title="Return to the institution?" data-qa-confirm-label="Return" data-qa-confirm-tone="danger">
+                {% csrf_token %}<input type="hidden" name="decision" value="return">
+                <button class="btn btn-subtle btn-block qa-btn-reject" type="submit">Return to institution</button></form>
+            </div>
+          {% else %}
+            {% include "qa_core/partials/_callout.html" with title="You can't decide this one" message=decide_reason %}
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="qa-card" aria-labelledby="all-docs">
+      <header class="qa-card__head"><div><h2 id="all-docs">All documents</h2><p>By reviewing department.</p></div></header>
+      <div class="qa-card__body qa-stack">
+        {% for dept, rows in docs_by_dept %}
+          <div><h3 class="qa-menu__group">{{ dept }}</h3>
+            <ul class="qa-doclist" role="list">{% for r in rows %}
+              <li class="qa-doc" data-state="{{ r.state }}" style="padding-inline:0">
+                <span class="qa-doc__icon">{% icon "file" 18 %}</span>
+                <div><div class="qa-doc__name">{{ r.kind.name }} <span class="qa-chip {{ r.state|tone }}">{{ r.state|doc_state_label }}</span>{% if not r.mandatory %}<span class="qa-chip">Optional</span>{% endif %}</div>
+                  {% if r.document %}<div class="qa-doc__meta"><span>v{{ r.document.version }} · {{ r.document.created_at|date:"j M Y" }}</span></div>{% endif %}</div>
+                <div class="qa-doc__tools">{% if r.document %}<a class="btn btn-sm btn-subtle" href="{{ r.document.download_url }}">{% icon "download" 14 %} Open</a>{% endif %}</div>
+              </li>{% endfor %}</ul></div>
+        {% empty %}<p class="qa-muted qa-small">No documents.</p>{% endfor %}
+      </div>
+    </section>
+
+    <section class="qa-card" aria-labelledby="hist">
+      <header class="qa-card__head"><h2 id="hist">Workflow history</h2></header>
+      <div class="qa-card__body"><ol class="qa-tl">
+        {% for e in history %}<li class="{% if e.metadata.automatic %}is-internal{% endif %}"><strong>{% if e.action_code == "clear" or e.action_code == "return" %}{{ e.from_stage|humanize_code }} — {% if e.action_code == "clear" %}cleared{% else %}returned{% endif %}{% else %}{{ e.to_stage|humanize_code }}{% endif %}</strong>{% if e.remark %}<span class="qa-tl__text">“{{ e.remark }}”</span>{% endif %}<small>{{ e.at|date:"j M Y, H:i" }} · {{ e.actor.get_full_name|default:e.actor_role_label|default:"System" }} · {{ e.action_code }}</small></li>{% empty %}<li><span class="qa-muted">No events.</span></li>{% endfor %}
+      </ol></div>
+    </section>
+  </div>
+
+  <aside class="qa-stack">
+    <section class="qa-card"><header class="qa-card__head"><h2>Progress</h2></header>
+      <div class="qa-card__body"><ol class="qa-steps">{% for s in board %}<li class="qa-step is-{{ s.state }}"><span class="qa-step__label">{{ s.label }}</span></li>{% endfor %}</ol></div></section>
+    <section class="qa-card"><header class="qa-card__head"><h2>Institution</h2></header>
+      <div class="qa-card__body"><dl class="qa-dl">
+        <div><dt>Category</dt><dd>{{ inst.category.name|default:"—" }}</dd></div>
+        <div><dt>Location</dt><dd>{% if inst.state %}{{ inst.lga }}, {{ inst.state.name }}{% else %}—{% endif %}</dd></div>
+        {% for c in contacts %}<div><dt>{{ c.get_kind_display }}</dt><dd>{{ c.name }} {{ c.value }}</dd></div>{% endfor %}
+        {% for a in addresses %}<div class="is-wide"><dt>{{ a.get_kind_display }}</dt><dd>{{ a.one_line }}</dd></div>{% endfor %}
+      </dl></div></section>
+    {% if obligations %}<section class="qa-card"><header class="qa-card__head"><h2>Fees</h2></header>
+      <ul class="qa-rowlist" role="list">{% for ob in obligations %}<li><a class="qa-rowlink" href="{% url 'qa_fin:obligation' ob.pk %}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ ob.description }}</span><span class="qa-rowlink__meta qa-mono">{{ ob.reference }}</span></span><span class="qa-rowlink__side"><span class="qa-rowlink__amount">{{ ob.amount|naira }}</span><span class="qa-chip {{ ob.status|tone }}">{{ ob.stage }}</span></span></a></li>{% endfor %}</ul></section>{% endif %}
+    {% if earlier_rounds %}<section class="qa-card"><header class="qa-card__head"><h2>Earlier rounds</h2></header>
+      <div class="qa-card__body"><ol class="qa-tl">{% for c in earlier_rounds %}<li><strong>Round {{ c.round }} · {{ c.department.name }}</strong><span class="qa-tl__text">{{ c.get_status_display }}{% if c.remark %} — “{{ c.remark }}”{% endif %}</span><small>{{ c.decided_at|date:"j M Y"|default:"" }}</small></li>{% endfor %}</ol></div></section>{% endif %}
+  </aside>
+</div>

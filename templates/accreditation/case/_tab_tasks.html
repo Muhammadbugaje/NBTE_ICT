@@ -1,0 +1,24 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="tk-h">
+  <header class="qa-card__head"><div><h2 id="tk-h">Stage tasks</h2><p>One task per stage (Task Bounce). Tasks cannot be marked done in the Tasks app — they close when the stage is approved or returned here. A reassignment is checked against R-01 (workload), R-02 (a visitor cannot review) and R-20 (grade level), and refused if it breaks one.</p></div></header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th scope="col">Stage</th><th scope="col">Task</th><th scope="col">Held by</th><th scope="col">Opened</th><th scope="col">Closed</th>{% if reassign_choices %}<th scope="col">Reassign</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for link in links %}
+      <tr>
+        <td>{{ link.stage_label }}</td>
+        <td><a href="{% url 'tasks:detail' link.task_id %}" class="qa-mono">{{ link.task.reference }}</a><br><span class="qa-chip {{ link.task.state|tone }}">{{ link.task.get_state_display }}</span></td>
+        <td>{% for u in link.holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="qa-chip qa-tone-warn">Department queue</span>{% endfor %}</td>
+        <td>{{ link.opened_at|date:"j M, H:i" }}{% if link.due_at %}<br><span class="qa-small qa-muted">due {{ link.due_at|date:"j M, H:i" }}</span>{% endif %}</td>
+        <td>{% if link.closed_at %}{{ link.closed_at|date:"j M, H:i" }}<br><span class="qa-small qa-muted">{{ link.close_reason|humanize_code }}</span>{% else %}<span class="qa-chip qa-tone-pending">Open</span>{% endif %}</td>
+        {% if reassign_choices %}<td>{% if link.can_reassign %}
+          <form class="qa-inline-form" method="post" action="{% url 'qa_case:reassign' case.pk link.pk %}" hx-post="{% url 'qa_case:reassign' case.pk link.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="tasks">
+            <label class="sr-only" for="ra-{{ link.pk }}">New holder</label>
+            <select class="input" id="ra-{{ link.pk }}" name="to_user" required><option value="">Choose…</option>{% for u in reassign_choices %}<option value="{{ u.pk }}">{{ u|who }}{% if u.department %} · {{ u.department.name }}{% endif %}</option>{% endfor %}</select>
+            <button class="btn btn-xs btn-subtle" type="submit">Reassign</button>
+          </form>{% endif %}</td>{% endif %}
+      </tr>
+    {% empty %}<tr><td colspan="6" class="qa-muted">No tasks yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>

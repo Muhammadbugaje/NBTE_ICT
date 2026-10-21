@@ -1,0 +1,10 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_fin:statements' %}" hx-get="{% url 'qa_fin:statements' %}" hx-target="#qa-panel" hx-push-url="true">Statements</a><span aria-hidden="true">/</span><span aria-current="page">#{{ st.pk }}</span></nav>
+<header class="qa-detail-head"><div><span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Bank statement</span><h1 data-qa-focus>{{ st.original_name }}</h1><p class="qa-detail-head__target">{{ st.parsed_rows }} credit lines · {{ st.period_start|date:"j M Y" }} – {{ st.period_end|date:"j M Y" }}</p></div>
+  <div class="qa-detail-head__chips"><span class="qa-chip qa-tone-success">{{ st.matched }} matched</span><span class="qa-chip qa-tone-warn">{{ st.ambiguous }} ambiguous</span><span class="qa-chip qa-tone-danger">{{ st.unmatched }} unmatched</span></div></header>
+<section class="qa-card" aria-label="Lines">
+  <form class="qa-toolbar" hx-get="{% url 'qa_fin:statement' st.pk %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="change" data-qa-no-overlay>
+    <select class="input qa-select" name="match" aria-label="Match status"><option value="">Every line</option>{% for v, l in matches %}<option value="{{ v }}"{% if filters.match == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "payments/_line_rows.html" %}</div>
+</section>

@@ -1,0 +1,47 @@
+{% load qa_tags %}
+{% for a in actions %}
+<section class="qa-stage-act{% if not a.can %} is-blocked{% endif %}{% if a.focus %} is-focus{% endif %}" aria-labelledby="act-{{ a.stage.code }}">
+  <header class="qa-stage-act__head">
+    {% if a.stage.sop_stage_no %}<span class="qa-stage-no">{{ a.stage.sop_stage_no }}</span>{% endif %}
+    <h2 id="act-{{ a.stage.code }}">{{ a.stage.label }}</h2>
+    <span class="qa-who-list">{% for u in a.holders %}<span class="qa-who"><span class="qa-who__av" aria-hidden="true">{{ u|initials }}</span>{{ u|who }}</span>{% empty %}<span class="qa-chip qa-tone-warn">Nobody yet — department queue</span>{% endfor %}</span>
+    {% if a.link and a.link.due_at %}<span class="qa-chip">{% icon "clock" 12 %} Due {{ a.link.due_at|date:"j M, H:i" }}</span>{% endif %}
+    {% if a.link %}<a class="btn btn-xs btn-subtle" href="{% url 'tasks:detail' a.link.task_id %}">Task {{ a.link.task.reference }}</a>{% endif %}
+  </header>
+  <div class="qa-stage-act__body">
+    {% for c in a.pinned %}<div class="qa-pinned-remark" role="note"><strong>{% icon "flag" 14 %} Pinned remark</strong><span>{{ c.body }}</span><small>{{ c.author|who }} · {{ c.pinned_at|date:"j M Y, H:i" }}</small></div>{% endfor %}
+    {% if a.can %}
+      {% if a.stage.code == "case_opened" %}
+        <form class="qa-inline-form" method="post" action="{% url 'qa_case:desk_officer' case.pk %}" hx-post="{% url 'qa_case:desk_officer' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="stage" value="case_opened">
+          <div class="qa-field"><label for="desk-officer">Desk officer <span class="qa-muted">(builds the cost sheet, personnel list and visit details; GL {{ grade_min }}–{{ grade_max }}, R-20)</span></label>
+            <select class="input" id="desk-officer" name="officer" required><option value="">Choose…</option>{% for u in desk_choices %}<option value="{{ u.pk }}"{% if case.desk_officer_id == u.pk %} selected{% endif %}>{{ u|who }} — {{ u.role.name|default:"" }}</option>{% endfor %}</select></div>
+          <button class="btn btn-subtle" type="submit">Save desk officer</button>
+        </form>
+        <p class="qa-small qa-muted">Current desk officer: <strong>{{ case.desk_officer|who:"not chosen" }}</strong>.</p>
+      {% elif a.stage.code == "assign_audit_officer" or a.stage.code == "assign_finance_officer" or a.stage.code == "assign_ict_officer" %}
+        {% if a.stage.code == "assign_audit_officer" %}{% with kind="audit" choices=audit_choices current=case.supervising_audit_officer %}{% include "accreditation/case/_supervisor_form.html" %}{% endwith %}
+        {% elif a.stage.code == "assign_finance_officer" %}{% with kind="finance" choices=finance_choices current=case.supervising_finance_officer %}{% include "accreditation/case/_supervisor_form.html" %}{% endwith %}
+        {% else %}{% with kind="ict" choices=ict_choices %}{% include "accreditation/case/_supervisor_form.html" %}{% endwith %}{% endif %}
+      {% elif a.tab != "overview" %}
+        <p class="qa-small">The work for this stage is on the <a href="?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-get="{% url 'qa_case:detail' case.pk %}?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ a.tab|capfirst }}</strong> tab</a>. Review it, then approve or return.</p>
+      {% endif %}
+      {% if a.problems %}<div><strong class="qa-small">Before you can approve:</strong><ul class="qa-problems">{% for p in a.problems %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
+      <div class="qa-field"><label for="remark-{{ a.stage.code }}">Remark <span class="qa-muted">{% if a.returns %}(required to return — it is pinned on the returned task){% else %}(optional){% endif %}</span></label>
+        <textarea class="input" id="remark-{{ a.stage.code }}" name="remark" rows="2" maxlength="2000"></textarea></div>
+      <div class="qa-stage-act__btns">
+        <form method="post" action="{% url 'qa_case:act' case.pk %}" hx-post="{% url 'qa_case:act' case.pk %}" hx-target="#qa-panel" hx-include="#remark-{{ a.stage.code }}" hx-trigger="qa:confirmed" data-qa-confirm="This closes your task for “{{ a.stage.label }}” and opens the next stage's task." data-qa-confirm-title="{{ a.approve_label }}?" data-qa-confirm-label="{{ a.approve_label }}">{% csrf_token %}<input type="hidden" name="stage" value="{{ a.stage.code }}"><input type="hidden" name="action" value="approve">
+          <button class="btn btn-primary btn-block" type="submit"{% if a.problems %} disabled aria-disabled="true"{% endif %}>{% icon "check" 16 "2.4" %} {{ a.approve_label }}</button></form>
+        {% if a.returns %}
+        <form method="post" action="{% url 'qa_case:act' case.pk %}" hx-post="{% url 'qa_case:act' case.pk %}" hx-target="#qa-panel" hx-include="#remark-{{ a.stage.code }}" hx-trigger="qa:confirmed" data-qa-require="#remark-{{ a.stage.code }}" data-qa-require-msg="Write the remark: it is pinned on the task of the person you return it to" data-qa-confirm="It goes back to whoever submitted it, with your remark pinned." data-qa-confirm-title="Return this stage?" data-qa-confirm-label="Return" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="stage" value="{{ a.stage.code }}"><input type="hidden" name="action" value="return">
+          <button class="btn btn-subtle btn-block qa-btn-reject" type="submit">{% icon "back" 16 %} Return with remark</button></form>
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="qa-small qa-muted">{{ a.why }}</p>
+    {% endif %}
+  </div>
+</section>
+{% endfor %}
+{% if can_send_back %}
+<p class="qa-small qa-muted">Need Audit to look at the cost again? Use <a href="{% url 'qa_inst:action' inst.code 'accreditation.send_back_to_audit' %}">Send Back To Audit</a> (a two-officer action: it returns the case to stage 5 with your remark).</p>
+{% endif %}

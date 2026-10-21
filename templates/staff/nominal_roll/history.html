@@ -1,0 +1,55 @@
+{% comment %}Nominal roll — History tab panel, included by staff/nominal_roll/index.html.{% endcomment %}
+  {% if can_import %}
+  <section class="nbr-panel" role="tabpanel" id="nbr-panel-history" aria-labelledby="nbr-tab-history"{% if tab != 'history' %} hidden{% endif %}>
+    {% if sessions %}
+      <div class="card nbr-card nbr-card-flush">
+        <table class="table table--stack nbr-history" data-no-wrap>
+          <thead>
+            <tr>
+              <th scope="col">File</th>
+              <th scope="col">When</th>
+              <th scope="col">By</th>
+              <th scope="col">Sheets</th>
+              <th scope="col" class="nbr-num">New</th>
+              <th scope="col" class="nbr-num">Updated</th>
+              <th scope="col" class="nbr-num">Skipped</th>
+              <th scope="col">Status</th>
+              <th scope="col"><span class="nbr-sr">Report</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sessions %}
+              <tr>
+                <td data-label="File" class="nbr-file-cell">{{ s.source_filename }}</td>
+                <td data-label="When"><time datetime="{{ s.created_at|date:'c' }}">{{ s.created_at|date:"j M Y, H:i" }}</time></td>
+                <td data-label="By">{% if s.uploaded_by %}{{ s.uploaded_by.get_full_name|default:s.uploaded_by.email }}{% else %}Command line{% endif %}</td>
+                <td data-label="Sheets" class="nbr-sheets-cell">{{ s.sheets_processed|length }} sheet{{ s.sheets_processed|length|pluralize }}</td>
+                <td data-label="New" class="nbr-num">{{ s.new_count }}</td>
+                <td data-label="Updated" class="nbr-num">{{ s.updated_count }}</td>
+                <td data-label="Skipped" class="nbr-num">{{ s.skipped_count }}</td>
+                <td data-label="Status">
+                  <span class="badge {% if s.status == 'ok' %}badge-success{% elif s.status == 'partial' %}badge-warn{% else %}badge-danger{% endif %}">{{ s.get_status_display }}</span>
+                  {% if s.accounts_created %}<span class="nbr-warn-count nbr-accounts-count">{{ s.accounts_created }} account{{ s.accounts_created|pluralize }} created</span>{% endif %}
+                  {% if s.warnings %}<span class="nbr-warn-count">{{ s.warnings|length }} warning{{ s.warnings|length|pluralize }}</span>{% endif %}
+                </td>
+                <td data-label="Report">
+                  {% if s.credentials_file and perms.accounts.add_user %}
+                    <a href="{% url 'staff:nominal_roll_credentials' s.pk %}" class="btn btn-primary btn-sm nbr-cred-btn">Sign-in details</a>
+                  {% endif %}
+                  {% if s.report_file %}
+                    <a href="{% url 'staff:nominal_roll_report' s.pk %}" class="btn btn-ghost btn-sm">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Report
+                    </a>
+                  {% else %}—{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      {% include "partials/empty_state.html" with title="No imports yet" body="Imports you confirm appear here with their counts and a downloadable report." only %}
+    {% endif %}
+  </section>
+  {% endif %}

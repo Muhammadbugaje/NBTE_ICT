@@ -30,10 +30,12 @@
       </div>
     </div>
     <div class="dash-hero-actions">
+{% if attendance_scope == "all" %}
       <a href="{% url 'attendance:all_departments' %}" class="btn btn-ghost">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><line x1="10" y1="21" x2="10" y2="12"/><line x1="14" y1="21" x2="14" y2="12"/></svg>
         <span>All departments</span>
       </a>
+{% endif %}
       <a href="{% url 'dashboards:audit_log' %}" class="btn btn-ghost">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
         <span>Audit log</span>
@@ -48,6 +50,8 @@
       </a>
     </div>
   </header>
+
+  {% if qa %}{% include "dashboards/_qa_overview.html" %}{% endif %}
 
   {# ============================ ALERTS ============================ #}
   {% if parked or health.database == 'down' or health.cache == 'down' or health.media == 'missing' %}
@@ -475,5 +479,6 @@
 
 {% block extra_js %}
   <script src="{% static 'vendor/chart-4.4.1.umd.js' %}"></script>
+  <script src="{% static 'js/qa-insights.js' %}?v=2" defer></script>
   <script src="{% static 'js/charts.js' %}?v=1"></script>
 {% endblock %}

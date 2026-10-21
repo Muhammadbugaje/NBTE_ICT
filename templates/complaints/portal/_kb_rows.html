@@ -1,0 +1,8 @@
+{% load qa_tags %}
+{% if articles %}
+  <ul class="qa-rowlist" role="list">{% for a in articles %}
+    <li><a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_portal:help_article' a.slug %}" hx-get="{% url 'qa_portal:help_article' a.slug %}" hx-target="#qa-main" hx-push-url="true"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.title }}</span><span class="qa-rowlink__meta">{{ a.summary }}</span></span>{% if a.layer %}<span class="qa-rowlink__side"><span class="qa-chip qa-tone-neutral">{{ a.layer.name }}</span></span>{% endif %}</a></li>
+  {% endfor %}</ul>
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "help" 28 %}</span><h3 class="nbte-empty-state__title">No article matches</h3><p class="nbte-empty-state__body">Try other words, or raise a complaint and NBTE will answer you.</p></div>
+{% endif %}

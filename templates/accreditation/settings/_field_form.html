@@ -1,0 +1,39 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="ff-h">
+  <header class="qa-card__head"><div><h3 id="ff-h" data-qa-focus>{% if original_key %}Edit “{{ field.label }}”{% else %}New field{% endif %}</h3><p>In section <span class="qa-mono">{{ section_key }}</span>.</p></div></header>
+  <div class="qa-card__body">
+    {% if field_error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Fix this first" message=field_error %}{% endif %}
+    <form class="qa-form qa-stack" method="post" hx-post="{% url 'qa_set:ssq_template_field' template.pk %}" hx-target="#qa-builder-side" hx-swap="innerHTML">{% csrf_token %}
+      <input type="hidden" name="section" value="{{ section_key }}"><input type="hidden" name="original_key" value="{{ original_key }}"><input type="hidden" name="op" value="save">
+      <div class="qa-field"><label for="ff-type">Type</label><select class="input" id="ff-type" name="type" hx-get="{% url 'qa_set:ssq_template_field' template.pk %}?section={{ section_key }}{% if original_key %}&key={{ original_key }}{% endif %}" hx-target="#qa-builder-side" hx-trigger="change" hx-include="this"{% if original_key %} disabled{% endif %}>{% for code, label in field_types %}<option value="{{ code }}"{% if field.type == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% if original_key %}<input type="hidden" name="type" value="{{ field.type }}"><p class="qa-help">The type of an existing field cannot change; remove it and add a new one.</p>{% endif %}</div>
+      <div class="qa-field"><label for="ff-label">Label (what institutions read)</label><input class="input" id="ff-label" name="label" value="{{ field.label }}" required></div>
+      <div class="qa-field"><label for="ff-key">Key</label><input class="input qa-mono" id="ff-key" name="key" value="{{ field.key }}" pattern="[a-z][a-z0-9_]*" required><p class="qa-help">Lower-case letters, digits and underscores; unique in the template. Answers are stored under it.</p></div>
+      <div class="qa-field"><label for="ff-help">Help text</label><input class="input" id="ff-help" name="help" value="{{ field.help|default:'' }}"></div>
+      <label class="qa-field--check"><input type="checkbox" name="required"{% if field.required %} checked{% endif %}> Required before the SSQ can be submitted</label>
+      {% if field.type == "choice" or field.type == "multi_choice" %}
+        <div class="qa-field"><label for="ff-opts">Options (one per line)</label><textarea class="input" id="ff-opts" name="options" rows="4">{{ options_text }}</textarea></div>
+      {% endif %}
+      {% if field.type == "number" or field.type == "integer" %}
+        <div class="qa-row qa-gap-sm"><div class="qa-field"><label for="ff-min">Minimum</label><input class="input" id="ff-min" name="min" value="{{ field.validation.min|default_if_none:'' }}"></div><div class="qa-field"><label for="ff-max">Maximum</label><input class="input" id="ff-max" name="max" value="{{ field.validation.max|default_if_none:'' }}"></div></div>
+      {% endif %}
+      {% if field.type == "text" or field.type == "textarea" %}
+        <div class="qa-field"><label for="ff-ml">Maximum length</label><input class="input" id="ff-ml" name="max_length" value="{{ field.validation.max_length|default_if_none:'' }}" inputmode="numeric"></div>
+      {% endif %}
+      {% if field.type == "file" %}
+        <div class="qa-field"><label for="ff-dk">Document kind</label><select class="input" id="ff-dk" name="document_kind"><option value="">Any file</option>{% for k in document_kinds %}<option value="{{ k.code }}"{% if field.document_kind == k.code %} selected{% endif %}>{{ k.name }}</option>{% endfor %}</select><p class="qa-help">With a kind, the institution can re-use its accepted document of that kind.</p></div>
+        <label class="qa-field--check"><input type="checkbox" name="multiple"{% if field.multiple %} checked{% endif %}> Several files allowed</label>
+      {% endif %}
+      {% if field.type == "catalogue" %}
+        <div class="qa-field"><label for="ff-ck">Catalogue items</label><select class="input" id="ff-ck" name="catalogue_kind"><option value="facility"{% if field.catalogue.kind == "facility" %} selected{% endif %}>Facilities</option><option value="equipment"{% if field.catalogue.kind == "equipment" %} selected{% endif %}>Equipment</option></select><p class="qa-help">Rows come from the curriculum catalogue for the programme; institutions type quantities only (R-22).</p></div>
+      {% endif %}
+      {% if field.type == "table" %}
+        <div class="qa-field"><label for="ff-cols">Columns — one per line: <span class="qa-mono">key|Label|type</span></label><textarea class="input qa-mono" id="ff-cols" name="columns" rows="5">{{ columns_text }}</textarea><p class="qa-help">Types: text, number, integer, date, yes_no, email.</p></div>
+        <div class="qa-field"><label for="ff-mr">Minimum rows (when required)</label><input class="input" id="ff-mr" name="min_rows" value="{{ field.min_rows|default_if_none:'' }}" inputmode="numeric"></div>
+      {% endif %}
+      {% if field.type != "table" and field.type != "catalogue" %}
+        <div class="qa-field"><label for="ff-pf">Prefill from the institution's record</label><select class="input" id="ff-pf" name="prefill_from"><option value="">No prefill</option>{% for src in prefill_sources %}{% if field.type == "file" and src|startswith:"document." or field.type != "file" and not src|startswith:"document." %}<option value="{{ src }}"{% if field.prefill_from == src %} selected{% endif %}>{{ src }}</option>{% endif %}{% endfor %}</select><p class="qa-help">Documents prefill only when NBTE has accepted them — never drafts.</p></div>
+      {% endif %}
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">Save field</button></div>
+    </form>
+  </div>
+</section>

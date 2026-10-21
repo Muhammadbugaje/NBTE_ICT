@@ -1,0 +1,105 @@
+/* ==========================================================================
+   NBTE QA — Phase 4 components (SOP-03: Case Board, case detail, cost
+   sheet editor, personnel, visit, funds, task links)
+
+   Same idiom as qa.css / qa-p2.css / qa-p3.css: semantic tokens only (dark
+   mode is complete), mobile-first, 44px touch targets.
+   ========================================================================== */
+
+/* ------------------------------------------------------------ Case Board */
+.qa-board { display: grid; gap: var(--space-3, 12px); grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr);
+  overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; }
+@media (max-width: 720px) { .qa-board { grid-auto-flow: row; grid-auto-columns: auto; overflow-x: visible; } }
+.qa-board__col { display: flex; flex-direction: column; min-width: 0; background: var(--surface-sunken, var(--surface-2));
+  border: 1px solid var(--border); border-radius: var(--radius-lg, 12px); scroll-snap-align: start; }
+.qa-board__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px;
+  border-bottom: 1px solid var(--divider); }
+.qa-board__head h2 { margin: 0; font-size: .92rem; font-weight: var(--fw-bold, 700); }
+.qa-board__count { min-width: 26px; padding: 2px 8px; border-radius: 999px; background: var(--surface);
+  border: 1px solid var(--border); font-size: .78rem; font-weight: var(--fw-semibold, 600); text-align: center; }
+.qa-board__list { list-style: none; margin: 0; padding: 10px; display: grid; gap: 10px; align-content: start; min-height: 80px; }
+.qa-board__empty { padding: 18px 10px; text-align: center; color: var(--text-subtle); font-size: .84rem; }
+.qa-card-case { display: grid; gap: 6px; padding: 12px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px); color: var(--text); text-decoration: none;
+  transition: border-color var(--dur-fast, .15s), box-shadow var(--dur-fast, .15s); }
+.qa-card-case:hover, .qa-card-case:focus-visible { border-color: var(--primary); box-shadow: var(--shadow-focus, 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent)); }
+.qa-card-case__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.qa-card-case__ref { font-family: var(--font-mono); font-size: .76rem; color: var(--text-muted); }
+.qa-card-case__inst { font-weight: var(--fw-semibold, 600); line-height: 1.3; }
+.qa-card-case__stage { font-size: .84rem; color: var(--text-muted); }
+.qa-card-case__meta { display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: .78rem; color: var(--text-subtle); }
+.qa-card-case__meta > span { white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; }
+.qa-card-case.is-overdue { border-inline-start: 1px solid var(--danger); }
+.qa-card-case.is-flagged { border-inline-start: 1px solid var(--warning); }
+.qa-stage-no { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 999px;
+  background: var(--primary-subtle); color: var(--primary-subtle-fg, var(--primary)); font-size: .78rem; font-weight: var(--fw-bold, 700); }
+
+/* ------------------------------------------------------------ stepper (17 stages) */
+.qa-stepper { list-style: none; margin: 0; padding: 4px 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin; }
+.qa-stepper li { flex: 1 0 34px; min-width: 34px; display: grid; justify-items: center; gap: 4px; position: relative; }
+.qa-stepper li::before { content: ""; position: absolute; top: 13px; inset-inline: -2px; height: 2px; background: var(--border); z-index: 0; }
+.qa-stepper__dot { position: relative; z-index: 1; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 999px;
+  border: 2px solid var(--border); background: var(--surface); font-size: .74rem; font-weight: var(--fw-bold, 700); color: var(--text-muted); }
+.qa-stepper li.is-done .qa-stepper__dot { background: var(--success); border-color: var(--success); color: #fff; }
+.qa-stepper li.is-current .qa-stepper__dot { background: var(--primary); border-color: var(--primary); color: #fff;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 20%, transparent); }
+.qa-stepper__label { font-size: .66rem; line-height: 1.15; text-align: center; color: var(--text-subtle); max-width: 76px;
+  display: none; }
+@media (min-width: 1100px) { .qa-stepper__label { display: block; } }
+.qa-stepper li.is-current .qa-stepper__label { color: var(--text); font-weight: var(--fw-semibold, 600); display: block; }
+
+/* ------------------------------------------------------------ stage action panel */
+.qa-stage-act { border: 1px solid var(--border); border-inline-start: 1px solid var(--primary); border-radius: var(--radius-lg, 12px);
+  background: var(--surface); }
+.qa-stage-act.is-blocked { border-inline-start-color: var(--neutral-fg, var(--border)); }
+.qa-stage-act.is-focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
+.qa-stage-act__head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--divider); }
+.qa-stage-act__head h2 { margin: 0; font-size: 1rem; flex: 1 1 200px; }
+.qa-stage-act__body { padding: 14px 16px; display: grid; gap: 12px; }
+.qa-stage-act__btns { display: grid; gap: 8px; grid-template-columns: 1fr; }
+@media (min-width: 560px) { .qa-stage-act__btns { grid-template-columns: 1fr 1fr; } }
+.qa-problems { margin: 0; padding-inline-start: 18px; color: var(--warning-fg); font-size: .88rem; }
+.qa-pinned-remark { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radius-md, 10px); background: var(--warning-subtle);
+  color: var(--warning-fg); font-size: .88rem; }
+.qa-pinned-remark strong { color: inherit; }
+
+/* ------------------------------------------------------------ case tabs */
+.qa-case-tabs { margin-top: 4px; }
+.qa-case-tabs a .qa-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--primary); display: inline-block; margin-inline-start: 6px; }
+
+/* ------------------------------------------------------------ cost sheet editor */
+.qa-cost-table td.num, .qa-cost-table th.num { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qa-cost-table tfoot td { font-weight: var(--fw-bold, 700); border-top: 2px solid var(--border); }
+.qa-cost-table tr.is-audit-edited td:first-child { box-shadow: inset 3px 0 0 var(--info); }
+.qa-cost-table .qa-audit-note { display: block; margin-top: 2px; font-size: .78rem; color: var(--info-fg); }
+.qa-cost-table input.input { min-height: 36px; padding: 4px 8px; max-width: 90px; }
+.qa-cost-table .qa-line-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.qa-cost-add { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 780px) { .qa-cost-add { grid-template-columns: 2fr 1fr 2fr 2fr auto; align-items: end; } }
+.qa-cost-total { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 16px;
+  border-top: 1px solid var(--divider); }
+.qa-cost-total strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.qa-mode-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-md, 10px);
+  background: var(--primary-subtle); color: var(--primary-subtle-fg, var(--text)); font-size: .9rem; }
+.qa-mode-banner--audit { background: var(--info-subtle); color: var(--info-fg); }
+.qa-mode-banner--locked { background: var(--surface-sunken, var(--surface-2)); color: var(--text-muted); }
+
+/* ------------------------------------------------------------ misc */
+.qa-who-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.qa-who { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border-radius: 999px; background: var(--surface-2, var(--neutral-subtle));
+  font-size: .82rem; }
+.qa-who__av { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; background: var(--primary); color: #fff;
+  font-size: .64rem; font-weight: var(--fw-bold, 700); }
+.qa-open-in-qa { display: inline-flex; align-items: center; gap: 6px; }
+.qa-readonly-banner { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-radius: var(--radius-md, 10px);
+  background: var(--surface-sunken, var(--surface-2)); color: var(--text-muted); font-size: .88rem; border: 1px dashed var(--border); }
+.qa-select-multi { min-height: 96px; }
+.qa-inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.qa-inline-form .qa-field { flex: 1 1 180px; }
+.qa-kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: .9rem; }
+.qa-kv dt { color: var(--text-muted); }
+.qa-kv dd { margin: 0; }
+
+/* Tasks app: the QA link panel (tasks/detail.html) */
+.tsk-qa-link { border-inline-start: 1px solid var(--primary, #0f766e); }
+.tsk-qa-link p { margin: 0 0 10px; font-size: .9rem; }

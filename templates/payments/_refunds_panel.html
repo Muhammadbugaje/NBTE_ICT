@@ -1,0 +1,23 @@
+{% load qa_tags %}
+{% with fin_tab="refunds" fin_title="Refunds" fin_lead="Overpayments, duplicate payments and money received after a bill was cancelled. A Finance officer sends a refund for approval, the Director of Finance confirms it, and the payment reference is recorded when the money leaves." %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+<section class="qa-card" aria-label="Refunds">
+  <form class="qa-toolbar" hx-get="{% url 'qa_fin:refunds' %}" hx-target="#qa-panel" hx-push-url="true" hx-trigger="change" data-qa-no-overlay>
+    <select class="input qa-select" name="status" aria-label="Status"><option value="">Any status</option>{% for v, l in statuses %}<option value="{{ v }}"{% if filters.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  </form>
+  {% if page.rows %}
+    <div class="qa-table-wrap"><table class="qa-table">
+      <thead><tr><th>Bill</th><th>Amount</th><th>Reason</th><th>Status</th><th class="qa-col-actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>{% for r in page.rows %}<tr>
+        <td data-label="Bill"><a href="{% url 'qa_fin:obligation' r.obligation_id %}" class="qa-mono qa-small">{{ r.obligation.reference }}</a><span class="qa-desc">{{ r.obligation.institution.name }}</span></td>
+        <td data-label="Amount"><strong>{{ r.amount|naira }}</strong></td><td data-label="Reason" class="qa-small">{{ r.reason }}<span class="qa-desc">{{ r.get_source_display }}</span></td>
+        <td data-label="Status"><span class="qa-chip {{ r.status|tone }}">{{ r.status|humanize_code }}</span>{% if r.paid_reference %}<span class="qa-desc qa-mono">{{ r.paid_reference }}</span>{% endif %}</td>
+        <td class="qa-col-actions">
+          {% if r.status == "requested" %}<form method="post" action="{% url 'qa_fin:refund_action' r.pk 'approve' %}" hx-post="{% url 'qa_fin:refund_action' r.pk 'approve' %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-sm btn-primary" type="submit">Send for approval</button></form>
+          {% elif r.status == "approved" %}<form method="post" action="{% url 'qa_fin:refund_action' r.pk 'paid' %}" hx-post="{% url 'qa_fin:refund_action' r.pk 'paid' %}" hx-target="#qa-panel" class="qa-row qa-gap-sm">{% csrf_token %}<input class="input" name="paid_reference" placeholder="Refund payment ref" required minlength="3" style="max-width:180px"><button class="btn btn-sm btn-primary" type="submit">Record paid</button></form>{% endif %}
+        </td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% include "qa_core/partials/_pagination.html" with target="#qa-panel" %}
+  {% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "rotate" 28 %}</span><h3 class="nbte-empty-state__title">No refunds</h3><p class="nbte-empty-state__body">Refund requests appear here.</p></div>{% endif %}
+</section>

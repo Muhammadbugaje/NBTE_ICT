@@ -1,0 +1,37 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Profile & CV · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "user" 14 "2.2" %} Resource person</span>
+    <h1 data-qa-focus>{{ rp.full_name }}</h1>
+    <p>Your record with NBTE. To change your details, write to the QA Directorate; you can upload an updated CV or promotion letter here.</p>
+  </header>
+  {% if lapsed %}<div class="qa-callout qa-callout--warn" role="status">{% icon "alert" 18 "2.2" %}<div><strong>No longer eligible for new engagements</strong><ul class="qa-problems">{% for p in lapsed %}<li>{{ p }}</li>{% endfor %}</ul><p class="qa-small">Engagements already confirmed continue. Upload a promotion letter if your rank has changed.</p></div></div>{% endif %}
+  <div class="qa-cols">
+    <section class="qa-card" aria-labelledby="pf-h"><header class="qa-card__head"><h2 id="pf-h">Record</h2><span class="qa-chip {{ rp.status|tone }}">{{ rp.get_status_display }}</span></header>
+      <div class="qa-card__body"><dl class="qa-dl">
+        <div><dt>E-mail</dt><dd>{{ rp.email }}</dd></div>
+        <div><dt>Phone</dt><dd>{{ rp.phone|default:"—" }}</dd></div>
+        <div><dt>Source</dt><dd>{{ rp.get_source_display }}</dd></div>
+        <div><dt>Rank</dt><dd>{{ rp.rank|humanize_code|default:"—" }}</dd></div>
+        <div><dt>Disciplines</dt><dd>{% for d in disciplines %}{{ d.discipline.name }}{% if d.is_primary %} (primary){% endif %}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</dd></div>
+        <div><dt>Qualifications</dt><dd>{{ rp.qualifications|default:"—"|linebreaksbr }}</dd></div>
+      </dl></div>
+    </section>
+    <section class="qa-card" aria-labelledby="cv-h"><header class="qa-card__head"><h2 id="cv-h">CV and documents</h2></header>
+      <ul class="qa-rowlist" role="list">{% for f in files %}<li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ f.get_kind_display }}</span><span class="qa-rowlink__meta"><span>{{ f.original_name|default:f.file.name }}</span><span>· {{ f.created_at|date:"j M Y" }}</span></span></span></li>{% empty %}<li class="qa-card__body qa-muted">No documents yet.</li>{% endfor %}</ul>
+      <div class="qa-card__body">
+        <form class="qa-form" method="post" enctype="multipart/form-data" action="{% url 'qa_portal:rp_profile' %}" hx-post="{% url 'qa_portal:rp_profile' %}" hx-encoding="multipart/form-data" hx-target="#qa-main" novalidate>{% csrf_token %}
+          <div class="qa-fields">
+            <div class="qa-field"><label for="cv-kind">Document</label><select class="input" id="cv-kind" name="kind">{% for v, l in kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+            <div class="qa-field{% if error %} has-error{% endif %}"><label for="cv-file">File</label><input class="input" type="file" id="cv-file" name="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"{% if error %} aria-invalid="true" aria-describedby="cv-err"{% endif %}>{% if error %}<p class="qa-field__error" role="alert" id="cv-err">{{ error }}</p>{% endif %}<p class="qa-field__help">PDF, Word or image.</p></div>
+          </div>
+          <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "upload" 16 %} Upload</button></div>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

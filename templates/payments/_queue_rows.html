@@ -1,0 +1,24 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for i in page.rows %}
+      <li><a class="qa-rowlink" href="{% url 'qa_fin:item' i.pk %}" hx-get="{% url 'qa_fin:item' i.pk %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="qa-rowlink__badge qa-rowlink__badge--money">{{ i.obligation.balance|naira }}</span>
+        <span class="qa-rowlink__main">
+          <span class="qa-rowlink__title">{{ i.obligation.institution.name }} · {{ i.obligation.description }}</span>
+          <span class="qa-rowlink__meta"><span class="qa-mono">{{ i.obligation.reference }}</span><span>· {{ i.get_source_display }}</span>{% if i.proof %}<span>· teller {{ i.proof.teller_number|default:"—" }}</span>{% endif %}{% if i.attempt %}<span>· {{ i.attempt.get_provider_display }} {{ i.attempt.provider_reference }}</span>{% endif %}</span>
+        </span>
+        <span class="qa-rowlink__side">
+          {% if i.decision == "needs_info" %}<span class="qa-chip qa-tone-warn">Needs information</span>
+          {% elif i.ready %}<span class="qa-chip qa-tone-success">Ready for the Director</span>
+          {% elif i.needs_second %}<span class="qa-chip qa-tone-pending">Needs second check</span>
+          {% elif i.decision %}<span class="qa-chip qa-tone-warn">{{ i.ready_why|truncatechars:42 }}</span>
+          {% else %}<span class="qa-chip qa-tone-pending">Needs first pass</span>{% endif %}
+          <span class="qa-sla{% if i.overdue %} is-late{% elif i.sla_pct >= 50 %} is-near{% endif %}"><span class="qa-progress"><span style="--pct: {{ i.sla_pct }}%"></span></span><small>{% if i.overdue %}Overdue{% else %}Waiting {{ i.opened_at|timesince }}{% endif %}</small></span>
+        </span></a></li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">Queue is clear</h3><p class="nbte-empty-state__body">No payment is waiting for verification with these filters.</p></div>
+{% endif %}

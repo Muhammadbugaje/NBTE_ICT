@@ -29,6 +29,8 @@ urlpatterns = [
     # Workflow actions
     path("memos/<int:pk>/publish/",
          memos_views.memo_publish, name="memo_publish"),
+    path("memos/<int:pk>/recheck/",
+         memos_views.memo_recheck, name="memo_recheck"),
     path("memos/<int:pk>/approve/",
          memos_views.memo_approve, name="memo_approve"),
     path("memos/<int:pk>/return/",

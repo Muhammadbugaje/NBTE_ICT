@@ -38,7 +38,10 @@ def asset(ict):
 
 
 def test_general_staff_cannot_change_state(client, ict, roles, asset):
-    client.force_login(mk("gs8@x.org", ict, roles["staff"]))
+    holder = mk("gs8@x.org", ict, roles["staff"])
+    asset.current_custodian = holder     # can see it (holds it) but may not change its state
+    asset.save()
+    client.force_login(holder)
     assert client.post(reverse("assets:set_state", args=[asset.asset_tag]),
                        {"state": "retired", "reason": "x"}).status_code == 403
     asset.refresh_from_db()

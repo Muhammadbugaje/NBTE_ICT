@@ -1,0 +1,15 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for a in page.rows %}
+      <li><a class="qa-rowlink" href="{% url 'qa_app:detail' a.pk %}" hx-get="{% url 'qa_app:detail' a.pk %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="qa-rowlink__badge">{{ a.institution.code }}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.institution.name }}</span>
+          <span class="qa-rowlink__meta"><span class="qa-mono">{{ a.reference }}</span><span>· {{ a.institution.ownership.name|default:"" }}</span>{% if a.submitted_at %}<span>· submitted {{ a.submitted_at|date:"j M Y" }}</span>{% endif %}{% if a.round > 1 %}<span>· round {{ a.round }}</span>{% endif %}</span></span>
+        <span class="qa-rowlink__side"><span class="qa-chip {{ a.status|tone }}">{{ a.public }}</span>{% if a.return_remark and a.status == "draft" %}<span class="qa-small qa-muted">Returned by {{ a.returned_by_department.name|default:"NBTE" }}</span>{% endif %}</span></a></li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "file" 28 %}</span><h3 class="nbte-empty-state__title">No applications here</h3><p class="nbte-empty-state__body">Applications appear when proposed institutions start them on the portal.</p></div>
+{% endif %}

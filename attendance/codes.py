@@ -17,7 +17,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 
 from .models import AttendanceLocation, LocationCheckInCode
-from .services import is_working_day
+from .services import is_working_day, non_working_reason
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,8 @@ def location_is_open(location, now=None):
     local = timezone.localtime(now)
     today = local.date()
 
-    if not is_working_day(today):
+    # No codes on weekends / off days / organisation-wide holidays.
+    if non_working_reason(today):
         return False
 
     start_time = getattr(location, "work_start_time", None)
@@ -193,6 +194,13 @@ def verify_check_in_code(user, raw_code, now=None):
         raise ValidationError(
             "Manual check-in is currently disabled. Ask an administrator to enable it."
         )
+
+    # A code issued earlier can still be "live" (long rotation windows), so
+    # refuse on weekends / off days / holidays here as well, before the code
+    # is even looked at and without costing the user an attempt.
+    blocked = non_working_reason(timezone.localtime(now).date(), user)
+    if blocked:
+        raise ValidationError(blocked)
 
     if attempts_remaining(user) <= 0:
         raise ValidationError(

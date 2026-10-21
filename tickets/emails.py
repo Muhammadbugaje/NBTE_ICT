@@ -90,6 +90,16 @@ def send_ticket_resolution_email(ticket):
     subject = f"{prefix} {ticket.reference} — {ticket.subject}"
 
     context = _build_context(ticket)
+    # The raiser may have typed the tag of an asset they are not allowed to
+    # see; the email then shows the tag only, never its brand/model.
+    asset_name_visible = False
+    if ticket.asset_id:
+        try:
+            from assets.access import can_view_asset
+            asset_name_visible = can_view_asset(ticket.raised_by, ticket.asset)
+        except Exception:
+            asset_name_visible = False
+    context["asset_name_visible"] = asset_name_visible
     text_body = render_to_string("tickets/email/resolution.txt", context)
     html_body = render_to_string("tickets/email/resolution.html", context)
 

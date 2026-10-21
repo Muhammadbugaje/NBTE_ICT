@@ -1,0 +1,127 @@
+"""Phase 4 interactive walkthrough (Playwright): Case Board → cost sheet →
+Audit's task → Open in QA → audit review → ES approval; tasks close and new
+ones open. Screenshots go to SHOTS."""
+import sys
+import lib
+from lib import *
+lib.SHOTS = os.path.join(S, "phase4"); os.makedirs(lib.SHOTS, exist_ok=True)
+
+D = "@demo.nbte.local"
+def pick(p, sel, text):
+    v = p.evaluate("([s, t]) => { const o = [...document.querySelectorAll(s + ' option')].find(o => o.textContent.includes(t)); return o ? o.value : null; }", [sel, text])
+    assert v, (sel, text)
+    p.select_option(sel, v)
+
+def act(p, label, confirm=None, remark=None):
+    if remark:
+        p.locator("textarea[name=remark]:visible").first.fill(remark)
+    p.locator(f"button:has-text('{label}'):visible").first.click()
+    confirm_dialog(p, confirm or label)
+
+# 1. Desk officer: Case Board → the case → cost sheet
+c = ctx(); p = page_for(c)
+login_internal(p, "qa.officer" + D)
+p.goto(INT + "/qa/cases/"); settle(p)
+shot(p, "01_case_board")
+case_url = INT + p.locator("a.qa-card-case").first.get_attribute("href")
+p.locator("a.qa-card-case").first.click(); settle(p); p.wait_for_timeout(500)
+print("case", case_url, p.url)
+shot(p, "02_case_overview_stage2")
+p.goto(case_url + "?tab=cost"); settle(p)
+for value, days, role in (("dta-director", "3", "Team lead"), ("dta-officer", "3", "Member"), ("transport-road", "1", "Road transport")):
+    pick(p, "#cl-rate", {"dta-director": "Team lead (Director", "dta-officer": "Team member", "transport-road": "Road transport"}[value]); p.fill("#cl-days", days); p.fill("#cl-role", role)
+    p.click("button:has-text('Add line')"); settle(p); p.wait_for_timeout(400)
+shot(p, "03_cost_sheet_editor_department")
+act(p, "Submit cost sheet")
+shot(p, "04_after_submit_personnel_stage")
+p.goto(case_url + "?tab=personnel"); settle(p)
+pick(p, "#pe-staff", "Director"); p.select_option("#pe-duty", "team_lead")
+p.click("form button:has-text('Add'):visible"); settle(p)
+pick(p, "#pe-staff", "Amina"); p.select_option("#pe-duty", "member")
+p.click("form button:has-text('Add'):visible"); settle(p)
+shot(p, "05_personnel_list")
+act(p, "Submit personnel list")
+c.close()
+
+# 2. Director confirms the personnel
+c = ctx(); p = page_for(c)
+login_internal(p, "qa.director" + D)
+p.goto(INT + "/qa/cases/my-stages/"); settle(p)
+shot(p, "06_director_my_stage_work")
+p.locator("a.qa-rowlink").first.click(); settle(p)
+act(p, "Confirm personnel")
+c.close()
+
+# 3. Audit officer: Tasks inbox → Open in QA → audit the cost
+c = ctx(); p = page_for(c)
+login_internal(p, "qa.audit_officer" + D)
+p.goto(INT + "/tasks/assigned/"); settle(p)
+shot(p, "07_tasks_inbox_open_in_qa")
+p.locator("a.tsk-card").first.click(); settle(p)
+shot(p, "08_task_detail_open_in_qa")
+p.click("a:has-text('Open in QA')"); settle(p)
+print("audit at", p.url)
+p.goto(case_url + "?tab=cost&stage=audit_personnel_cost"); settle(p)
+row = p.locator("table.qa-cost-table tbody tr").nth(1)
+row.locator("input[name=days]").fill("2")
+row.locator("input[name=note]").fill("Two nights are enough for a one-day visit")
+row.locator("button:has-text('Save')").click(); settle(p); p.wait_for_timeout(400)
+shot(p, "09_cost_sheet_editor_audit")
+p.goto(case_url + "?stage=audit_personnel_cost"); settle(p)
+act(p, "Submit audited cost")
+c.close()
+
+# 4. Audit director confirms; the ES returns once (remark pinned), then approves
+c = ctx(); p = page_for(c)
+login_internal(p, "qa.audit_director" + D)
+p.goto(case_url); settle(p)
+act(p, "Confirm audited cost")
+c.close()
+c = ctx(); p = page_for(c)
+login_internal(p, "qa.es" + D)
+p.goto(INT + "/qa/cases/my-stages/?kind=cost"); settle(p)
+shot(p, "10_es_cost_queue")
+p.locator("a.qa-rowlink").first.click(); settle(p)
+p.goto(case_url + "?tab=cost"); settle(p)
+shot(p, "11_es_reviews_cost")
+act(p, "Return with remark", confirm="Return", remark="Please show the transport for the second car")
+c.close()
+c = ctx(); p = page_for(c)
+login_internal(p, "qa.audit_director" + D)
+p.goto(case_url); settle(p)
+shot(p, "12_returned_with_pinned_remark")
+act(p, "Confirm audited cost")
+c.close()
+c = ctx(); p = page_for(c)
+login_internal(p, "qa.es" + D)
+p.goto(case_url); settle(p)
+act(p, "Approve cost (ES)")
+p.goto(case_url + "?tab=tasks"); settle(p)
+shot(p, "13_tasks_closed_and_new_ones_open")
+p.goto(case_url + "?tab=timeline"); settle(p)
+shot(p, "14_timeline")
+c.close()
+
+# 5. Desk officer sees the next task (visit details)
+c = ctx(); p = page_for(c)
+login_internal(p, "qa.officer" + D)
+p.goto(INT + "/tasks/assigned/"); settle(p)
+shot(p, "15_desk_officer_new_task_visit")
+c.close()
+
+# 6. ICT monitor (read-only), rate table, drift, mobile board
+c = ctx(); p = page_for(c)
+login_internal(p, "qa.ict_monitor" + D)
+p.goto(case_url + "?tab=cost"); settle(p)
+shot(p, "16_ict_monitor_read_only")
+p.goto(INT + "/qa/cases/drift/"); settle(p)
+shot(p, "17_task_link_drift")
+c.close()
+c = ctx(mobile=True); p = page_for(c)
+login_internal(p, "qa.es" + D)
+p.goto(INT + "/qa/cases/"); settle(p)
+shot(p, "18_case_board_mobile")
+p.goto(case_url); settle(p)
+shot(p, "19_case_detail_mobile")
+c.close()
+print("ERRORS", errors)

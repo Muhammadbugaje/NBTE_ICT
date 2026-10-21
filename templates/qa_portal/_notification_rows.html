@@ -1,0 +1,14 @@
+{% load qa_tags %}
+{% if page.rows %}
+<ul class="qa-rowlist" role="list">{% for n in page.rows %}
+  <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge{% if not n.is_read %} is-unread{% endif %}">
+    <span class="qa-rowlink__main">
+      <span class="qa-rowlink__title">{{ n.title }}</span>
+      {% if n.body %}<span class="qa-small qa-muted">{{ n.body }}</span>{% endif %}
+      <span class="qa-rowlink__meta"><time datetime="{{ n.created_at|date:'c' }}">{{ n.created_at|date:"j M Y, H:i" }}</time></span>
+    </span>
+    <span class="qa-rowlink__side">{% if not n.is_read %}<span class="qa-chip qa-tone-pending">New</span>{% endif %}</span>
+  </li>
+{% endfor %}</ul>
+{% include "qa_core/partials/_pagination.html" with target="#qa-notif-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "bell" 28 %}</span><h3 class="nbte-empty-state__title">{% if show == "unread" %}Nothing unread{% else %}No notifications yet{% endif %}</h3><p class="nbte-empty-state__body">When NBTE needs something from you, or a decision is made, it appears here.</p></div>{% endif %}

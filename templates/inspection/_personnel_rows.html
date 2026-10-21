@@ -1,0 +1,15 @@
+{% load qa_tags %}
+{% if page.rows %}
+<div class="qa-table-wrap"><table class="qa-table">
+  <thead><tr><th scope="col">Name</th><th scope="col">Role · designation</th><th scope="col">Disciplines</th><th scope="col">Duties</th><th scope="col" class="num">Visits (year)</th><th scope="col">Status</th></tr></thead>
+  <tbody>{% for qp in page.rows %}<tr>
+    <td><strong>{{ qp.staff }}</strong><br><span class="qa-small qa-muted">{{ qp.staff.department.name|default:"" }}</span></td>
+    <td>{{ qp.staff.user.role.name|default:"—" }}<br><span class="qa-small qa-muted">{{ qp.staff.designation.name|default:"no designation" }}</span></td>
+    <td>{% for d in qp.disciplines.all %}<span class="qa-chip">{{ d.name }}</span> {% endfor %}</td>
+    <td>{% if qp.is_verification_officer %}<span class="qa-chip qa-tone-info">Verification</span> {% endif %}{% if qp.is_team_lead_eligible %}<span class="qa-chip qa-tone-info">Team lead</span>{% endif %}</td>
+    <td class="num">{{ qp.totals.visits_this_year }}</td>
+    <td>{% if qp.active %}<span class="qa-chip qa-tone-success">Active</span>{% else %}<span class="qa-chip">Inactive</span>{% endif %}{% if qp.lapsed %} <span class="qa-chip qa-tone-warn">No longer eligible</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "users" 28 %}</span><h3 class="nbte-empty-state__title">Nobody registered</h3><p class="nbte-empty-state__body">Register NBTE staff for QA duty below, or clear the filters.</p></div>{% endif %}

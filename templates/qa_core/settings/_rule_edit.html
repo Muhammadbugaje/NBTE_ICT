@@ -1,0 +1,66 @@
+{% comment %}Inline editor for one setting (swapped over its <tbody>).{% endcomment %}
+{% load qa_tags %}
+<div id="rule-{{ e.pk }}" class="qa-rule is-editing">
+      <form class="qa-edit sh-edit" hx-post="{% url 'qa:setting_save' e.pk %}" hx-target="#rule-{{ e.pk }}" hx-swap="outerHTML"
+            method="post" action="{% url 'qa:setting_save' e.pk %}">
+        {% csrf_token %}
+        <div class="qa-split">
+          <div>
+            <span class="sh-row__title">{{ e.key|setting_title }}</span>
+            {% if e.description %}<span class="sh-row__desc">{{ e.description }}</span>{% endif %}
+            <span class="sh-row__key qa-key">{{ e.key }}</span>
+          </div>
+          {% if e.control == "dual" %}
+            <span class="qa-chip qa-chip--dual">Dual control</span>
+          {% else %}
+            <span class="qa-chip qa-chip--direct">Direct</span>
+          {% endif %}
+        </div>
+
+        {% if errors %}
+          <ul class="qa-errors" role="alert">{% for m in errors %}<li>{{ m }}</li>{% endfor %}</ul>
+        {% endif %}
+
+        <div class="qa-edit__row">
+          <label class="sr-only" for="qa-value-{{ e.pk }}">New value for {{ e.key }}</label>
+          {% if e.value_type == "bool" %}
+            <input type="hidden" name="value" value="false">
+            <label class="sh-switch">
+              <input type="checkbox" id="qa-value-{{ e.pk }}" name="value" value="true"{% if value == "true" %} checked{% endif %} data-qa-focus>
+              <span class="sh-switch__track" aria-hidden="true"></span>
+              <span class="sh-switch__label">On</span>
+            </label>
+          {% elif e.value_type == "json" %}
+            <textarea class="input qa-edit__value" id="qa-value-{{ e.pk }}" name="value" rows="3" spellcheck="false" data-qa-focus>{{ value }}</textarea>
+          {% elif e.value_type == "int" %}
+            <input class="input qa-edit__value" type="number" step="1" inputmode="numeric" id="qa-value-{{ e.pk }}" name="value" value="{{ value }}" data-qa-focus>
+          {% elif e.value_type == "decimal" or e.value_type == "float" %}
+            <input class="input qa-edit__value" type="text" inputmode="decimal" id="qa-value-{{ e.pk }}" name="value" value="{{ value }}" data-qa-focus>
+          {% elif e.value_type == "date" %}
+            <input class="input qa-edit__value" type="date" id="qa-value-{{ e.pk }}" name="value" value="{{ value }}" data-qa-focus>
+          {% else %}
+            <input class="input qa-edit__value" type="text" id="qa-value-{{ e.pk }}" name="value" value="{{ value }}" data-qa-focus>
+          {% endif %}
+        </div>
+
+        {% if e.control == "dual" %}
+          <div class="qa-edit__note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Nothing changes yet. Saving sends this to a second officer in your department who holds the dual-control permission. It expires if nobody decides in time.</span>
+          </div>
+          <label class="sr-only" for="qa-reason-{{ e.pk }}">Reason for the second officer</label>
+          <input class="input" type="text" id="qa-reason-{{ e.pk }}" name="reason" value="{{ reason|default:'' }}" maxlength="500"
+                 placeholder="Reason for the second officer (e.g. memo reference)">
+        {% endif %}
+
+        <div class="qa-edit__row">
+          <button type="submit" class="btn btn-primary btn-sm">
+            {% if e.control == "dual" %}Send for confirmation{% else %}Save{% endif %}
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" data-qa-no-busy
+                  hx-get="{% url 'qa:setting_row' e.pk %}" hx-target="#rule-{{ e.pk }}" hx-swap="outerHTML">Cancel</button>
+          <span class="qa-small qa-muted">Current: <code>{{ e.display }}</code></span>
+        </div>
+      </form>
+  <div id="rule-{{ e.pk }}-extra" class="qa-slot"></div>
+</div>

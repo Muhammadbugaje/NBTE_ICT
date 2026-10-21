@@ -1,0 +1,15 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for r in page.rows %}
+      <li><a class="qa-rowlink" href="{% url 'qa_req:detail' r.pk %}" hx-get="{% url 'qa_req:detail' r.pk %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="qa-rowlink__badge">{{ r.institution.code }}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.institution.name }} — {{ r.qa_type.name }}</span>
+          <span class="qa-rowlink__meta"><span class="qa-mono">{{ r.reference }}</span><span>· {{ r.count }} programme{{ r.count|pluralize }}</span>{% if r.submitted_at %}<span>· submitted {{ r.submitted_at|date:"j M Y" }}</span>{% else %}<span>· started {{ r.created_at|date:"j M Y" }}</span>{% endif %}</span></span>
+        <span class="qa-rowlink__side"><span class="qa-chip {{ r.status|tone }}">{{ r.public }}</span>{% if r.fee_note %}<span class="qa-small qa-muted">Fee not issued</span>{% endif %}</span></a></li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "file" 28 %}</span><h3 class="nbte-empty-state__title">No QA requests here</h3><p class="nbte-empty-state__body">Requests appear when approved institutions start them on the portal. Try clearing the filters.</p></div>
+{% endif %}

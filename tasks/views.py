@@ -551,6 +551,20 @@ def task_detail(request, pk):
 
     dependencies_met = services.dependencies_met(task)
 
+    # Phase 4: a task linked to a QA stage is driven from the QA screens —
+    # it closes when the stage is approved or returned there, never here.
+    qa_link_url, qa_link_open = "", False
+    try:
+        from qa_core.task_bridge import is_linked, open_link_for, qa_url
+
+        if is_linked(task):
+            link = open_link_for(task) or task.qa_link
+            qa_link_url, qa_link_open = qa_url(link), link.closed_at is None
+            can_mark_done = can_cancel = can_delete = can_review = can_assign = False
+            can_reopen = can_split = can_resend = False
+    except ImportError:  # the QA apps are not installed
+        pass
+
     can_comment = not task.is_closed
     can_attach = not task.is_closed
 
@@ -582,6 +596,7 @@ def task_detail(request, pk):
         "can_return": can_return, "can_mark_done": can_mark_done,
         "can_resend": can_resend, "can_split": can_split,
         "dependencies_met": dependencies_met,
+        "qa_link_url": qa_link_url, "qa_link_open": qa_link_open,
         "timeline_last_pk": (
             TaskActivity.objects
             .filter(task=task)

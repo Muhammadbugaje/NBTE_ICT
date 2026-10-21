@@ -1,0 +1,21 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Activity · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "clock" 14 "2.2" %} Your record with NBTE</span>
+    <h1 data-qa-focus>Activity</h1>
+    <p>Everything that happened on your institution’s record, newest first.</p>
+  </header>
+  <section class="qa-card">
+    <form class="qa-toolbar" role="search" hx-get="{% url 'qa_portal:timeline' %}" hx-target="#qa-timeline-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change">
+      <label class="qa-search"><span class="sr-only">Search activity</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Search" autocomplete="off"></label>
+      <select class="input qa-select" name="kind" aria-label="Type">{% for v, l in kinds %}<option value="{{ v }}"{% if filters.kind == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <select class="input qa-select" name="period" aria-label="Period"><option value="">Any time</option><option value="30d"{% if filters.period == "30d" %} selected{% endif %}>Last 30 days</option><option value="90d"{% if filters.period == "90d" %} selected{% endif %}>Last 90 days</option><option value="1y"{% if filters.period == "1y" %} selected{% endif %}>Last year</option></select>
+      <select class="input qa-select" name="by" aria-label="Who"><option value="">Anyone</option><option value="you"{% if filters.by == "you" %} selected{% endif %}>Your institution</option><option value="nbte"{% if filters.by == "nbte" %} selected{% endif %}>NBTE</option></select>
+    </form>
+    <div id="qa-timeline-rows" class="qa-region qa-card__body" data-qa-region aria-live="polite">{% include "qa_portal/_timeline_rows.html" %}</div>
+  </section>
+</div>
+{% endblock %}

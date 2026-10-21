@@ -64,6 +64,8 @@ def sidebar_counts(request):
             "office_requests": 0,
             "all_requests": 0,
             "can_incoming": False,
+            "can_office_requests": False,
+            "can_all_requests": False,
         }
 
         try:
@@ -100,7 +102,8 @@ def sidebar_counts(request):
 
         try:
             from workflow.models import Request
-            if user.department_id and user.role_id and user.role.code == "director":
+            from workflow.access import is_department_request_viewer
+            if is_department_request_viewer(user):
                 counts["incoming"] = Request.objects.filter(
                     receiving_department=user.department,
                 ).exclude(status__in=Request.CLOSED_STATUSES).count()
@@ -110,7 +113,9 @@ def sidebar_counts(request):
         try:
             from django.db.models import Q
             from workflow.models import Request
-            if user.department_id and user.role_id and user.role.code == "director":
+            from workflow.access import is_department_request_viewer
+            if is_department_request_viewer(user):
+                counts["can_office_requests"] = True
                 counts["office_requests"] = (
                     Request.objects
                     .filter(
@@ -125,7 +130,9 @@ def sidebar_counts(request):
 
         try:
             from workflow.models import Request
-            if user.is_superuser or user.has_perm("accounts.view_all_requests"):
+            from workflow.access import can_view_all_requests
+            if can_view_all_requests(user):
+                counts["can_all_requests"] = True
                 counts["all_requests"] = Request.objects.count()
         except Exception:
             pass

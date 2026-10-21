@@ -1,0 +1,60 @@
+{% include "qa_core/settings/_tabs.html" %}
+
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa:settings_workflows' %}" hx-get="{% url 'qa:settings_workflows' %}" hx-target="#qa-panel" hx-push-url="true">Workflows</a>
+  <span aria-hidden="true">/</span>
+  <span aria-current="page">{{ flow.name }}</span>
+</nav>
+
+<div class="qa-split qa-section-head">
+  <div>
+    <h2 data-qa-focus>{{ flow.name }} <span class="qa-chip qa-chip--success">v{{ flow.version }}</span></h2>
+    {% if flow.description %}<p class="qa-muted qa-small">{{ flow.description }}</p>{% endif %}
+  </div>
+  <span class="qa-chip qa-chip--locked">Read-only</span>
+</div>
+
+{% for code, routes in into_success.items %}
+  <div class="qa-callout qa-callout--success">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+    <div>
+      <strong>Only {{ routes|length }} move{{ routes|length|pluralize }} reach{{ routes|length|pluralize:"es," }} <code>{{ code }}</code></strong>
+      <p>
+        {% for t in routes %}<code>{{ t.from_stage.code }}</code> → <code>{{ t.action_code }}</code>{% if t.required_role_setting %} (role from <code>{{ t.required_role_setting }}</code>){% endif %}{% if t.required_permission %} · needs <code>{{ t.required_permission }}</code>{% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}
+      </p>
+    </div>
+  </div>
+{% endfor %}
+
+<ol class="qa-stages">
+  {% for s in stages %}
+    <li class="qa-stage {% if s.kind == 'start' %}qa-stage--start{% elif s.is_terminal_failure %}qa-stage--failure{% elif s.kind == 'end' or s.is_terminal_success %}qa-stage--end{% endif %}{% if s.code == 'confirmed' %} qa-stage--highlight{% endif %}">
+      <div>
+        <div class="qa-stage__head">
+          <strong>{{ s.label }}</strong>
+          <code class="qa-chip qa-chip--mono">{{ s.code }}</code>
+          <span class="qa-chip">{{ s.get_kind_display }}</span>
+          {% if s.actor_kind != "system" %}<span class="qa-chip qa-chip--info">{{ s.get_actor_kind_display }}</span>{% endif %}
+          {% if s.sla_hours %}<span class="qa-chip qa-chip--dual">SLA {{ s.sla_hours }} h</span>{% endif %}
+        </div>
+        {% if s.public_label %}<p class="qa-stage__public">Institutions see: “{{ s.public_label }}”</p>{% endif %}
+        {% if s.out %}
+          <ul class="qa-stage__out">
+            {% for t in s.out %}
+              <li>
+                <code>{{ t.action_code }}</code>
+                <span class="qa-arrow" aria-hidden="true">→</span>
+                <span class="sr-only">to</span>
+                <strong>{{ t.to_stage.label }}</strong>
+                {% if t.required_permission %}<span class="qa-chip qa-chip--mono" title="Permission required">{{ t.required_permission }}</span>{% endif %}
+                {% if t.required_role_setting %}<span class="qa-chip qa-chip--dual" title="Actor must hold the role named in this setting">role: {{ t.required_role_setting }}</span>{% endif %}
+                {% if t.requires_confirmation %}<span class="qa-chip qa-chip--dual">second officer</span>{% endif %}
+                {% if t.requires_remark %}<span class="qa-chip">remark</span>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </li>
+  {% endfor %}
+</ol>

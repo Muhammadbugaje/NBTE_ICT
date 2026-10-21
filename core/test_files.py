@@ -144,7 +144,8 @@ def test_no_thumbnails_when_unrelated_field_saved(settings, django_capture_on_co
     big.unlink()
     with django_capture_on_commit_callbacks(execute=True) as cbs:
         s = Staff.objects.get(pk=s.pk)
-        s.designation = "Officer"
+        from staff.models import Designation
+        s.designation = Designation.objects.create(name="Officer")  # FK since the nominal-roll release
         s.save()
     assert cbs == [] and not big.exists()           # no regeneration without a new upload
 

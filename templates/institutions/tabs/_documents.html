@@ -1,0 +1,29 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="tab-docs">
+  <header class="qa-card__head"><div><h2 id="tab-docs" data-qa-focus-heading>Statutory documents</h2><p>Registration checklist for this ownership and type (Requirement 1). Files open through the protected download.</p></div></header>
+  <ul class="qa-doclist" role="list">
+    {% for r in rows %}
+      <li class="qa-doc" data-state="{{ r.state }}">
+        <span class="qa-doc__icon">{% icon "file" 20 %}</span>
+        <div>
+          <div class="qa-doc__name">{{ r.kind.name }} <span class="qa-chip {{ r.state|tone }}">{{ r.state|doc_state_label }}</span>{% if not r.mandatory %}<span class="qa-chip">Optional</span>{% endif %}</div>
+          <div class="qa-doc__meta"><span>Reviewed by {{ r.department.name|default:"—" }}</span>{% if r.document %}<span>v{{ r.document.version }} · {{ r.document.created_at|date:"j M Y" }}</span>{% endif %}</div>
+          {% if r.state == "returned" and r.document.review_remark %}<div class="qa-doc__remark">{{ r.document.review_remark }}</div>{% endif %}
+        </div>
+        <div class="qa-doc__tools">{% if r.document %}<a class="btn btn-sm btn-subtle" href="{{ r.document.download_url }}">{% icon "download" 14 %} Download</a>{% endif %}</div>
+      </li>
+    {% empty %}<li class="qa-doc"><span class="qa-muted">No document rules apply yet — set the ownership and type.</span></li>{% endfor %}
+  </ul>
+</section>
+{% if history %}
+<section class="qa-card" aria-labelledby="tab-dochist">
+  <header class="qa-card__head"><h2 id="tab-dochist">All versions</h2></header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th>Document</th><th>Version</th><th>Status</th><th>Uploaded</th><th>Reviewed</th><th class="qa-col-actions"><span class="sr-only">File</span></th></tr></thead>
+    <tbody>{% for d in history %}<tr><td data-label="Document">{{ d.kind.name }}</td><td data-label="Version">v{{ d.version }}</td><td data-label="Status"><span class="qa-chip {{ d.status|tone }}">{{ d.get_status_display }}</span></td>
+      <td data-label="Uploaded">{{ d.created_at|date:"j M Y" }} · {{ d.uploaded_by|who:"—" }}</td>
+      <td data-label="Reviewed">{% if d.reviewed_at %}{{ d.reviewed_at|date:"j M Y" }} · {{ d.reviewed_by.get_full_name|default:"" }}{% else %}—{% endif %}</td>
+      <td class="qa-col-actions"><a class="btn btn-sm btn-subtle" href="{{ d.download_url }}">Download</a></td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}

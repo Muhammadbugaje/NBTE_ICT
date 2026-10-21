@@ -294,6 +294,14 @@ class MemoRouteStep(models.Model):
     APPROVER_ES = "es"
     APPROVER_SPECIFIC = "specific_user"
     APPROVER_ROLE_IN_DEPT = "role_in_department"
+    # The director of the department the memo is addressed to (the target
+    # person's department, or the department of a department circular).
+    # Skipped automatically when that is the sender's own department, when
+    # that director is the recipient, or when nobody outside the sender's
+    # department receives the memo.
+    APPROVER_RECEIVING_DIRECTOR = "receiving_director"
+    # Kinds that walk up the SENDER's own department.
+    SENDER_SIDE_KINDS = ("division_head", "deputy", "director")
     APPROVER_CHOICES = [
         (APPROVER_DIVISION_HEAD, "Sender's division head"),
         (APPROVER_DIRECTOR, "Sender's department director"),
@@ -301,6 +309,7 @@ class MemoRouteStep(models.Model):
         (APPROVER_ES, "Executive Secretary"),
         (APPROVER_SPECIFIC, "A specific user"),
         (APPROVER_ROLE_IN_DEPT, "Anyone with a role in a department"),
+        (APPROVER_RECEIVING_DIRECTOR, "Recipient's department director"),
     ]
 
     route = models.ForeignKey(MemoRoute, on_delete=models.CASCADE,
@@ -395,6 +404,22 @@ class MemoRouteRule(TimeStampedModel):
             "target. Ignored for broadcast target kinds."
         ),
     )
+    RELATION_ANY = "any"
+    RELATION_SAME = "same"
+    RELATION_OTHER = "other"
+    RELATION_CHOICES = [
+        (RELATION_ANY, "Any department"),
+        (RELATION_SAME, "Recipients are in the sender's own department"),
+        (RELATION_OTHER, "Recipients are (partly) in another department"),
+    ]
+    department_relation = models.CharField(
+        max_length=8, choices=RELATION_CHOICES, default=RELATION_ANY,
+        help_text=(
+            "Match only memos that stay inside the sender's department, or only "
+            "memos that leave it. Used for one person, a list of people and a "
+            "department circular; broadcasts always count as 'any'."
+        ),
+    )
     priority = models.PositiveIntegerField(
         default=0,
         help_text="Higher wins when several rules match.",
@@ -415,17 +440,23 @@ class MemoApproval(models.Model):
     APPROVE = "approve"
     RETURN = "return"
     REJECT = "reject"
+    SKIP = "skip"
     DECISION_CHOICES = [
         (APPROVE, "Approved"),
         (RETURN, "Returned"),
         (REJECT, "Rejected"),
+        (SKIP, "Skipped"),
     ]
 
     memo = models.ForeignKey("Memo", on_delete=models.CASCADE,
                              related_name="approvals")
+    # A step can be deleted from its route later; the decision is kept and
+    # remembers the step's name (step_name), instead of blocking the delete.
     step = models.ForeignKey(MemoRouteStep, null=True, blank=True,
-                             on_delete=models.PROTECT, related_name="approvals")
-    actor = models.ForeignKey(settings.AUTH_USER_MODEL,
+                             on_delete=models.SET_NULL, related_name="approvals")
+    step_name = models.CharField(max_length=150, blank=True)
+    # Empty for automatic decisions (a step skipped by the routing rules).
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                               on_delete=models.PROTECT, related_name="+")
     actor_role = models.CharField(max_length=150, blank=True)
     decision = models.CharField(max_length=16, choices=DECISION_CHOICES)
@@ -441,7 +472,7 @@ class MemoApproval(models.Model):
             (self.actor.get_full_name() or self.actor.email)
             if self.actor_id else "—"
         )
-        step_label = self.step.name if self.step_id else "(deleted step)"
+        step_label = self.step.name if self.step_id else (self.step_name or "(deleted step)")
         return f"{self.get_decision_display()} · {step_label} · {actor}"
 
 

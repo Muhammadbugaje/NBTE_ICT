@@ -1,0 +1,38 @@
+{% load qa_tags %}
+{% include "qa_core/settings/_tabs.html" %}
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not sent" message=error %}{% endif %}
+{% if not usable %}{% include "qa_core/partials/_callout.html" with kind="danger" title="No real bank account yet" message="Slips cannot be issued until Finance enters NBTE's account below and the Director of Finance confirms it. Bills wait at “issued” and are published automatically once it is confirmed." %}{% endif %}
+<section class="qa-card" aria-labelledby="fee-sched">
+  <header class="qa-card__head"><div><h2 id="fee-sched" data-qa-focus>Fee schedules</h2><p>Nobody types an amount: each bill is computed by the schedule's formula setting and frozen on the bill. Edit the formulas themselves on the Formulas tab (dual control).</p></div>
+    <a class="btn btn-sm btn-subtle" href="{% url 'qa:settings_formulas' %}" hx-get="{% url 'qa:settings_formulas' %}" hx-target="#qa-panel" hx-push-url="true">Formulas</a></header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th>Fee</th><th>Formula</th><th>Due</th><th>Remita service type</th><th>Account</th><th class="qa-col-actions"><span class="sr-only">Change</span></th></tr></thead>
+    <tbody>{% for s in schedules %}<tr id="fee-{{ s.pk }}">
+      <td data-label="Fee"><strong>{{ s.name }}</strong>{% if s.blocked %} <span class="qa-chip qa-tone-danger">Unconfirmed — bills blocked</span>{% endif %}{% if not s.is_active %} <span class="qa-chip">Off</span>{% endif %}<span class="qa-desc">{{ s.description }}</span></td>
+      <td data-label="Formula"><span class="qa-key">{{ s.formula }}</span><code class="qa-desc qa-mono">{{ s.expr }}</code></td>
+      <td data-label="Due">{{ s.due_days|default:"setting" }}{% if s.due_days %} days{% endif %}</td><td data-label="Remita" class="qa-mono">{{ s.remita_service_type_id|default:"—" }}</td>
+      <td data-label="Account">{% if s.revenue_account and s.revenue_account.usable %}{{ s.revenue_account }}{% elif default_account %}<span class="qa-muted">Default:</span> {{ default_account }}{% else %}<span class="qa-chip qa-tone-danger">Not set</span>{% endif %}</td>
+      <td class="qa-col-actions">{% if can_propose %}<button class="btn btn-sm btn-subtle" hx-get="{% url 'qa_set:fee_form' s.pk %}" hx-target="#fee-form-slot" hx-swap="innerHTML">Change…</button>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <div id="fee-form-slot"></div>
+</section>
+<div class="qa-cols">
+  <section class="qa-card" aria-labelledby="bank-title">
+    <header class="qa-card__head"><div><h2 id="bank-title">Bank accounts</h2><p>Printed on every slip. Changes need the Director of Finance's confirmation.</p></div></header>
+    <ul class="qa-rowlist" role="list">{% for a in accounts %}<li><div class="qa-rowlink"><span class="qa-rowlink__badge">{% icon "bank" 18 %}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.bank_name }}</span><span class="qa-rowlink__meta"><span>{{ a.account_name }}</span><span class="qa-mono">· {{ a.account_number }}</span></span></span>
+      <span class="qa-rowlink__side">{% if a.is_placeholder %}<span class="qa-chip qa-tone-danger">Placeholder</span>{% elif a.is_active %}<span class="qa-chip qa-tone-success">Active</span>{% else %}<span class="qa-chip">Inactive</span>{% endif %}{% if a.is_default %}<span class="qa-chip qa-chip--direct">Default</span>{% endif %}</span></div></li>{% empty %}<li class="qa-card__body qa-muted">None.</li>{% endfor %}</ul>
+    {% if pending %}<div class="qa-card__body"><h3 class="qa-menu__group">Waiting for confirmation</h3>{% for pa in pending %}<a class="qa-act" href="{% url 'qa:pending_detail' pa.pk %}"><span class="qa-act__icon">{% icon "clock" 16 %}</span><span class="qa-act__text"><strong>{{ pa.policy.label }}</strong><small>{{ pa.reference }} · {{ pa.target_label }}</small></span></a>{% endfor %}</div>{% endif %}
+  </section>
+  {% if can_propose %}
+  <aside class="qa-card" aria-labelledby="bank-form">
+    <header class="qa-card__head"><h2 id="bank-form">Propose an account</h2></header>
+    <div class="qa-card__body">
+      <form method="post" action="{% url 'qa_set:bank_form' %}" hx-post="{% url 'qa_set:bank_form' %}" hx-target="#qa-panel" class="qa-form">{% csrf_token %}
+        <label class="qa-field"><span class="qa-field__label">Replace</span><select class="input" name="account"><option value="">— add a new account —</option>{% for a in accounts %}<option value="{{ a.pk }}">{{ a }}</option>{% endfor %}</select></label>
+        {% for field in bank_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}
+        <button class="btn btn-primary btn-block" type="submit">{% icon "shield" 16 %} Send for confirmation</button>
+      </form>
+    </div>
+  </aside>
+  {% endif %}
+</div>

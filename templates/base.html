@@ -12,9 +12,13 @@
   <link rel="stylesheet" href="{% static 'css/holidays.css' %}?v=3">
   <link rel="stylesheet" href="{% static 'css/users.css' %}?v=3">
   <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=9">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=4">
-  <link rel="stylesheet" href="{% static 'css/search.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/search.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/staff-avatar.css' %}?v=1">
   {% block extra_css %}{% endblock %}
+  {# Phase 6 design layer: loaded last so it restyles the shared primitives. #}
+  <link rel="stylesheet" href="{% static 'css/apple.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/polish.css' %}?v=2">
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' class="{% if request.is_impersonating %}impersonating{% endif %}">
   <a class="skip-link" href="#app-content">Skip to main content</a>
@@ -78,6 +82,8 @@
     </div>
   </div>
 
+  {% if request.user.is_authenticated %}{% include "partials/mobile_tabbar.html" %}{% endif %}
+
   {% if messages and not suppress_global_toasts %}
     {% for m in messages %}
       <span data-toast="{{ m.tags|default:'info' }}"
@@ -90,13 +96,15 @@
 {% include "portal/_category_modal.html" %}
 
   <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
-  <script src="{% static 'js/app.js' %}?v=19" defer></script>
-  <script src="{% static 'js/ui.js' %}?v=3" defer></script>
+  <script src="{% static 'js/app.js' %}?v=21" defer></script>
+  <script src="{% static 'js/ui.js' %}?v=4" defer></script>
   <script src="{% static 'js/dialog.js' %}?v=1" defer></script>
-  <script src="{% static 'js/search.js' %}?v=2" defer></script>
+  <script src="{% static 'js/search.js' %}?v=3" defer></script>
   <script src="{% static 'js/notifications.js' %}?v=6" defer></script>
   <script src="{% static 'js/tickets.js' %}?v=3" defer></script>
   <script src="{% static 'js/memo.js' %}?v=2" defer></script>
+  <script src="{% static 'js/apple.js' %}?v=1" defer></script>
   {% block extra_js %}{% endblock %}
+  <script src="{% static 'js/polish.js' %}?v=1" defer></script>
 </body>
 </html>

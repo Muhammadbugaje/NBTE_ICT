@@ -1,0 +1,14 @@
+{% comment %}
+  Phase 6 workspace switcher: Main system ↔ Quality Assurance. A segmented
+  control; each segment is a submit button so it works without JavaScript.
+  With HTMX the sidebar is swapped in place (no page reload) and the choice
+  is saved on the user. Pages under /qa/ always use the QA workspace.
+{% endcomment %}
+<form class="app-workspace" method="post" action="{% url 'qa:workspace' %}" hx-post="{% url 'qa:workspace' %}" hx-target="#app-sidebar" hx-swap="outerHTML" aria-label="Workspace">
+  {% csrf_token %}<input type="hidden" name="here" value="{{ request.get_full_path }}">
+  <div class="app-workspace__track" role="group" aria-label="Choose a workspace" data-active="{{ workspace }}" hx-on:click="if (event.target.value) this.dataset.active = event.target.value">
+    <button type="submit" name="workspace" value="main" class="app-workspace__seg{% if workspace != 'qa' %} is-active{% endif %}" aria-pressed="{% if workspace != 'qa' %}true{% else %}false{% endif %}" aria-label="Main system">Main</button>
+    <button type="submit" name="workspace" value="qa" class="app-workspace__seg{% if workspace == 'qa' %} is-active{% endif %}" aria-pressed="{% if workspace == 'qa' %}true{% else %}false{% endif %}" aria-label="Switch to the Quality Assurance workspace" title="Quality Assurance workspace">QA</button>
+    <span class="app-workspace__thumb" aria-hidden="true"></span>
+  </div>
+</form>

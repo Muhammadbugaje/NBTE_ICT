@@ -23,11 +23,13 @@
       </div>
     </div>
     <div class="dash-hero-actions">
-      <a href="{% url 'attendance:all_departments' %}" class="btn btn-ghost btn-sm">All departments</a>
+      {% if attendance_scope == "all" %}<a href="{% url 'attendance:all_departments' %}" class="btn btn-ghost btn-sm">All departments</a>{% endif %}
       <a href="{% url 'workflow:my_requests' %}" class="btn btn-ghost btn-sm">All requests</a>
       <a href="{% url 'workflow_manage:home' %}" class="btn btn-primary btn-sm">Workflow admin</a>
     </div>
   </header>
+
+  {% if qa %}{% include "dashboards/_qa_overview.html" %}{% endif %}
 
   <div class="dash-kpis">
     <a href="#es-queue" class="dash-kpi">
@@ -66,12 +68,12 @@
         <div class="dash-kpi-lbl">Completed (30d)</div>
       </div>
     </a>
-    <a href="{% url 'attendance:all_departments' %}" class="dash-kpi">
+    <a href="{% if attendance_link %}{{ attendance_link }}{% else %}#{% endif %}" class="dash-kpi">
       <div class="dash-kpi-icon dash-kpi-teal">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ attendance_kpis.present|default:0 }}</div>
+        <div class="dash-kpi-num">{% if attendance_visible %}{{ attendance_kpis.came|default:0 }}{% else %}—{% endif %}</div>
         <div class="dash-kpi-lbl">Present today</div>
       </div>
     </a>
@@ -202,5 +204,6 @@
 
 {% block extra_js %}
   <script src="{% static 'vendor/chart-4.4.1.umd.js' %}"></script>
+  <script src="{% static 'js/qa-insights.js' %}?v=2" defer></script>
   <script src="{% static 'js/charts.js' %}?v=1"></script>
 {% endblock %}

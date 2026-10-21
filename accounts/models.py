@@ -95,7 +95,9 @@ class Role(TimeStampedModel):
             ("view_analytics_dashboard", "Can view the full cross-office analytics dashboard"),
             ("approve_requests", "Can approve requests assigned to them"),
             ("raise_cross_department_requests", "Can raise requests that route across departments"),
-            ("view_all_requests", "Can view every workflow request across all offices"),
+            ("view_all_requests", "Can view every workflow request and ticket across all offices"),
+            ("view_department_requests",
+             "Can view all workflow requests and tickets raised by or addressed to their own department"),
             # Review L1: the Chairman dashboard checked a permission that did
             # not exist. There is no Chairman role; grant this per user.
             ("view_chairman_dashboard", "Can view the Chairman dashboard"),
@@ -179,7 +181,33 @@ class User(AbstractUser):
         on_delete=models.PROTECT, related_name="users",
     )
 
+    # --- QA (Master Plan §3) -------------------------------------------
+    # One user table for staff, institution users and resource persons.
+    # `user_type` is the hard discriminator ExternalUserGuardMiddleware checks
+    # on every request; `institution` makes scope_to_institution one indexed
+    # filter that fails closed when NULL.
+    STAFF, INSTITUTION, RESOURCE_PERSON = "staff", "institution", "resource_person"
+    USER_TYPE_CHOICES = [
+        (STAFF, "NBTE staff"),
+        (INSTITUTION, "Institution user"),
+        (RESOURCE_PERSON, "Resource person"),
+    ]
+    user_type = models.CharField(
+        max_length=20, choices=USER_TYPE_CHOICES, default=STAFF, db_index=True,
+        help_text="Staff use the internal system; institutions and resource persons use the QA portal.",
+    )
+    institution = models.ForeignKey(
+        "institutions.Institution", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="users",
+        help_text="Required for institution users; optional for resource persons "
+                  "(conflict-of-interest checks); always empty for staff.",
+    )
+
     must_change_password = models.BooleanField(default=True)
+    # Phase 6: which sidebar a staff member works in (the workspace switcher).
+    WORKSPACE_CHOICES = [("main", "Main system"), ("qa", "Quality Assurance")]
+    workspace = models.CharField(max_length=10, choices=WORKSPACE_CHOICES, default="main",
+                                 help_text="Sidebar shown by default: the main NBTE system or the QA workspace.")
     # 2FA scaffold (enforced in Phase 5).
     two_factor_enabled = models.BooleanField(default=False)
     totp_secret = models.CharField(max_length=64, blank=True)
@@ -188,6 +216,30 @@ class User(AbstractUser):
     REQUIRED_FIELDS = ["first_name", "last_name"]
 
     objects = UserManager()
+
+    class Meta(AbstractUser.Meta):
+        constraints = [
+            # Master Plan §3: institution users must belong to an institution,
+            # staff never do; resource persons may (conflict-of-interest).
+            models.CheckConstraint(
+                condition=(
+                    models.Q(user_type="institution", institution__isnull=False)
+                    | models.Q(user_type="staff", institution__isnull=True)
+                    | models.Q(user_type="resource_person")
+                ),
+                name="accounts_user_type_institution_consistent",
+            ),
+        ]
+
+    @property
+    def is_staff_user(self):
+        """NBTE staff (internal system). Not Django's `is_staff` (admin access)."""
+        return self.user_type == self.STAFF
+
+    @property
+    def is_external_user(self):
+        """Institution users and resource persons — QA portal only."""
+        return self.user_type != self.STAFF
 
     def __str__(self):
         name = self.get_full_name()

@@ -1,0 +1,23 @@
+{% load qa_tags %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} SOP-01 · Departmental clearance</span>
+    <h1 data-qa-focus>{% if my_department %}{{ my_department.name }} — clearance queue{% else %}Departmental clearance{% endif %}</h1>
+    <p>Applications waiting for your department. Review the documents your department is responsible for, then clear the application or return it to the institution with a remark. Any one return sends it back to draft for every department.</p>
+  </div>
+  <div class="qa-hero__stats"><div class="qa-stat qa-stat--info"><strong>{{ counts.pending }}</strong><span>Waiting</span></div></div>
+</header>
+<nav class="qa-tabs" aria-label="Status">
+  {% for v, l in "pending:Waiting,cleared:Cleared,returned:Returned,closed:Closed,all:All"|split_pairs %}
+    <a href="?status={{ v }}" hx-get="{% url 'qa_app:clearance' %}?status={{ v }}{% if filters.dept %}&dept={{ filters.dept }}{% endif %}" hx-target="#qa-panel" hx-push-url="true" class="{% if status == v %}is-active{% endif %}">{{ l }}</a>
+  {% endfor %}
+</nav>
+<section class="qa-card" aria-label="Clearance queue">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_app:clearance' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <input type="hidden" name="status" value="{{ status }}">
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference or institution" autocomplete="off"></label>
+    {% if departments|length > 1 %}<select class="input qa-select" name="dept" aria-label="Department"><option value="">Every department</option>{% for d in departments %}<option value="{{ d.code }}"{% if filters.dept == d.code %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>{% endif %}
+    <select class="input qa-select" name="age" aria-label="Waiting for"><option value="">Any age</option>{% for k, v in ages.items %}<option value="{{ k }}"{% if filters.age == k %} selected{% endif %}>Waiting {{ v }}+ day{{ v|pluralize }}</option>{% endfor %}</select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "accreditation/_clearance_rows.html" %}</div>
+</section>

@@ -1,0 +1,28 @@
+<tbody id="tpl-{{ t.pk }}" class="qa-rule">
+  <tr>
+    <td data-label="Template">
+      <span class="qa-key">{{ t.code }}</span>
+      <div class="qa-chip-row">
+        <span class="qa-chip {% if t.channel == 'email' %}qa-chip--info{% elif t.channel == 'sms' %}qa-chip--dual{% else %}qa-chip--direct{% endif %}">{{ t.get_channel_display }}</span>
+        {% if t.n_rules is not None %}<span class="qa-chip">{{ t.n_rules }} rule{{ t.n_rules|pluralize }}</span>{% endif %}
+      </div>
+      {% if t.description %}<span class="qa-desc">{{ t.description }}</span>{% endif %}
+    </td>
+    <td data-label="Subject"><span class="qa-value qa-value--mono">{{ t.subject|default:"—" }}</span></td>
+    <td data-label="On">
+      <label class="qa-switch{% if t.is_active %} is-on{% endif %}">
+        <input type="checkbox" name="is_active" {% if t.is_active %}checked{% endif %}
+               {% if can_manage %}hx-post="{% url 'qa:template_toggle' t.pk %}" hx-trigger="change" hx-swap="none" data-qa-optimistic data-qa-no-overlay{% else %}disabled{% endif %}
+               aria-label="Send {{ t.code }} ({{ t.get_channel_display }})">
+        <span class="qa-switch__track" aria-hidden="true"></span>
+        <span class="qa-switch__label" aria-hidden="true">{% if t.is_active %}On{% else %}Off{% endif %}</span>
+      </label>
+    </td>
+    <td class="qa-col-actions">
+      <button type="button" class="btn btn-sm btn-subtle" hx-get="{% url 'qa:template_edit' t.pk %}"
+              hx-target="#tpl-{{ t.pk }}" hx-swap="outerHTML">
+        {% if can_manage %}Edit{% else %}View{% endif %}
+      </button>
+    </td>
+  </tr>
+</tbody>

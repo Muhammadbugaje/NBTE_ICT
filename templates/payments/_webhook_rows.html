@@ -1,0 +1,6 @@
+{% load qa_tags %}
+{% if page.rows %}<div class="qa-table-wrap"><table class="qa-table"><thead><tr><th>Received</th><th>Provider</th><th>Signature</th><th>Reference</th><th>Outcome</th></tr></thead>
+  <tbody>{% for w in page.rows %}<tr><td data-label="Received">{{ w.received_at|date:"j M Y, H:i:s" }}<span class="qa-desc">{{ w.remote_ip }}</span></td><td data-label="Provider">{{ w.provider|capfirst }}</td>
+    <td data-label="Signature">{% if w.signature_valid %}<span class="qa-chip qa-tone-success">Valid</span>{% else %}<span class="qa-chip qa-tone-danger">Rejected</span>{% endif %}</td><td data-label="Reference" class="qa-mono qa-small">{{ w.reference|default:"—" }}</td><td data-label="Outcome" class="qa-small">{{ w.outcome }}</td></tr>{% endfor %}</tbody></table></div>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "link" 28 %}</span><h3 class="nbte-empty-state__title">No callbacks yet</h3></div>{% endif %}

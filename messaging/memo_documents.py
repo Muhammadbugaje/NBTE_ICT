@@ -132,7 +132,7 @@ def _sender_signature_lines(memo):
     try:
         sp = getattr(sender, "staff_profile", None)
         if sp is not None:
-            designation = getattr(sp, "designation", "") or ""
+            designation = str(getattr(sp, "designation", "") or "")  # FK since the nominal-roll stage
             dept = getattr(sp, "department", None)
             if dept is not None:
                 dept_name = dept.name

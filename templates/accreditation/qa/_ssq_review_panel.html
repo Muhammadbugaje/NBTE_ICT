@@ -1,0 +1,61 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa_req:ssq_queue' %}" hx-get="{% url 'qa_req:ssq_queue' %}" hx-target="#qa-panel" hx-push-url="true">SSQ review queue</a>
+  <span aria-hidden="true">/</span><a href="{% url 'qa_req:detail' req.pk %}" hx-get="{% url 'qa_req:detail' req.pk %}" hx-target="#qa-panel" hx-push-url="true">{{ req.reference }}</a>
+  <span aria-hidden="true">/</span><span aria-current="page">{{ programme }} · v{{ ssq.version }}</span>
+</nav>
+<header class="qa-inst-head">
+  <span class="qa-inst-head__code" aria-hidden="true">{{ inst.code }}</span>
+  <div>
+    <span class="qa-eyebrow">SSQ · {{ req.qa_type.name }} · template v{{ ssq.template.version }}</span>
+    <h1 data-qa-focus>{{ programme }}</h1>
+    <div class="qa-inst-head__meta">
+      <span class="qa-chip {{ ssq.status|tone }}">{{ public }}</span>
+      <span>{{ inst.name }}</span>
+      <span>Version {{ ssq.version }}{% if ssq.supersedes_id %} (supersedes v{{ ssq.supersedes.version }}){% endif %}</span>
+      {% if submission %}<span>{% icon "clock" 14 %} Submitted {{ submission.submitted_at|date:"j M Y, H:i" }} by {{ submission.submitted_by|who }}</span>{% endif %}
+    </div>
+  </div>
+</header>
+
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+{% if submission %}
+  <p class="qa-small qa-row qa-gap-sm qa-muted">{% icon "lock" 14 %} Immutable submission snapshot #{{ submission.version }} · checksum <span class="qa-mono">{{ submission.checksum|slice:":12" }}…</span> {% if checksum_ok %}<span class="qa-chip qa-tone-success">Verified</span>{% else %}<span class="qa-chip qa-tone-danger">Checksum mismatch</span>{% endif %}</p>
+{% else %}
+  {% include "qa_core/partials/_callout.html" with title="Not submitted yet" message="This is a live preview of the institution's draft. Nothing here is final until they submit." %}
+{% endif %}
+
+<div class="qa-cols">
+  <div class="qa-stack">
+    {% include "accreditation/qa/_snapshot.html" %}
+  </div>
+  <aside class="qa-stack qa-sticky">
+    <section class="qa-card" aria-labelledby="rev-h">
+      <header class="qa-card__head"><div><h2 id="rev-h">Review</h2><p>{% if can_review %}Accept, or return with what must change.{% else %}{{ review_reason }}{% endif %}</p></div></header>
+      {% if can_review %}
+      <div class="qa-card__body qa-stack">
+        <div class="qa-field"><label for="rev-remark">Remark <span class="qa-muted">(required to return; the institution sees it)</span></label><textarea class="input" id="rev-remark" name="remark" rows="4" maxlength="4000">{{ remark|default:'' }}</textarea></div>
+        <div class="qa-decide__actions">
+          <form method="post" action="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-post="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-target="#qa-panel" hx-include="#rev-remark" hx-trigger="qa:confirmed" data-qa-confirm="The SSQ is accepted as submitted." data-qa-confirm-title="Accept this SSQ?" data-qa-confirm-label="Accept">{% csrf_token %}<input type="hidden" name="decision" value="accept"><button class="btn btn-primary btn-block" type="submit">{% icon "check" 16 "2.4" %} Accept</button></form>
+          <form method="post" action="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-post="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-target="#qa-panel" hx-include="#rev-remark" hx-trigger="qa:confirmed" data-qa-require="#rev-remark" data-qa-require-msg="Say what the institution must change" data-qa-confirm="The institution revises it as a new version; this submission stays on record unchanged." data-qa-confirm-title="Return the SSQ?" data-qa-confirm-label="Return" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="decision" value="return"><button class="btn btn-subtle btn-block qa-btn-reject" type="submit">Return to institution</button></form>
+        </div>
+      </div>
+      {% endif %}
+      {% if ssq.review_remark %}<div class="qa-card__body"><p class="qa-small"><strong>Last remark:</strong> {{ ssq.review_remark }} — {{ ssq.reviewed_by|who }}, {{ ssq.reviewed_at|date:"j M Y" }}</p></div>{% endif %}
+    </section>
+
+    <section class="qa-card" aria-labelledby="rev-q">
+      <header class="qa-card__head"><div><h2 id="rev-q">Queries</h2><p>Ask for more information without returning the SSQ.</p></div>
+        {% if can_query %}<button type="button" class="btn btn-sm btn-primary" hx-get="{% url 'qa_req:query_raise' 'ssq' ssq.pk %}" hx-target="#qa-query-slot" hx-swap="innerHTML">{% icon "plus" 14 %} Raise query</button>{% endif %}</header>
+      <div id="qa-query-slot" class="qa-card__body" aria-live="polite"></div>
+      {% include "accreditation/qa/_query_mini.html" %}
+    </section>
+
+    <section class="qa-card" aria-labelledby="rev-v"><header class="qa-card__head"><h2 id="rev-v">Versions</h2></header>
+      <ul class="qa-rowlist" role="list">{% for v in versions %}<li><a class="qa-rowlink" href="{% url 'qa_req:ssq' v.pk %}" hx-get="{% url 'qa_req:ssq' v.pk %}" hx-target="#qa-panel" hx-push-url="true"{% if v.pk == ssq.pk %} aria-current="page"{% endif %}><span class="qa-rowlink__badge">v{{ v.version }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{% if v.is_current %}Current{% else %}Superseded{% endif %}</span><span class="qa-rowlink__meta">{{ v.submitted_at|date:"j M Y"|default:"not submitted" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ v.status|tone }}">{{ v.get_status_display }}</span></span></a></li>{% endfor %}</ul>
+    </section>
+    <section class="qa-card" aria-labelledby="rev-hist"><header class="qa-card__head"><h2 id="rev-hist">History</h2></header>
+      <div class="qa-card__body"><ol class="qa-tl">{% for e in history %}<li><span class="qa-tl__text"><strong>{{ e.action_code|humanize_code }}</strong> → {{ e.to_stage|humanize_code }}{% if e.remark %} — “{{ e.remark }}”{% endif %}</span><small>{{ e.actor|who:"System" }} · {{ e.at|date:"j M Y, H:i" }}</small></li>{% empty %}<li class="qa-muted">No events.</li>{% endfor %}</ol></div>
+    </section>
+  </aside>
+</div>

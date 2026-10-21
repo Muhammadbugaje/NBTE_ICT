@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Staff import & export · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Staff import &amp; export{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/showcase.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="nbr-page">
+  <header class="nbte-page-header nbr-header">
+    <div class="nbte-page-header__text">
+      <span class="nbte-page-header__eyebrow">Administration · Nominal roll</span>
+      <h1 class="nbte-page-header__title">Staff import &amp; export</h1>
+      <p class="nbte-page-header__description">The one place to load staff from the HR nominal roll, create their sign-in accounts, and download the staff list back out in the same format.</p>
+    </div>
+    <div class="nbte-page-header__actions">
+      {% if perms.staff.view_staff %}
+        <a href="{% url 'staff:query' %}" class="btn btn-ghost">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Advanced query
+        </a>
+      {% endif %}
+    </div>
+  </header>
+
+  <dl class="nbr-stats">
+    <div class="nbr-stat">
+      <dt>Staff on record</dt>
+      <dd>{{ staff_total }}</dd>
+    </div>
+    <div class="nbr-stat">
+      <dt>Departments</dt>
+      <dd>{{ departments|length }}</dd>
+    </div>
+    <div class="nbr-stat">
+      <dt>Designations</dt>
+      <dd>{{ designation_count }}</dd>
+    </div>
+    {% if can_import %}
+      <div class="nbr-stat">
+        <dt>Last import</dt>
+        <dd class="nbr-stat-text">
+          {% with last=sessions.0 %}
+            {% if last %}{{ last.created_at|date:"j M Y" }}{% else %}Never{% endif %}
+          {% endwith %}
+        </dd>
+      </div>
+    {% endif %}
+  </dl>
+
+  <div class="tabs nbr-tabs" role="tablist" aria-label="Staff import and export" data-tabs>
+    {% if can_import %}
+      <button type="button" class="tab" role="tab" id="nbr-tab-import" aria-controls="nbr-panel-import" aria-selected="{% if tab == 'import' %}true{% else %}false{% endif %}">Import</button>
+    {% endif %}
+    {% if can_export %}
+      <button type="button" class="tab" role="tab" id="nbr-tab-export" aria-controls="nbr-panel-export" aria-selected="{% if tab == 'export' %}true{% else %}false{% endif %}">Export</button>
+    {% endif %}
+    <button type="button" class="tab" role="tab" id="nbr-tab-template" aria-controls="nbr-panel-template" aria-selected="{% if tab == 'template' %}true{% else %}false{% endif %}">Template</button>
+    {% if can_import %}
+      <button type="button" class="tab" role="tab" id="nbr-tab-history" aria-controls="nbr-panel-history" aria-selected="{% if tab == 'history' %}true{% else %}false{% endif %}">
+        History{% if sessions %} <span class="nbr-tab-count">{{ sessions|length }}</span>{% endif %}
+      </button>
+    {% endif %}
+  </div>
+
+  {% include "staff/nominal_roll/import.html" %}
+
+  {% include "staff/nominal_roll/export.html" %}
+
+  {% include "staff/nominal_roll/template.html" %}
+
+  {% include "staff/nominal_roll/history.html" %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/nominal-roll.js' %}?v=1" defer></script>
+{% endblock %}

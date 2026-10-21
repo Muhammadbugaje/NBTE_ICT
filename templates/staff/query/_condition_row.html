@@ -1,0 +1,37 @@
+{% comment %}
+  One condition: Field | Operator | Value (| second value for "between").
+  Rendered server-side so the page works without JavaScript; query-builder.js
+  then narrows the operators and swaps in the right value input per field.
+{% endcomment %}
+<li class="qb-row" data-qb-row>
+  <div class="qb-cell qb-cell--field">
+    <label class="qb-label" for="qb-field-{{ index }}">Field</label>
+    <select id="qb-field-{{ index }}" name="field" class="input" data-qb-field>
+      <option value="">Choose a field…</option>
+      {% for name, meta in schema.items %}
+        <option value="{{ name }}"{% if c and c.field == name %} selected{% endif %}>{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="qb-cell qb-cell--op">
+    <label class="qb-label" for="qb-op-{{ index }}">Operator</label>
+    <select id="qb-op-{{ index }}" name="op" class="input" data-qb-op>
+      {% for code, label in operators %}
+        <option value="{{ code }}"{% if c and c.op == code %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="qb-cell qb-cell--value" data-qb-value-cell>
+    <label class="qb-label" for="qb-value-{{ index }}">Value</label>
+    <div class="qb-values">
+      <input type="text" id="qb-value-{{ index }}" name="value" class="input" value="{{ c.value|default:'' }}" data-qb-value autocomplete="off">
+      <span class="qb-and" data-qb-and hidden>and</span>
+      <input type="text" name="value2" class="input" value="{{ c.value2|default:'' }}" data-qb-value2 aria-label="Second value" autocomplete="off">
+    </div>
+  </div>
+  <div class="qb-cell qb-cell--remove">
+    <button type="button" class="btn btn-ghost btn-icon qb-remove" data-qb-remove aria-label="Remove this condition">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+    </button>
+  </div>
+</li>

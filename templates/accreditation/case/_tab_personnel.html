@@ -1,0 +1,23 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="pl-h">
+  <header class="qa-card__head"><div><h2 id="pl-h">Personnel list</h2><p>Who goes on the visit (stage 3, by the desk officer) — confirmed by the Director (stage 4). The team lead must hold one of: {{ team_lead_roles|join:", " }}.</p></div>
+    {% if plist %}<span class="qa-chip {{ plist.status|tone }}">{{ plist.get_status_display }}</span>{% endif %}</header>
+  <ul class="qa-rowlist" role="list">
+    {% for e in entries %}
+    <li class="qa-rowlink qa-rowlink--static"><span class="qa-rowlink__badge">{{ e.get_duty_display|slice:":2"|upper }}</span>
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ e.staff }}</span><span class="qa-rowlink__meta"><span>{{ e.get_duty_display }}</span>{% if e.staff.department %}<span>· {{ e.staff.department.name }}</span>{% endif %}{% if e.staff.grade_level %}<span>· GL {{ e.staff.grade_level }}</span>{% endif %}{% if e.remark %}<span>· “{{ e.remark }}”</span>{% endif %}</span></span>
+      <span class="qa-rowlink__side"><span class="qa-chip {{ e.status|tone }}">{{ e.get_status_display }}</span>
+        {% if can_personnel %}<form method="post" action="{% url 'qa_case:personnel_remove' case.pk e.pk %}" hx-post="{% url 'qa_case:personnel_remove' case.pk e.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="personnel"><button class="btn btn-xs btn-subtle qa-btn-reject" type="submit" aria-label="Remove {{ e.staff }}">{% icon "trash" 12 %}</button></form>{% endif %}</span></li>
+    {% empty %}<li class="qa-card__body qa-muted">Nobody on the list yet.</li>{% endfor %}
+  </ul>
+  {% if can_personnel %}
+  <div class="qa-card__body">
+    <form class="qa-inline-form" method="post" action="{% url 'qa_case:personnel_add' case.pk %}" hx-post="{% url 'qa_case:personnel_add' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="personnel">
+      <div class="qa-field"><label for="pe-staff">Member of staff</label><select class="input" id="pe-staff" name="staff" required><option value="">Choose…</option>{% for st in staff_choices %}<option value="{{ st.pk }}">{{ st }}{% if st.department %} · {{ st.department.name }}{% endif %}{% if st.user.role %} · {{ st.user.role.name }}{% endif %}</option>{% endfor %}</select></div>
+      <div class="qa-field"><label for="pe-duty">Duty</label><select class="input" id="pe-duty" name="duty">{% for v, l in duties %}<option value="{{ v }}"{% if v == "member" %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+      <div class="qa-field"><label for="pe-remark">Remark <span class="qa-muted">(optional)</span></label><input class="input" id="pe-remark" name="remark" maxlength="255"></div>
+      <button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add</button>
+    </form>
+  </div>
+  {% elif not monitor %}<div class="qa-card__body"><p class="qa-small qa-muted">The list can be changed only by the holder of stage 3 (Add personnel).</p></div>{% endif %}
+</section>

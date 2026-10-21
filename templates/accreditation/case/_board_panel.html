@@ -1,0 +1,26 @@
+{% load qa_tags %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "layers" 14 "2.4" %} Quality Assurance · SOP-03</span>
+    <h1 data-qa-focus>Case Board</h1>
+    <p>Every QA case in the internal workflow, by stage. Each stage is a task in the Tasks inbox of the person who must act; approving or returning a stage here closes that task and opens the next one.</p>
+    <div class="qa-hero__actions">
+      <a class="btn btn-primary" href="{% url 'qa_case:queue' %}" hx-get="{% url 'qa_case:queue' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "check" 16 %} My stage work{% if queue_count %} ({{ queue_count }}){% endif %}</a>
+      <a class="btn btn-subtle" href="{% url 'tasks:assigned_to_me' %}">{% icon "sheet" 16 %} Tasks inbox</a>
+    </div>
+  </div>
+  <div class="qa-hero__stats">
+    <div class="qa-stat"><strong>{{ total }}</strong><span>Cases shown</span></div>
+    <a class="qa-stat qa-stat--link" href="?mine=1" hx-get="{% url 'qa_case:board' %}?mine=1" hx-target="#qa-panel" hx-push-url="true"><strong>{{ queue_count }}</strong><span>Waiting on you</span></a>
+  </div>
+</header>
+{% if monitor %}<div class="qa-readonly-banner" role="status">{% icon "eye" 16 %} You are the ICT monitor: you can open every case and its tasks, but you cannot act on them (R-13).</div>{% endif %}
+<section class="qa-card" aria-label="Filters">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_case:board' %}" hx-target="#case-board" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Case reference, institution or code" autocomplete="off"></label>
+    <select class="input qa-select" name="department" aria-label="Owning department"><option value="">Every department</option>{% for d in departments %}<option value="{{ d.code }}"{% if filters.department == d.code %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="mine" aria-label="Whose"><option value="">Everyone's cases</option><option value="1"{% if filters.mine == "1" %} selected{% endif %}>Waiting on me</option></select>
+    <select class="input qa-select" name="flag" aria-label="Flags"><option value="">Any</option><option value="reassign"{% if filters.flag == "reassign" %} selected{% endif %}>Needs reassignment</option></select>
+  </form>
+</section>
+<div id="case-board" class="qa-region" data-qa-region aria-live="polite">{% include "accreditation/case/_board_columns.html" %}</div>

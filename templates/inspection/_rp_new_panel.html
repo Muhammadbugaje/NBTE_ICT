@@ -1,0 +1,13 @@
+{% load qa_tags %}
+{% include "inspection/_subnav.html" with section="rp" %}
+<section class="qa-card" aria-labelledby="rpn-h">
+  <header class="qa-card__head"><div><h2 id="rpn-h" data-qa-focus>Nominate a resource person</h2><p>The rank (external persons) or the NBTE role and designation (staff) is checked against the §9 settings now. After nomination, upload the CV; a vetter approves.</p></div></header>
+  <div class="qa-card__body">
+    <form class="qa-form" method="post" action="{% url 'qa_insp:rp_new' %}" hx-post="{% url 'qa_insp:rp_new' %}" hx-target="#qa-panel" novalidate>{% csrf_token %}
+      {% include "qa_core/partials/_form_errors.html" with form=form %}
+      <div class="qa-fields">{% for field in form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "check" 16 %} Nominate</button>
+        <a class="btn btn-subtle" href="{% url 'qa_insp:rp_list' %}" hx-get="{% url 'qa_insp:rp_list' %}" hx-target="#qa-panel" hx-push-url="true">Cancel</a></div>
+    </form>
+  </div>
+</section>

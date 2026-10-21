@@ -231,6 +231,12 @@ class AttendanceRecord(TimeStampedModel):
         ]
         verbose_name = "Attendance record"
         verbose_name_plural = "Attendance records"
+        permissions = [
+            ("view_all_attendance",
+             "Can view attendance reports and dashboards for ALL departments"),
+            ("view_department_attendance",
+             "Can view attendance reports and dashboards for their own department"),
+        ]
 
     def __str__(self):
         return f"{self.user} — {self.date} — {self.get_status_display()}"

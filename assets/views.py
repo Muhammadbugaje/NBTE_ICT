@@ -1,11 +1,13 @@
 """Assets views — list, detail, create/edit, my assets, QR labels.
 
-Permission model:
-  - Regular staff         → see only their own assignments + assets in their
-                            department (read).
-  - Office Head / Director → see every asset in their own department (read
-                            + write).
-  - Superuser / access_all → see every asset everywhere.
+Visibility (read) lives in `assets/access.py` and is the ONLY place the rule
+is written down:
+  - Regular staff          → only the assets assigned to them personally.
+  - Director / deputy / office head (or `assets.view_department_assets`)
+                           → also every asset of their own department.
+  - `assets.view_all_assets` (Executive Secretary by default), super admin
+                           → every asset.
+Writing is separate: it needs `assets.change_asset` (see `can_manage_asset`).
 """
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
@@ -22,6 +24,12 @@ from django.http import Http404, JsonResponse
 from django.urls import reverse
 
 from . import services
+from .access import (
+    asset_scope,
+    can_manage_asset,
+    can_view_all_assets,
+    visible_assets_queryset,
+)
 from .forms import (
     AssetAttachmentForm,
     AssetForm,
@@ -46,40 +54,21 @@ PER_PAGE = 25
 # ---------------------------------------------------------------------------
 # Visibility helpers
 # ---------------------------------------------------------------------------
+# Thin aliases kept so older imports keep working. The rules themselves are in
+# assets/access.py - do not add logic here.
 def _can_see_all(user):
-    return user.is_superuser or user.has_perm("accounts.access_all_departments")
+    return can_view_all_assets(user)
 
 
 def _visible_assets_qs(user):
     """Return the queryset of assets this user is permitted to see."""
-    base = Asset.objects.select_related(
-        "category", "owner_department", "current_custodian",
-    )
-    if _can_see_all(user):
-        return base
-    if user.department_id:
-        return base.filter(
-            Q(owner_department_id=user.department_id)
-            | Q(current_custodian=user)
-            | Q(assignments__assigned_to=user)
-        ).distinct()
-    return base.filter(
-        Q(current_custodian=user) | Q(assignments__assigned_to=user)
-    ).distinct()
+    return visible_assets_queryset(user)
 
 
 def _can_edit_asset(user, asset):
-    """Review H8: editing needs the real `assets.change_asset` permission.
-    Holders with `access_all_departments` may edit any asset; everyone else
-    only their own department's. (The old `or user.role_id` fallback let any
-    role-holder edit, reassign or retire department assets.)"""
-    if user.is_superuser:
-        return True
-    if not user.has_perm("assets.change_asset"):
-        return False
-    if user.has_perm("accounts.access_all_departments"):
-        return True
-    return bool(user.department_id) and asset.owner_department_id == user.department_id
+    """Review H8: editing needs the real `assets.change_asset` permission, on
+    top of being allowed to see the asset (see `assets.access.can_manage_asset`)."""
+    return can_manage_asset(user, asset)
 
 
 def _can_create_asset(user):
@@ -103,7 +92,7 @@ def asset_list(request):
         qs = qs.filter(state=state)
 
     dept = request.GET.get("department")
-    if dept and _can_see_all(request.user):
+    if dept and can_view_all_assets(request.user):
         qs = qs.filter(owner_department__code=dept)
 
     mine_only = request.GET.get("mine") == "1"
@@ -136,7 +125,8 @@ def asset_list(request):
         "dept_filter": dept or "",
         "mine_filter": mine_only,
         "q": q,
-        "can_see_all": _can_see_all(request.user),
+        "can_see_all": can_view_all_assets(request.user),
+        "asset_scope": asset_scope(request.user),
         "total": _visible_assets_qs(request.user).count(),
     })
 
@@ -456,23 +446,123 @@ def my_assets(request):
 # ---------------------------------------------------------------------------
 @login_required
 def print_labels(request):
-    """Printable QR labels for a list of assets. Pass ?tags=tag1,tag2 or
-    ?category=computer to print a whole category."""
-    qs = _visible_assets_qs(request.user)
-    tags_param = request.GET.get("tags")
-    if tags_param:
-        tags = [t.strip().upper() for t in tags_param.split(",") if t.strip()]
-        qs = qs.filter(asset_tag__in=tags)
-    else:
-        cat = request.GET.get("category")
-        if cat:
-            qs = qs.filter(category__code=cat)
-        qs = qs[:48]  # cap at 48 labels per sheet (6x8 grid)
+    """Printable labels for one asset or a batch, in a chosen style.
 
-    assets = list(qs)
+    Query string:
+      ?tags=A,B,C      the assets to print (one or many)
+      ?category=code   or: the first labels of one category
+      ?style=key       one of assets.label_styles.LABEL_STYLES
+      ?copies=N        copies of each label
+      ?skip=N          (sheet style) leave the first N cells empty, to reuse
+                       a partly used sheet
+      ?guides=1        (sheet style) draw cut guides, for plain paper
+
+    Access follows the asset visibility rule: only assets the user may see are
+    ever drawn. Tags the user may not see are skipped; if NONE of the
+    requested tags is visible the page is a 404, exactly like the asset's
+    detail page.
+    """
+    from django.conf import settings
+    from django.templatetags.static import static
+
+    from . import label_styles
+
+    style = label_styles.get_style(request.GET.get("style"))
+    copies = label_styles.clamp_copies(request.GET.get("copies"))
+    try:
+        skip = int(request.GET.get("skip") or 0)
+    except ValueError:
+        skip = 0
+    skip = max(0, min(skip, style.per_page - 1)) if style.is_sheet else 0
+    guides = request.GET.get("guides") == "1"
+
+    qs = _visible_assets_qs(request.user)
+    tags_param = (request.GET.get("tags") or "").strip()
+    category = (request.GET.get("category") or "").strip()
+    requested = set()
+    notice = ""
+    if tags_param:
+        requested = {t.strip().upper() for t in tags_param.split(",") if t.strip()}
+        requested = set(sorted(requested)[:label_styles.MAX_LABELS])
+        qs = qs.filter(asset_tag__in=requested)
+    else:
+        if category:
+            qs = qs.filter(category__code=category)
+        qs = qs[:48]
+
+    assets = list(qs.order_by("asset_tag")) if tags_param else list(qs)
+
+    if tags_param:
+        found = {a.asset_tag.upper() for a in assets}
+        skipped = len(requested - found)
+        # Carry on with only the tags that were allowed, so rejected ones are
+        # not echoed back into the form fields and style links.
+        tags_param = ",".join(sorted(found))
+        if requested and not assets:
+            # Same answer as the detail page: not found / not yours.
+            raise Http404("No such asset.")
+        if skipped:
+            notice = (
+                f"{skipped} requested tag{'s were' if skipped != 1 else ' was'} "
+                "skipped (not found or not available to you)."
+            )
+
+    labels = [a for a in assets for _ in range(copies)]
+    if len(labels) > label_styles.MAX_LABELS:
+        labels = labels[:label_styles.MAX_LABELS]
+        notice = (notice + " " if notice else "") + (
+            f"Limited to {label_styles.MAX_LABELS} labels per print job."
+        )
+
+    pages = []
+    if style.is_sheet:
+        per = style.per_page
+        queue = list(labels)
+        first = True
+        while queue or first:
+            blanks = skip if first else 0
+            take = per - blanks
+            pages.append({"blanks": range(blanks), "assets": queue[:take]})
+            queue = queue[take:]
+            first = False
+            if not queue:
+                break
+
+    base = {}
+    if tags_param:
+        base["tags"] = tags_param
+    elif category:
+        base["category"] = category
+    base["copies"] = copies
+    if guides and style.is_sheet:
+        base["guides"] = "1"
+    from urllib.parse import urlencode
+    options = [
+        {
+            "style": s,
+            "active": s.key == style.key,
+            "url": "?" + urlencode({**base, "style": s.key}),
+        }
+        for s in label_styles.LABEL_STYLES
+    ]
+
     return render(request, "assets/print_labels.html", {
         "assets": assets,
-        "categories": AssetCategory.objects.filter(is_active=True),
+        "sample": assets[0] if assets else None,
+        "labels": labels,
+        "pages": pages,
+        "total_labels": len(labels),
+        "style": style,
+        "options": options,
+        "copies": copies,
+        "max_copies": label_styles.MAX_COPIES,
+        "skip": skip,
+        "guides": guides,
+        "tags_param": tags_param,
+        "category": category,
+        "notice": notice,
+        "org_name": settings.SITE_NAME,
+        "logo_url": static("img/NBTE_logo.png"),
     })
 
 # ---------------------------------------------------------------------------
@@ -513,8 +603,7 @@ def _recent_assets(request):
     if not tags:
         return []
     return list(
-        Asset.objects.filter(asset_tag__in=tags)
-        .select_related("category", "current_custodian", "owner_department")
+        _visible_assets_qs(request.user).filter(asset_tag__in=tags)
     )
 
 
@@ -529,7 +618,9 @@ def scan(request):
     tag = _extract_tag(raw)
 
     if tag:
-        asset = Asset.objects.filter(asset_tag__iexact=tag).first()
+        # Only look among assets this user may see: a scan must not confirm
+        # that a tag the user has no right to exists.
+        asset = _visible_assets_qs(request.user).filter(asset_tag__iexact=tag).first()
         if asset is not None:
             _record_lookup(request, asset)
             return redirect(f"{reverse('assets:detail', args=[asset.asset_tag])}?from=scan")

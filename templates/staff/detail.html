@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static staff_tags %}
 
 {% block title %}{{ staff.full_name }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Staff member{% endblock %}
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/staff.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
 {% endblock %}
 
 {% block content %}
@@ -22,7 +23,7 @@
       {% if staff.photo %}
         <img src="{{ staff.photo.url }}" alt="">
       {% else %}
-        <span>{{ staff.first_name|slice:":1"|upper }}{{ staff.last_name|slice:":1"|upper }}</span>
+        {% staff_avatar_fallback staff %}
       {% endif %}
     </div>
 
@@ -73,6 +74,18 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           State
         </a>
+      {% endif %}
+      {% if can_transfer %}
+        <button type="button" class="btn btn-ghost" data-modal-open="sf-transfer-modal">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          Transfer
+        </button>
+      {% endif %}
+      {% if can_promote %}
+        <button type="button" class="btn btn-ghost" data-modal-open="promo-modal">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
+          Promote
+        </button>
       {% endif %}
       {% if can_manage %}
         <a href="{% url 'staff:update' staff.pk %}" class="btn btn-ghost">
@@ -138,7 +151,91 @@
       </section>
     {% endif %}
 
-    {% if can_view_history and history %}
+    {% if can_view_hr %}
+      <section class="staff-card staff-detail-card staff-detail-card-wide" aria-labelledby="nbr-facts-title">
+        <h3 class="staff-card-title" id="nbr-facts-title">Nominal roll</h3>
+        <dl class="nbr-facts">
+          <div class="nbr-fact"><dt>Designation</dt><dd>{{ staff.designation.name|default:"—" }}</dd></div>
+          <div class="nbr-fact"><dt>CONTEDISS / CONHESS</dt><dd>{{ staff.grade_level|default:"—" }}</dd></div>
+          <div class="nbr-fact"><dt>Sex</dt><dd>{{ staff.get_gender_display|default:"—" }}</dd></div>
+          <div class="nbr-fact"><dt>State of origin · LGA</dt><dd>{{ staff.state_of_origin.name|default:"—" }}{% if staff.lga %} · {{ staff.lga }}{% endif %}</dd></div>
+          <div class="nbr-fact"><dt>Date of birth</dt><dd>{{ staff.date_of_birth|date:"j M Y"|default:"—" }}</dd></div>
+          <div class="nbr-fact"><dt>First appointment</dt><dd>{{ staff.date_first_appointment|date:"j M Y"|default:"—" }}</dd></div>
+          <div class="nbr-fact"><dt>Joined the Board</dt><dd>{{ staff.date_joined_board|date:"j M Y"|default:"—" }}</dd></div>
+          <div class="nbr-fact"><dt>Present appointment</dt><dd>{{ staff.date_present_appointment|date:"j M Y"|default:"—" }}</dd></div>
+          <div class="nbr-fact"><dt>Confirmed</dt><dd>{{ staff.date_confirmation|date:"j M Y"|default:"—" }}</dd></div>
+          <div class="nbr-fact nbr-fact--wide"><dt>Qualifications</dt><dd>
+            {% if qualification_list %}
+              <ul class="nbr-quals">{% for q in qualification_list %}<li>{{ q }}</li>{% endfor %}</ul>
+            {% else %}—{% endif %}
+          </dd></div>
+        </dl>
+      </section>
+    {% endif %}
+
+    {% if show_promotions %}
+      <section class="staff-card staff-detail-card staff-detail-card-wide sf-card" aria-labelledby="sf-title">
+        <div class="promo-section-head">
+          <div>
+            <h3 class="staff-card-title" id="sf-title">Staff file</h3>
+            <p class="sf-sub">Everything recorded about {{ staff.first_name|default:staff.full_name }}: promotions, transfers, state changes, items given and returned, and messages sent from this page.</p>
+          </div>
+          <div class="sf-head-actions">
+            {% if can_promote %}<a href="{% url 'staff:promotion_history' %}" class="btn btn-ghost btn-sm">All promotions</a>{% endif %}
+          </div>
+        </div>
+
+        {% if items_held %}
+          <div class="sf-held" aria-labelledby="sf-held-title">
+            <h4 class="sf-held-title" id="sf-held-title">Items held now <span class="badge">{{ items_held|length }}</span></h4>
+            <ul class="sf-held-list">
+              {% for a in items_held %}
+                <li>
+                  <span class="sf-held-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+                  <span class="sf-held-body">
+                    {% if a.detail_url %}<a href="{{ a.detail_url }}">{{ a.asset }}</a>{% else %}{{ a.asset }}{% endif %}
+                    <span class="sf-held-meta">since {{ a.assigned_at|date:"j M Y" }}{% if a.expected_return_at %} · due back {{ a.expected_return_at|date:"j M Y" }}{% endif %}</span>
+                  </span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        {% if staff_file %}
+          <div class="sf-filters" role="toolbar" aria-label="Show" data-sf-filters>
+            <button type="button" class="sf-filter is-active" data-sf-filter="all" aria-pressed="true">All <span>{{ staff_file|length }}</span></button>
+            {% for key, label in staff_file_kinds.items %}
+              {% for k, n in staff_file_counts.items %}{% if k == key and n %}
+                <button type="button" class="sf-filter" data-sf-filter="{{ key }}" aria-pressed="false">{{ label }} <span>{{ n }}</span></button>
+              {% endif %}{% endfor %}
+            {% endfor %}
+          </div>
+          <ol class="sf-timeline" data-sf-list>
+            {% for e in staff_file %}
+              <li class="sf-event sf-event--{{ e.icon }}{% if e.tone == 'warn' %} is-warn{% endif %}" data-sf-kind="{{ e.kind }}">
+                <span class="sf-dot" aria-hidden="true"></span>
+                <div class="sf-event-head">
+                  <span class="sf-event-title">{% if e.url %}<a href="{{ e.url }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}</span>
+                  <time datetime="{{ e.when|date:'c' }}">{{ e.when|date:"j M Y" }}</time>
+                </div>
+                {% if e.detail or e.by %}
+                  <div class="sf-event-meta">
+                    <span class="sf-kind">{{ e.kind_label }}</span>
+                    {% if e.detail %}<span>{{ e.detail }}</span>{% endif %}
+                    {% if e.by %}<span class="sf-by">by {{ e.by }}</span>{% endif %}
+                  </div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="muted">Nothing recorded yet.</p>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if can_view_history and history and not show_promotions %}
       <section class="staff-card staff-detail-card staff-detail-card-wide">
         <h3 class="staff-card-title">State history</h3>
         <ul class="staff-history">
@@ -226,4 +323,17 @@
   </div>
 {% endif %}
 
+{% if can_transfer %}
+  {% include "staff/_transfer_modal.html" %}
+{% endif %}
+
+{% if can_promote %}
+  {% include "staff/promotions/_promote_modal.html" with targets=promotion_targets today=today next_url=request.get_full_path single=True staff=staff %}
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+  {% if can_promote %}<script src="{% static 'js/promotions.js' %}?v=1" defer></script>{% endif %}
+  {% if show_promotions %}<script src="{% static 'js/staff-file.js' %}?v=1" defer></script>{% endif %}
 {% endblock %}

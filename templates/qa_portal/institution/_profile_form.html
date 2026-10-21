@@ -1,0 +1,22 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="pp-form" id="qa-profile-card">
+  <header class="qa-card__head"><div><h2 id="pp-form">Institution profile</h2><p>Used for your application and printed on NBTE's records.</p></div>{% if saved %}<span class="qa-chip qa-tone-success">Saved</span>{% endif %}</header>
+  <div class="qa-card__body">
+    <form method="post" action="{% url 'qa_portal:institution' %}" hx-post="{% url 'qa_portal:institution' %}" hx-target="#qa-profile-card" hx-swap="outerHTML" class="qa-form" novalidate>
+      {% csrf_token %}
+      {% include "qa_core/partials/_form_errors.html" %}
+      <fieldset class="qa-fieldset"><legend>Institution</legend><div class="qa-fields">
+        {% for n in "name ownership institution_type category year_established cac_rc_number website"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div></fieldset>
+      <fieldset class="qa-fieldset"><legend>Location</legend><div class="qa-fields">
+        <div class="qa-field"><label for="{{ form.state.id_for_label }}">State</label>
+          <select class="input" name="state" id="{{ form.state.id_for_label }}" hx-get="{% url 'qa_portal:lga_options' %}" hx-target="#qa-lga-options" hx-trigger="change" data-qa-no-overlay>
+            {% for v, l in form.state.field.choices %}<option value="{{ v }}"{% if form.state.value|stringformat:"s" == v|stringformat:"s" %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+          {% for e in form.state.errors %}<div class="qa-field__error">{{ e }}</div>{% endfor %}</div>
+        {% for n in "lga address_line1 address_town"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div></fieldset>
+      <datalist id="qa-lga-options">{% for lga in lgas %}<option value="{{ lga }}"></option>{% endfor %}</datalist>
+      <fieldset class="qa-fieldset"><legend>Contacts</legend><div class="qa-fields">
+        {% for n in "official_email phone head_name registrar_name bursar_name"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div></fieldset>
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">Save profile</button></div>
+    </form>
+  </div>
+</section>

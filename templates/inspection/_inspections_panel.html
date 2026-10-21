@@ -1,0 +1,15 @@
+{% load qa_tags %}
+{% include "inspection/_subnav.html" with section="inspections" %}
+<header class="qa-hero"><div><span class="qa-eyebrow">{% icon "map" 14 "2.4" %} SOP-03 visits</span><h1 data-qa-focus>Inspections</h1>
+  <p>An inspection is created when the ES approves the visit (stage 10). After the visit, the Team Lead records it — dates and who attended — which writes the service history and opens the post-visit reports (stage 12).</p>
+  <div class="qa-hero__actions"><a class="btn btn-subtle" href="{% url 'qa_insp:calendar' %}" hx-get="{% url 'qa_insp:calendar' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "clock" 16 %} Visit calendar</a></div></div></header>
+<section class="qa-card" aria-label="Inspections">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_insp:inspections' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference, institution or case" autocomplete="off"></label>
+    <select class="input qa-select" name="status" aria-label="Status">{% for v, l in statuses %}<option value="{{ v }}"{% if filters.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="when" aria-label="When"><option value="">Any time</option><option value="upcoming"{% if filters.when == "upcoming" %} selected{% endif %}>Upcoming / ongoing</option><option value="past"{% if filters.when == "past" %} selected{% endif %}>Past</option></select>
+    <select class="input qa-select" name="department" aria-label="Department"><option value="">Every department</option>{% for d in departments %}<option value="{{ d.code }}"{% if filters.department == d.code %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="mine" aria-label="Whose"><option value="">Every team lead</option><option value="1"{% if filters.mine == "1" %} selected{% endif %}>I lead</option></select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "inspection/_inspections_rows.html" %}</div>
+</section>

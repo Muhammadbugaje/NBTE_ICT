@@ -21,11 +21,25 @@ Public API:
 
 Rank rules (mirrors workflow.services._advance_to_next_actor):
     - Skip step if actor is the sender (no self-approval).
+    - Skip step if actor is the memo's recipient (delivering it IS the hand-over).
+    - Skip a sender-side step (line head / deputy / director) when the sender is
+      already at that level or above — even if nobody holds the step (a director
+      never waits for "the sender's director"; a deputy skips the deputy step).
     - Skip step if actor is strictly junior to sender (is_hierarchical only).
     - Same-rank behaviour driven by route.same_rank_behaviour.
     - Skip step if is_optional and no actor exists.
     - Park the memo if a required step has no actor (alert admins).
     - When the chain is exhausted, publish.
+
+Departments (directorate routing, 18 Oct 2026):
+    memo_relation(memo) -> "same" | "other" | None (broadcast)
+    receiving_department(memo) -> (Department | None, reason)
+    A rule can require department_relation = same / other, and a step of kind
+    "receiving_director" is the director of the recipient's department: it
+    acts even when that director is the sender's equal (director → staff in
+    another directorate goes through that directorate's director), and is
+    skipped when the memo stays in the sender's department or the director
+    is the recipient.
 """
 from __future__ import annotations
 
@@ -45,19 +59,170 @@ logger = logging.getLogger(__name__)
 # ===========================================================================
 # Rank helpers
 # ===========================================================================
+# A nominal-roll designation sets a floor on seniority, so someone whose post
+# is DIRECTOR counts as a director even if their sign-in role is still the
+# default "Staff". Values are on the Role.rank scale.
+_DESIGNATION_RANK_FLOOR = ((100, "executive-secretary", 999), (90, "director", 100),
+                           (80, "deputy-director", 80))
+
+
+def _role_rank(code, default):
+    """Rank of a role on the Role.rank scale (as set in the admin)."""
+    from accounts.models import Role
+    r = Role.objects.filter(code=code).values_list("rank", flat=True).first()
+    return r if r is not None else default
+
+
+def _staff_of(user):
+    try:
+        return user.staff_profile
+    except Exception:
+        return None
+
+
+def _designation_rank(user):
+    staff = _staff_of(user)
+    if staff is None or not staff.designation_id:
+        return 0
+    return staff.designation.rank or 0
+
+
 def _rank_of(user):
-    """Effective seniority of a user. Superuser outranks everyone."""
+    """Effective seniority of a user: the higher of their role's rank and the
+    floor their designation gives. A superuser without a role outranks
+    everyone; a superuser WITH a role (an admin who is also a director)
+    ranks by that role, so admin rights don't bypass the approval chain."""
     if not user or not user.is_authenticated:
         return 0
-    if user.is_superuser:
+    rank = (user.role.rank or 0) if user.role_id else 0
+    d = _designation_rank(user)
+    for min_d, code, default in _DESIGNATION_RANK_FLOOR:
+        if d >= min_d:
+            rank = max(rank, _role_rank(code, default))
+            break
+    # The appointed head of a department ranks as its director.
+    try:
+        if user.headed_departments.exists():
+            rank = max(rank, _role_rank("director", 100))
+    except Exception:
+        pass
+    if user.is_superuser and not user.role_id:
         return 1000
-    if user.role_id:
-        return user.role.rank or 0
-    return 0
+    return rank
+
+
+def memo_url(memo):
+    """The memo's page. (Links used to be built as /messaging/memos/<pk>/,
+    but the app is mounted at /messages/ — those links went to a 404.)"""
+    from django.urls import reverse
+    return reverse("messaging:memo_detail", args=[memo.pk])
 
 
 def _role_code(user):
     return user.role.code if (user and user.role_id) else ""
+
+
+def role_codes_of(user):
+    """Role codes a routing rule can match for this person: their sign-in
+    role, plus what their post makes them — a nominal-roll designation of
+    Executive Secretary / Director / Deputy Director, or being a department's
+    head — so rules keep working for staff whose account role is still the
+    default "Staff"."""
+    if user is None:
+        return set()
+    codes = {_role_code(user)} - {""}
+    d = _designation_rank(user)
+    if d >= 100:
+        codes.add("executive-secretary")
+    elif d >= 90:
+        codes.add("director")
+    elif d >= 80:
+        codes.add("deputy-director")
+    try:
+        if user.headed_departments.exists():
+            codes.add("director")
+    except Exception:
+        pass
+    return codes
+
+
+def sender_department(user):
+    """The sender's department: the account's, else their staff record's."""
+    if user is None:
+        return None
+    if getattr(user, "department_id", None):
+        return user.department
+    staff = _staff_of(user)
+    return staff.department if staff is not None and staff.department_id else None
+
+
+def _recipient_departments(memo):
+    """Departments of the people a memo is addressed to, as a set of
+    Department objects (None for a recipient without one). None for
+    broadcasts (all staff / all directors / roles), which have no single
+    department."""
+    if memo.visibility == memo.SPECIFIC_USER:
+        if not memo.target_user_id:
+            return set()
+        return {sender_department(memo.target_user)}
+    if memo.visibility == memo.INDIVIDUALS:
+        if not memo.pk:
+            return set()
+        return {sender_department(u) for u in memo.recipients.select_related("department")}
+    if memo.visibility == memo.DEPARTMENT:
+        return {memo.department} if memo.department_id else set()
+    return None
+
+
+def memo_relation(memo):
+    """'same' when every recipient is in the sender's department, 'other' when
+    at least one is not (a recipient without a department counts as outside),
+    None for broadcasts or when there are no recipients yet."""
+    depts = _recipient_departments(memo)
+    if not depts:
+        return None
+    own = sender_department(memo.sender)
+    if own is not None and all(d is not None and d.pk == own.pk for d in depts):
+        return "same"
+    return "other"
+
+
+def receiving_department(memo):
+    """(department, reason). The one department outside the sender's that the
+    memo is addressed to; None with a plain reason when there is none or
+    there are several."""
+    depts = _recipient_departments(memo)
+    if depts is None:
+        return None, "A broadcast has no single receiving department."
+    own = sender_department(memo.sender)
+    outside = {d.pk: d for d in depts if d is not None and (own is None or d.pk != own.pk)}
+    if not outside:
+        if any(d is None for d in depts):
+            return None, "The recipient has no department."
+        return None, "The memo stays in the sender's department."
+    if len(outside) > 1:
+        return None, ("The recipients are in several other departments; "
+                      "send one memo per department to route it through each director.")
+    return next(iter(outside.values())), ""
+
+
+def _is_sole_recipient(memo, user):
+    return (user is not None and memo.visibility == memo.SPECIFIC_USER
+            and memo.target_user_id == user.pk)
+
+
+# Level of each sender-side step on the Role.rank scale.
+_STEP_LEVEL_ROLE = {"division_head": ("division-head", 50, "line head"),
+                    "deputy": ("deputy-director", 80, "deputy director"),
+                    "director": ("director", 100, "director")}
+
+
+def _step_level(kind):
+    spec = _STEP_LEVEL_ROLE.get(kind)
+    if spec is None:
+        return None, ""
+    code, default, label = spec
+    return _role_rank(code, default), label
 
 
 # ===========================================================================
@@ -90,10 +255,10 @@ def route_for_memo(memo):
     if not memo.sender_id:
         return None
 
-    sender_code = _role_code(memo.sender)
-    target_code = ""
+    sender_codes = role_codes_of(memo.sender)
+    target_codes = set()
     if memo.visibility == memo.SPECIFIC_USER and memo.target_user_id:
-        target_code = _role_code(memo.target_user)
+        target_codes = role_codes_of(memo.target_user)
 
     rules = (
         MemoRouteRule.objects
@@ -102,14 +267,20 @@ def route_for_memo(memo):
         .order_by("-priority", "-updated_at")
     )
 
+    relation = memo_relation(memo)
+
     for rule in rules:
-        allowed_senders = rule.sender_role_codes or []
-        if allowed_senders and sender_code not in allowed_senders:
+        wanted = getattr(rule, "department_relation", "any") or "any"
+        if wanted != "any" and wanted != relation:
+            continue
+
+        allowed_senders = set(rule.sender_role_codes or [])
+        if allowed_senders and not (sender_codes & allowed_senders):
             continue
 
         if memo.visibility == memo.SPECIFIC_USER:
-            allowed_targets = rule.target_role_codes or []
-            if allowed_targets and target_code not in allowed_targets:
+            allowed_targets = set(rule.target_role_codes or [])
+            if allowed_targets and not (target_codes & allowed_targets):
                 continue
 
         if rule.route and rule.route.is_active:
@@ -138,25 +309,104 @@ def build_memo_chain(memo):
 # ===========================================================================
 # Approver resolution
 # ===========================================================================
+def _active_users():
+    from accounts.models import User
+    return User.objects.filter(is_active=True)
+
+
 def _find_user_with_role_in_department(role_code, department):
-    """First active user with role=role_code in the given department."""
+    """First active user with role=role_code in the given department
+    (account department, or staff-record department)."""
     if not role_code or department is None:
         return None
-    from accounts.models import User
+    from django.db.models import Q
     return (
-        User.objects
-        .filter(is_active=True, role__code=role_code, department=department)
+        _active_users()
+        .filter(role__code=role_code)
+        .filter(Q(department=department) | Q(staff_profile__department=department))
         .order_by("pk")
         .first()
     )
 
 
+def _find_by_designation(department, min_rank, max_rank=None, exclude=None):
+    """Active user whose staff record is in `department` with a designation
+    ranked in [min_rank, max_rank]. Substantive posts before 'Acting' ones."""
+    if department is None:
+        return None
+    qs = (_active_users()
+          .filter(staff_profile__department=department,
+                  staff_profile__is_deleted=False,
+                  staff_profile__designation__rank__gte=min_rank)
+          .select_related("staff_profile__designation"))
+    if max_rank is not None:
+        qs = qs.filter(staff_profile__designation__rank__lte=max_rank)
+    if exclude is not None:
+        qs = qs.exclude(pk=exclude.pk)
+    users = list(qs.order_by("-staff_profile__designation__rank", "pk")[:10])
+    if not users:
+        return None
+    def acting(u):
+        name = (u.staff_profile.designation.name or "").upper()
+        return name.startswith(("AG.", "AGT", "ACTING"))
+    users.sort(key=lambda u: (acting(u), -u.staff_profile.designation.rank, u.pk))
+    return users[0]
+
+
+def find_director(department):
+    """The department's director: Department.head, else a user with the
+    Director role in the department, else a staff member whose designation
+    is Director / Acting Director (nominal roll)."""
+    if department is None:
+        return None
+    head = getattr(department, "head", None)
+    if head is not None and head.is_active:
+        return head
+    return (_find_user_with_role_in_department("director", department)
+            or _find_by_designation(department, 90, 99))
+
+
+def find_deputy(department):
+    return (_find_user_with_role_in_department("deputy-director", department)
+            or _find_by_designation(department, 80, 89))
+
+
+def find_line_head(sender):
+    """The sender's line head: the head of their office/unit, else a Division
+    Head or Office Head in their department (same office first)."""
+    staff = _staff_of(sender)
+    office = staff.office if staff is not None and staff.office_id else None
+    # Office.head is a staff record; the approver is that person's account.
+    head_user = office.head.user if office is not None and office.head_id and office.head.user_id else None
+    if head_user is not None and head_user.is_active and head_user.pk != getattr(sender, "pk", None):
+        return head_user
+    dept = sender_department(sender)
+    if dept is None:
+        return None
+    from django.db.models import Q
+    qs = (_active_users()
+          .filter(Q(role__code="division-head") | Q(role__code__startswith="office-head"))
+          .filter(Q(department=dept) | Q(staff_profile__department=dept)))
+    if office is not None:
+        same = qs.filter(staff_profile__office=office).order_by("pk").first()
+        if same is not None:
+            return same
+    return qs.order_by("-role__rank", "pk").first()
+
+
+def find_es():
+    from django.db.models import Q
+    return (_active_users()
+            .filter(Q(role__code="executive-secretary")
+                    | Q(staff_profile__designation__rank__gte=100, staff_profile__is_deleted=False))
+            .order_by("-role__rank", "pk")
+            .first())
+
+
 def resolve_memo_approver(step, memo):
     """Who should act at this step for this memo? None if no one matches."""
-    from accounts.models import User
-
     sender = memo.sender
-    sender_dept = sender.department if sender else None
+    sender_dept = sender_department(sender)
 
     kind = step.approver_kind
 
@@ -168,43 +418,68 @@ def resolve_memo_approver(step, memo):
         )
 
     if kind == step.APPROVER_ES:
-        return (
-            User.objects
-            .filter(is_active=True, role__code="executive-secretary")
-            .order_by("pk")
-            .first()
-        )
+        return find_es()
 
     if kind == step.APPROVER_DIVISION_HEAD:
-        return _find_user_with_role_in_department("division-head", sender_dept)
+        return find_line_head(sender)
 
     if kind == step.APPROVER_DIRECTOR:
-        return _find_user_with_role_in_department("director", sender_dept)
+        return find_director(sender_dept)
 
     if kind == step.APPROVER_DEPUTY:
-        return _find_user_with_role_in_department("deputy-director", sender_dept)
+        return find_deputy(sender_dept)
+
+    if kind == getattr(step, "APPROVER_RECEIVING_DIRECTOR", "receiving_director"):
+        dept, _reason = receiving_department(memo)
+        return find_director(dept) if dept is not None else None
 
     if kind == step.APPROVER_ROLE_IN_DEPT:
-        # Scope determines department.
+        if not step.approver_role_id:
+            return None
         scope = (step.scope or "requester").strip().lower()
+        if scope == "es":
+            # No department scope: anyone holding the role.
+            return (_active_users().filter(role__code=step.approver_role.code)
+                    .order_by("pk").first())
         if scope == "requester":
             dept = sender_dept
         elif scope == "receiving":
-            # Not really applicable to memos, but supported for symmetry.
-            dept = memo.department
-        elif scope == "es":
-            dept = None
+            dept = memo.department or (sender_department(memo.target_user)
+                                       if memo.target_user_id else None)
         else:
             from staff.models import Department
             dept = Department.objects.filter(code=scope).first()
-
-        if step.approver_role_id:
-            return _find_user_with_role_in_department(
-                step.approver_role.code, dept,
-            )
-        return None
+        return _find_user_with_role_in_department(step.approver_role.code, dept)
 
     return None
+
+
+def describe_missing(step, memo):
+    """Plain-language reason nobody can act at `step` (for the memo page)."""
+    dept = sender_department(memo.sender)
+    where = f" in {dept.name}" if dept is not None else " (the sender has no department)"
+    kind = step.approver_kind
+    if kind == step.APPROVER_SPECIFIC:
+        return "The person chosen for this step is not set or no longer active."
+    if kind == step.APPROVER_ES:
+        return "Nobody has the Executive Secretary role or designation."
+    if kind == step.APPROVER_DIVISION_HEAD:
+        return f"No office head or division head{where}."
+    if kind == step.APPROVER_DIRECTOR:
+        return (f"No director{where}: set the department's head, give someone the Director role, "
+                "or import their DIRECTOR designation.")
+    if kind == step.APPROVER_DEPUTY:
+        return f"No deputy director{where}."
+    if kind == step.APPROVER_ROLE_IN_DEPT:
+        role = step.approver_role.name if step.approver_role_id else "(no role chosen)"
+        return f"Nobody with the role “{role}” in the step's department."
+    if kind == "receiving_director":
+        rdept, reason = receiving_department(memo)
+        if rdept is None:
+            return reason
+        return (f"No director in {rdept.name} (the recipient's department): set the department's head, "
+                "give someone the Director role, or import their DIRECTOR designation.")
+    return "No one matches this step."
 
 
 # ===========================================================================
@@ -276,7 +551,7 @@ def _notify_actor(memo, step, actor):
             recipient=actor,
             title=f"Memo awaiting your approval — {memo.reference}",
             body=f"{memo.subject} · step: {step.name}",
-            url=f"/messaging/memos/{memo.pk}/",
+            url=memo_url(memo),
             category=Notification.MESSAGE,
             level=Notification.WARNING,
             actor=memo.sender,
@@ -291,7 +566,7 @@ def _notify_sender_returned(memo, actor, comment):
             recipient=memo.sender,
             title=f"Memo returned for revision — {memo.reference}",
             body=comment or "Please review and resubmit.",
-            url=f"/messaging/memos/{memo.pk}/",
+            url=memo_url(memo),
             category=Notification.MESSAGE,
             level=Notification.WARNING,
             actor=actor,
@@ -306,7 +581,7 @@ def _notify_sender_rejected(memo, actor, comment):
             recipient=memo.sender,
             title=f"Memo rejected — {memo.reference}",
             body=comment or "Your memo was rejected.",
-            url=f"/messaging/memos/{memo.pk}/",
+            url=memo_url(memo),
             category=Notification.MESSAGE,
             level=Notification.ERROR,
             actor=actor,
@@ -315,15 +590,16 @@ def _notify_sender_rejected(memo, actor, comment):
         logger.exception("Could not notify memo sender of rejection")
 
 
-def _notify_admins_no_actor(memo, step):
+def _notify_admins_no_actor(memo, step, reason=""):
     from accounts.models import User
     for admin in User.objects.filter(is_active=True, is_superuser=True):
         try:
             notify(
                 recipient=admin,
                 title=f"No one matches a memo step — {memo.reference}",
-                body=f"Step '{step.name}' has no acting user. Configure a role or user.",
-                url=f"/messaging/memos/{memo.pk}/",
+                body=f"Step '{step.name}' has no acting user. {reason} "
+                     "Fix the people or the route, then press “Re-check routing” on the memo.",
+                url=memo_url(memo),
                 category=Notification.SYSTEM,
                 level=Notification.ERROR,
             )
@@ -356,7 +632,13 @@ def resolve_memo_audience(memo):
         return base.distinct()
 
     if memo.visibility == memo.ALL_DIRECTORS:
-        return base.filter(role__code="director").distinct()
+        from django.db.models import Q
+        return base.filter(
+            Q(role__code="director")
+            | Q(staff_profile__designation__rank__gte=90, staff_profile__designation__rank__lt=100,
+                staff_profile__is_deleted=False)
+            | Q(headed_departments__isnull=False)
+        ).distinct()
 
     if memo.visibility == memo.DEPARTMENT:
         if not memo.department_id:
@@ -402,10 +684,97 @@ def start_chain(memo, *, actor=None):
     return memo
 
 
+def evaluate_step(step, memo, *, sender_rank=None, same_rank_mode=None):
+    """-> (decision, actor, reason) for one step, without changing anything.
+
+    decision is "act" (actor must act), "skip" or "park" (required step and
+    nobody can act). Used by the engine, the memo page and the route tester,
+    so all three always agree."""
+    if sender_rank is None:
+        sender_rank = _rank_of(memo.sender)
+    if same_rank_mode is None:
+        same_rank_mode = memo.route.same_rank_behaviour if memo.route_id else "skip"
+
+    # --- the recipient's department director -------------------------------
+    if step.approver_kind == "receiving_director":
+        rdept, why = receiving_department(memo)
+        if rdept is None:
+            return "skip", None, why
+        actor = find_director(rdept)
+        if actor is None:
+            if step.is_optional:
+                return "skip", None, "Optional step — " + describe_missing(step, memo)
+            return "park", None, describe_missing(step, memo)
+        name = actor.get_full_name() or actor.email
+        if actor.pk == memo.sender_id:
+            return "skip", actor, "The sender is that department's director."
+        if _is_sole_recipient(memo, actor):
+            return "skip", actor, f"{name} is the recipient and the director of {rdept.name}: delivered directly."
+        if memo.visibility == memo.INDIVIDUALS and memo.recipients.filter(pk=actor.pk).exists():
+            return "skip", actor, f"{name}, the director of {rdept.name}, is one of the recipients."
+        # A director's equal still approves (director → staff in another
+        # directorate); only someone senior to that director (the ES) skips it.
+        if step.is_hierarchical and _rank_of(actor) < sender_rank:
+            return "skip", actor, f"The sender is senior to {name}."
+        return "act", actor, ""
+
+    actor = resolve_memo_approver(step, memo)
+    sender_side = step.approver_kind in _STEP_LEVEL_ROLE
+
+    if actor is not None and actor.pk == memo.sender_id:
+        return "skip", actor, "The sender would be the approver (no self-approval)."
+
+    # --- sender-side steps (line head / deputy / director) -----------------
+    # Skip when the sender is already at that level (a director never waits
+    # for "the sender's director", even if someone else holds that post), and
+    # when the approver is the memo's own recipient (staff → their director:
+    # delivering it is the hand-over). Gates such as the ES step are untouched.
+    if sender_side and step.is_hierarchical:
+        level, label = _step_level(step.approver_kind)
+        if level is not None and sender_rank >= level:
+            return "skip", actor, f"The sender is already at {label} level or above."
+    if sender_side and _is_sole_recipient(memo, actor):
+        name = actor.get_full_name() or actor.email
+        return "skip", actor, f"{name} is the recipient: the memo is delivered to them directly."
+
+    if actor is None:
+        if step.is_optional:
+            return "skip", None, "Optional step — " + describe_missing(step, memo)
+        return "park", None, describe_missing(step, memo)
+    if step.is_hierarchical:
+        actor_rank = _rank_of(actor)
+        name = actor.get_full_name() or actor.email
+        if actor_rank < sender_rank:
+            return "skip", actor, f"{name} is junior to the sender."
+        if actor_rank == sender_rank and same_rank_mode == "skip":
+            return "skip", actor, f"{name} is the same rank as the sender (route: same rank skips)."
+    return "act", actor, ""
+
+
+def simulate_chain(memo):
+    """Evaluate every step of the memo's route as if it were walked now:
+    [{"step", "decision", "actor", "reason"}]. Changes nothing."""
+    steps = build_memo_chain(memo)
+    sender_rank = _rank_of(memo.sender)
+    mode = memo.route.same_rank_behaviour if memo.route_id else "skip"
+    out = []
+    for step in steps:
+        decision, actor, reason = evaluate_step(step, memo, sender_rank=sender_rank, same_rank_mode=mode)
+        out.append({"step": step, "decision": decision, "actor": actor, "reason": reason})
+    return out
+
+
+def _record_skip(memo, step, reason):
+    from .models import MemoApproval
+    MemoApproval.objects.create(memo=memo, step=step, step_name=step.name[:150], actor=None,
+                                decision=MemoApproval.SKIP, comment=reason[:1000])
+
+
 @transaction.atomic
 def advance_chain(memo, from_position):
-    """Move the chain forward from `from_position`. Skips steps
-    according to the rank and optional rules. Publishes if exhausted.
+    """Move the chain forward from `from_position`. Skipped steps are
+    recorded (with the reason) so the memo page shows what happened.
+    Parks on a required step nobody can act on; publishes when exhausted.
     """
     steps = build_memo_chain(memo)
     idx = from_position + 1
@@ -417,56 +786,27 @@ def advance_chain(memo, from_position):
 
     while idx < len(steps):
         step = steps[idx]
-        actor = resolve_memo_approver(step, memo)
-
-        # 1. Optional step, no actor → skip.
-        if actor is None and step.is_optional:
-            _log(memo, "skipped_step",
-                 message=f"Skipped optional step '{step.name}' (no actor).")
+        decision, actor, reason = evaluate_step(step, memo, sender_rank=sender_rank,
+                                                same_rank_mode=same_rank_mode)
+        if decision == "skip":
+            _record_skip(memo, step, reason)
+            _log(memo, "skipped_step", message=f"Skipped '{step.name}': {reason}")
             idx += 1
             continue
 
-        # 2. Required step, no actor → park and alert admins.
-        if actor is None:
-            _set_current_step(memo, step)
+        if decision == "park":
+            already_parked_here = memo.current_step_key == step_key(step)
+            if not already_parked_here:
+                _set_current_step(memo, step)
             memo.status = memo.AWAITING
             memo.save(update_fields=["status", "is_draft", "updated_at"])
             _log(memo, "parked_no_actor",
-                 message=f"Waiting for someone to fill '{step.name}'.")
-            _notify_admins_no_actor(memo, step)
+                 message=f"Waiting for someone to fill '{step.name}': {reason}")
+            if not already_parked_here:
+                _notify_admins_no_actor(memo, step, reason)
             return memo
 
-        # 3. Self-approval — never allowed.
-        if actor.pk == memo.sender_id:
-            _log(memo, "skipped_step",
-                 message=f"Skipped '{step.name}' (sender is the actor).")
-            idx += 1
-            continue
-
-        # 4. Rank-aware skips (only for hierarchical steps).
-        if step.is_hierarchical:
-            actor_rank = _rank_of(actor)
-
-            if actor_rank < sender_rank:
-                _log(memo, "skipped_step",
-                     message=(
-                         f"Skipped '{step.name}' "
-                         f"({actor.get_full_name() or actor.email} "
-                         f"is junior to the sender)."
-                     ))
-                idx += 1
-                continue
-
-            if actor_rank == sender_rank and same_rank_mode == "skip":
-                _log(memo, "skipped_step",
-                     message=(
-                         f"Skipped '{step.name}' (same rank as sender; "
-                         f"route behaviour = skip)."
-                     ))
-                idx += 1
-                continue
-
-        # 5. We have an actionable actor.
+        # We have an actionable actor.
         _set_current_step(memo, step)
         memo.status = memo.AWAITING
         memo.save(update_fields=["status", "is_draft", "updated_at"])
@@ -477,6 +817,72 @@ def advance_chain(memo, from_position):
     return publish_memo(memo, actor=memo.sender)
 
 
+def round_approvals(memo):
+    """Decisions of the memo's current pass through the chain: everything
+    after the last 'returned' (a resubmitted memo walks the chain afresh)."""
+    from .models import MemoApproval
+    rows = list(memo.approvals.select_related("step", "actor").order_by("decided_at", "id"))
+    if memo.status == memo.RETURNED:
+        # Show the pass that ended with the return.
+        last = max((i for i, a in enumerate(rows) if a.decision == MemoApproval.RETURN), default=-1)
+        prev = max((i for i, a in enumerate(rows[:last]) if a.decision == MemoApproval.RETURN), default=-1)
+        return rows[prev + 1:last + 1]
+    last = max((i for i, a in enumerate(rows) if a.decision == MemoApproval.RETURN), default=-1)
+    return rows[last + 1:]
+
+
+def reconcile_memo(memo):
+    """Re-check a memo that is waiting on a step nobody can act on, or on a
+    step that was deleted or changed. Moves it on if it can. Returns True
+    if the memo moved."""
+    from .models import MemoApproval
+    if memo.status != memo.AWAITING or memo.route_id is None:
+        return False
+    steps = build_memo_chain(memo)
+    keys = [step_key(s) for s in steps]
+    step = current_step(memo)
+    if step is not None:
+        decision, _actor, _reason = evaluate_step(step, memo)
+        if decision == "act":
+            return False
+        start = keys.index(step_key(step)) - 1          # re-evaluate the step itself
+    else:
+        done = {step_key(a.step) for a in round_approvals(memo)
+                if a.step_id and a.decision in (MemoApproval.APPROVE, MemoApproval.SKIP)}
+        start = max((i for i, k in enumerate(keys) if k in done), default=-1)
+    before = (memo.status, memo.current_step_key)
+    with transaction.atomic():
+        advance_chain(memo, from_position=start)
+    memo.refresh_from_db()
+    return (memo.status, memo.current_step_key) != before
+
+
+def reconcile_parked():
+    """Re-check every memo that is waiting with nobody to act (after a role,
+    department head, designation or route change). Returns memos moved."""
+    from .models import Memo
+    moved = 0
+    for memo in Memo.objects.filter(status=Memo.AWAITING).select_related("route", "sender"):
+        try:
+            if actor_for_memo(memo) is None and reconcile_memo(memo):
+                moved += 1
+        except Exception:
+            logger.exception("Could not re-check memo %s", memo.reference)
+    return moved
+
+
+def _check_actor(memo, step, actor):
+    """The acting user, or a superuser acting for a step nobody holds."""
+    resolved = resolve_memo_approver(step, memo)
+    if resolved is not None and resolved.pk == actor.pk:
+        return ""
+    if actor.is_superuser:
+        if resolved is None:
+            return "Approved by an administrator because nobody holds this step."
+        return f"Acted by an administrator on behalf of {resolved.get_full_name() or resolved.email}."
+    raise PermissionDenied("You are not the acting user for this step.")
+
+
 @transaction.atomic
 def approve_step(memo, actor, comment=""):
     """Record an approval, then advance."""
@@ -485,9 +891,7 @@ def approve_step(memo, actor, comment=""):
     step = current_step(memo)
     if step is None:
         raise ValidationError("This memo is not awaiting an approval.")
-    resolved = resolve_memo_approver(step, memo)
-    if resolved is None or (resolved.pk != actor.pk and not actor.is_superuser):
-        raise PermissionDenied("You are not the acting user for this step.")
+    override_note = _check_actor(memo, step, actor)
 
     now = timezone.now()
     duration = 0
@@ -499,7 +903,8 @@ def approve_step(memo, actor, comment=""):
         actor=actor,
         actor_role=actor.role.name if actor.role_id else "",
         decision=MemoApproval.APPROVE,
-        comment=comment or "",
+        step_name=step.name[:150],
+        comment=" ".join(x for x in (comment or "", override_note) if x),
         duration_seconds=duration,
     )
 
@@ -528,9 +933,7 @@ def return_to_sender(memo, actor, comment=""):
     step = current_step(memo)
     if step is None:
         raise ValidationError("This memo is not awaiting an approval.")
-    resolved = resolve_memo_approver(step, memo)
-    if resolved is None or (resolved.pk != actor.pk and not actor.is_superuser):
-        raise PermissionDenied("You are not the acting user for this step.")
+    override_note = _check_actor(memo, step, actor)
 
     now = timezone.now()
     duration = 0
@@ -542,7 +945,8 @@ def return_to_sender(memo, actor, comment=""):
         actor=actor,
         actor_role=actor.role.name if actor.role_id else "",
         decision=MemoApproval.RETURN,
-        comment=comment or "",
+        step_name=step.name[:150],
+        comment=" ".join(x for x in (comment or "", override_note) if x),
         duration_seconds=duration,
     )
 
@@ -575,9 +979,7 @@ def reject_memo(memo, actor, comment=""):
     step = current_step(memo)
     if step is None:
         raise ValidationError("This memo is not awaiting an approval.")
-    resolved = resolve_memo_approver(step, memo)
-    if resolved is None or (resolved.pk != actor.pk and not actor.is_superuser):
-        raise PermissionDenied("You are not the acting user for this step.")
+    override_note = _check_actor(memo, step, actor)
 
     now = timezone.now()
     duration = 0
@@ -589,7 +991,8 @@ def reject_memo(memo, actor, comment=""):
         actor=actor,
         actor_role=actor.role.name if actor.role_id else "",
         decision=MemoApproval.REJECT,
-        comment=comment,
+        step_name=step.name[:150],
+        comment=" ".join(x for x in (comment, override_note) if x),
         duration_seconds=duration,
     )
 
@@ -638,7 +1041,7 @@ def publish_memo(memo, *, actor=None):
         )
 
     # Notify recipients.
-    url = f"/messaging/memos/{memo.pk}/"
+    url = memo_url(memo)
     level = (
         Notification.WARNING
         if memo.priority in (memo.HIGH, memo.URGENT)
@@ -711,14 +1114,109 @@ def resubmit_memo(memo, actor, *, subject=None, body=None, comment=""):
 # ===========================================================================
 # Permission helpers
 # ===========================================================================
-def can_act_on_memo(memo, user):
-    """True if `user` is the current step's actor."""
+def can_act_on_memo(memo, user, *, admin_override=True):
+    """True if `user` is the current step's actor. A superuser may also act
+    on any step (admin_override) — the decision is labelled as such."""
     if not user or not user.is_authenticated:
         return False
-    if user.is_superuser:
-        return memo.status == memo.AWAITING
+    if memo.status != memo.AWAITING:
+        return False
     step = current_step(memo)
     if step is None:
         return False
     actor = resolve_memo_approver(step, memo)
-    return actor is not None and actor.pk == user.pk
+    if actor is not None and actor.pk == user.pk:
+        return True
+    return bool(admin_override and user.is_superuser)
+
+
+def is_parked(memo):
+    """Waiting on a step nobody can act on."""
+    return memo.status == memo.AWAITING and current_step(memo) is not None and actor_for_memo(memo) is None
+
+
+# ===========================================================================
+# Memo page: the chain as people should read it
+# ===========================================================================
+def chain_view(memo):
+    """One row per step of the memo's route (or, for a draft, of the route it
+    will get), saying what happened or what will happen and why:
+
+        state ∈ approved | returned | rejected | skipped     (recorded)
+                current | parked                              (now)
+                pending | will_skip | blocked                 (ahead, predicted)
+                not_reached                                   (finished before it)
+
+    Recorded decisions come from this pass through the chain only (a
+    resubmitted memo walks the chain afresh); predictions use the same rules
+    as the engine (evaluate_step), so the page never says "no one assigned"
+    for a step that will simply be skipped."""
+    from .models import MemoApproval
+
+    preview = memo.route_id is None and memo.status == memo.DRAFT
+    if preview:
+        route = route_for_memo(memo)
+        if route is None:
+            return []
+        steps = list(route.steps.select_related("approver_role", "approver_user").order_by("position", "pk"))
+        mode = route.same_rank_behaviour
+    else:
+        steps = build_memo_chain(memo)
+        mode = memo.route.same_rank_behaviour if memo.route_id else "skip"
+    if not steps:
+        return []
+    decided = {}
+    for a in round_approvals(memo) if not preview else []:
+        if a.step_id:
+            decided[step_key(a.step)] = a
+    label = {MemoApproval.APPROVE: "approved", MemoApproval.RETURN: "returned",
+             MemoApproval.REJECT: "rejected", MemoApproval.SKIP: "skipped"}
+    sender_rank = _rank_of(memo.sender) if memo.sender_id else 0
+    live = memo.status in (memo.DRAFT, memo.AWAITING) or preview
+    current_key = memo.current_step_key if memo.status == memo.AWAITING else ""
+    rows = []
+    for i, step in enumerate(steps):
+        key = step_key(step)
+        row = {"step": step, "position": i + 1, "state": "not_reached", "actor": None, "reason": "",
+               "decided_by": None, "decided_at": None, "comment": "", "is_current": False}
+        a = decided.get(key)
+        if key and key == current_key:
+            decision, actor, reason = evaluate_step(step, memo, sender_rank=sender_rank, same_rank_mode=mode)
+            row.update(state="current" if decision == "act" else "parked", actor=actor, reason=reason,
+                       is_current=True)
+        elif a is not None:
+            row.update(state=label.get(a.decision, "approved"), decided_by=a.actor, decided_at=a.decided_at)
+            if a.decision == MemoApproval.SKIP:
+                row["reason"] = a.comment
+            else:
+                row["comment"] = a.comment
+        elif live:
+            decision, actor, reason = evaluate_step(step, memo, sender_rank=sender_rank, same_rank_mode=mode)
+            row.update(state={"act": "pending", "skip": "will_skip", "park": "blocked"}[decision],
+                       actor=actor, reason=reason)
+        elif memo.status == memo.PUBLISHED:
+            row.update(state="skipped", reason="Skipped (recorded before step reasons were kept).")
+        rows.append(row)
+    return rows
+
+
+# ===========================================================================
+# Keep parked memos moving when people or routes change
+# ===========================================================================
+def schedule_reconcile():
+    """Re-check parked memos once the current transaction commits (at most
+    once per transaction, however many saves trigger it)."""
+    from django.db import connection
+    if getattr(connection, "_memo_reconcile_pending", False):
+        return
+    connection._memo_reconcile_pending = True
+
+    def run():
+        connection._memo_reconcile_pending = False
+        try:
+            moved = reconcile_parked()
+            if moved:
+                logger.info("Re-checked parked memos: %s moved on", moved)
+        except Exception:
+            logger.exception("Could not re-check parked memos")
+    transaction.on_commit(run)

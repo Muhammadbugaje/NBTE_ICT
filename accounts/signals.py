@@ -56,6 +56,15 @@ def create_staff_profile(sender, instance, created, **kwargs):
     if Staff.objects.filter(user=instance).exists():
         return
 
+    # Nominal-roll release: an account made for an existing directory record
+    # (staff.account_provisioning) names that record, so link it rather than
+    # creating a second one.
+    target = getattr(instance, "_link_staff", None)
+    if target is not None and target.pk and not target.user_id:
+        target.user = instance
+        target.save(update_fields=["user"])
+        return
+
     # Review H5: if exactly one unlinked directory record already carries
     # this email (HR created the staff record first), link it instead of
     # creating a second record - that duplicate made the follow-up link

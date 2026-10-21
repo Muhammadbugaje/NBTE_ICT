@@ -1,0 +1,23 @@
+{# Large label, 100 x 60 mm: QR + full details + organisation name and logo. #}
+<div class="lbl lbl-large">
+  <div class="lbl-head">
+    {% if logo_url %}<img class="lbl-logo" src="{{ logo_url }}" alt="">{% endif %}
+    <div class="lbl-org">{{ org_name }}</div>
+  </div>
+  <div class="lbl-body">
+    <div class="lbl-qr">{{ asset.qr_svg|safe }}</div>
+    <div class="lbl-info">
+      <div class="lbl-tag">{{ asset.asset_tag }}</div>
+      <div class="lbl-name">{{ asset.display_name }}</div>
+      <dl class="lbl-facts">
+        <dt>Category</dt><dd>{{ asset.category.name }}</dd>
+        {% if asset.owner_department %}<dt>Department</dt><dd>{{ asset.owner_department.name }}</dd>{% endif %}
+        {% if asset.serial_number %}<dt>Serial</dt><dd>{{ asset.serial_number }}</dd>{% endif %}
+        {% if asset.current_custodian %}<dt>Assigned to</dt><dd>{{ asset.current_custodian.get_full_name|default:asset.current_custodian.email }}</dd>{% endif %}
+        {% if asset.current_location %}<dt>Location</dt><dd>{{ asset.current_location }}</dd>{% endif %}
+        {% if asset.acquired_at %}<dt>Purchased</dt><dd>{{ asset.acquired_at|date:"d M Y" }}</dd>{% endif %}
+        {% if asset.warranty_until %}<dt>Warranty</dt><dd>until {{ asset.warranty_until|date:"d M Y" }}</dd>{% endif %}
+      </dl>
+    </div>
+  </div>
+</div>

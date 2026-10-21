@@ -1,0 +1,62 @@
+{% comment %}
+  Two-mode pagination (Master Plan §20): 25 rows per page, or "Show all" up to
+  qa.ui.max_show_all_rows. Above the limit the toggle is disabled and says why;
+  the server (qa_core.ui.paginate) enforces the same limit.
+  Needs: page (from paginate), target (CSS selector of the rows region); optional swap (e.g. "outerHTML").
+{% endcomment %}
+{% if page.total %}
+<nav class="qa-pagination" aria-label="Pages">
+  <span class="qa-result-count" data-qa-announce="Showing {{ page.start }} to {{ page.end }} of {{ page.total }}">
+    Showing <strong>{{ page.start }}–{{ page.end }}</strong> of <strong>{{ page.total }}</strong>
+  </span>
+
+  <div class="qa-pagination__pages">
+    {% if page.show_all %}
+      <a href="{{ request.path }}?{{ page.base_qs }}" hx-get="{{ request.path }}?{{ page.base_qs }}"
+         hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true">25 per page</a>
+    {% elif page.num_pages > 1 %}
+      {% if page.page.has_previous %}
+        <a href="{{ request.path }}?{{ page.prev_qs }}" hx-get="{{ request.path }}?{{ page.prev_qs }}"
+           hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true" aria-label="Previous page">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        </a>
+      {% else %}
+        <span class="is-disabled" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></span>
+      {% endif %}
+      {% for link in page.links %}
+        {% if link.ellipsis %}
+          <span class="is-disabled" aria-hidden="true">…</span>
+        {% elif link.current %}
+          <span class="is-current" aria-current="page">{{ link.num }}</span>
+        {% else %}
+          <a href="{{ request.path }}?{{ link.qs }}" hx-get="{{ request.path }}?{{ link.qs }}"
+             hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true" aria-label="Page {{ link.num }}">{{ link.num }}</a>
+        {% endif %}
+      {% endfor %}
+      {% if page.page.has_next %}
+        <a href="{{ request.path }}?{{ page.next_qs }}" hx-get="{{ request.path }}?{{ page.next_qs }}"
+           hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true" aria-label="Next page">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </a>
+      {% else %}
+        <span class="is-disabled" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+      {% endif %}
+    {% endif %}
+
+    {% if not page.show_all and page.num_pages > 1 %}
+      {% if page.show_all_allowed %}
+        <a class="qa-showall" href="{{ request.path }}?{{ page.all_qs }}" hx-get="{{ request.path }}?{{ page.all_qs }}"
+           hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true">Show all</a>
+      {% else %}
+        <span class="qa-showall" aria-disabled="true" tabindex="0"
+              title="Show all is limited to {{ page.max_rows }} rows. Narrow the list with the filters first.">Show all</span>
+      {% endif %}
+    {% endif %}
+  </div>
+</nav>
+{% if page.show_all_refused %}
+  <p class="qa-pagination-note" role="status">
+    “Show all” is limited to {{ page.max_rows }} rows, and this list has {{ page.total }}. Showing the first page instead — use the filters to narrow it.
+  </p>
+{% endif %}
+{% endif %}

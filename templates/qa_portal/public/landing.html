@@ -1,0 +1,329 @@
+{% extends "qa_portal/public/base.html" %}
+{% load static %}
+{% block title %}NBTE Quality Assurance Portal{% endblock %}
+{% block content %}
+
+{# ================================ HERO ================================ #}
+<section class="vv-hero" aria-labelledby="vv-hero-title">
+  <div class="vv-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="vv-grid" aria-hidden="true"></div>
+  <div class="vv-wrap vv-hero__in">
+    <div class="vv-enter">
+      <p class="vv-eyebrow"><img src="{% static 'img/NBTE_logo.png' %}" alt="" width="24" height="24">National Board for Technical Education <span class="vv-live" aria-hidden="true"></span></p>
+      <h1 class="vv-h1" id="vv-hero-title">Quality assurance for every <span class="vv-soft">technical institution in Nigeria.</span></h1>
+      <p class="vv-lede">Polytechnics, colleges and innovation institutes register with NBTE, request accreditation, pay fees and follow every decision here, from any device.</p>
+      <div class="vv-cta">
+        {% if registration_open %}
+          <a class="vv-btn vv-btn--gold" href="{% url 'qa_portal:register' %}">Register your institution
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+          <a class="vv-btn vv-btn--glass" href="{% url 'qa_portal:login' %}">Log in</a>
+        {% else %}
+          <a class="vv-btn vv-btn--gold" href="{% url 'qa_portal:login' %}">Log in to the portal</a>
+          <a class="vv-btn vv-btn--glass" href="{% url 'qa_portal:how_to' %}">How it works</a>
+        {% endif %}
+      </div>
+      {% if registration_open %}
+        <p class="vv-note">New here? <a href="{% url 'qa_portal:how_to' %}">See how the process works</a> before you register.</p>
+      {% else %}
+        <p class="vv-note">{{ registration_closed_message }}</p>
+      {% endif %}
+      <ul class="vv-stats" aria-label="At a glance">
+        <li><strong>36 + FCT</strong><span>states served</span></li>
+        <li><strong>{{ qa_types|length|default:7 }}</strong><span>kinds of QA review</span></li>
+        <li><strong>1</strong><span>timeline for every request</span></li>
+      </ul>
+    </div>
+
+    <div class="vv-art qa-art">
+      {% include "partials/vivid/nigeria_map.svg.html" %}
+      <div class="vv-float qa-art__pay" aria-hidden="true">
+        <div class="vv-toast"><span class="vv-toast__ico" style="background:#1fa463"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <span><b>QA fee confirmed</b><small>NBTE Finance · just now</small></span></div>
+      </div>
+      <div class="vv-float qa-art__visit" aria-hidden="true">
+        <div class="vv-toast"><span class="vv-toast__ico" style="background:#c98a0b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+          <span><b>Visit scheduled</b><small>Accreditation team · 14 Apr</small></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ============================== MARQUEE ============================== #}
+<div class="vv-marquee" aria-label="What you can do on the portal">
+  <div class="vv-marquee__track">
+    {% for copy in "12" %}
+    <div class="vv-marquee__group"{% if not forloop.first %} aria-hidden="true"{% endif %}>
+      <span class="vv-chip vv-hue-green"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg></i>Register an institution</span>
+      <span class="vv-chip vv-hue-teal"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></i>Upload documents</span>
+      <span class="vv-chip vv-hue-blue"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg></i>Request accreditation</span>
+      <span class="vv-chip vv-hue-gold"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></i>Pay fees online or by bank</span>
+      <span class="vv-chip vv-hue-violet"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></i>Complete the SSQ</span>
+      <span class="vv-chip vv-hue-coral"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></i>Answer NBTE's queries</span>
+      <span class="vv-chip vv-hue-green"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></i>Follow inspection visits</span>
+      <span class="vv-chip vv-hue-teal"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></i>Download receipts and letters</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ============================== SERVICES ============================== #}
+<section class="vv-section" id="services" aria-labelledby="vv-services">
+  <div class="vv-wrap">
+    <div class="vv-head" data-vv-reveal>
+      <p class="vv-kicker">One portal</p>
+      <h2 class="vv-h2" id="vv-services">Everything between your institution and NBTE, in one place.</h2>
+      <p class="vv-sub">No more letters going back and forth. Each step has a page, each page shows who acts next, and everything you do is recorded.</p>
+    </div>
+    <div class="vv-bento vv-bento--6">
+      <a class="vv-tile vv-hue-green" href="{% url 'qa_portal:how_to' %}#onboarding" data-vv-reveal>
+        <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg></span>
+        <h3>Register and get approved</h3>
+        <p>Create your institution's record, upload the documents for your ownership type, and follow Legal, Finance, Academic Planning and Physical Planning as they clear it.</p>
+        <span class="vv-tile__foot"><span class="vv-tag">Onboarding · SOP-01</span></span>
+      </a>
+      <a class="vv-tile vv-hue-blue" href="{% url 'qa_portal:how_to' %}#qa-requests" data-vv-reveal>
+        <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg></span>
+        <h3>Request quality assurance</h3>
+        <p>Choose the kind of QA and the programmes. The portal offers only the programmes that are eligible, and says why any others are not yet.</p>
+        <span class="vv-tile__foot"><span class="vv-tag">QA request · SOP-02</span></span>
+      </a>
+      <a class="vv-tile vv-hue-violet" href="{% url 'qa_portal:how_to' %}#qa-requests" data-vv-reveal>
+        <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+        <h3>Self-study questionnaire</h3>
+        <p>Answers save as you type. Send sections to the academic department that owns them, reuse evidence, then submit.</p>
+      </a>
+      <a class="vv-tile vv-hue-gold" href="{% url 'qa_portal:how_to' %}#payments" data-vv-reveal>
+        <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
+        <h3>Pay fees with confidence</h3>
+        <p>Every bill has its own reference. Pay with Remita, Paystack or at the bank; NBTE Finance confirms it and your receipt is issued.</p>
+      </a>
+      <a class="vv-tile vv-hue-coral" href="{% url 'qa_portal:how_to' %}#qa-requests" data-vv-reveal>
+        <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="13" y2="13"/></svg></span>
+        <h3>Queries, answered online</h3>
+        <p>When NBTE needs more information you get a query with a due date. Answer it on the portal, with files if needed.</p>
+      </a>
+      <a class="vv-tile vv-hue-teal" href="{% url 'qa_portal:how_to' %}#inside-nbte" data-vv-reveal>
+        <span class="vv-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+        <h3>Visits and decisions</h3>
+        <p>See when the visit is approved and held, then the decision: status, approved streams and expiry date on your programme record.</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+{# ============================== TRACKER ============================== #}
+<section class="vv-section--tight" aria-labelledby="vv-follow">
+  <div class="vv-wrap">
+    <div class="vv-show vv-hue-green" data-vv-reveal>
+      <div>
+        <p class="vv-kicker">Always know where you stand</p>
+        <h2 class="vv-h2" id="vv-follow">Accreditation you can follow, step by step.</h2>
+        <p class="vv-sub">Every request shows where it is, who acts next and what you need to do. You are told the moment something changes.</p>
+        <ul class="vv-checks">
+          <li><span><strong>Action required</strong> on your dashboard lists everything waiting for you: a bill, a query, a returned document.</span></li>
+          <li><span>A <strong>notification</strong> and an <strong>e-mail</strong> to your official address whenever NBTE acts.</span></li>
+          <li><span>A permanent <strong>timeline</strong> of every request, payment, document and visit, which you can search and filter.</span></li>
+        </ul>
+      </div>
+      <article class="vv-tracker" aria-label="Example: a reaccreditation request in progress">
+        <header><div><h3>ND Computer Science</h3><p>Reaccreditation · example request</p></div>
+          <span class="vv-pill"><span class="vv-live" aria-hidden="true"></span>In progress</span></header>
+        <ol class="vv-steps">
+          <li class="is-done"><span class="vv-sdot" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span>Request submitted</span><time>3 Mar</time></li>
+          <li class="is-done"><span class="vv-sdot" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span>QA fee confirmed by Finance</span><time>7 Mar</time></li>
+          <li class="is-done"><span class="vv-sdot" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span>Self-study questionnaire accepted</span><time>24 Mar</time></li>
+          <li class="is-now"><span class="vv-sdot" aria-hidden="true"></span><span><strong>Visit scheduled</strong></span><time>14 Apr</time></li>
+          <li class="is-next"><span class="vv-sdot" aria-hidden="true"></span><span>Decision</span><small>Next</small></li>
+        </ol>
+        <div class="vv-bar" role="presentation"><i></i></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+{% if not registration_open %}
+<div class="vv-wrap" style="margin-top:32px"><div class="qp-notice" role="note">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <div><strong>Registration is managed by NBTE</strong><p>{{ registration_closed_message }}</p></div>
+</div></div>
+{% endif %}
+
+{# ============================== JOURNEY ============================== #}
+<section class="vv-section" aria-labelledby="vv-journey">
+  <div class="vv-wrap">
+    <div class="vv-head" data-vv-reveal>
+      <p class="vv-kicker vv-hue-blue">The journey</p>
+      <h2 class="vv-h2" id="vv-journey">From registration to decision, in four stages.</h2>
+      <p class="vv-sub">You act on some steps; NBTE acts on the rest. You see every one of them as it happens.</p>
+    </div>
+    <ol class="vv-journey">
+      <li class="vv-hue-green" data-vv-reveal><h3>Register</h3>
+        <p>{% if registration_open %}Create your institution's account and a login for your registrar or QA officer.{% else %}NBTE creates your institution's account and e-mails you a link to set your password.{% endif %}</p>
+        <span class="vv-who"><span class="vv-tag">You</span></span></li>
+      <li class="vv-hue-teal" data-vv-reveal><h3>Get approved</h3>
+        <p>Upload your documents. Legal, Finance, Academic Planning and Physical Planning clear them, then you pay the institutional fee.</p>
+        <span class="vv-who"><span class="vv-tag">You</span><span class="vv-tag vv-tag--plain">NBTE</span><span class="vv-tag vv-tag--plain">SOP-01</span></span></li>
+      <li class="vv-hue-blue" data-vv-reveal><h3>Request QA</h3>
+        <p>Choose the programmes and the kind of QA, pay the QA fee and complete a self-study questionnaire for each programme.</p>
+        <span class="vv-who"><span class="vv-tag">You</span><span class="vv-tag vv-tag--plain">SOP-02</span></span></li>
+      <li class="vv-hue-gold" data-vv-reveal><h3>Visit and decision</h3>
+        <p>NBTE plans and funds the visit, a team inspects, and the recommendation goes to CQAC and the Executive Secretary.</p>
+        <span class="vv-who"><span class="vv-tag">NBTE</span><span class="vv-tag vv-tag--plain">SOP-03</span></span></li>
+    </ol>
+    <p style="margin-top:28px" data-vv-reveal><a class="vv-btn vv-btn--line" href="{% url 'qa_portal:how_to' %}">See every step in the how-to guide</a></p>
+  </div>
+</section>
+
+{# ============================== QA TYPES ============================== #}
+{% if qa_types %}
+<section class="vv-section--tight" aria-labelledby="vv-types">
+  <div class="vv-wrap">
+    <div class="vv-head" data-vv-reveal>
+      <p class="vv-kicker vv-hue-violet">Kinds of quality assurance</p>
+      <h2 class="vv-h2" id="vv-types">The right review for each stage of a programme's life.</h2>
+    </div>
+    <div class="vv-cards">
+      {% for t in qa_types %}
+        <article class="vv-card {% cycle 'vv-hue-green' 'vv-hue-blue' 'vv-hue-teal' 'vv-hue-violet' 'vv-hue-gold' 'vv-hue-coral' %}" data-vv-reveal>
+          <h3>{{ t.name }}</h3>
+          <p>{{ t.explainer }}</p>
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{# ============================== PAYMENTS ============================== #}
+<section class="vv-section" aria-labelledby="vv-pay">
+  <div class="vv-wrap">
+    <div class="vv-band" data-vv-reveal>
+      <div class="vv-band__in">
+        <h2 id="vv-pay">Fees, paid and confirmed without the paperwork.</h2>
+        <p>A payment only counts once NBTE Finance confirms it against the bank record, so you always know where your money is.</p>
+        <ol class="vv-paysteps">
+          <li><b>A bill is issued</b><span>With its own payment reference, the amount in figures and words and a due date.</span></li>
+          <li><b>You pay</b><span>Online with Remita or Paystack, or at the bank quoting the reference.</span></li>
+          <li><b>Finance confirms</b><span>Bank payments: upload the teller or transfer receipt as proof.</span></li>
+          <li><b>Receipt issued</b><span>With a QR code anyone can scan to check it is genuine. The next step opens.</span></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ============================== JOINT QA + WHO ============================== #}
+<section class="vv-section--tight" aria-labelledby="vv-who">
+  <div class="vv-wrap">
+    <div class="vv-head" data-vv-reveal>
+      <p class="vv-kicker vv-hue-teal">Who it is for</p>
+      <h2 class="vv-h2" id="vv-who">Built for everyone who takes part.</h2>
+    </div>
+    <div class="vv-split">
+      <article class="vv-tile vv-hue-green" data-vv-reveal>
+        <span class="vv-ico vv-ico--soft"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg></span>
+        <h3>Institutions</h3>
+        <p>Your registrar, QA officer and academic departments work on the same record. Track each request, payment and visit; send SSQ sections to the department that owns them; download receipts and letters.</p>
+        <span class="vv-tile__foot"><a class="vv-more" href="{% url 'qa_portal:how_to' %}#getting-started">How institutions get started</a></span>
+      </article>
+      <article class="vv-tile vv-hue-violet" data-vv-reveal>
+        <span class="vv-ico vv-ico--soft"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+        <h3>Resource persons</h3>
+        <p>Academics and professionals NBTE engages for visits and SSQ reviews. See the visits you are booked for, write your findings for the post-visit report and keep your CV up to date.</p>
+        <span class="vv-tile__foot"><a class="vv-more" href="{% url 'qa_portal:login' %}">Log in with the link NBTE sent you</a></span>
+      </article>
+      <article class="vv-tile vv-hue-teal" data-vv-reveal>
+        <span class="vv-ico vv-ico--soft"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+        <h3>Professional bodies</h3>
+        <p>Where a programme is also regulated by a professional council, the request becomes a <strong>joint QA exercise</strong> and NBTE tells the council when the case opens, so its assessor can join the visit.</p>
+        {% if bodies %}<span class="vv-tile__foot">{% for b in bodies %}<span class="vv-tag" title="{{ b.name }}">{{ b.acronym|default:b.name }}</span>{% endfor %}</span>{% endif %}
+      </article>
+    </div>
+  </div>
+</section>
+
+{# ============================== BEFORE YOU START ============================== #}
+<section class="vv-section" aria-labelledby="vv-ready">
+  <div class="vv-wrap">
+    <div class="vv-show vv-hue-gold" data-vv-reveal>
+      <div>
+        <p class="vv-kicker">Before you start</p>
+        <h2 class="vv-h2" id="vv-ready">Have these to hand and registration takes about fifteen minutes.</h2>
+        <p class="vv-sub">The documents you upload afterwards depend on your ownership; the portal lists exactly which ones apply to you.</p>
+      </div>
+      <ul class="vv-checks">
+        <li><span><strong>The institution:</strong> full name, ownership, type, category and year established.</span></li>
+        <li><span><strong>Location:</strong> state, LGA and the permanent-site address.</span></li>
+        <li><span><strong>Contacts:</strong> the official e-mail address and phone, and the head of institution's name.</span></li>
+        <li><span><strong>Private institutions:</strong> the CAC RC number.</span></li>
+        <li><span><strong>You:</strong> the administrator's name, job title and work e-mail, usually the Registrar or head of the QA unit.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+{# ============================== GUIDES ============================== #}
+<section class="vv-section--tight" aria-labelledby="vv-guides">
+  <div class="vv-wrap">
+    <div class="vv-head" data-vv-reveal>
+      <p class="vv-kicker vv-hue-blue">Step-by-step guides</p>
+      <h2 class="vv-h2" id="vv-guides">Guides you can print or share.</h2>
+      <p class="vv-sub">Word documents with every step, screenshot and tip. Give them to the staff who will use the portal.</p>
+    </div>
+    <div class="vv-cards">
+      {% for g in guides %}
+        {% if g.available %}
+          <a class="vv-card {% cycle 'vv-hue-green' 'vv-hue-teal' 'vv-hue-blue' 'vv-hue-gold' %}" href="{{ g.url }}" data-vv-reveal>
+            <span class="vv-ico vv-ico--soft"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg></span>
+            <h3>{{ g.title }}</h3><p>{{ g.summary }}</p><small>Word document · {{ g.size }}</small>
+          </a>
+        {% else %}
+          <article class="vv-card {% cycle 'vv-hue-green' 'vv-hue-teal' 'vv-hue-blue' 'vv-hue-gold' %}" data-vv-reveal>
+            <h3>{{ g.title }}</h3><p>{{ g.summary }}</p><small>Coming soon</small>
+          </article>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{# ============================== FAQ ============================== #}
+<section class="vv-section" aria-labelledby="vv-faq">
+  <div class="vv-wrap">
+    <div class="vv-head vv-head--center" data-vv-reveal>
+      <p class="vv-kicker vv-hue-coral">Questions</p>
+      <h2 class="vv-h2" id="vv-faq">Common questions.</h2>
+    </div>
+    <div class="vv-faq">
+      <details data-vv-reveal><summary>We are already registered with NBTE. Do we register again?</summary>
+        <div><p>No. NBTE sets up existing institutions and e-mails a link to set your password. If you cannot find it, use <a href="{% url 'qa_portal:password_forgot' %}">Forgot password</a> with your institution's registered e-mail address.</p></div></details>
+      <details data-vv-reveal><summary>Who should hold the administrator account?</summary>
+        <div><p>Usually the Registrar or the head of the QA unit. The administrator keeps the institution's record up to date, starts requests, pays fees and adds accounts for academic departments. Do not share the login; ask NBTE to change it if the person changes.</p></div></details>
+      <details data-vv-reveal><summary>How do we pay, and when does a payment count?</summary>
+        <div><p>Pay online with Remita or Paystack, or at the bank quoting the bill's payment reference and uploading the receipt as proof. A payment counts once NBTE Finance confirms it against the bank record; the next step then opens on its own.</p></div></details>
+      <details data-vv-reveal><summary>Can our academic departments fill in parts of the SSQ?</summary>
+        <div><p>Yes. Send the sections to the department from the SSQ page. The department completes them and sends the SSQ back to you to check and submit.</p></div></details>
+      <details data-vv-reveal><summary>What happens after our SSQs are accepted?</summary>
+        <div><p>NBTE opens an internal case: it assigns the team, costs and funds the visit, inspects, reports and decides. You do not need to act during these stages; you are told when the visit is approved, when it takes place and when the decision is made.</p></div></details>
+      <details data-vv-reveal><summary>Does the portal work on a phone?</summary>
+        <div><p>Yes, on any phone, tablet or computer. On a phone the main sections sit in a bar at the bottom of the screen.</p></div></details>
+    </div>
+  </div>
+</section>
+
+{# ============================== CTA ============================== #}
+<section aria-labelledby="vv-cta">
+  <div class="vv-wrap">
+    <div class="vv-band vv-band--deep" data-vv-reveal>
+      <div class="vv-band__in">
+        <h2 id="vv-cta">Ready when you are.</h2>
+        <p>{% if registration_open %}Register your institution now, or log in if NBTE has already set up your account.{% else %}Already registered? Log in. New to NBTE? Read how the process works, then contact us to begin.{% endif %}</p>
+        <div class="vv-cta">
+          {% if registration_open %}<a class="vv-btn vv-btn--gold" href="{% url 'qa_portal:register' %}">Register your institution</a>{% else %}<a class="vv-btn vv-btn--gold" href="{% url 'qa_portal:login' %}">Log in</a>{% endif %}
+          <a class="vv-btn vv-btn--glass" href="{% url 'qa_portal:how_to' %}">Read the how-to guide</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,32 @@
+<tbody id="ref-{{ f.pk }}" class="qa-rule">
+  <tr>
+    <td data-label="Record">
+      <strong>{{ f.name }}</strong>
+      <span class="qa-desc"><code>{{ f.code }}</code>{% if not f.is_active %} · <span class="qa-chip">Inactive</span>{% endif %}</span>
+    </td>
+    <td data-label="Pattern and example">
+      <span class="qa-key">{{ f.pattern }}</span>
+      <div class="qa-chip-row">
+        <span class="qa-ref-sample" title="Example with institution KDP, department DPAP, number 123">{{ f.example }}</span>
+      </div>
+      {% if f.pending_reference %}
+        <div class="qa-chip-row">
+          <a class="qa-chip qa-chip--pending" href="{% url 'qa:pending_list' %}?status=pending&q={{ f.pending_reference|urlencode }}">{{ f.pending_reference }} awaiting confirmation</a>
+        </div>
+      {% endif %}
+    </td>
+    <td data-label="Numbering">
+      <span class="qa-small">{{ f.get_sequence_scope_display }}</span>
+      <span class="qa-desc">Resets {{ f.get_reset_period_display|lower }} · check: {{ f.get_check_digit_display }} · issued so far: {{ f.last_issued }}</span>
+    </td>
+    <td class="qa-col-actions">
+      {% if f.can_edit %}
+        <button type="button" class="btn btn-sm btn-subtle" hx-get="{% url 'qa:reference_edit' f.pk %}"
+                hx-target="#ref-{{ f.pk }}" hx-swap="outerHTML" aria-label="Change the {{ f.name }} format">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          Change
+        </button>
+      {% endif %}
+    </td>
+  </tr>
+</tbody>

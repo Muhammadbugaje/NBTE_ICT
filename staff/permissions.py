@@ -44,6 +44,7 @@ def sees_all_departments(user) -> bool:
 def staff_visible_to(user):
     qs = Staff.objects.select_related(
         "user", "department", "office", "state", "category", "reports_to",
+        "designation", "state_of_origin",
     )
     if not user or not user.is_authenticated:
         return qs.none()

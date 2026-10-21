@@ -1,0 +1,15 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="cxs-edit-h">
+  <header class="qa-card__head"><div><h2 id="cxs-edit-h" data-qa-focus>{% if edit_form %}Edit{% else %}View{% endif %}: {{ obj }}</h2></div>
+    <button type="button" class="btn btn-xs btn-subtle" onclick="this.closest('#cxs-edit').innerHTML=''">Close</button></header>
+  <div class="qa-card__body">
+    {% if edit_form %}
+    <form class="qa-form" method="post" action="{% url 'qa_set:complaints_edit' section obj.pk %}" hx-post="{% url 'qa_set:complaints_edit' section obj.pk %}" hx-target="#cxs-edit">{% csrf_token %}
+      {% include "complaints/settings/_form_fields.html" with f=edit_form %}
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
+    </form>
+    {% else %}
+      <p class="qa-muted qa-small">Read-only: changing this needs {{ perm }}.</p>
+    {% endif %}
+  </div>
+</section>

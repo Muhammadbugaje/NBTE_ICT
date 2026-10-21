@@ -1,0 +1,26 @@
+{% load qa_tags %}
+{% include "inspection/_subnav.html" with section="finder" %}
+<header class="qa-hero"><div>
+  <span class="qa-eyebrow">{% icon "search" 14 "2.4" %} Edit QA Mapping · §9 "Available for the next visit"</span>
+  <h1 data-qa-focus>Availability finder</h1>
+  <p>Only people who pass every rule are listed, ranked by fewest visits this year, longest since last served, then rating (<span class="qa-mono">qa.matching.rank_score</span>). <strong>Map</strong> books the person at once (nobody else can book them for these dates) and sends the mapping to a second officer; the rules are checked again when it is confirmed.</p>
+</div></header>
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+<section class="qa-card" aria-label="What the mapping is for">
+  <form class="qa-toolbar qa-toolbar--wrap" role="search" hx-get="{% url 'qa_insp:finder' %}" hx-target="#qa-panel" hx-push-url="true" hx-trigger="change, input changed delay:400ms from:find input[type=search]">
+    <select class="input qa-select" name="case" aria-label="Case"><option value="">Choose a case…</option>{% for c in cases %}<option value="{{ c.pk }}"{% if case and case.pk == c.pk %} selected{% endif %}>{{ c.reference }} · {{ c.institution.code }}</option>{% endfor %}</select>
+    {% if rows %}<select class="input qa-select" name="row" aria-label="Programme">{% for r in rows %}<option value="{{ r.pk }}"{% if need and need.row.pk == r.pk %} selected{% endif %}>{{ r.programme }}</option>{% endfor %}</select>{% endif %}
+    <select class="input qa-select" name="duty" aria-label="Duty">{% for v, l in duties %}<option value="{{ v }}"{% if filters.duty == v or not filters.duty and v == "resource_inspection" %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <label class="qa-inline-date"><span>From</span><input class="input" type="date" name="start" value="{% if need %}{{ need.start|date:'Y-m-d' }}{% else %}{{ filters.start|default:'' }}{% endif %}"></label>
+    <label class="qa-inline-date"><span>To</span><input class="input" type="date" name="end" value="{% if need %}{{ need.end|date:'Y-m-d' }}{% else %}{{ filters.end|default:'' }}{% endif %}"></label>
+    <select class="input qa-select" name="kind" aria-label="Who"><option value="">Everyone</option><option value="resource_person"{% if filters.kind == "resource_person" %} selected{% endif %}>Resource persons</option><option value="qa_personnel"{% if filters.kind == "qa_personnel" %} selected{% endif %}>QA personnel</option></select>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Name" autocomplete="off"></label>
+    <select class="input qa-select" name="show" aria-label="Show"><option value="">Eligible only</option><option value="all"{% if show_all %} selected{% endif %}>Also show who is not eligible, and why</option></select>
+  </form>
+  {% if need %}
+    <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "inspection/_finder_rows.html" %}</div>
+  {% else %}
+    <div class="qa-card__body"><p class="qa-muted">Choose a case (its visit dates are used when it has them), the programme and the duty.</p>
+      <details class="qa-rules"><summary>The rules</summary><ol class="qa-small">{% for code, name, setting in rules %}<li><strong>{{ name }}</strong>{% if setting %} — <span class="qa-mono">{{ setting }}</span>{% endif %}</li>{% endfor %}</ol></details></div>
+  {% endif %}
+</section>

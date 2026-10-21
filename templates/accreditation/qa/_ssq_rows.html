@@ -1,0 +1,17 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for s in page.rows %}
+      {% with r=s.qa_request_programme.qa_request %}
+      <li><a class="qa-rowlink" href="{% url 'qa_req:ssq' s.pk %}" hx-get="{% url 'qa_req:ssq' s.pk %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="qa-rowlink__badge">{{ r.institution.code }}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ s.qa_request_programme.programme }} — {{ r.institution.name }}</span>
+          <span class="qa-rowlink__meta"><span class="qa-mono">{{ r.reference }}</span><span>· {{ r.qa_type.name }}</span><span>· version {{ s.version }}</span>{% if s.submitted_at %}<span>· submitted {{ s.submitted_at|date:"j M Y" }}</span>{% endif %}</span></span>
+        <span class="qa-rowlink__side"><span class="qa-chip {{ s.status|tone }}">{{ s.public }}</span>{% if s.status == "submitted" and s.waiting_days is not None %}<span class="qa-small qa-muted">waiting {{ s.waiting_days }} day{{ s.waiting_days|pluralize }}</span>{% endif %}</span></a></li>
+      {% endwith %}
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">Nothing here</h3><p class="nbte-empty-state__body">{% if status == "submitted" %}No SSQ is waiting for review in your scope.{% else %}No SSQs match these filters.{% endif %}</p></div>
+{% endif %}

@@ -1,0 +1,49 @@
+{% comment %}
+  Phase 6: the floating liquid-glass tab bar for phones (hidden from 1024px,
+  where the sidebar is always visible). Five destinations at most; the last
+  tab opens the full menu (the sidebar drawer). The tabs follow the workspace:
+  the main system or the QA workspace. One accent: only the current tab is
+  green. It tucks away while you scroll down and returns on the way up.
+{% endcomment %}
+{% with ns=request.resolver_match.namespace un=request.resolver_match.url_name %}
+<nav class="app-tabbar" aria-label="Quick navigation" data-tabbar>
+  <div class="app-tabbar__inner">
+  {% if workspace == "qa" %}
+    {% if qa_nav.qa_cases %}
+    <a href="{% url 'qa_case:board' %}" class="app-tab{% if ns == 'qa_case' %} is-active{% endif %}"{% if ns == 'qa_case' %} aria-current="page"{% endif %}>
+      <span class="app-tab__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/></svg>{% if qa_nav.qa_cases_mine %}<span class="app-tab__badge">{{ qa_nav.qa_cases_mine }}</span>{% endif %}</span>
+      <span class="app-tab__label">Cases</span></a>
+    {% endif %}
+    {% if qa_nav.qa_requests %}
+    <a href="{% url 'qa_req:list' %}" class="app-tab{% if ns == 'qa_req' %} is-active{% endif %}"{% if ns == 'qa_req' %} aria-current="page"{% endif %}>
+      <span class="app-tab__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>{% if qa_nav.ssq_waiting %}<span class="app-tab__badge">{{ qa_nav.ssq_waiting }}</span>{% endif %}</span>
+      <span class="app-tab__label">Requests</span></a>
+    {% endif %}
+    {% if qa_nav.institutions %}
+    <a href="{% url 'qa_inst:list' %}" class="app-tab{% if ns == 'qa_inst' %} is-active{% endif %}"{% if ns == 'qa_inst' %} aria-current="page"{% endif %}>
+      <span class="app-tab__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg></span>
+      <span class="app-tab__label">Institutions</span></a>
+    {% endif %}
+    <a href="{% url 'tasks:assigned_to_me' %}" class="app-tab{% if ns == 'tasks' %} is-active{% endif %}"{% if ns == 'tasks' %} aria-current="page"{% endif %}>
+      <span class="app-tab__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+      <span class="app-tab__label">Tasks</span></a>
+  {% else %}
+    <a href="{% url 'core:home' %}" class="app-tab{% if un == 'home' and ns == 'core' %} is-active{% endif %}"{% if un == 'home' and ns == 'core' %} aria-current="page"{% endif %}>
+      <span class="app-tab__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg></span>
+      <span class="app-tab__label">Home</span></a>
+    <a href="{% url 'tasks:assigned_to_me' %}" class="app-tab{% if ns == 'tasks' %} is-active{% endif %}"{% if ns == 'tasks' %} aria-current="page"{% endif %}>
+      <span class="app-tab__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+      <span class="app-tab__label">Tasks</span></a>
+    <a href="{% url 'messaging:inbox' %}" class="app-tab{% if ns == 'messaging' %} is-active{% endif %}"{% if ns == 'messaging' %} aria-current="page"{% endif %}>
+      <span class="app-tab__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{% if sidebar_counts.unread_messages %}<span class="app-tab__badge">{{ sidebar_counts.unread_messages }}</span>{% endif %}</span>
+      <span class="app-tab__label">Messages</span></a>
+    <a href="{% url 'notifications:list' %}" class="app-tab{% if ns == 'notifications' %} is-active{% endif %}"{% if ns == 'notifications' %} aria-current="page"{% endif %}>
+      <span class="app-tab__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>{% if sidebar_counts.notifications %}<span class="app-tab__badge">{{ sidebar_counts.notifications }}</span>{% endif %}</span>
+      <span class="app-tab__label">Alerts</span></a>
+  {% endif %}
+    <button type="button" class="app-tab" data-drawer-toggle="app-sidebar" aria-controls="app-sidebar" aria-expanded="false">
+      <span class="app-tab__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></span>
+      <span class="app-tab__label">Menu</span></button>
+  </div>
+</nav>
+{% endwith %}

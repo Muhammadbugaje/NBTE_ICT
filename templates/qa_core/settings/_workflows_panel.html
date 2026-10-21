@@ -1,0 +1,36 @@
+{% include "qa_core/settings/_tabs.html" %}
+
+<div class="qa-split qa-section-head">
+  <div>
+    <h2 data-qa-focus>Workflows</h2>
+    <p class="qa-muted qa-small">Status names and the moves between them are data, so a status can be renamed without a code release. Each flow is versioned: records stay on the version they started on.</p>
+  </div>
+  <span class="qa-chip qa-chip--locked">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    Read-only in Phase 1
+  </span>
+</div>
+
+{% if flows %}
+  <div class="qa-flow-list">
+    {% for flow in flows %}
+      <a class="qa-flow-card" href="{% url 'qa:workflow_detail' flow.pk %}"
+         hx-get="{% url 'qa:workflow_detail' flow.pk %}" hx-target="#qa-panel" hx-push-url="true">
+        <div class="qa-split">
+          <h3>{{ flow.name }}</h3>
+          <span class="qa-chip {% if flow.is_published %}qa-chip--success{% else %}qa-chip--pending{% endif %}">
+            v{{ flow.version }} · {% if flow.is_published %}published{% else %}draft{% endif %}
+          </span>
+        </div>
+        {% if flow.description %}<p>{{ flow.description }}</p>{% endif %}
+        <div class="qa-flow-card__stats">
+          <span><strong>{{ flow.n_stages }}</strong> stages</span>
+          <span><strong>{{ flow.n_transitions }}</strong> moves</span>
+          <span class="qa-muted">Subject: <code>{{ flow.subject_model }}</code></span>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  {% include "partials/empty_state.html" with title="No workflows yet" body="Run python manage.py seed_startup to create the seeded flows." %}
+{% endif %}

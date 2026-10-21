@@ -1,0 +1,20 @@
+{% load qa_tags %}
+{% with fin_tab="statements" fin_title="Bank statement import" fin_lead="Upload the bank's CSV export. References are read from the narration (separators and case don't matter; the check digits catch typos). Matched lines join the verification queue — they still need the first pass and the Director." %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
+<div class="qa-cols">
+  <section class="qa-card" aria-label="Imports">
+    <header class="qa-card__head"><h2>Imported statements</h2></header>
+    {% if page.rows %}<ul class="qa-rowlist" role="list">{% for s in page.rows %}<li><a class="qa-rowlink" href="{% url 'qa_fin:statement' s.pk %}" hx-get="{% url 'qa_fin:statement' s.pk %}" hx-target="#qa-panel" hx-push-url="true"><span class="qa-rowlink__badge">#{{ s.pk }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ s.original_name }}</span><span class="qa-rowlink__meta">{{ s.bank_account|default:"Any account" }} · {{ s.period_start|date:"j M" }}–{{ s.period_end|date:"j M Y" }} · {{ s.created_at|date:"j M Y, H:i" }} by {{ s.uploaded_by.get_full_name|default:"—" }}</span></span><span class="qa-rowlink__side"><span class="qa-small"><span class="qa-chip qa-tone-success">{{ s.matched }} matched</span> <span class="qa-chip qa-tone-warn">{{ s.ambiguous }}</span> <span class="qa-chip qa-tone-danger">{{ s.unmatched }}</span></span></span></a></li>{% endfor %}</ul>
+    {% include "qa_core/partials/_pagination.html" with target="#qa-panel" %}
+    {% else %}<div class="qa-card__body qa-muted qa-small">No statements imported yet.</div>{% endif %}
+  </section>
+  <aside class="qa-stack">
+    {% if can_import %}<section class="qa-card"><header class="qa-card__head"><div><h2>Upload a statement</h2><p>CSV with columns {{ column_map.date }}, {{ column_map.narration }}, {{ column_map.amount }} (credits).</p></div></header>
+      <div class="qa-card__body"><form method="post" enctype="multipart/form-data" action="{% url 'qa_fin:statements' %}" hx-post="{% url 'qa_fin:statements' %}" hx-encoding="multipart/form-data" hx-target="#qa-panel" class="qa-form" data-qa-progress>{% csrf_token %}
+        {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" message=error %}{% endif %}
+        {% for field in form %}{% include "qa_core/partials/_field.html" %}{% endfor %}
+        <div class="qa-progress" hidden data-qa-progress-bar><span></span></div>
+        <button class="btn btn-primary btn-block" type="submit">{% icon "upload" 16 %} Import and match</button></form>
+        <p class="qa-small qa-muted qa-mt">Column names per bank are the setting <span class="qa-mono">qa.payment.statement_column_map</span>.</p></div></section>{% endif %}
+  </aside>
+</div>

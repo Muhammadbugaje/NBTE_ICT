@@ -1,0 +1,16 @@
+{% load qa_tags %}
+{% include "institutions/pb/_subnav.html" %}
+<header class="qa-hero"><div>
+  <h1 data-qa-focus>Programme mappings</h1>
+  <p>Which curriculum programme each body regulates. Matching is by programme name, so one mapping covers every institution that runs the programme.</p>
+</div></header>
+{% if map_form %}<section class="qa-card"><div class="qa-card__body">{% include "institutions/pb/_mapping_form.html" %}</div></section>{% endif %}
+<section class="qa-card" aria-label="Mappings">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_pb:mappings' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Programme or body" autocomplete="off"></label>
+    <select class="input qa-select" name="body" aria-label="Professional body"><option value="">Every body</option>{% for b in bodies %}<option value="{{ b.pk }}"{% if filters.body == b.pk|stringformat:"s" %} selected{% endif %}>{{ b.acronym|default:b.name }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="level" aria-label="Level"><option value="">Any level</option>{% for lv in levels %}<option value="{{ lv.code }}"{% if filters.level == lv.code %} selected{% endif %}>{{ lv.code|upper }}</option>{% endfor %}<option value="all"{% if filters.level == "all" %} selected{% endif %}>Every level</option></select>
+    <select class="input qa-select" name="status" aria-label="Status"><option value="">Any status</option><option value="active"{% if filters.status == "active" %} selected{% endif %}>Active</option><option value="inactive"{% if filters.status == "inactive" %} selected{% endif %}>Off</option></select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite" hx-get="{{ request.get_full_path }}" hx-trigger="pb:changed from:body" hx-target="#qa-rows">{% include "institutions/pb/_mappings_rows.html" %}</div>
+</section>

@@ -12,7 +12,61 @@
 (function () {
   "use strict";
 
+  // ---------------------------------------------------------
+  //  Completeness ring — count the number up and draw the arc.
+  //  The server already renders the real percentage into the markup
+  //  (--pct on .side-ring-large and the number's text), so this is
+  //  purely the animation. Runs independently of the profile form.
+  // ---------------------------------------------------------
+  function initRing() {
+    var rings = document.querySelectorAll(".side-ring-large");
+    Array.prototype.forEach.call(rings, function (ring) {
+      var num  = ring.querySelector("[data-count-to]");
+      var fill = ring.querySelector(".ring-fill");
+      var target = num ? parseFloat(num.getAttribute("data-count-to")) : NaN;
+      if (isNaN(target)) {
+        target = parseFloat(ring.style.getPropertyValue("--pct"));
+      }
+      if (isNaN(target)) return;
+      target = Math.max(0, Math.min(100, target));
+
+      var CIRC = 276.46;
+      var finalOffset = CIRC * (1 - target / 100);
+
+      if (fill) {
+        // Start empty, then let the CSS transition sweep to the real value.
+        fill.style.strokeDasharray = String(CIRC);
+        fill.style.strokeDashoffset = String(CIRC);
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(function () {
+            fill.style.strokeDashoffset = String(finalOffset);
+          });
+        });
+      }
+
+      if (num) {
+        var reduce = window.matchMedia &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (reduce || target === 0) {
+          num.textContent = String(Math.round(target));
+          return;
+        }
+        var duration = 1200, start = null;
+        function step(ts) {
+          if (start === null) start = ts;
+          var t = Math.min(1, (ts - start) / duration);
+          var eased = 1 - Math.pow(1 - t, 3);
+          num.textContent = String(Math.round(target * eased));
+          if (t < 1) window.requestAnimationFrame(step);
+          else num.textContent = String(Math.round(target));
+        }
+        window.requestAnimationFrame(step);
+      }
+    });
+  }
+
   function init() {
+    initRing();
     var form = document.getElementById("profile-form");
     if (!form) return;
 

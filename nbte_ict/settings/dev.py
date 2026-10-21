@@ -14,6 +14,12 @@ from .base import *  # noqa
 DEBUG = os.environ.get("DEBUG", "True") == "True"
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
 
+# With DEBUG=False, `runserver` stops serving /static/ and /media/, so pages
+# lose their styling (and the styled 404/500 pages look broken). In
+# development we keep serving them so DEBUG=False behaves like production.
+# Production (settings.prod) leaves this off: nginx serves the files.
+SERVE_FILES_LOCALLY = os.environ.get("SERVE_FILES_LOCALLY", "True") == "True"
+
 # ---------------------------------------------------------------------------
 # ALLOWED_HOSTS
 # ---------------------------------------------------------------------------
@@ -38,6 +44,22 @@ for host in (
         _allowed.append(host)
 
 ALLOWED_HOSTS = _allowed
+
+# ---------------------------------------------------------------------------
+# QA portal (Master Plan §3). In development the portal answers on
+# qa.localhost (any *.localhost resolves to 127.0.0.1 in modern browsers), the
+# internal system on localhost. Override with QA_PORTAL_HOST / INTERNAL_HOST.
+# ---------------------------------------------------------------------------
+QA_PORTAL_HOST = os.environ.get("QA_PORTAL_HOST", "qa.localhost").strip().lower()
+INTERNAL_HOST = os.environ.get("INTERNAL_HOST", "localhost").strip().lower()
+if QA_PORTAL_HOST and QA_PORTAL_HOST.split(":")[0] not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(QA_PORTAL_HOST.split(":")[0])
+# Unscoped QA queries raise in development and tests (Master Plan §4).
+QA_SCOPING_STRICT = os.environ.get("QA_SCOPING_STRICT", "True") == "True"
+# Remita / Paystack keys are usually absent on a developer machine: use the
+# in-process payment simulator unless real sandbox keys are set.
+QA_PAYMENTS_SIMULATE = os.environ.get("QA_PAYMENTS_SIMULATE", "True") == "True"
+QA_PORTAL_URL = os.environ.get("QA_PORTAL_URL", "http://qa.localhost:8000").strip()
 
 # ---------------------------------------------------------------------------
 # Database

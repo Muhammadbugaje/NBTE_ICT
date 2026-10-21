@@ -1,0 +1,59 @@
+{% load qa_tags %}
+{% include "inspection/_subnav.html" with section="inspections" %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_insp:inspections' %}" hx-get="{% url 'qa_insp:inspections' %}" hx-target="#qa-panel" hx-push-url="true">Inspections</a><span aria-hidden="true">/</span><span aria-current="page">{{ inspection.reference }}</span></nav>
+<header class="qa-inst-head">
+  <span class="qa-inst-head__code" aria-hidden="true">{{ case.institution.code }}</span>
+  <div><span class="qa-eyebrow">{{ inspection.get_kind_display }} · <a href="{% url 'qa_case:detail' case.pk %}">{{ case.reference }}</a></span>
+    <h1 data-qa-focus>{{ case.institution.name }}</h1>
+    <div class="qa-inst-head__meta"><span class="qa-chip {{ inspection.status|tone }}">{% if inspection.status == "closed" %}Visit recorded{% else %}{{ inspection.status|humanize_code }}{% endif %}</span><span class="qa-mono">{{ inspection.reference }}</span>
+      <span>{% icon "clock" 14 %} Planned {{ inspection.scheduled_start|date:"j M" }}–{{ inspection.scheduled_end|date:"j M Y" }}</span>
+      {% if inspection.actual_start %}<span>Actual {{ inspection.actual_start|date:"j M" }}–{{ inspection.actual_end|date:"j M Y" }}</span>{% endif %}
+      <span>Team lead {{ inspection.team_lead|who }}</span></div></div>
+</header>
+{% if monitor %}<div class="qa-readonly-banner" role="status">{% icon "eye" 16 %} Read-only (R-13).</div>{% endif %}
+<div class="qa-cols">
+  <div class="qa-stack">
+    {% if inspection.status == "scheduled" %}
+    <section class="qa-card" aria-labelledby="ins-team"><header class="qa-card__head"><div><h2 id="ins-team">Planned team</h2><p>From the case's personnel list and the confirmed QA mappings.</p></div></header>
+      <ul class="qa-rowlist" role="list">{% for m in team %}<li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{% if m.qa_mapping %}{{ m.qa_mapping.person }}{% else %}{{ m.staff }}{% endif %}</span><span class="qa-rowlink__meta"><span>{{ m.role_on_team }}</span>{% if m.qa_mapping %}<span>· {{ m.qa_mapping.qa_request_programme.programme }}</span>{% endif %}</span></span></li>{% empty %}<li class="qa-card__body qa-muted">Nobody yet.</li>{% endfor %}</ul>
+    </section>
+    <section class="qa-card" aria-labelledby="ins-done"><header class="qa-card__head"><div><h2 id="ins-done">Record the visit</h2><p>After the visit, the Team Lead records the dates and anyone who did not go. Attendance is the ground truth for allowances and the service history.</p></div></header>
+      <div class="qa-card__body">{% if can_complete %}
+        <form class="qa-form" method="post" action="{% url 'qa_insp:inspection_complete' inspection.pk %}" hx-post="{% url 'qa_insp:inspection_complete' inspection.pk %}" hx-target="#qa-panel" novalidate>{% csrf_token %}
+          {% include "qa_core/partials/_form_errors.html" with form=complete_form %}
+          <div class="qa-fields">{% for field in complete_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
+          <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "check" 16 %} Mark the visit completed</button></div></form>
+      {% else %}<p class="qa-muted qa-small">{{ complete_why }}</p>{% endif %}</div>
+    </section>
+    {% else %}
+    <section class="qa-card" aria-labelledby="ins-att"><header class="qa-card__head"><div><h2 id="ins-att">Who attended (post-visit personnel)</h2><p>Only attendees may write the post-visit report (B17).</p></div></header>
+      <div class="qa-table-wrap"><table class="qa-table"><thead><tr><th scope="col">Person</th><th scope="col">Role</th><th scope="col">Attended</th><th scope="col">Note</th></tr></thead>
+        <tbody>{% for p in attendance %}<tr><td><strong>{{ p.person }}</strong>{% if not p.planned %} <span class="qa-chip">Unplanned</span>{% endif %}</td><td>{{ p.role_on_team }}</td>
+          <td>{% if p.attended %}<span class="qa-chip qa-tone-success">Attended</span>{% else %}<span class="qa-chip qa-tone-danger">Did not attend</span>{% endif %}</td><td class="qa-small">{{ p.override_reason|default:"—" }}{% if p.overridden_via %} <span class="qa-mono">({{ p.overridden_via.reference }})</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+      {% if attendance_form %}<div class="qa-card__body">
+        <details{% if attendance_form.errors %} open{% endif %}><summary class="btn btn-sm btn-subtle">{% icon "edit" 14 %} Override post-visit personnel</summary>
+          <form class="qa-form" method="post" action="{% url 'qa_insp:inspection_attendance' inspection.pk %}" hx-post="{% url 'qa_insp:inspection_attendance' inspection.pk %}" hx-target="#qa-panel" novalidate>{% csrf_token %}
+            <p class="qa-small qa-muted">A second officer confirms. The plan never changes; the service history gets compensating rows.</p>
+            {% include "qa_core/partials/_form_errors.html" with form=attendance_form %}
+            <div class="qa-fields">{% for field in attendance_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
+            <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "shield" 16 %} Send for confirmation</button></div></form></details></div>{% endif %}
+    </section>
+    {% endif %}
+    <section class="qa-card" aria-labelledby="ins-rep"><header class="qa-card__head"><div><h2 id="ins-rep">Post-visit reports (stage 12)</h2><p>One per programme: Team → Division Head → Deputy Director → Director.</p></div></header>
+      <ul class="qa-rowlist" role="list">{% for r in reports %}<li><a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_insp:report' r.pk %}" hx-get="{% url 'qa_insp:report' r.pk %}" hx-target="#qa-panel" hx-push-url="true"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.qa_request_programme.programme }}</span><span class="qa-rowlink__meta">{% if r.submitted_by %}<span>Submitted by {{ r.submitted_by|who }}</span>{% endif %}<span>· v{{ r.version }}</span></span></span><span class="qa-rowlink__side"><span class="qa-chip {{ r.status|tone }}">{{ r.status|humanize_code }}</span></span></a></li>{% empty %}<li class="qa-card__body qa-muted">The reports open when the case reaches stage 12.</li>{% endfor %}</ul>
+    </section>
+  </div>
+  <aside class="qa-stack">
+    <section class="qa-card" aria-labelledby="ins-facts"><header class="qa-card__head"><h2 id="ins-facts">This visit</h2></header>
+      <div class="qa-card__body"><dl class="qa-dl">
+        <div><dt>Status</dt><dd>{% if inspection.status == "closed" %}Visit recorded{% else %}{{ inspection.status|humanize_code }}{% endif %}</dd></div>
+        <div><dt>Planned</dt><dd>{{ inspection.scheduled_start|date:"j M Y" }} – {{ inspection.scheduled_end|date:"j M Y" }}</dd></div>
+        <div><dt>Actual</dt><dd>{% if inspection.actual_start %}{{ inspection.actual_start|date:"j M Y" }} – {{ inspection.actual_end|date:"j M Y" }}{% else %}Not recorded yet{% endif %}</dd></div>
+        <div><dt>Recorded by</dt><dd>{{ inspection.completed_by|who }}</dd></div>
+        <div><dt>Reports</dt><dd>{{ reports|length }} (one per programme)</dd></div>
+      </dl></div>
+    </section>
+  </aside>
+</div>
+<section class="qa-card" aria-labelledby="ins-sr"><header class="qa-card__head"><div><h2 id="ins-sr">Service history written</h2><p>Attendees only, when the visit was recorded. Corrections add compensating rows.</p></div></header>
+  {% include "inspection/_service_table.html" with rows=service %}</section>

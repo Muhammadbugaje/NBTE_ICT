@@ -1,0 +1,100 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa_req:list' %}" hx-get="{% url 'qa_req:list' %}" hx-target="#qa-panel" hx-push-url="true">QA requests</a>
+  <span aria-hidden="true">/</span><span aria-current="page">{{ req.reference }}</span>
+</nav>
+
+<header class="qa-inst-head">
+  <span class="qa-inst-head__code" aria-hidden="true">{{ inst.code }}</span>
+  <div>
+    <span class="qa-eyebrow">SOP-02 · {{ req.qa_type.name }}</span>
+    <h1 data-qa-focus>{{ inst.name }}</h1>
+    <div class="qa-inst-head__meta">
+      <span class="qa-chip {{ req.status|tone }}">{{ public_status }}</span>
+      <span class="qa-mono">{{ req.reference }}</span>
+      <span>{% icon "building" 14 %} {{ inst.handling_department.name|default:"—" }}</span>
+      {% if req.submitted_at %}<span>{% icon "clock" 14 %} Submitted {{ req.submitted_at|date:"j M Y, H:i" }}</span>{% endif %}
+      {% if req.is_joint_qa %}<span class="qa-chip qa-tone-info">Joint QA with {% for b in req.joint_bodies.all %}{{ b.acronym|default:b.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+      {% if case %}<span class="qa-chip qa-tone-pending">QA case {{ case.reference }}</span>{% endif %}
+    </div>
+  </div>
+</header>
+
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+{% if req.status == "cancelled" %}{% include "qa_core/partials/_callout.html" with title="Cancelled" message=req.cancel_reason %}{% endif %}
+{% if req.fee_note and req.status == "fee_due" %}
+  <div class="qa-callout qa-callout--warn" role="status">{% icon "alert" 18 "2.2" %}
+    <div><strong>The QA fee has not been issued</strong><p>{{ req.fee_note }}</p>
+      {% if can_retry_fee %}<form method="post" action="{% url 'qa_req:retry_fee' req.pk %}" hx-post="{% url 'qa_req:retry_fee' req.pk %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-sm btn-primary" type="submit">{% icon "rotate" 14 %} Issue the fee now</button></form>{% endif %}</div></div>
+{% endif %}
+{% if case %}<div class="qa-callout qa-callout--info" role="status">{% icon "layers" 18 "2.2" %}<div><strong>QA case opened</strong><p>Every SSQ is in. The case is in the internal SOP-03 workflow. <a href="{% url 'qa_case:detail' case.pk %}">Open the case {{ case.reference }}</a>.</p></div></div>{% endif %}
+
+<div class="qa-cols">
+  <div class="qa-stack">
+    <section class="qa-card" aria-labelledby="req-progs">
+      <header class="qa-card__head"><div><h2 id="req-progs">Programmes</h2><p>Programmes can be dropped or replaced only while the request is {{ r25|join:", "|lower }} (R-25).</p></div></header>
+      <ul class="qa-rowlist" role="list">
+        {% for row in rows %}
+          <li class="qa-rowlink qa-rowlink--static">
+            <span class="qa-rowlink__badge">{{ row.programme.level.code|upper|default:"—" }}</span>
+            <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ row.programme.name }}</span>
+              <span class="qa-rowlink__meta"><span>{{ row.programme.get_status_display }}</span>{% if row.programme.expiry_date %}<span>· expires {{ row.programme.expiry_date|date:"j M Y" }}</span>{% endif %}{% if row.is_new_programme %}<span>· new programme</span>{% endif %}
+                {% if row.dropped_reason %}<span>· “{{ row.dropped_reason }}”</span>{% endif %}{% if row.replaced_by %}<span>· replaced by {{ row.replaced_by.programme }}</span>{% endif %}</span></span>
+            <span class="qa-rowlink__side"><span class="qa-chip {{ row.status|tone }}">{{ row.get_status_display }}</span>{% if row.clearance_status %}<span class="qa-chip {{ row.clearance_status|tone }}">Clearance: {{ row.clearance_status }}</span>{% endif %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if req.status == "programme_clearance" %}
+        <div class="qa-card__body qa-stack">
+          {% if can_clear %}
+            <div class="qa-field"><label for="clr-remark">Remark <span class="qa-muted">(required to return; the institution sees it)</span></label><textarea class="input" id="clr-remark" name="remark" rows="2" maxlength="2000"></textarea></div>
+            <div class="qa-decide__actions">
+              <form method="post" action="{% url 'qa_req:clear' req.pk %}" hx-post="{% url 'qa_req:clear' req.pk %}" hx-target="#qa-panel" hx-include="#clr-remark" hx-trigger="qa:confirmed" data-qa-confirm="The new programmes are cleared and the QA fee is issued." data-qa-confirm-title="Clear the new programmes?" data-qa-confirm-label="Clear">{% csrf_token %}<input type="hidden" name="decision" value="clear"><button class="btn btn-primary btn-block" type="submit">{% icon "check" 16 "2.4" %} Clear programmes</button></form>
+              <form method="post" action="{% url 'qa_req:clear' req.pk %}" hx-post="{% url 'qa_req:clear' req.pk %}" hx-target="#qa-panel" hx-include="#clr-remark" hx-trigger="qa:confirmed" data-qa-require="#clr-remark" data-qa-require-msg="Write the remark the institution will see" data-qa-confirm="The request goes back to draft." data-qa-confirm-title="Return to the institution?" data-qa-confirm-label="Return" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="decision" value="return"><button class="btn btn-subtle btn-block qa-btn-reject" type="submit">Return to institution</button></form>
+            </div>
+          {% else %}{% include "qa_core/partials/_callout.html" with title="Programme clearance" message=clear_reason %}{% endif %}
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="qa-card" aria-labelledby="req-ssq">
+      <header class="qa-card__head"><div><h2 id="req-ssq">Self-study questionnaires</h2><p>One SSQ per programme, opened when the fee is confirmed.</p></div>
+        <a class="btn btn-sm btn-subtle" href="{% url 'qa_req:ssq_queue' %}?status=all&q={{ req.reference|urlencode }}" hx-get="{% url 'qa_req:ssq_queue' %}?status=all&q={{ req.reference|urlencode }}" hx-target="#qa-panel" hx-push-url="true">Review queue</a></header>
+      {% if ssqs %}
+        <ul class="qa-rowlist" role="list">{% for s in ssqs %}
+          <li><a class="qa-rowlink" href="{% url 'qa_req:ssq' s.pk %}" hx-get="{% url 'qa_req:ssq' s.pk %}" hx-target="#qa-panel" hx-push-url="true">
+            <span class="qa-rowlink__badge">v{{ s.version }}</span>
+            <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ s.qa_request_programme.programme }}</span>
+              <span class="qa-rowlink__meta"><span>{{ s.done }} of {{ s.total }} required answers</span><span>· template v{{ s.template.version }}</span>{% if s.submitted_at %}<span>· submitted {{ s.submitted_at|date:"j M Y" }}</span>{% endif %}</span></span>
+            <span class="qa-rowlink__side"><span class="qa-chip {{ s.status|tone }}">{{ s.public }}</span></span></a></li>
+        {% endfor %}</ul>
+      {% else %}<div class="qa-card__body"><p class="qa-muted qa-small">Not open yet — SSQs open when the QA fee is confirmed.</p></div>{% endif %}
+    </section>
+
+    <section class="qa-card" aria-labelledby="req-queries">
+      <header class="qa-card__head"><div><h2 id="req-queries">Queries</h2><p>Questions NBTE asked the institution about this request.</p></div>
+        {% if can_query and req.status != "cancelled" %}<button type="button" class="btn btn-sm btn-primary" hx-get="{% url 'qa_req:query_raise' 'request' req.pk %}" hx-target="#qa-query-slot" hx-swap="innerHTML">{% icon "plus" 14 %} Raise query</button>{% endif %}</header>
+      <div id="qa-query-slot" class="qa-card__body" aria-live="polite"></div>
+      {% include "accreditation/qa/_query_mini.html" %}
+    </section>
+  </div>
+
+  <aside class="qa-stack">
+    <section class="qa-card"><div class="qa-card__body"><dl class="qa-dl">
+      <div><dt>Reference</dt><dd class="qa-mono">{{ req.reference }}</dd></div>
+      <div><dt>QA type</dt><dd>{{ req.qa_type.name }}</dd></div>
+      <div><dt>Cycle</dt><dd>{{ req.cycle.name|default:"—" }}</dd></div>
+      <div><dt>Started by</dt><dd>{{ req.created_by|who }}</dd></div>
+      <div><dt>Submitted</dt><dd>{{ req.submitted_at|date:"j M Y"|default:"Not yet" }}</dd></div>
+      <div><dt>Can be cancelled</dt><dd>{% if is_cancellable %}Yes (R-25){% else %}No — past the fee stage{% endif %}</dd></div>
+    </dl></div></section>
+    {% if obligations %}
+    <section class="qa-card" aria-labelledby="req-fee"><header class="qa-card__head"><h2 id="req-fee">QA fee</h2></header>
+      <ul class="qa-rowlist" role="list">{% for ob in obligations %}<li><a class="qa-rowlink" href="{% url 'qa_fin:obligation' ob.pk %}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ ob.amount|naira }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ ob.reference }}</span></span></span><span class="qa-rowlink__side"><span class="qa-chip {{ ob.status|tone }}">{{ ob.stage }}</span></span></a></li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+    <section class="qa-card" aria-labelledby="req-hist"><header class="qa-card__head"><h2 id="req-hist">History</h2></header>
+      <div class="qa-card__body"><ol class="qa-tl">{% for e in history %}<li><span class="qa-tl__text"><strong>{{ e.action_code|humanize_code }}</strong> → {{ e.to_stage|humanize_code }}{% if e.remark %} — “{{ e.remark }}”{% endif %}</span><small>{{ e.actor|who:"System" }} · <time datetime="{{ e.at|date:'c' }}">{{ e.at|date:"j M Y, H:i" }}</time></small></li>{% empty %}<li class="qa-muted">No events.</li>{% endfor %}</ol></div>
+    </section>
+  </aside>
+</div>

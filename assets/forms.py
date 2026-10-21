@@ -6,6 +6,7 @@ from core.uploads import validate_attachment_upload
 from accounts.models import User
 from staff.models import Department
 
+from .access import can_view_all_assets
 from .models import (
     Asset,
     AssetAttachment,
@@ -56,9 +57,10 @@ class AssetForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.user = user
 
-        # Scoping: only cross-department users can pick owner_department freely.
-        if user is not None and not user.is_superuser \
-                and not user.has_perm("accounts.access_all_departments"):
+        # Scoping: only holders of "view all assets" (and super admin) can pick
+        # owner_department freely. Not `access_all_departments`: every director
+        # carries that, which let directors file assets under other departments.
+        if user is not None and not can_view_all_assets(user):
             self.fields["owner_department"].queryset = (
                 Department.objects.filter(pk=user.department_id)
                 if user.department_id else Department.objects.none()
@@ -122,9 +124,8 @@ class AssignAssetForm(forms.Form):
             scoped = qs.filter(department_id=asset.owner_department_id)
             if scoped.exists():
                 qs = scoped
-        # Non-privileged users can only assign within their own department.
-        if user is not None and not user.is_superuser \
-                and not user.has_perm("accounts.access_all_departments"):
+        # Only holders of "view all assets" can assign across departments.
+        if user is not None and not can_view_all_assets(user):
             if user.department_id:
                 qs = qs.filter(department_id=user.department_id)
             else:

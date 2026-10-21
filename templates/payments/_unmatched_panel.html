@@ -1,0 +1,12 @@
+{% load qa_tags %}
+{% with fin_tab="unmatched" fin_title="Unmatched statement lines" fin_lead="Money on the statement that could not be tied to a bill automatically — wrong or missing reference, or an amount that differs. Match it by hand (remark required) or ignore it with a reason." %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
+<section class="qa-card" aria-label="Unmatched lines">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_fin:unmatched' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input, change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search narration</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Narration or reference" autocomplete="off"></label>
+    <select class="input qa-select" name="match" aria-label="Status"><option value="">Unmatched and ambiguous</option><option value="unmatched"{% if filters.match == "unmatched" %} selected{% endif %}>Unmatched</option><option value="ambiguous"{% if filters.match == "ambiguous" %} selected{% endif %}>Ambiguous</option></select>
+    <select class="input qa-select" name="typo" aria-label="Typo"><option value="">Any reference</option><option value="yes"{% if filters.typo == "yes" %} selected{% endif %}>Likely typo (check digits)</option></select>
+    <input class="input qa-select" type="number" name="min" min="0" step="1000" value="{{ filters.min|default:'' }}" placeholder="Min amount" aria-label="Minimum amount">
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "payments/_line_rows.html" %}</div>
+</section>

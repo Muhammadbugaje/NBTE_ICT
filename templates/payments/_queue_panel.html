@@ -1,0 +1,16 @@
+{% load qa_tags %}
+{% with fin_tab="queue" fin_title="Payment verification queue" fin_lead="Every claimed payment — uploaded teller, Remita/Paystack report, or bank-statement match — waits here, oldest first. A Finance officer records the first pass; only the Director of Finance confirms." %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}
+{% endwith %}
+{% if jump %}
+  <div class="qa-callout qa-callout--success" role="status">{% icon "search" 18 %}<div><strong>{{ jump.reference }}</strong><p>{{ jump.institution.name }} · {{ jump.description }} · <a href="{% url 'qa_fin:obligation' jump.pk %}">Open the bill</a></p></div></div>
+{% endif %}
+<section class="qa-card" aria-label="Verification queue">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_fin:queue' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search or scan a reference</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Scan/type a payment reference, teller, RRR or institution" autocomplete="off"></label>
+    <select class="input qa-select" name="stage" aria-label="Stage">{% for v, l in stages %}<option value="{{ v }}"{% if filters.stage == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="source" aria-label="Evidence"><option value="">Any evidence</option>{% for v, l in sources %}<option value="{{ v }}"{% if filters.source == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="age" aria-label="Age"><option value="">Any age</option>{% for k, v in ages.items %}<option value="{{ k }}"{% if filters.age == k %} selected{% endif %}>Older than {{ k }}</option>{% endfor %}</select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "payments/_queue_rows.html" %}</div>
+</section>

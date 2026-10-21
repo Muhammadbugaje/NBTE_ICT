@@ -1,0 +1,17 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="tab-apps">
+  <header class="qa-card__head"><div><h2 id="tab-apps" data-qa-focus-heading>Onboarding applications (SOP-01)</h2></div></header>
+  <ul class="qa-rowlist" role="list">
+    {% for a in applications %}
+      <li><a class="qa-rowlink" href="{% url 'qa_app:detail' a.pk %}">
+        <span class="qa-rowlink__badge">R{{ a.round }}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.reference }}</span><span class="qa-rowlink__meta"><span>Opened {{ a.created_at|date:"j M Y" }}</span>{% if a.submitted_at %}<span>· submitted {{ a.submitted_at|date:"j M Y" }}</span>{% endif %}</span></span>
+        <span class="qa-rowlink__side"><span class="qa-chip {{ a.status|tone }}">{{ a.status|humanize_code }}</span></span></a></li>
+    {% empty %}<li class="qa-card__body qa-muted">No onboarding applications.</li>{% endfor %}
+  </ul>
+</section>
+<section class="qa-card" aria-labelledby="tab-reqs">
+  <header class="qa-card__head"><div><h2 id="tab-reqs">Other requests</h2><p>The generic request container (QA, SIWES, DTAcademy …). Cancel or wipe them from the actions menu.</p></div></header>
+  <div class="qa-table-wrap"><table class="qa-table"><thead><tr><th>Type</th><th>Reference</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>{% for r in requests %}<tr><td data-label="Type">{{ r.request_type.name }}</td><td data-label="Reference">{{ r.reference|default:r.title }}</td><td data-label="Status"><span class="qa-chip {{ r.status|tone }}">{{ r.get_status_display }}</span></td><td data-label="Created">{{ r.created_at|date:"j M Y" }}</td></tr>{% empty %}<tr><td colspan="4" class="qa-muted">None.</td></tr>{% endfor %}</tbody></table></div>
+</section>

@@ -1,0 +1,197 @@
+/* ==========================================================================
+   NBTE ICT - Asset labels (print page)
+   One file for every label style. A style = one partial template + one block
+   below + one entry in assets/label_styles.py.
+
+   Labels are black on white on purpose: they print on mono thermal printers
+   and photocopy cleanly. No tints, no coloured backgrounds.
+   Sizes are in millimetres so what you see is what comes out of the printer.
+   ========================================================================== */
+
+* { box-sizing: border-box; }
+
+.lbl-body-page {
+  margin: 0;
+  padding: 20px;
+  background: #fff;
+  color: #181c20;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---------- Screen-only chrome ---------- */
+.lbl-toolbar {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: #f4f6f7;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.lbl-toolbar-main {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.lbl-toolbar-actions { display: flex; align-items: center; gap: 12px; }
+.lbl-muted { color: #5a616b; font-weight: 400; }
+.lbl-link { color: #1F6B3E; text-decoration: none; font-weight: 600; }
+.lbl-btn {
+  padding: 8px 18px; background: #1F6B3E; color: #fff; border: 0;
+  border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer;
+}
+.lbl-btn:disabled { opacity: .5; cursor: not-allowed; }
+.lbl-options {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid #e1e5e8;
+}
+.lbl-field { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #3d434b; }
+.lbl-field input[type="number"] {
+  width: 70px; padding: 5px 8px; border: 1px solid #c6ccd1; border-radius: 6px; font-size: 13px;
+}
+.lbl-check input { margin: 0; }
+.lbl-notice {
+  margin: 0 0 16px; padding: 10px 14px; border-radius: 8px;
+  background: #fff7e0; border: 1px solid #ecd68a; font-size: 13px; color: #5c4a00;
+}
+.lbl-empty { padding: 40px; text-align: center; color: #5a616b; }
+
+/* ---------- Style picker with live thumbnails ---------- */
+.lbl-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.lbl-pick {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px; border: 2px solid #dfe3e6; border-radius: 12px;
+  text-decoration: none; color: inherit; background: #fff;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.lbl-pick:hover { border-color: #9fb9a8; }
+.lbl-pick.is-active { border-color: #1F6B3E; box-shadow: 0 0 0 3px rgba(31, 107, 62, .15); }
+.lbl-pick-thumb {
+  display: block; position: relative; width: 150px; max-width: 100%;
+  overflow: hidden; background: #f4f6f7; border-radius: 6px; margin-bottom: 4px;
+}
+.lbl-pick-thumb-inner { display: block; transform-origin: top left; pointer-events: none; }
+.lbl-pick-name { font-weight: 700; font-size: 13px; }
+.lbl-pick-size { font-size: 11px; color: #5a616b; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.lbl-pick-desc { font-size: 11.5px; color: #5a616b; line-height: 1.35; }
+
+/* ---------- Where the labels sit ---------- */
+.lbl-roll { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.lbl-page {
+  background: #fff; outline: 1px dashed #b5bcc2; overflow: hidden;
+}
+.lbl-sheets { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
+.lbl-sheet {
+  display: grid; align-content: start;
+  width: 210mm; height: 297mm; background: #fff;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, .18);
+}
+.lbl-blank { visibility: hidden; }
+.show-guides .lbl-cell { outline: .2mm dashed #777; outline-offset: -.1mm; }
+
+/* ==========================================================================
+   The labels themselves
+   ========================================================================== */
+.lbl {
+  background: #fff; color: #000; overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif; line-height: 1.15;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.lbl-qr { display: block; }
+.lbl-qr svg { display: block; width: 100%; height: 100%; }
+.lbl-tag {
+  font-family: "Courier New", ui-monospace, Menlo, Consolas, monospace;
+  font-weight: 700; color: #000; word-break: break-all;
+}
+.lbl-name, .lbl-dept, .lbl-sn, .lbl-org { overflow: hidden; text-overflow: ellipsis; }
+.lbl-org { text-transform: uppercase; letter-spacing: .08em; font-weight: 700; white-space: nowrap; }
+
+/* a) Small tag - 50 x 25 mm: QR + tag */
+.lbl-small {
+  width: 50mm; height: 25mm; padding: 2mm;
+  display: grid; grid-template-columns: 21mm 1fr; column-gap: 2mm; align-items: center;
+}
+.lbl-small .lbl-qr { width: 21mm; height: 21mm; }
+.lbl-small .lbl-tag { font-size: 8.5pt; line-height: 1.2; }
+
+/* b) Standard label - 70 x 40 mm: QR + tag + name + department + serial */
+.lbl-standard {
+  width: 70mm; height: 40mm; padding: 3mm;
+  display: grid; grid-template-columns: 27mm 1fr; column-gap: 3mm; align-items: center;
+}
+.lbl-standard .lbl-qr { width: 27mm; height: 27mm; }
+.lbl-standard .lbl-info { min-width: 0; }
+.lbl-standard .lbl-org { font-size: 5.5pt; margin-bottom: 1mm; }
+.lbl-standard .lbl-tag { font-size: 9.5pt; margin-bottom: 1mm; }
+.lbl-standard .lbl-name { font-size: 8pt; white-space: nowrap; }
+.lbl-standard .lbl-dept { font-size: 6.5pt; text-transform: uppercase; letter-spacing: .04em; margin-top: 1mm; white-space: nowrap; }
+.lbl-standard .lbl-sn { font-size: 6.5pt; font-family: "Courier New", ui-monospace, monospace; margin-top: .8mm; white-space: nowrap; }
+
+/* c) Large label - 100 x 60 mm: QR + full details + organisation + logo */
+.lbl-large {
+  width: 100mm; height: 60mm; padding: 3.5mm;
+  display: flex; flex-direction: column; gap: 2.5mm;
+}
+.lbl-large .lbl-head {
+  display: flex; align-items: center; gap: 2.5mm;
+  padding-bottom: 2mm; border-bottom: .35mm solid #000;
+}
+.lbl-large .lbl-logo { height: 8mm; width: auto; filter: grayscale(1) contrast(1.4); }
+.lbl-large .lbl-org { font-size: 8pt; white-space: normal; }
+.lbl-large .lbl-body {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: 33mm 1fr; column-gap: 3.5mm; align-items: start;
+}
+.lbl-large .lbl-qr { width: 33mm; height: 33mm; }
+.lbl-large .lbl-info { min-width: 0; }
+.lbl-large .lbl-tag { font-size: 12pt; margin-bottom: 1mm; }
+.lbl-large .lbl-name { font-size: 9pt; font-weight: 700; margin-bottom: 1.5mm; white-space: nowrap; }
+.lbl-large .lbl-facts {
+  margin: 0; font-size: 6.8pt;
+  display: grid; grid-template-columns: auto 1fr; column-gap: 2mm; row-gap: .6mm;
+}
+.lbl-large .lbl-facts dt { font-weight: 700; text-transform: uppercase; letter-spacing: .03em; font-size: 5.8pt; padding-top: .4pt; }
+.lbl-large .lbl-facts dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* d) Barcode strip - 80 x 20 mm landscape: barcode + tag number large */
+.lbl-barcode {
+  width: 80mm; height: 20mm; padding: 1.5mm 3mm;
+  display: grid; grid-template-rows: 1fr auto; row-gap: .8mm;
+}
+.lbl-barcode .lbl-bars { min-height: 0; }
+.lbl-barcode .lbl-bars svg { display: block; width: 100%; height: 100%; }
+.lbl-barcode .lbl-tag { text-align: center; font-size: 11pt; letter-spacing: .06em; line-height: 1; word-break: normal; white-space: nowrap; }
+
+/* e) A4 sheet cell - 63.5 x 33.9 mm (3 x 8) */
+.lbl-cell {
+  width: 63.5mm; height: 33.9mm; padding: 2.5mm 3mm;
+  display: grid; grid-template-columns: 24mm 1fr; column-gap: 2.5mm; align-items: center;
+}
+.lbl-cell .lbl-qr { width: 24mm; height: 24mm; }
+.lbl-cell .lbl-info { min-width: 0; }
+.lbl-cell .lbl-tag { font-size: 8.5pt; margin-bottom: .8mm; }
+.lbl-cell .lbl-name { font-size: 7pt; white-space: nowrap; }
+.lbl-cell .lbl-dept { font-size: 5.8pt; text-transform: uppercase; letter-spacing: .04em; margin-top: .8mm; white-space: nowrap; }
+
+/* ==========================================================================
+   Print
+   ========================================================================== */
+@media print {
+  .no-print { display: none !important; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  .lbl-body-page { padding: 0; }
+  .lbl-roll { display: block; }
+  .lbl-page {
+    outline: none; margin: 0;
+    break-after: page; page-break-after: always;
+  }
+  .lbl-page:last-child { break-after: auto; page-break-after: auto; }
+  .lbl-sheets { display: block; }
+  .lbl-sheet {
+    box-shadow: none; margin: 0;
+    break-after: page; page-break-after: always;
+  }
+  .lbl-sheet:last-child { break-after: auto; page-break-after: auto; }
+}

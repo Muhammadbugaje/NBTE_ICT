@@ -15,6 +15,19 @@ class RolePermissionBackend(ModelBackend):
     change) now counts. See GROUPS_PERMISSIONS.md.
     """
 
+    def authenticate(self, request, username=None, password=None, **kwargs):
+        """Email, or (nominal-roll release) a staff FILE NO linked to an account."""
+        if username and "@" not in username:
+            from staff.models import Staff
+            staff = (Staff.objects.filter(employee_no__iexact=username.strip(), user__isnull=False)
+                     .select_related("user").first())
+            if staff is None:
+                # Same work as a real check, so a missing file number isn't faster.
+                return super().authenticate(request, username="unknown@invalid", password=password,
+                                            **kwargs)
+            username = staff.user.email
+        return super().authenticate(request, username=username, password=password, **kwargs)
+
     def get_all_permissions(self, user_obj, obj=None):
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
             return set()

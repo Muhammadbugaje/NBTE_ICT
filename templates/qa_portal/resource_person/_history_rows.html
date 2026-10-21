@@ -1,0 +1,14 @@
+{% load qa_tags %}
+{% if page.rows %}
+<div class="qa-card__body"><ul class="qa-totals" role="list"><li><strong>{{ visits }}</strong><span>visit{{ visits|pluralize }} in this selection</span></li><li><strong>{{ ssqs }}</strong><span>SSQ review{{ ssqs|pluralize }} in this selection</span></li></ul></div>
+<div class="qa-table-wrap"><table class="qa-table">
+  <thead><tr><th scope="col">Served</th><th scope="col">Duty</th><th scope="col">Institution · programme</th><th scope="col" class="num">Visits</th><th scope="col" class="num">SSQs</th></tr></thead>
+  <tbody>{% for r in page.rows %}<tr class="{% if r.voids_id %}is-compensating{% endif %}">
+    <td>{{ r.served_from|date:"j M Y" }}{% if r.served_to != r.served_from %}–{{ r.served_to|date:"j M Y" }}{% endif %}</td>
+    <td>{{ r.get_duty_display }}{% if r.voids_id %}<br><span class="qa-chip qa-tone-warn">Correction</span>{% endif %}</td>
+    <td>{{ r.institution.name|default:"—" }}{% if r.programme %}<br><span class="qa-small qa-muted">{{ r.programme.name }}</span>{% endif %}</td>
+    <td class="num">{{ r.visit_count }}</td><td class="num">{{ r.ssq_count }}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% include "qa_core/partials/_pagination.html" with target="#rp-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "clock" 28 %}</span><h3 class="nbte-empty-state__title">No service recorded yet</h3><p class="nbte-empty-state__body">Rows appear here after each visit you attend is recorded.</p></div>{% endif %}

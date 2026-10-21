@@ -30,6 +30,9 @@ def _require_one_of(*names):
 DEBUG = False
 SECRET_KEY = _require("SECRET_KEY")
 ALLOWED_HOSTS = [h.strip() for h in _require("ALLOWED_HOSTS").split(",")]
+# QA portal subdomain (Master Plan §3): served by this deployment too.
+if QA_PORTAL_HOST and QA_PORTAL_HOST.split(":")[0] not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(QA_PORTAL_HOST.split(":")[0])
 SITE_URL = _require("SITE_URL")
 
 DATABASES = {
@@ -73,3 +76,5 @@ SECURE_HSTS_PRELOAD = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
 X_FRAME_OPTIONS = "DENY"
+# QA payments: the in-process simulator is a development tool only.
+QA_PAYMENTS_SIMULATE = False

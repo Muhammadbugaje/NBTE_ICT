@@ -121,10 +121,10 @@ def _lookups(model):
 @register
 class StaffImport(ImportSpec):
     name = "staff"
-    label = "Staff directory"
+    label = "Staff (nominal roll)"
     description = (
-        "Bulk create or update staff. Match on employee number. An optional "
-        "'create_account' column provisions a login and emails the credentials."
+        "Opens Staff import & export: the HR nominal roll format, with optional "
+        "sign-in accounts. (This older column layout still works from code.)"
     )
     key_fields = ("employee_no",)
 
@@ -156,7 +156,9 @@ class StaffImport(ImportSpec):
                parse=_lookup_state),
 
         Column("Subsection", field="subsection"),
-        Column("Designation", field="designation"),
+        Column("Designation", field="designation",
+               help="Post title, e.g. 'SNR. PROG. OFFR.'. Matched to the designation list "
+                    "(any known spelling); a new title is added to the list."),
         Column("Grade level", field="grade_level"),
         Column("Office location", field="office_location"),
         Column("Reports to", field="reports_to",
@@ -197,6 +199,7 @@ class StaffImport(ImportSpec):
         emp = cleaned.pop("employee_no")
         create_account = cleaned.pop("create_account", False)
         department = cleaned.pop("department", None)
+        designation_text = _as_str(cleaned.pop("designation", None))
 
         obj = Staff.objects.filter(employee_no__iexact=emp).first()
         created = obj is None
@@ -207,6 +210,12 @@ class StaffImport(ImportSpec):
         # A blank cell leaves an existing record's department unchanged.
         if department is not None:
             obj.department = department
+        # Designation is a lookup since the nominal-roll release: map the text
+        # to a Designation (find by any known spelling, else create). Blank
+        # leaves the current designation unchanged.
+        if designation_text:
+            from .nominal_roll import LookupResolver
+            obj.designation = LookupResolver().designation(designation_text) or obj.designation
 
         # Review H6: blank cells arrive as None. Text columns are NOT NULL in
         # the database, so they become "" (previously the whole row failed).
@@ -257,8 +266,8 @@ def _provision_account_for_import(staff: Staff):
 @register
 class StaffExport(ExportSpec):
     name = "staff"
-    label = "Staff directory"
-    description = "Export every staff record with the fields you see in the directory."
+    label = "Staff (nominal roll)"
+    description = "Opens Staff import & export (nominal roll format)."
 
     columns = [
         Column("Employee no.", field="employee_no"),
@@ -291,7 +300,7 @@ class StaffExport(ExportSpec):
     def get_queryset(self):
         return (
             Staff.objects
-            .select_related("department", "office", "category", "state", "reports_to")
+            .select_related("department", "office", "category", "state", "reports_to", "designation")
             .order_by("last_name", "first_name")
         )
 
@@ -309,4 +318,6 @@ class StaffExport(ExportSpec):
             # Review H6: export the supervisor's employee number so the file
             # re-imports (the import looks supervisors up by employee no/email).
             return obj.reports_to.employee_no if obj.reports_to else ""
-        return getattr(obj, column.field, "")
+        if column.field == "designation":
+            return obj.designation.name if obj.designation_id else ""
+        return getattr(obj, column.field, "")

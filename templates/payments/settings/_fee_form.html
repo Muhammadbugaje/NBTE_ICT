@@ -1,0 +1,9 @@
+{% load qa_tags %}
+<div class="qa-card__body" style="border-top:1px solid var(--divider)">
+  <form method="post" action="{% url 'qa_set:fee_form' schedule.pk %}" hx-post="{% url 'qa_set:fee_form' schedule.pk %}" hx-target="#fee-form-slot" class="qa-form">{% csrf_token %}
+    <h3 class="qa-menu__group">Change “{{ schedule.name }}” (dual control)</h3>
+    {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" message=error %}{% endif %}
+    <div class="qa-fields">{% for field in form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
+    <div class="qa-form-actions"><button class="btn btn-primary" type="submit">Send for confirmation</button><button class="btn btn-subtle" type="button" onclick="this.closest('#fee-form-slot').innerHTML=''">Cancel</button></div>
+  </form>
+</div>

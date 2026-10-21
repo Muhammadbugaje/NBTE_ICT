@@ -1,0 +1,52 @@
+{% comment %}
+  Before → after table for a planned promotion (staff.promotions.Plan).
+  Returned to the promotion dialog by fetch, and included by preview_page.html.
+{% endcomment %}
+{% if error %}
+  <div class="alert alert-danger promo-preview-error" role="alert" data-preview-ok="0">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <div>{{ error }}</div>
+  </div>
+{% else %}
+  <div class="promo-preview" data-preview-ok="{% if plan.changes %}1{% else %}0{% endif %}">
+    <p class="promo-preview-summary">
+      <strong>{{ plan.changes|length }}</strong> promotion{{ plan.changes|length|pluralize }}
+      {% if plan.cascaded %}<span class="badge badge-info">{{ plan.cascaded|length }} by cascade</span>{% endif %}
+      <span class="promo-preview-date">effective {{ effective|date:"j M Y" }}</span>
+    </p>
+    {% if plan.changes %}
+      <ul class="promo-diff">
+        {% for c in plan.changes %}
+          <li class="promo-diff-row{% if c.is_cascade %} promo-diff-row--cascade{% endif %}">
+            <div class="promo-diff-who">
+              <span class="promo-diff-name">{{ c.staff.last_name }} {{ c.staff.first_name }}</span>
+              <span class="promo-diff-meta">{{ c.staff.employee_no }}{% if c.staff.department %} · {{ c.staff.department.name }}{% endif %}{% if c.is_cascade %} · cascade with {{ c.root.last_name }}{% endif %}</span>
+            </div>
+            <div class="promo-diff-change">
+              <span class="promo-diff-old">{{ c.from_designation.name|default:"—" }}</span>
+              <svg class="promo-diff-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-label="to"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              <span class="promo-diff-new">{{ c.to_designation.name }}</span>
+            </div>
+            <div class="promo-diff-grade">
+              GL {{ c.from_grade|default:"—" }} → <strong>{{ c.to_grade|default:"—" }}</strong>
+              {% if not c.grade_autofilled %}<span class="promo-diff-flag" title="The new designation has no CONTEDISS range, so the grade level stays as it is">unchanged</span>{% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    {% if plan.skipped %}
+      <div class="promo-preview-skipped">
+        <p class="promo-preview-subhead">Not promoted</p>
+        <ul>
+          {% for s, why in plan.skipped %}<li>{{ s.full_name }} — {{ why }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    {% if plan.warnings %}
+      <ul class="promo-preview-warnings">
+        {% for w in plan.warnings %}<li>{{ w }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+{% endif %}

@@ -1,0 +1,16 @@
+{% comment %}Generic ModelForm fields in the QA form grid. `f` = form.{% endcomment %}
+{% if f.non_field_errors %}<div class="qa-callout qa-callout--danger" role="alert"><div><strong>Not saved</strong>{% for e in f.non_field_errors %}<p>{{ e }}</p>{% endfor %}</div></div>{% endif %}
+<div class="qa-fields">
+  {% for field in f %}
+    <div class="qa-field{% if field.field.widget.input_type == 'checkbox' %} qa-field--check{% endif %}{% if field.name == 'body' or field.name == 'description' or field.name == 'condition' or field.name == 'custom_fields_json' or field.name == 'summary' %} qa-form__wide{% endif %}">
+      {% if field.field.widget.input_type == "checkbox" and not field.field.widget.allow_multiple_selected %}
+        <label>{{ field }} {{ field.label }}</label>
+      {% else %}
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+      {% endif %}
+      {% if field.help_text %}<span class="qa-field__help">{{ field.help_text }}</span>{% endif %}
+      {% for e in field.errors %}<span class="qa-field__error" role="alert">{{ e }}</span>{% endfor %}
+    </div>
+  {% endfor %}
+</div>

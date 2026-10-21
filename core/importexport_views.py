@@ -25,12 +25,17 @@ from datetime import datetime
 from django.contrib.auth.decorators import login_required, permission_required
 from django.utils.html import escape
 from django.http import Http404, HttpResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .importexport import REGISTRY, all_specs
+
+# Modules whose import/export moved to a dedicated page. The wizard lists
+# them, but opening one goes to that page (the staff directory import/export
+# is the nominal roll: People data in the official HR format).
+MERGED_SPECS = {"staff": "staff:nominal_roll"}
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +154,9 @@ def _notify_import_result(request, spec, result, rejected_url=""):
 @login_required
 @permission_required("config.change_configentry", raise_exception=True)
 def wizard_landing(request, spec_name=None):
+    # Nominal-roll release: staff import/export is one page now.
+    if spec_name in MERGED_SPECS:
+        return redirect(MERGED_SPECS[spec_name])
     specs = all_specs()
     selected = specs.get(spec_name) if spec_name else None
     return render(request, "core/import_export.html", {
@@ -162,6 +170,10 @@ def wizard_landing(request, spec_name=None):
 @permission_required("config.change_configentry", raise_exception=True)
 def wizard_panel(request, spec_name):
     """HTMX partial: the wizard panel for one module."""
+    if spec_name in MERGED_SPECS:
+        resp = HttpResponse(status=204)
+        resp["HX-Redirect"] = reverse(MERGED_SPECS[spec_name])
+        return resp
     spec = _spec_group_or_404(spec_name)
     return render(request, "core/_wizard_panel.html", {"spec": spec})
 
@@ -169,6 +181,8 @@ def wizard_panel(request, spec_name):
 @login_required
 @permission_required("config.change_configentry", raise_exception=True)
 def download_template(request, spec_name):
+    if spec_name in MERGED_SPECS:
+        return redirect("staff:nominal_roll_template")
     spec = _spec_or_404("import", spec_name)
     data = spec.template_xlsx()
     return _download(data, f"{spec_name}-template.xlsx", XLSX_CONTENT_TYPE)
@@ -177,6 +191,8 @@ def download_template(request, spec_name):
 @login_required
 @permission_required("config.change_configentry", raise_exception=True)
 def download_export(request, spec_name):
+    if spec_name in MERGED_SPECS:
+        return redirect("staff:nominal_roll_export")
     spec = _spec_or_404("export", spec_name)
     data = spec.export_xlsx()
     stamp = timezone.now().strftime("%Y%m%d-%H%M%S")

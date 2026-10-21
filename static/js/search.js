@@ -59,14 +59,39 @@
       this.resultsEl = this.overlay.querySelector("#app-search-results");
       this.triggerBtn = document.querySelector("[data-search-trigger]");
 
+      // The top bar search is a real field: it becomes the input and the
+      // overlay shows only the results under it.
+      this.form = document.querySelector("[data-topsearch]");
+      if (this.form && this.triggerBtn && this.triggerBtn.tagName === "INPUT") {
+        this.input = this.triggerBtn;
+        this.overlay.classList.add("is-docked");
+        this.fitPlaceholder();
+      }
+
       this.bind();
     },
 
     bind: function () {
       var self = this;
 
-      // Trigger button
-      if (this.triggerBtn) {
+      // Trigger: the top bar field (opens on focus) or a plain button.
+      if (this.form && this.input === this.triggerBtn) {
+        this.input.addEventListener("focus", function () { self.open(); });
+        this.form.addEventListener("submit", function (e) {
+          e.preventDefault();
+          var active = self.flat[self.activeIndex] || self.flat[0];
+          if (active && active.url) { window.location.href = active.url; }
+          else { self.onInput(); }
+        });
+        this.form.addEventListener("click", function (e) {
+          if (e.target.closest("[data-search-close]")) { e.preventDefault(); self.close(); }
+        });
+        if (window.matchMedia) {
+          var mq = window.matchMedia("(max-width: 639px)");
+          var refit = function () { self.fitPlaceholder(); };
+          if (mq.addEventListener) mq.addEventListener("change", refit); else if (mq.addListener) mq.addListener(refit);
+        }
+      } else if (this.triggerBtn) {
         this.triggerBtn.addEventListener("click", function (e) {
           e.preventDefault();
           self.open();
@@ -116,6 +141,7 @@
       this.isOpen = true;
       this.overlay.setAttribute("aria-hidden", "false");
       document.body.classList.add("app-search-open");
+      if (this.input) this.input.setAttribute("aria-expanded", "true");
 
       var self = this;
       setTimeout(function () {
@@ -128,6 +154,10 @@
       this.isOpen = false;
       this.overlay.setAttribute("aria-hidden", "true");
       document.body.classList.remove("app-search-open");
+      if (this.input) {
+        this.input.setAttribute("aria-expanded", "false");
+        if (this.input === this.triggerBtn && document.activeElement === this.input) this.input.blur();
+      }
 
       if (this.timer) { clearTimeout(this.timer); this.timer = null; }
       if (this.controller) {
@@ -141,6 +171,16 @@
       this.activeIndex = -1;
       if (this.input) this.input.value = "";
       this.renderHint();
+    },
+
+    // A short placeholder on phones, the descriptive one on wider screens.
+    fitPlaceholder: function () {
+      var el = this.input;
+      if (!el || !el.dataset) return;
+      if (!el.dataset.placeholderShort) el.dataset.placeholderShort = el.getAttribute("placeholder") || "Search";
+      var narrow = window.matchMedia && window.matchMedia("(max-width: 639px)").matches;
+      el.setAttribute("placeholder", narrow ? el.dataset.placeholderShort
+                                             : (el.dataset.placeholderLong || el.dataset.placeholderShort));
     },
 
     // -----------------------------------------------------------------

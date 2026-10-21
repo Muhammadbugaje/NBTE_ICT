@@ -1,0 +1,63 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-pa-list" role="list">
+    {% for pa in page.rows %}
+      <li class="qa-pa{% if pa.can_decide %} qa-pa--actionable{% endif %}">
+        <a class="qa-pa__link" href="{% url 'qa:pending_detail' pa.pk %}"
+           hx-get="{% url 'qa:pending_detail' pa.pk %}" hx-target="#qa-panel" hx-push-url="true">
+          <span class="qa-pa__avatar" aria-hidden="true">{{ pa.initiated_by|initials }}</span>
+          <span class="qa-pa__main">
+            <span class="qa-pa__title">{{ pa.policy.label }}</span>
+            <span class="qa-pa__target">{{ pa.target_label|default:"New item" }}</span>
+            <span class="qa-pa__meta">
+              <span class="qa-chip qa-chip--mono">{{ pa.reference }}</span>
+              <span>{{ pa.initiated_by.get_full_name|default:pa.initiated_by.email }}{% if pa.initiated_by_id == request.user.pk %} (you){% endif %}</span>
+              <span aria-hidden="true">·</span>
+              <time datetime="{{ pa.initiated_at|date:'c' }}">{{ pa.initiated_at|timesince }} ago</time>
+              {% if pa.scope_department %}<span aria-hidden="true">·</span><span>{{ pa.scope_department.name }}</span>{% endif %}
+            </span>
+          </span>
+          <span class="qa-pa__side">
+            <span class="qa-chip qa-status-{{ pa.status }}">{{ pa.get_status_display }}</span>
+            {% if pa.is_open %}
+              {% if pa.is_overdue %}
+                <span class="qa-pa__expiry is-overdue">Expired — awaiting sweep</span>
+              {% else %}
+                <span class="qa-pa__expiry">Expires in {{ pa.expires_at|timeuntil }}</span>
+              {% endif %}
+              {% if pa.can_decide %}
+                <span class="qa-pa__cta">Review
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                </span>
+              {% else %}
+                <span class="qa-pa__why">{{ pa.decide_reason }}</span>
+              {% endif %}
+            {% elif pa.decided_by %}
+              <span class="qa-pa__expiry">by {{ pa.decided_by.get_full_name|default:pa.decided_by.email }}</span>
+            {% endif %}
+          </span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state{% if filters.q or filters.action or filters.who or filters.age %} nbte-empty-state--filtered{% endif %} qa-empty" data-qa-announce="Nothing to show">
+    <span class="nbte-empty-state__icon" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    </span>
+    {% if filters.q or filters.action or filters.who or filters.age %}
+      <h3 class="nbte-empty-state__title">Nothing matches these filters</h3>
+      <p class="nbte-empty-state__body">Clear the filters to see everything in your scope.</p>
+      <div class="nbte-empty-state__action">
+        <a class="btn btn-subtle" href="{% url 'qa:pending_list' %}?status={{ status }}" hx-get="{% url 'qa:pending_list' %}?status={{ status }}" hx-target="#qa-panel" hx-push-url="true">Clear filters</a>
+      </div>
+    {% elif status == "pending" %}
+      <h3 class="nbte-empty-state__title">All clear</h3>
+      <p class="nbte-empty-state__body">Nothing in your scope is waiting for a second officer.</p>
+    {% else %}
+      <h3 class="nbte-empty-state__title">Nothing here yet</h3>
+      <p class="nbte-empty-state__body">No confirmations in your scope have this status.</p>
+    {% endif %}
+  </div>
+{% endif %}

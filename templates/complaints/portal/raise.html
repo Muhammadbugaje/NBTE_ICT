@@ -1,0 +1,64 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Raise a complaint · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page qa-portal-page--narrow">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:complaints' %}" hx-get="{% url 'qa_portal:complaints' %}" hx-target="#qa-main" hx-push-url="true">Complaints</a><span aria-hidden="true">/</span><span aria-current="page">Raise a complaint</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "message" 14 "2.2" %} Complaints</span>
+    <h1 data-qa-focus>Raise a complaint</h1>
+    <p>Describe the problem and choose what it is about. NBTE acknowledges it within one working day; you can follow it and reply under Complaints.</p>
+  </header>
+  {% if read_only %}{% include "qa_core/partials/_callout.html" with message="You are viewing this account read-only. Nothing can be raised." %}{% endif %}
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not sent" message=error %}{% endif %}
+  {% if related %}<p class="qa-mb"><span class="cx-related">{% icon "link" 14 %} About: {{ related_label }}</span></p>{% endif %}
+  <form class="qa-card" method="post" action="{% url 'qa_portal:complaint_new' %}" hx-post="{% url 'qa_portal:complaint_new' %}" hx-target="#qa-main" hx-encoding="multipart/form-data" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% if about %}<input type="hidden" name="about" value="{{ about }}">{% endif %}
+    <div class="qa-card__body qa-stack">
+      <div class="qa-field">
+        <label for="cx-subject">Subject</label>
+        <input class="input" id="cx-subject" name="subject" maxlength="200" required value="{{ values.subject|default:'' }}" placeholder="e.g. Processing fee paid but still awaiting confirmation"
+               hx-get="{% url 'qa_portal:complaint_suggest' %}" hx-trigger="input changed delay:400ms" hx-target="#cx-suggest" hx-include="[data-cx-layers]" hx-swap="innerHTML" autocomplete="off">
+      </div>
+      <div id="cx-suggest" aria-live="polite"></div>
+      <fieldset class="qa-fieldset">
+        <legend class="qa-label">What is it about?</legend>
+        <div class="cx-layers" data-cx-layers>
+          {% for l in layers %}
+            <label class="cx-layer"><input type="radio" name="layer" value="{{ l.pk }}" data-code="{{ l.code }}" required{% if chosen == l.pk|stringformat:"s" %} checked{% endif %}><span><strong>{{ l.name }}</strong><small>{{ l.description }}</small></span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% for l in layers %}{% if l.custom_fields %}
+        <div class="qa-fields" data-cx-fields-for="{{ l.code }}" hidden>
+          {% for f in l.custom_fields %}
+            <div class="qa-field"><label for="cx-q-{{ l.pk }}-{{ f.key }}">{{ f.label|default:f.key }}{% if not f.required %} <span class="qa-muted">(optional)</span>{% endif %}</label>
+              {% if f.type == "textarea" %}<textarea class="input" id="cx-q-{{ l.pk }}-{{ f.key }}" name="q_{{ l.pk }}_{{ f.key }}" rows="3"{% if f.required %} required{% endif %}></textarea>
+              {% elif f.type == "choice" %}<select class="input" id="cx-q-{{ l.pk }}-{{ f.key }}" name="q_{{ l.pk }}_{{ f.key }}"{% if f.required %} required{% endif %}><option value="">Choose…</option>{% for o in f.options %}<option>{{ o }}</option>{% endfor %}</select>
+              {% else %}<input class="input" id="cx-q-{{ l.pk }}-{{ f.key }}" name="q_{{ l.pk }}_{{ f.key }}" type="{% if f.type == 'date' %}date{% else %}text{% endif %}"{% if f.required %} required{% endif %}>{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}{% endfor %}
+      <div class="qa-field">
+        <label for="cx-body">What happened</label>
+        <textarea class="input" id="cx-body" name="body" rows="6" required minlength="10" placeholder="What you expected, what happened instead, and any reference numbers.">{{ values.body|default:'' }}</textarea>
+      </div>
+      <div class="qa-field">
+        <label for="cx-files">Attachments <span class="qa-muted">(optional — PDF, images, Word or Excel)</span></label>
+        <input class="input" id="cx-files" type="file" name="files" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+      </div>
+    </div>
+    <div class="qa-card__body" style="border-top:1px solid var(--border)">
+      <div class="qa-row qa-row--between"><a class="btn btn-subtle" href="{% url 'qa_portal:complaints' %}">Cancel</a>
+        <button class="btn btn-primary" type="submit"{% if read_only %} disabled{% endif %}>{% icon "message" 16 %} Send the complaint</button></div>
+    </div>
+  </form>
+  {% if popular %}
+  <section class="qa-card qa-mt" aria-labelledby="cx-pop"><header class="qa-card__head"><h2 id="cx-pop">Before you write</h2></header>
+    <ul class="qa-rowlist" role="list">{% for a in popular %}<li><a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_portal:help_article' a.slug %}" hx-get="{% url 'qa_portal:help_article' a.slug %}" hx-target="#qa-main" hx-push-url="true"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.title }}</span><span class="qa-rowlink__meta">{{ a.summary }}</span></span></a></li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

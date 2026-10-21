@@ -8,7 +8,7 @@ from core import audit
 from core.models import SoftDeleteModel, TimeStampedModel
 from core.restricted import RestrictedFileModel
 from core.images import schedule_thumbnails, variant_url
-from core.storage import capture_original_filename, uuid_upload_to
+from core.storage import capture_original_filename, restricted_storage, uuid_upload_to
 
 
 class Lookup(TimeStampedModel):
@@ -80,12 +80,78 @@ class StaffState(Lookup):
     counts_as_absent = models.BooleanField(default=False)
 
 
+class StateOfOrigin(Lookup):
+    """Nigerian state of origin (36 states + FCT). Seeded by `seed_nbte`;
+    the nominal-roll importer also creates unknown spellings it can't map."""
+
+    ZONE_CHOICES = [
+        ("NC", "North Central"), ("NE", "North East"), ("NW", "North West"),
+        ("SE", "South East"), ("SS", "South South"), ("SW", "South West"),
+    ]
+    code = models.SlugField(max_length=8, unique=True, blank=True, null=True)
+    zone = models.CharField(max_length=20, blank=True, choices=ZONE_CHOICES)
+
+    class Meta(Lookup.Meta):
+        verbose_name = "state of origin"
+        verbose_name_plural = "states of origin"
+
+
+class Designation(TimeStampedModel):
+    """A post title from the nominal roll, e.g. "SNR. PROG. OFFR.".
+
+    The promotion backbone: `rank` orders designations by seniority and
+    `next_designation` is the normal promotion step. `aliases` holds the other
+    spellings found in imported files (one per line) so the importer maps
+    "SNR. PROG. OFFR", "SNR.  PROG. OFFR." etc. to the same record.
+    """
+
+    AUDITED = True
+
+    name = models.CharField(max_length=150, unique=True)
+    code = models.SlugField(max_length=80, unique=True, blank=True)
+    rank = models.PositiveIntegerField(
+        default=0, help_text="Higher = more senior. Used for promotion and routing.")
+    contediss_min = models.CharField(
+        max_length=20, blank=True,
+        help_text="Lowest CONTEDISS/CONHESS level for this designation, e.g. '7'.")
+    contediss_max = models.CharField(max_length=20, blank=True, help_text="Highest level, e.g. '9'.")
+    next_designation = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="predecessors",
+        help_text="The designation a holder of this one is normally promoted into.",
+    )
+    aliases = models.TextField(
+        blank=True,
+        help_text="Other spellings of this designation found in imported files, one per line.")
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-rank", "sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            base = slugify(self.name)[:72] or "designation"
+            code, n = base, 2
+            while Designation.objects.exclude(pk=self.pk).filter(code=code).exists():
+                code, n = f"{base}-{n}", n + 1
+            self.code = code
+        super().save(*args, **kwargs)
+
+    @property
+    def alias_list(self):
+        return [a.strip() for a in (self.aliases or "").splitlines() if a.strip()]
+
+
 class Staff(SoftDeleteModel):
     AUDIT_IGNORE_FIELDS = ("photo_original_name",)
     # Review M8: personal details are recorded as changed ("***"), never stored.
     AUDIT_EXCLUDE_FIELDS = (
         "phone", "emergency_contact_name", "emergency_contact_phone",
-        "birth_month", "birth_day",
+        "birth_month", "birth_day", "date_of_birth",
     )
     MEDIA_SUBDIR = "staff/photos"
 
@@ -117,8 +183,11 @@ class Staff(SoftDeleteModel):
         on_delete=models.SET_NULL, related_name="staff",
     )
     subsection = models.CharField(max_length=100, blank=True, help_text="Subsection / unit")
-    designation = models.CharField(max_length=150, blank=True)
-    grade_level = models.CharField(max_length=20, blank=True)
+    designation = models.ForeignKey(
+        Designation, null=True, blank=True, on_delete=models.PROTECT, related_name="staff",
+    )
+    grade_level = models.CharField(max_length=20, blank=True,
+                                   help_text="CONTEDISS / CONHESS level, e.g. '8'.")
     office_location = models.CharField(max_length=150, blank=True)
     category = models.ForeignKey(
         StaffCategory, null=True, blank=True,
@@ -144,9 +213,29 @@ class Staff(SoftDeleteModel):
     emergency_contact_phone = models.CharField(max_length=30, blank=True)
 
     # Doc 30 Q1 recommendation: month/day only (no birth year), pending Director decision.
-    birth_month = models.PositiveSmallIntegerField(null=True, blank=True)
-    birth_day = models.PositiveSmallIntegerField(null=True, blank=True)
+    birth_month = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Deprecated — use date_of_birth.")
+    birth_day = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Deprecated — use date_of_birth.")
     date_joined_service = models.DateField(null=True, blank=True)
+
+    # ---- Nominal roll fields (NBTE nominal roll columns) -------------------
+    GENDER_CHOICES = [("M", "Male"), ("F", "Female")]
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True)
+    state_of_origin = models.ForeignKey(
+        StateOfOrigin, null=True, blank=True, on_delete=models.SET_NULL, related_name="staff",
+    )
+    lga = models.CharField("LGA", max_length=100, blank=True, help_text="Local government area")
+    date_of_birth = models.DateField(null=True, blank=True)
+    date_first_appointment = models.DateField(
+        "date of first appointment", null=True, blank=True, help_text="D_FAPPMT")
+    date_joined_board = models.DateField(
+        "date joined the Board", null=True, blank=True, help_text="D_JBOARD")
+    date_present_appointment = models.DateField(
+        "date of present appointment", null=True, blank=True, help_text="D_PRAPPMT")
+    date_confirmation = models.DateField(
+        "date of confirmation", null=True, blank=True, help_text="D_COF")
+    qualifications = models.TextField(blank=True, help_text="QUALIFICATION(S) — free text")
 
     class Meta:
         ordering = ["last_name", "first_name"]
@@ -155,6 +244,13 @@ class Staff(SoftDeleteModel):
             ("change_staff_state", "Can change a staff member's state"),
             ("view_own_department_staff", "Can view staff in own department"),
             ("manage_own_department_staff", "Can manage staff in own department"),
+            # Nominal roll & staff lifecycle
+            ("import_nominal_roll", "Can import the NBTE nominal roll"),
+            ("export_nominal_roll", "Can export staff records as a nominal roll"),
+            ("promote_staff", "Can promote staff to a new designation"),
+            ("view_own_office_staff", "Can view staff in own office"),
+            ("manage_shared_queries", "Can save staff queries shared with everyone"),
+            ("transfer_staff", "Can transfer staff to another department or office"),
         ]
         indexes = [models.Index(fields=["last_name", "first_name"])]
 
@@ -173,6 +269,8 @@ class Staff(SoftDeleteModel):
             inst._orig_state = inst._state_snapshot()
         else:  # deferred state fields: can't diff, so don't guess
             inst._orig_state = None
+        inst._orig_place = ((inst.department_id, inst.office_id)
+                            if {"department_id", "office_id"} <= loaded else None)
         return inst
 
     def _state_snapshot(self):
@@ -197,8 +295,50 @@ class Staff(SoftDeleteModel):
         if (creating and self.state_id) or (not creating and orig is not None and orig != snap):
             self._write_state_history(previous_state_id=None if creating else orig[0])
         self._orig_state = snap
+        self._record_transfer(creating)
+        self._sync_placeholder_login(user)
         if new_photo:
             schedule_thumbnails(self, "photo")
+
+    def _sync_placeholder_login(self, user):
+        """An account made from the nominal roll for someone with no email
+        signs in with a placeholder address. As soon as the record gets a real
+        email (edit form, admin or a later import), the account uses it — so
+        the person can sign in with it and reset a forgotten password."""
+        if user is None or not self.email:
+            return
+        from .account_provisioning import is_placeholder_email
+        if not is_placeholder_email(user.email) or self.email.lower() == user.email:
+            return
+        from django.contrib.auth import get_user_model
+        if get_user_model().objects.filter(email__iexact=self.email).exclude(pk=user.pk).exists():
+            return
+        user.email = self.email.lower()
+        user.save(update_fields=["email"])
+
+    def _record_transfer(self, creating):
+        """Every move between departments / offices lands in StaffTransfer,
+        whether it came from the Transfer action, the edit form, the admin or
+        an import. A first posting (nothing -> something) is not a transfer."""
+        orig = getattr(self, "_orig_place", None)
+        place = (self.department_id, self.office_id)
+        self._orig_place = place
+        if creating or orig is None or orig == place:
+            return
+        dept_moved = orig[0] is not None and orig[0] != place[0]
+        office_moved = orig[1] is not None and orig[1] != place[1]
+        if not (dept_moved or office_moved or getattr(self, "_transfer_reason", "")):
+            return
+        actor = getattr(self, "_transfer_by", None) or audit.get_current_actor()
+        StaffTransfer.objects.create(
+            staff=self,
+            from_department_id=orig[0], to_department_id=place[0],
+            from_office_id=orig[1], to_office_id=place[1],
+            effective_date=getattr(self, "_transfer_date", None) or timezone.localdate(),
+            reason=getattr(self, "_transfer_reason", ""),
+            source=getattr(self, "_transfer_source", StaffTransfer.SOURCE_EDIT),
+            recorded_by=actor if getattr(actor, "pk", None) else None,
+        )
 
     def photo_thumb_url(self, size=300):
         return variant_url(self.photo, size)
@@ -452,7 +592,141 @@ class ExecutiveTenure(TimeStampedModel):
                 "End date cannot be before start date."})
 
 
+# ============================================================================
+# STAFF LIFECYCLE: promotions, nominal-roll imports, saved queries
+# ============================================================================
+class Promotion(TimeStampedModel):
+    """One promotion (or a compensating reversal) of one staff member.
+    Written only through staff.promotions — never edited afterwards."""
+
+    AUDITED = True
+
+    staff = models.ForeignKey(Staff, on_delete=models.CASCADE, related_name="promotions")
+    from_designation = models.ForeignKey(
+        Designation, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    to_designation = models.ForeignKey(Designation, on_delete=models.PROTECT, related_name="+")
+    from_grade_level = models.CharField(max_length=20, blank=True)
+    to_grade_level = models.CharField(max_length=20, blank=True)
+    from_present_appointment = models.DateField(
+        null=True, blank=True,
+        help_text="The staff member's date of present appointment before this promotion "
+                  "(restored on rollback).")
+    effective_date = models.DateField(default=timezone.localdate)
+    reason = models.TextField(blank=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="promotions_approved")
+    cascade_source = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="cascaded_promotions",
+        help_text="If this promotion was part of a cascade, the root promotion.")
+    reverses = models.OneToOneField(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="reversed_by",
+        help_text="Set on a compensating promotion: the promotion it rolls back.")
+
+    class Meta:
+        ordering = ["-effective_date", "-created_at"]
+        indexes = [models.Index(fields=["staff", "-effective_date"])]
+
+    def __str__(self):
+        return f"{self.staff.full_name}: {self.from_designation or '—'} → {self.to_designation}"
+
+    @property
+    def is_reversal(self):
+        return self.reverses_id is not None
+
+
+class ImportSession(TimeStampedModel):
+    """One run of the nominal-roll importer (web or command line)."""
+
+    AUDITED = True
+    MEDIA_SUBDIR = "staff/imports/reports"
+
+    STATUS_CHOICES = [("ok", "OK"), ("partial", "Partial"), ("failed", "Failed")]
+
+    source_filename = models.CharField(max_length=255)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    sheets_processed = models.JSONField(default=list, blank=True)
+    new_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    warnings = models.JSONField(default=list, blank=True)  # [{row, sheet, message}]
+    report_file = models.FileField(
+        upload_to=uuid_upload_to, null=True, blank=True, storage=restricted_storage)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="ok")
+    mode = models.CharField(max_length=10, blank=True, help_text="update / skip / fail")
+    accounts_created = models.PositiveIntegerField(default=0)
+    credentials_file = models.FileField(
+        upload_to=uuid_upload_to, null=True, blank=True, storage=restricted_storage,
+        help_text="One-time download of the random passwords given to new accounts; "
+                  "deleted after it is downloaded.")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.source_filename} ({self.get_status_display()})"
+
+
+class SavedQuery(TimeStampedModel):
+    """A named staff query from the Advanced query builder (staff.query)."""
+
+    AUDITED = True
+    LOGIC_CHOICES = [("AND", "All conditions (AND)"), ("OR", "Any condition (OR)")]
+
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="saved_queries")
+    is_shared = models.BooleanField(default=False)
+    conditions = models.JSONField(default=list, blank=True)  # [{"field", "op", "value"}]
+    logic = models.CharField(max_length=3, choices=LOGIC_CHOICES, default="AND")
+
+    class Meta:
+        unique_together = ("owner", "name")
+        ordering = ["name"]
+        verbose_name_plural = "saved queries"
+
+    def __str__(self):
+        return self.name
+
+
+# Optional LGA lookup model. The project keeps Staff.lga as free text with
+# autocomplete from staff/data/lgas.json (see `seed_nbte --with-lgas`).
+# Uncomment and add a migration if a real FK is wanted later.
+#
+# class LGA(Lookup):
+#     state = models.ForeignKey(StateOfOrigin, on_delete=models.CASCADE, related_name="lgas")
 
 
 
+class StaffTransfer(TimeStampedModel):
+    """A move to another department and/or office (e.g. a zonal office).
+    Written by Staff.save() whenever the department or office changes."""
 
+    AUDITED = True
+    SOURCE_TRANSFER, SOURCE_EDIT, SOURCE_IMPORT = "transfer", "edit", "import"
+    SOURCE_CHOICES = [(SOURCE_TRANSFER, "Transfer"), (SOURCE_EDIT, "Record edited"),
+                      (SOURCE_IMPORT, "Nominal roll import")]
+
+    staff = models.ForeignKey(Staff, on_delete=models.CASCADE, related_name="transfers")
+    from_department = models.ForeignKey(
+        Department, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    to_department = models.ForeignKey(
+        Department, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    from_office = models.ForeignKey(Office, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    to_office = models.ForeignKey(Office, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    effective_date = models.DateField(default=timezone.localdate)
+    reason = models.TextField(blank=True)
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_EDIT)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        ordering = ["-effective_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.staff.full_name}: {self.from_department or '—'} → {self.to_department or '—'}"

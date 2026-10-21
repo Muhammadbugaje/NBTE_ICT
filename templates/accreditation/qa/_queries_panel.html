@@ -1,0 +1,15 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_req:list' %}" hx-get="{% url 'qa_req:list' %}" hx-target="#qa-panel" hx-push-url="true">QA requests</a><span aria-hidden="true">/</span><span aria-current="page">Queries</span></nav>
+<header class="qa-hero">
+  <div><span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} SOP-02 · queries</span><h1 data-qa-focus>Queries to institutions</h1>
+    <p>Questions raised on QA requests, SSQs and evidence. Close a query when its answer is enough.</p></div>
+  <div class="qa-hero__stats"><a class="qa-stat qa-stat--info qa-stat--link" href="?status=answered" hx-get="{% url 'qa_req:queries' %}?status=answered" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.answered }}</strong><span>Answered — to read</span></a></div>
+</header>
+<section class="qa-card" aria-label="Queries">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_req:queries' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference, title or institution" autocomplete="off"></label>
+    <select class="input qa-select" name="status" aria-label="Status">{% for v, l in "active:Open or answered,open:Open,answered:Answered,closed:Closed,all:All"|split_pairs %}<option value="{{ v }}"{% if status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <label class="qa-field--check"><input type="checkbox" name="mine" value="1"{% if filters.mine == "1" %} checked{% endif %}> Raised by me</label>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "accreditation/qa/_query_rows.html" %}</div>
+</section>

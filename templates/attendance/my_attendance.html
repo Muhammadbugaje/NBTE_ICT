@@ -58,6 +58,16 @@
       <div class="att-stat-label">Excused</div>
       <div class="att-stat-sub">last 90 days</div>
     </div>
+    <div class="att-stat">
+      <div class="att-stat-value">{{ stats.holiday }}</div>
+      <div class="att-stat-label">Holiday</div>
+      <div class="att-stat-sub">last 90 days</div>
+    </div>
+    <div class="att-stat">
+      <div class="att-stat-value">{{ stats.on_leave }}</div>
+      <div class="att-stat-label">On leave</div>
+      <div class="att-stat-sub">counted as present</div>
+    </div>
   </div>
 
   {# ---------- Filter card ---------- #}
@@ -155,7 +165,7 @@
               <td class="att-muted">{{ r.check_in_at|time:"H:i"|default:"—" }}</td>
               <td class="att-muted">{{ r.location.name|default:"—" }}</td>
               <td class="att-muted">{{ r.get_source_display }}</td>
-              <td class="att-muted att-notes">{{ r.notes|truncatechars:60|default:"—" }}</td>
+              <td class="att-muted att-notes">{% if r.detail %}{{ r.detail }}{% else %}{{ r.notes|truncatechars:60|default:"—" }}{% endif %}</td>
             </tr>
           {% endfor %}
         </tbody>

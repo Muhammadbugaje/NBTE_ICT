@@ -1,0 +1,37 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for i in page.rows %}
+      <li>
+        <a class="qa-rowlink" href="{% url 'qa_inst:detail' i.code %}" hx-get="{% url 'qa_inst:detail' i.code %}" hx-target="#qa-panel" hx-push-url="true">
+          <span class="qa-rowlink__badge">{{ i.code }}</span>
+          <span class="qa-rowlink__main">
+            <span class="qa-rowlink__title">{{ i.name }}</span>
+            <span class="qa-rowlink__meta">
+              <span>{{ i.ownership.name|default:"Ownership not set" }}</span><span aria-hidden="true">·</span>
+              <span>{{ i.institution_type.name|default:"Type not set" }}</span>
+              {% if i.state %}<span aria-hidden="true">·</span><span>{{ i.lga }}, {{ i.state.name }}</span>{% endif %}
+            </span>
+          </span>
+          <span class="qa-rowlink__side">
+            <span class="qa-chip {{ i.status|tone }}">{{ i.status_label }}</span>
+            <span class="qa-small qa-muted">{{ i.handling_department.name }}</span>
+          </span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty" data-qa-announce="No institutions">
+    <span class="nbte-empty-state__icon" aria-hidden="true">{% icon "building" 28 %}</span>
+    {% if filters.q or filters.status or filters.ownership or filters.type or filters.dept or filters.zone %}
+      <h3 class="nbte-empty-state__title">Nothing matches these filters</h3>
+      <p class="nbte-empty-state__body">Clear the filters to see every institution in your scope.</p>
+      <div class="nbte-empty-state__action"><a class="btn btn-subtle" href="{% url 'qa_inst:list' %}" hx-get="{% url 'qa_inst:list' %}" hx-target="#qa-panel" hx-push-url="true">Clear filters</a></div>
+    {% else %}
+      <h3 class="nbte-empty-state__title">No institutions yet</h3>
+      <p class="nbte-empty-state__body">Institutions your department handles appear here. Use Add TVET or Import to register them.</p>
+    {% endif %}
+  </div>
+{% endif %}

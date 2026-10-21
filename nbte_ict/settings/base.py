@@ -34,16 +34,30 @@ INSTALLED_APPS = [
     "leave",
     "public",
     "showcase",   # UI overhaul: admin-uploadable sign-in / hero / banner images
+    # --- NBTE Digital QA System (Master Plan §1; Phase 1 registers all six) ---
+    "qa_core",        # shared engines: flows, two-step confirmation, references, formulas
+    "institutions",   # Phase 2: institutions, documents, programmes, §6 actions
+    "payments",       # Phase 2: bills, slips, providers, Finance queue
+    "accreditation",  # Phase 2: SOP-01 onboarding (QA requests from Phase 3)
+    "inspection",     # empty until Phase 5
+    "complaints",     # empty until Phase 7
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # QA: requests for QA_PORTAL_HOST use the portal's own URLconf (§3, §16).
+    "qa_core.middleware.QAPortalHostMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "core.middleware.ImpersonationMiddleware",
+    # QA (Phase 2): read-only, time-boxed "view as institution" on the portal host (§6).
+    "qa_core.impersonation.QAImpersonationMiddleware",
     "core.middleware.CurrentUserMiddleware",
+    # QA: staff stay on the internal host, institutions and resource persons
+    # on the portal (Master Plan §3). After impersonation, before password checks.
+    "accounts.middleware.ExternalUserGuardMiddleware",
     "accounts.middleware.ForcePasswordChangeMiddleware",
     "core.middleware.DrainHtmxMessagesMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -66,6 +80,9 @@ TEMPLATES = [
                 "core.context_processors.site",
                 "core.context_processors.sidebar_counts",
                 "config.context_processors.site_info",
+                "qa_core.context_processors.qa_nav",
+                "qa_core.workspace.context",
+                "qa_core.context_processors.qa_portal_link",
             ],
         },
     },
@@ -78,6 +95,40 @@ LOGIN_REDIRECT_URL = "core:home"
 LOGOUT_REDIRECT_URL = "core:landing"
 
 PDF_LOGO_PATH = BASE_DIR / "static" / "img" / "NBTE_logo.png"
+
+# --- NBTE QA portal (Master Plan §3, §10.1 .env.example) ---------------------
+# Institutions and resource persons sign in on their own subdomain, served by
+# this same project and database. Hosts are compared without the port.
+QA_PORTAL_HOST = os.environ.get("QA_PORTAL_HOST", "qa.nbte.gov.ng").strip().lower()
+# Where staff are sent when they reach the portal (blank = same host as the
+# request with the "qa." prefix removed).
+INTERNAL_HOST = os.environ.get("INTERNAL_HOST", "").strip().lower()
+QA_PORTAL_URLCONF = "qa_core.portal_urls"
+# Unscoped queries on institution-bearing models raise in dev/test and log
+# at ERROR in production (Master Plan §4).
+QA_SCOPING_STRICT = os.environ.get("QA_SCOPING_STRICT", "False") == "True"
+# Public link to the QA portal (landing page button and footer). Blank = built
+# from QA_PORTAL_HOST with https.
+QA_PORTAL_URL = os.environ.get("QA_PORTAL_URL", "").strip()
+# Phase 2: QA e-mails are logged to the console and kept in the QA outbox,
+# never sent. Set QA_EMAIL_DELIVERY=queue to hand them to the e-mail engine.
+QA_EMAIL_DELIVERY = os.environ.get("QA_EMAIL_DELIVERY", "console").strip().lower()
+
+# --- QA payments (Master Plan §10.1). Secrets live here, never in ConfigEntry.
+REMITA_BASE_URL = os.environ.get("REMITA_BASE_URL", "https://remitademo.net/remita").rstrip("/")
+REMITA_MERCHANT_ID = os.environ.get("REMITA_MERCHANT_ID", "")
+REMITA_API_KEY = os.environ.get("REMITA_API_KEY", "")
+REMITA_API_TOKEN = os.environ.get("REMITA_API_TOKEN", "")
+REMITA_WEBHOOK_ALLOWED_IPS = [ip.strip() for ip in os.environ.get("REMITA_WEBHOOK_ALLOWED_IPS", "").split(",")
+                              if ip.strip()]
+PAYSTACK_BASE_URL = os.environ.get("PAYSTACK_BASE_URL", "https://api.paystack.co").rstrip("/")
+PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+PAYMENT_QR_SIGNING_KEY = os.environ.get("PAYMENT_QR_SIGNING_KEY", "")
+PAYMENT_VERIFY_BASE_URL = os.environ.get("PAYMENT_VERIFY_BASE_URL", "").strip()
+# Development only: when a provider's keys are missing, talk to an in-process
+# simulator instead of the real API (never in production; see payments/providers).
+QA_PAYMENTS_SIMULATE = os.environ.get("QA_PAYMENTS_SIMULATE", "False") == "True"
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

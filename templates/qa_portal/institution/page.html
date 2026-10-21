@@ -1,0 +1,31 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Institution · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "building" 14 "2.2" %} {{ inst.code }} · {{ inst.status_label }}</span>
+    <h1 data-qa-focus>{{ inst.name }}</h1>
+    <p>{% if editable %}Keep this up to date while you prepare your application. Once you submit, changes are made by NBTE on request.{% else %}NBTE keeps this record. To change it, contact NBTE — changes are confirmed by two officers.{% endif %}</p>
+  </header>
+  <div class="qa-cols">
+    <div id="qa-profile-region" class="qa-region" data-qa-region>
+      {% if editable %}{% include "qa_portal/institution/_profile_form.html" %}{% else %}
+      <section class="qa-card" aria-labelledby="pp-prof"><header class="qa-card__head"><h2 id="pp-prof">Profile</h2></header>
+        <div class="qa-card__body"><dl class="qa-dl">
+          <div><dt>Ownership</dt><dd>{{ inst.ownership.name|default:"—" }}</dd></div><div><dt>Type / category</dt><dd>{{ inst.institution_type.name|default:"—" }} / {{ inst.category.name|default:"—" }}</dd></div>
+          <div><dt>State / LGA</dt><dd>{% if inst.state %}{{ inst.state.name }} / {{ inst.lga }}{% else %}—{% endif %}</dd></div><div><dt>Year established</dt><dd>{{ inst.year_established|default:"—" }}</dd></div>
+          <div><dt>CAC RC number</dt><dd>{{ inst.cac_rc_number|default:"—" }}</dd></div><div><dt>Website</dt><dd>{{ inst.website|default:"—" }}</dd></div>
+          {% for c in contacts %}<div><dt>{{ c.get_kind_display }}</dt><dd>{{ c.name }} {{ c.value }}</dd></div>{% endfor %}
+          {% for a in addresses %}<div class="is-wide"><dt>{{ a.get_kind_display }}</dt><dd>{{ a.one_line }}</dd></div>{% endfor %}
+        </dl></div></section>
+      {% endif %}
+    </div>
+    <aside class="qa-stack">
+      <div id="qa-users" class="qa-region" data-qa-region hx-get="{% url 'qa_portal:institution_users' %}" hx-trigger="load" hx-swap="innerHTML">
+        <section class="qa-card"><div class="qa-card__body"><div class="qa-skeleton-table" aria-hidden="true"></div></div></section>
+      </div>
+    </aside>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Payments · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "card" 14 "2.2" %} Fees and payments</span>
+    <h1 data-qa-focus>Payments</h1>
+    <p>Every bill NBTE issues to {{ institution.name|default:"your institution" }}. A payment counts only when NBTE’s Director of Finance confirms it — you get a Payment Advice when that happens.</p>
+  </header>
+  <div class="qa-board" aria-label="Summary">
+    <a class="qa-board__item" href="?group=due"><strong>{{ due_total|naira }}</strong><span>To pay · {{ counts.due }}</span></a>
+    <a class="qa-board__item" href="?group=checking"><strong>{{ counts.checking }}</strong><span>Being confirmed</span></a>
+    <a class="qa-board__item" href="?group=settled"><strong>{{ counts.settled }}</strong><span>Settled</span></a>
+  </div>
+  <section class="qa-card qa-mt-sm" aria-label="Bills">
+    <form class="qa-toolbar" role="search" hx-get="{% url 'qa_portal:payments' %}" hx-target="#qa-pay-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change">
+      <label class="qa-search"><span class="sr-only">Search bills</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference or description" autocomplete="off"></label>
+      <select class="input qa-select" name="group" aria-label="Status">{% for v, l in groups %}<option value="{{ v }}"{% if filters.group == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <select class="input qa-select" name="fee" aria-label="Fee"><option value="">All fees</option>{% for f in fees %}<option value="{{ f.code }}"{% if filters.fee == f.code %} selected{% endif %}>{{ f.name }}</option>{% endfor %}</select>
+      <select class="input qa-select" name="period" aria-label="Period"><option value="">Any time</option><option value="30d"{% if filters.period == "30d" %} selected{% endif %}>Last 30 days</option><option value="90d"{% if filters.period == "90d" %} selected{% endif %}>Last 90 days</option><option value="1y"{% if filters.period == "1y" %} selected{% endif %}>Last year</option></select>
+    </form>
+    <div id="qa-pay-rows" class="qa-region" data-qa-region aria-live="polite">{% include "qa_portal/payments/_rows.html" %}</div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="tab-changes">
+  <header class="qa-card__head"><div><h2 id="tab-changes" data-qa-focus-heading>Two-step changes on this institution</h2><p>Every request, with who started it, who decided it and what happened.</p></div></header>
+  {% if pending %}
+    <ul class="qa-pa-list" role="list">
+      {% for pa in pending %}
+        <li class="qa-pa"><a class="qa-pa__link" href="{% url 'qa:pending_detail' pa.pk %}">
+          <span class="qa-pa__avatar" aria-hidden="true">{{ pa.initiated_by|initials }}</span>
+          <span class="qa-pa__main"><span class="qa-pa__title">{{ pa.policy.label }}</span><span class="qa-pa__meta"><span class="qa-chip qa-chip--mono">{{ pa.reference }}</span><span>{{ pa.initiated_by|who }}</span><span aria-hidden="true">·</span><time datetime="{{ pa.initiated_at|date:'c' }}">{{ pa.initiated_at|date:"j M Y, H:i" }}</time></span></span>
+          <span class="qa-pa__side"><span class="qa-chip qa-status-{{ pa.status }}">{{ pa.get_status_display }}</span>{% if pa.decided_by %}<span class="qa-pa__expiry">by {{ pa.decided_by|who }}</span>{% endif %}</span></a></li>
+      {% endfor %}
+    </ul>
+  {% else %}<div class="qa-card__body qa-muted">No changes have been requested on this institution.</div>{% endif %}
+</section>

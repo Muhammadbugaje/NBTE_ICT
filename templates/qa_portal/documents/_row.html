@@ -1,0 +1,27 @@
+{% load qa_tags %}
+<li class="qa-doc{% if just_uploaded %} is-flash{% endif %}" data-state="{{ row.state }}" id="doc-{{ row.kind.pk }}">
+  <span class="qa-doc__icon">{% if row.state == "accepted" %}{% icon "check" 20 "2.4" %}{% elif row.state == "returned" or row.state == "expired" %}{% icon "alert" 20 %}{% else %}{% icon "file" 20 %}{% endif %}</span>
+  <div>
+    <div class="qa-doc__name">{{ row.kind.name }} <span class="qa-chip {{ row.state|tone }}">{{ row.state|doc_state_label }}</span>{% if not row.mandatory %}<span class="qa-chip">Optional</span>{% endif %}</div>
+    <div class="qa-doc__meta">
+      {% if row.kind.description %}<span>{{ row.kind.description }}</span>{% endif %}
+      <span>{{ row.kind.extensions|join:", "|upper }} · up to {{ row.max_mb }} MB</span>
+      {% if row.department %}<span>Reviewed by {{ row.department.name }}</span>{% endif %}
+      {% if row.document %}<span>Current: v{{ row.document.version }} · {{ row.document.display_name }} · {{ row.document.created_at|date:"j M Y" }}</span>{% endif %}
+    </div>
+    {% if row.state == "returned" and row.document.review_remark %}<div class="qa-doc__remark"><strong>NBTE:</strong> {{ row.document.review_remark }}</div>{% endif %}
+    {% if error %}<div class="qa-doc__remark" role="alert">{{ error }}</div>{% endif %}
+  </div>
+  <div class="qa-doc__tools">
+    {% if row.document %}<a class="btn btn-sm btn-subtle" href="{{ row.document.portal_download_url }}">{% icon "download" 14 %} View</a>{% endif %}
+    {% if row.can_upload %}
+      <form method="post" enctype="multipart/form-data" action="{% url 'qa_portal:document_upload' row.kind.pk %}" hx-post="{% url 'qa_portal:document_upload' row.kind.pk %}" hx-encoding="multipart/form-data" hx-target="closest li" hx-swap="outerHTML" hx-trigger="change" data-qa-progress class="qa-upload">
+        {% csrf_token %}
+        <label class="btn btn-sm {% if row.state == 'missing' or row.state == 'returned' or row.state == 'expired' %}btn-primary{% else %}btn-subtle{% endif %} qa-upload__btn">{% icon "upload" 14 %} {% if row.document %}Upload new version{% else %}Upload{% endif %}
+          <input type="file" name="file" accept="{{ row.accept }}" aria-label="Upload {{ row.kind.name }}"></label>
+        <noscript><button class="btn btn-sm btn-subtle" type="submit">Send</button></noscript>
+        <div class="qa-progress" hidden data-qa-progress-bar style="width:120px"><span></span></div>
+      </form>
+    {% elif row.state == "submitted" or row.state == "accepted" %}<span class="qa-small qa-muted">{% if row.state == "submitted" %}With NBTE for review{% else %}On record{% endif %}</span>{% endif %}
+  </div>
+</li>

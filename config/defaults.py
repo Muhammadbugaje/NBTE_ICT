@@ -175,6 +175,10 @@ DEFAULTS = [
      "in as absent. Set to 0 to disable."),
     ("attendance.max_gps_accuracy_m", "200", "int", "Attendance",
      "GPS check-ins whose reported accuracy is worse than this many metres are rejected."),
+    ("attendance.all_access_department_codes", '["hr"]', "json", "Attendance",
+     "Department codes whose directors / office heads may view attendance for "
+     "ALL departments (default: Human Resources). Anyone else is given the "
+     "'view_all_attendance' permission explicitly."),
     ("attendance.report_timezone", "Africa/Lagos", "str", "Attendance",
      "Timezone used to interpret check-in times and day boundaries."),   
     

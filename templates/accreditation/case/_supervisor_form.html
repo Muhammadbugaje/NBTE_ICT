@@ -1,0 +1,11 @@
+{% load qa_tags %}
+<form class="qa-inline-form" method="post" action="{% url 'qa_case:supervisor' case.pk kind %}" hx-post="{% url 'qa_case:supervisor' case.pk kind %}" hx-target="#qa-panel">{% csrf_token %}
+  {% if kind == "ict" %}
+    <div class="qa-field"><label for="sup-{{ kind }}">Tracking ICT officer{{ ict_required|pluralize }} <span class="qa-muted">— this case needs {{ ict_required }} (R-04: {{ case.programme_count }} programme{{ case.programme_count|pluralize }}). Hold Ctrl / ⌘ to choose more than one.</span></label>
+      <select class="input qa-select-multi" id="sup-{{ kind }}" name="officers" multiple required>{% for u in choices %}<option value="{{ u.pk }}"{% if u in tracking_ict %} selected{% endif %}>{{ u|who }} — {{ u.role.name|default:"" }}</option>{% endfor %}</select></div>
+  {% else %}
+    <div class="qa-field"><label for="sup-{{ kind }}">Supervising {{ kind|capfirst }} officer</label>
+      <select class="input" id="sup-{{ kind }}" name="officers" required><option value="">Choose…</option>{% for u in choices %}<option value="{{ u.pk }}"{% if current and current.pk == u.pk %} selected{% endif %}>{{ u|who }} — {{ u.role.name|default:"" }}</option>{% endfor %}</select></div>
+  {% endif %}
+  <button class="btn btn-subtle" type="submit">Save</button>
+</form>

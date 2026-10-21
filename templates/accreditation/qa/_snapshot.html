@@ -1,0 +1,47 @@
+{% load qa_tags %}
+{% comment %}
+  A rendered SSQ (the immutable submission snapshot, or a live preview).
+  Context: sections (render_snapshot output), evidence_by_field, portal (bool).
+{% endcomment %}
+<div class="qa-snap">
+  {% for s in sections %}
+    <section class="qa-card qa-snap__section" aria-labelledby="snap-{{ s.key }}">
+      <header class="qa-card__head"><h3 id="snap-{{ s.key }}">{{ forloop.counter }}. {{ s.title }}</h3></header>
+      <dl class="qa-snap__fields">
+        {% for f in s.fields %}
+          <div class="qa-snap__row{% if f.type == 'table' or f.type == 'catalogue' %} qa-snap__row--wide{% endif %}">
+            <dt>{{ f.label }}</dt>
+            <dd>
+              {% if f.type == "catalogue" %}
+                {% if f.rows %}
+                <div class="qa-table-wrap"><table class="qa-table qa-table--compact">
+                  <thead><tr><th>Item (from the catalogue)</th><th class="qa-num">Required</th><th class="qa-num">Available</th><th>Unit</th></tr></thead>
+                  <tbody>{% for r in f.rows %}<tr class="{% if r.short %}is-short{% endif %}"><td data-label="Item">{{ r.name }}</td><td data-label="Required" class="qa-num">{{ r.required|floatformat:"-2" }}</td><td data-label="Available" class="qa-num">{{ r.quantity|default:"—" }}{% if r.short %} <span class="qa-chip qa-tone-warn">Short</span>{% endif %}</td><td data-label="Unit">{{ r.unit }}</td></tr>{% endfor %}</tbody>
+                </table></div>
+                {% else %}<span class="qa-muted">No catalogue items for this programme.</span>{% endif %}
+              {% elif f.type == "table" %}
+                {% if f.rows %}
+                <div class="qa-table-wrap"><table class="qa-table qa-table--compact">
+                  <thead><tr>{% for c in f.columns %}<th>{{ c.label }}</th>{% endfor %}</tr></thead>
+                  <tbody>{% for row in f.rows %}<tr>{% for c in f.columns %}<td data-label="{{ c.label }}">{{ row|get_item:c.key|default:"—" }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+                </table></div>
+                {% else %}<span class="qa-muted">No rows.</span>{% endif %}
+              {% elif f.type == "file" %}
+                {% with evs=evidence_by_field|get_item:f.key %}
+                  {% if evs %}<ul class="qa-snap__files" role="list">{% for ev in evs %}<li>{% icon "file" 14 %}
+                    {% if ev.reused_from_id %}<a href="{% if portal %}{{ ev.reused_from.portal_download_url }}{% else %}{{ ev.reused_from.download_url }}{% endif %}">{{ ev.label }}</a> <span class="qa-chip qa-tone-info">From the record</span>
+                    {% else %}<a href="{% if portal %}{{ ev.portal_download_url }}{% else %}{{ ev.download_url }}{% endif %}">{{ ev.display_name }}</a> <span class="qa-muted qa-small">{{ ev.size_label }}</span>{% endif %}
+                    {% if not portal and can_query %}<button type="button" class="btn btn-xs btn-subtle" hx-get="{% url 'qa_req:query_raise' 'evidence' ev.pk %}" hx-target="#qa-query-slot" hx-swap="innerHTML">Query this file</button>{% endif %}
+                  </li>{% endfor %}</ul>
+                  {% else %}<span class="qa-muted">No file.</span>{% endif %}
+                {% endwith %}
+              {% else %}
+                {% if f.value %}<span class="qa-snap__value">{{ f.value|linebreaksbr }}</span>{% else %}<span class="qa-muted">—</span>{% endif %}
+              {% endif %}
+            </dd>
+          </div>
+        {% endfor %}
+      </dl>
+    </section>
+  {% endfor %}
+</div>

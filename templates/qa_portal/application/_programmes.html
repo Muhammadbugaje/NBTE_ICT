@@ -1,0 +1,18 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="qa-prog-h" id="qa-prog-card">
+  <header class="qa-card__head"><div><h2 id="qa-prog-h">Programmes you plan to offer</h2><p>List each programme now. NBTE opens programme clearance and programme fees in the next stage.</p></div><span class="qa-chip">{{ programmes|length }}</span></header>
+  {% if programmes %}
+    <ul class="qa-rowlist" role="list">{% for p in programmes %}<li><div class="qa-rowlink"><span class="qa-rowlink__badge">{{ p.level.code|upper }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ p.name }}</span><span class="qa-rowlink__meta">{{ p.level.name }}{% if p.category %} · {{ p.category.name }}{% endif %}</span></span>
+      <span class="qa-rowlink__side"><span class="qa-chip {{ p.status|tone }}">{{ p.status|humanize_code }}</span>{% include "complaints/portal/_raise_link.html" with kind="programme" pk=p.pk short=True %}
+      {% if selecting and p.status == "proposed" %}<form method="post" hx-post="{% url 'qa_portal:programme_remove' p.pk %}" hx-target="#qa-prog-card" hx-swap="outerHTML">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit" aria-label="Remove {{ p.name }}">Remove</button></form>{% endif %}</span></div></li>{% endfor %}</ul>
+  {% else %}<div class="qa-card__body"><p class="qa-small qa-muted">No programmes listed yet.</p></div>{% endif %}
+  {% if selecting %}
+    <div class="qa-card__body">
+      <form method="post" action="{% url 'qa_portal:programmes' %}" hx-post="{% url 'qa_portal:programmes' %}" hx-target="#qa-prog-card" hx-swap="outerHTML" novalidate>{% csrf_token %}
+        {% include "qa_core/partials/_form_errors.html" %}
+        <div class="qa-fields">{% for n in "name level category"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div>
+        <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add programme</button></div>
+      </form>
+    </div>
+  {% endif %}
+</section>

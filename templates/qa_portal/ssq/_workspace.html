@@ -1,0 +1,61 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:qa_requests' %}" hx-get="{% url 'qa_portal:qa_requests' %}" hx-target="#qa-main" hx-push-url="true">QA requests</a><span aria-hidden="true">/</span><a href="{% url 'qa_portal:qa_request' req.pk %}" hx-get="{% url 'qa_portal:qa_request' req.pk %}" hx-target="#qa-main" hx-push-url="true">{{ req.reference }}</a><span aria-hidden="true">/</span><span aria-current="page">SSQ · {{ programme.name }}</span></nav>
+<header class="qa-page-head qa-ssq-head">
+  <div>
+    <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Self-study questionnaire · {{ req.qa_type.name }}</span>
+    <h1 data-qa-focus>{{ programme }}</h1>
+    <p class="qa-row qa-gap-sm qa-wrap"><span class="qa-chip {{ ssq.status|tone }}">{{ public }}</span><span class="qa-small qa-muted">Version {{ ssq.version }} · questionnaire v{{ template.version }}</span>
+      {% if editable_sections %}{% include "qa_portal/ssq/_save_status.html" with state="idle" %}{% endif %}{% include "complaints/portal/_raise_link.html" with kind="ssq" pk=ssq.pk %}</p>
+  </div>
+</header>
+
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Something needs attention" message=error %}{% endif %}
+{% if ssq.status == "returned" %}
+  <div class="qa-callout qa-callout--danger" role="status">{% icon "alert" 18 "2.2" %}
+    <div><strong>NBTE returned this SSQ</strong><p>{{ ssq.review_remark }}</p>
+      {% if is_admin and ssq.is_current %}<form method="post" action="{% url 'qa_portal:ssq_revise' req.pk ssq.pk %}" hx-post="{% url 'qa_portal:ssq_revise' req.pk ssq.pk %}" hx-target="#ssq-workspace">{% csrf_token %}<button class="btn btn-sm btn-primary" type="submit">{% icon "rotate" 14 %} Start version {{ ssq.version|add:1 }}</button></form><p class="qa-small qa-muted">The returned version stays on record unchanged; your answers and files are copied into the new one.</p>{% endif %}</div></div>
+{% elif ssq.status == "returned_to_department" %}
+  {% if is_department %}
+    {% include "qa_core/partials/_callout.html" with kind="info" title="Your institution sent you sections to complete" message=ssq.department_remark %}
+  {% else %}
+    <div class="qa-callout qa-callout--info" role="status">{% icon "users" 18 "2.2" %}<div><strong>With {{ ssq.assigned_department_user.get_full_name|default:ssq.assigned_department_user.email }}</strong><p>Sections: {% for s in sections %}{% if s.key in ssq.assigned_sections %}{{ s.title }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}. You can edit again when they send it back, or take it back now.</p>
+      {% if is_admin %}<form method="post" action="{% url 'qa_portal:ssq_recall' req.pk ssq.pk %}" hx-post="{% url 'qa_portal:ssq_recall' req.pk ssq.pk %}" hx-target="#ssq-workspace">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit">Take it back</button></form>{% endif %}</div></div>
+  {% endif %}
+{% elif ssq.status == "submitted_by_department" and not is_department %}
+  {% include "qa_core/partials/_callout.html" with kind="success" title="Your department completed its sections" message="Check the answers, then submit the SSQ to NBTE." %}
+{% elif not ssq.is_current %}
+  {% include "qa_core/partials/_callout.html" with title="An older version" message="This version was superseded; it is kept unchanged on record." %}
+{% endif %}
+
+{% if snapshot_sections and ssq.status != "draft" and ssq.status != "returned_to_department" and ssq.status != "submitted_by_department" %}
+  <p class="qa-small qa-row qa-gap-sm qa-muted">{% icon "lock" 14 %} {% if submission %}What you submitted on {{ submission.submitted_at|date:"j M Y, H:i" }} (read-only).{% else %}Read-only.{% endif %}</p>
+  {% include "accreditation/qa/_snapshot.html" with sections=snapshot_sections portal=True %}
+{% else %}
+<div class="qa-ssq">
+  <aside class="qa-ssq__nav" aria-label="Sections">
+    <ol class="qa-ssq__sections" role="list">
+      {% for p in progress %}{% include "qa_portal/ssq/_nav_item.html" %}{% endfor %}
+    </ol>
+  </aside>
+  <div class="qa-ssq__main">
+    <div id="ssq-section" class="qa-region" data-qa-region aria-live="polite">{% include "qa_portal/ssq/_section.html" %}</div>
+  </div>
+  <aside class="qa-ssq__side qa-stack">
+    <div id="ssq-submit">{% include "qa_portal/ssq/_submit_panel.html" %}</div>
+    {% if can_send_department and department_users %}
+      <details class="qa-card" data-qa-remember="ssq-dept"><summary class="qa-card__head" style="cursor:pointer"><div><h2>Send sections to a department</h2><p>Your academic department completes them; you submit.</p></div></summary>
+        <div class="qa-card__body"><form class="qa-form qa-stack" method="post" action="{% url 'qa_portal:ssq_department' req.pk ssq.pk %}" hx-post="{% url 'qa_portal:ssq_department' req.pk ssq.pk %}" hx-target="#ssq-workspace">{% csrf_token %}
+          <div class="qa-field"><label for="dp-user">Department account</label><select class="input" id="dp-user" name="department_user">{% for u in department_users %}<option value="{{ u.pk }}">{{ u.get_full_name|default:u.email }}</option>{% endfor %}</select></div>
+          <fieldset class="qa-field"><legend>Sections they may edit</legend>{% for s in department_sections %}<label class="qa-field--check"><input type="checkbox" name="sections" value="{{ s.key }}"> {{ s.title }}</label>{% endfor %}</fieldset>
+          <div class="qa-field"><label for="dp-remark">Note to the department</label><textarea class="input" id="dp-remark" name="remark" rows="2" required minlength="3"></textarea></div>
+          <button class="btn btn-sm btn-primary" type="submit">Send</button></form></div></details>
+    {% elif can_send_department %}
+      <p class="qa-small qa-muted">To let an academic department fill in sections, add a department account under Institution → Users.</p>
+    {% endif %}
+    {% if versions|length > 1 %}
+      <section class="qa-card"><header class="qa-card__head"><h2>Versions</h2></header><ul class="qa-rowlist" role="list">{% for v in versions %}<li><a class="qa-rowlink" href="{% url 'qa_portal:ssq' req.pk v.pk %}" hx-get="{% url 'qa_portal:ssq' req.pk v.pk %}" hx-target="#qa-main" hx-push-url="true"{% if v.pk == ssq.pk %} aria-current="page"{% endif %}><span class="qa-rowlink__badge">v{{ v.version }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{% if v.is_current %}Current{% else %}Superseded{% endif %}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ v.status|tone }}">{{ v.get_status_display }}</span></span></a></li>{% endfor %}</ul></section>
+    {% endif %}
+    {% if queries %}<section class="qa-card"><header class="qa-card__head"><h2>Open queries</h2></header><ul class="qa-rowlist" role="list">{% for q in queries %}<li><a class="qa-rowlink" href="{% url 'qa_portal:query' q.pk %}" hx-get="{% url 'qa_portal:query' q.pk %}" hx-target="#qa-main" hx-push-url="true"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ q.title }}</span><span class="qa-rowlink__meta">{{ q.reference }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ q.status|tone }}">{{ q.get_status_display }}</span></span></a></li>{% endfor %}</ul></section>{% endif %}
+  </aside>
+</div>
+{% endif %}

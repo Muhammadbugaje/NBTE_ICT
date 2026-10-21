@@ -5,7 +5,7 @@
 {% block page_title %}New message{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=8">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=9">
 {% endblock %}
 
 {% block content %}
@@ -26,13 +26,11 @@
   <form method="post" action="{% url 'messaging:compose_send' %}" class="msg-compose-form" data-compose-form enctype="multipart/form-data">
     {% csrf_token %}
 
-    {# ---------- Recipients picker ---------- #}
     <div class="msg-field">
       <label class="msg-label">To</label>
       <div class="msg-picker" data-picker>
         <div class="msg-picker-control" data-picker-control>
           <div class="msg-picker-chips" data-chips>
-            {# chips injected by JS #}
             <input type="text" class="msg-picker-search" placeholder="Type a name…" data-search autocomplete="off">
           </div>
           <button type="button" class="msg-picker-caret" data-picker-toggle aria-label="Toggle recipients">
@@ -49,7 +47,7 @@
             {% for u in users %}
               <li class="msg-picker-item"
                   data-pk="{{ u.pk }}"
-                  data-search-text="{{ u.get_full_name|default:u.email|lower }} {{ u.email|lower }} {{ u.department.name|default:''|lower }}">
+                  data-search-text="{{ u.get_full_name|default:u.username|default:u.email|lower }} {{ u.email|lower }} {{ u.username|default:''|lower }} {{ u.department.name|default:''|lower }}">
                 <label>
                   <input type="checkbox" class="msg-picker-checkbox" value="{{ u.pk }}"
                          {% if preselected and u.pk == preselected.pk %}checked{% endif %}>
@@ -57,7 +55,7 @@
                     {{ u.first_name|slice:":1"|upper }}{{ u.last_name|slice:":1"|upper }}
                   </span>
                   <span class="msg-user-info">
-                    <strong>{{ u.get_full_name|default:u.email }}</strong>
+                    <strong>{{ u.get_full_name|default:u.username|default:u.email }}</strong>
                     <small>
                       {{ u.email }}
                       {% if u.department %} · {{ u.department.name }}{% endif %}
@@ -72,20 +70,17 @@
           </ul>
         </div>
 
-        {# Hidden inputs mirroring selections — read via getlist("recipients") #}
         <div data-hidden-inputs></div>
       </div>
       <span class="msg-hint">Search and tick as many people as you need.</span>
     </div>
 
-    {# ---------- Subject ---------- #}
     <div class="msg-field">
       <label class="msg-label" for="compose-subject">Subject <span class="muted">(optional)</span></label>
       <input class="msg-input" id="compose-subject" type="text" name="subject"
              placeholder="What's this about?" value="{{ subject|default:'' }}">
     </div>
 
-    {# ---------- Body ---------- #}
     <div class="msg-field">
       <label class="msg-label" for="compose-body">Message</label>
       <textarea class="msg-input msg-textarea" id="compose-body" name="body" rows="8"
@@ -121,46 +116,44 @@
   var root = document.querySelector('[data-picker]');
   if (!root) return;
 
-  var control     = root.querySelector('[data-picker-control]');
-  var chipsBox    = root.querySelector('[data-chips]');
-  var search      = root.querySelector('[data-search]');
-  var panel       = root.querySelector('[data-panel]');
-  var list        = root.querySelector('[data-list]');
-  var hiddenBox   = root.querySelector('[data-hidden-inputs]');
-  var countLabel  = root.querySelector('[data-count-label]');
-  var clearBtn    = root.querySelector('[data-clear]');
-  var toggle      = root.querySelector('[data-picker-toggle]');
+  var control    = root.querySelector('[data-picker-control]');
+  var chipsBox   = root.querySelector('[data-chips]');
+  var search     = root.querySelector('[data-search]');
+  var panel      = root.querySelector('[data-panel]');
+  var list       = root.querySelector('[data-list]');
+  var hiddenBox  = root.querySelector('[data-hidden-inputs]');
+  var countLabel = root.querySelector('[data-count-label]');
+  var clearBtn   = root.querySelector('[data-clear]');
+  var toggle     = root.querySelector('[data-picker-toggle]');
 
-  // Build a map of pk → { name, initials, hue } for chip rendering.
   var userMap = {};
-  root.querySelectorAll('.msg-picker-item').forEach(function (li) {
+  list.querySelectorAll('.msg-picker-item').forEach(function (li) {
     var cb = li.querySelector('.msg-picker-checkbox');
-    var nameEl = li.querySelector('.msg-user-info strong');
+    if (!cb) return;
+    var nameEl   = li.querySelector('.msg-user-info strong');
     var avatarEl = li.querySelector('.msg-avatar');
     var cls = '';
     if (avatarEl) {
-      avatarEl.classList.forEach(function (c) { if (c.indexOf('msg-avatar-c') === 0) cls = c; });
+      avatarEl.classList.forEach(function (c) {
+        if (c.indexOf('msg-avatar-c') === 0) cls = c;
+      });
     }
     userMap[cb.value] = {
-      name: nameEl ? nameEl.textContent.trim() : cb.value,
+      name:     nameEl ? nameEl.textContent.trim() : cb.value,
       initials: avatarEl ? avatarEl.textContent.trim() : '?',
-      cls: cls,
+      cls:      cls,
     };
   });
 
   function openPanel() {
-    panel.style.display = '';
+    panel.hidden = false;
     setTimeout(function () { search.focus(); }, 0);
   }
-  function closePanel() {
-    panel.style.display = 'none';
-  }
-  function togglePanel() {
-    if (panel.style.display === 'none' || !panel.style.display) openPanel(); else closePanel();
-  }
+  function closePanel() { panel.hidden = true; }
+  function togglePanel() { if (panel.hidden) openPanel(); else closePanel(); }
 
   function selectedCheckboxes() {
-    return Array.from(root.querySelectorAll('.msg-picker-checkbox:checked'));
+    return Array.from(list.querySelectorAll('.msg-picker-checkbox:checked'));
   }
 
   function refreshChips() {
@@ -192,9 +185,7 @@
   }
 
   list.addEventListener('change', function (e) {
-    if (e.target.classList.contains('msg-picker-checkbox')) {
-      refreshChips();
-    }
+    if (e.target.classList.contains('msg-picker-checkbox')) refreshChips();
   });
 
   chipsBox.addEventListener('click', function (e) {
@@ -202,17 +193,18 @@
     e.stopPropagation();
     var chip = e.target.closest('.msg-chip');
     var pk = chip.getAttribute('data-pk');
-    var cb = root.querySelector('.msg-picker-checkbox[value="' + pk + '"]');
-    if (cb) { cb.checked = false; }
+    var cb = list.querySelector('.msg-picker-checkbox[value="' + pk + '"]');
+    if (cb) cb.checked = false;
     refreshChips();
   });
 
   search.addEventListener('input', function () {
     var q = search.value.trim().toLowerCase();
-    root.querySelectorAll('.msg-picker-item').forEach(function (li) {
-      var hay = li.getAttribute('data-search-text') || '';
+    list.querySelectorAll('.msg-picker-item').forEach(function (li) {
+      var hay = (li.getAttribute('data-search-text') || '').toLowerCase();
       li.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
     });
+    if (q && panel.hidden) openPanel();
   });
 
   control.addEventListener('click', function (e) {
@@ -233,11 +225,10 @@
   });
 
   clearBtn.addEventListener('click', function () {
-    root.querySelectorAll('.msg-picker-checkbox').forEach(function (cb) { cb.checked = false; });
+    list.querySelectorAll('.msg-picker-checkbox').forEach(function (cb) { cb.checked = false; });
     refreshChips();
   });
 
-  // Character counter + Cmd/Ctrl+Enter submit
   var body = document.querySelector('[data-body]');
   var counter = document.querySelector('[data-char-count]');
   if (body && counter) {

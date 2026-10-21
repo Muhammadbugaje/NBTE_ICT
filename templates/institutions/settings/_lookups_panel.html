@@ -1,0 +1,27 @@
+{% load qa_tags %}
+{% include "qa_core/settings/_tabs.html" %}
+<nav class="qa-tabs" aria-label="Lookup lists">
+  {% for k, label in kinds %}<a href="{% url 'qa_set:lookups_kind' k %}" hx-get="{% url 'qa_set:lookups_kind' k %}" hx-target="#qa-panel" hx-push-url="true" class="{% if kind == k %}is-active{% endif %}"{% if kind == k %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+<section class="qa-card" aria-labelledby="set-lk">
+  <header class="qa-card__head"><div><h2 id="set-lk" data-qa-focus>{{ title }}</h2><p>Editable lists the QA system uses. Codes are stable handles: change names freely, codes rarely.</p></div></header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr>{% for f in fields %}<th>{{ f|humanize_code }}</th>{% endfor %}<th class="qa-col-actions"><span class="sr-only">Edit</span></th></tr></thead>
+    <tbody>{% for r in rows %}<tr class="{% if editing and editing.pk == r.pk %}is-editing{% endif %}">{% for f in fields %}<td data-label="{{ f|humanize_code }}">{% with v=r|get_attr:f %}{% if v == True %}<span class="qa-chip qa-tone-success">Yes</span>{% elif v == False %}<span class="qa-chip">No</span>{% else %}{{ v|default:"—" }}{% endif %}{% endwith %}</td>{% endfor %}
+      <td class="qa-col-actions">{% if editable %}<a class="btn btn-sm btn-subtle" href="?edit={{ r.pk }}" hx-get="{% url 'qa_set:lookups_kind' kind %}?edit={{ r.pk }}" hx-target="#qa-panel">Edit</a>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="9" class="qa-muted">Nothing yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% if editable %}
+<section class="qa-card" aria-labelledby="set-lk-form">
+  <header class="qa-card__head"><h2 id="set-lk-form">{% if editing %}Edit {{ editing }}{% else %}Add{% endif %}</h2></header>
+  <div class="qa-card__body">
+    <form method="post" hx-post="{% url 'qa_set:lookups_kind' kind %}" hx-target="#qa-panel" class="qa-form">
+      {% csrf_token %}{% if editing %}<input type="hidden" name="id" value="{{ editing.pk }}">{% endif %}
+      {% include "qa_core/partials/_form_errors.html" %}
+      <div class="qa-fields">{% for field in form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">Save</button>{% if editing %}<a class="btn btn-subtle" href="{% url 'qa_set:lookups_kind' kind %}" hx-get="{% url 'qa_set:lookups_kind' kind %}" hx-target="#qa-panel">Cancel</a>{% endif %}</div>
+    </form>
+  </div>
+</section>
+{% else %}{% include "qa_core/partials/_callout.html" with message="Only holders of institutions.manage_institution_lookups can change these lists." %}{% endif %}

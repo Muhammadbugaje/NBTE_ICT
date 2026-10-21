@@ -32,7 +32,8 @@ def mk(email, dept=None, role=None, **kw):
 def test_fresh_install_gives_es_role_permissions():
     from django.core.management import call_command
     es = Role.objects.get(code="executive-secretary")  # created bare by migration 0007
-    assert not es.permissions.exists()
+    # (Migrations such as attendance/0005 and assets/0004 already attach a few
+    # permissions to the ES role at migrate time, so it is not literally empty.)
     call_command("seed_roles", verbosity=0)  # no --sync, as in a first install
     assert es.permissions.filter(codename="view_all_requests").exists()
 
@@ -41,7 +42,9 @@ def test_seed_without_sync_does_not_readd_removed_permission():
     from django.core.management import call_command
     call_command("seed_roles", verbosity=0)
     director = Role.objects.get(code="director")
-    perm = director.permissions.get(codename="view_all_requests")
+    # Directors carry the department-scoped permission; "view all" is ES / super admin only.
+    assert not director.permissions.filter(codename="view_all_requests").exists()
+    perm = director.permissions.get(codename="view_department_requests")
     director.permissions.remove(perm)
     call_command("seed_roles", verbosity=0)
-    assert not director.permissions.filter(codename="view_all_requests").exists()
+    assert not director.permissions.filter(codename="view_department_requests").exists()

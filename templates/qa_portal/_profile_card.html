@@ -1,0 +1,25 @@
+<section class="qa-card" aria-labelledby="qa-profile-title">
+  <header class="qa-card__head">
+    <div><h2 id="qa-profile-title">Your name</h2><p>How NBTE officers see you on requests and messages.</p></div>
+    {% if profile_saved %}<span class="qa-chip qa-chip--success" data-qa-announce="Your details have been saved">Saved</span>{% endif %}
+  </header>
+  <div class="qa-card__body">
+    <form class="qa-form" method="post" action="{% url 'qa_portal:account' %}"
+          hx-post="{% url 'qa_portal:account' %}" hx-target="#qa-profile-card" novalidate>
+      {% csrf_token %}
+      {% if profile_form.non_field_errors %}<ul class="qa-errors" role="alert">{% for e in profile_form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      <div class="qa-form__grid">
+        {% for field in profile_form %}
+          <div class="field">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.errors %}<span class="error" role="alert">{{ field.errors|join:" " }}</span>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="qa-form__actions">
+        <button type="submit" class="btn btn-primary">Save name</button>
+      </div>
+    </form>
+  </div>
+</section>

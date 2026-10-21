@@ -1,0 +1,33 @@
+{% load qa_tags %}
+{% include "qa_core/settings/_tabs.html" %}
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not saved" message=error %}{% endif %}
+<section class="qa-card" aria-labelledby="cat-h">
+  <header class="qa-card__head"><div><h2 id="cat-h" data-qa-focus>Curriculum catalogue</h2>
+    <p>The facilities and equipment each programme must have, with the required quantity. In the SSQ, catalogue questions list these items by name and the institution types <strong>quantities only</strong> (R-22). A change writes a new version; SSQs already submitted keep the old figures.</p></div>
+    <span class="qa-chip">{{ count_active }} active</span></header>
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_set:catalogue' %}" hx-target="#cat-rows" hx-select="#cat-rows" hx-swap="outerHTML" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Item name" autocomplete="off"></label>
+    <select class="input qa-select" name="programme" aria-label="Programme"><option value="">All programmes</option>{% for p in programmes %}<option value="{{ p }}"{% if filters.programme == p %} selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="kind" aria-label="Kind"><option value="">Facilities and equipment</option>{% for v, l in kinds %}<option value="{{ v }}"{% if filters.kind == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="show" aria-label="Versions"><option value="active"{% if show == "active" %} selected{% endif %}>Current versions</option><option value="all"{% if show == "all" %} selected{% endif %}>Include retired versions</option></select>
+  </form>
+  {% include "accreditation/settings/_catalogue_rows.html" %}
+</section>
+{% if editable %}
+<section class="qa-card" aria-labelledby="cat-add">
+  <header class="qa-card__head"><h2 id="cat-add">Add an item</h2></header>
+  <div class="qa-card__body">
+    <form class="qa-form" method="post" hx-post="{% url 'qa_set:catalogue' %}" hx-target="#qa-panel">{% csrf_token %}
+      <div class="qa-fields">
+        <div class="qa-field"><label for="ca-prog">Programme</label><input class="input" id="ca-prog" name="programme_name" list="ca-progs" value="{{ values.programme_name|default:'' }}" placeholder="e.g. Computer Science"><datalist id="ca-progs">{% for p in programmes %}<option value="{{ p }}">{% endfor %}</datalist><p class="qa-help">Leave blank to apply to every programme in the category.</p></div>
+        <div class="qa-field"><label for="ca-cat">Programme category</label><select class="input" id="ca-cat" name="category"><option value="">—</option>{% for c in categories %}<option value="{{ c.pk }}"{% if values.category == c.pk|stringformat:"s" %} selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
+        <div class="qa-field"><label for="ca-kind">Kind</label><select class="input" id="ca-kind" name="kind">{% for v, l in kinds %}<option value="{{ v }}"{% if values.kind == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+        <div class="qa-field"><label for="ca-name">Name</label><input class="input" id="ca-name" name="name" required value="{{ values.name|default:'' }}"></div>
+        <div class="qa-field"><label for="ca-qty">Required quantity</label><input class="input" id="ca-qty" name="required_quantity" inputmode="decimal" required value="{{ values.required_quantity|default:'' }}"></div>
+        <div class="qa-field"><label for="ca-unit">Unit</label><input class="input" id="ca-unit" name="unit" value="{{ values.unit|default:'no.' }}"></div>
+      </div>
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add item</button></div>
+    </form>
+  </div>
+</section>
+{% else %}{% include "qa_core/partials/_callout.html" with message="Only holders of accreditation.manage_catalogue can change the catalogue." %}{% endif %}

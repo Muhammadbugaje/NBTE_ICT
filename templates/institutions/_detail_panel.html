@@ -1,0 +1,34 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa_inst:list' %}" hx-get="{% url 'qa_inst:list' %}" hx-target="#qa-panel" hx-push-url="true">Institutions</a>
+  <span aria-hidden="true">/</span><span aria-current="page">{{ inst.code }}</span>
+</nav>
+
+<header class="qa-inst-head">
+  <span class="qa-inst-head__code" aria-hidden="true">{{ inst.code }}</span>
+  <div>
+    <h1 data-qa-focus>{{ inst.name }}</h1>
+    <div class="qa-inst-head__meta">
+      <span class="qa-chip {{ inst.status|tone }}">{{ inst.status_label }}</span>
+      {% if not inst.portal_enabled %}<span class="qa-chip qa-tone-danger">Portal access off</span>{% endif %}
+      <span>{% icon "building" 14 %} {{ inst.ownership.name|default:"—" }} · {{ inst.institution_type.name|default:"—" }}</span>
+      <span>{% icon "layers" 14 %} {{ inst.category.name|default:"No category" }}</span>
+      <span>{% icon "map" 14 %} {% if inst.state %}{{ inst.lga }}, {{ inst.state.name }} ({{ inst.zone }}){% else %}Location not set{% endif %}</span>
+      <span>{% icon "users" 14 %} Handled by {{ inst.handling_department.name }}</span>
+    </div>
+    {% if inst.former_names %}<p class="qa-small qa-muted qa-mt-sm">Formerly: {% for n in inst.former_names %}{{ n.name }}{% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+  </div>
+  <div class="qa-inst-head__tools">{% include "institutions/_actions_menu.html" %}</div>
+</header>
+
+<nav class="qa-tabs" aria-label="Institution sections">
+  {% for key, label in tabs %}
+    <a href="{% url 'qa_inst:detail' inst.code %}?tab={{ key }}" hx-get="{% url 'qa_inst:detail' inst.code %}?tab={{ key }}" hx-target="#qa-tab" hx-push-url="true"
+       class="{% if tab == key %}is-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}
+       hx-on::after-request="this.parentElement.querySelectorAll('a').forEach(a=>{a.classList.remove('is-active');a.removeAttribute('aria-current')});this.classList.add('is-active');this.setAttribute('aria-current','page')">{{ label }}</a>
+  {% endfor %}
+</nav>
+
+<div id="qa-tab" class="qa-region" data-qa-region aria-live="polite">
+  {% with "institutions/tabs/_"|add:tab|add:".html" as tab_template %}{% include tab_template %}{% endwith %}
+</div>

@@ -1,0 +1,103 @@
+{% comment %}
+  The promotion dialog (NBTE.modal). Used by the Promotions page (bulk; the
+  table checkboxes join this form through form="promo-form") and by the staff
+  detail page (single; pass single=True and staff).
+  Context: targets, today, next_url, single, staff (single only).
+{% endcomment %}
+<div class="modal-root promo-modal-root" id="promo-modal" aria-hidden="true" data-promo-modal
+     data-count-url="{% url 'staff:promotion_cascade_count' %}" data-preview-url="{% url 'staff:promotion_preview' %}">
+  <div class="modal-backdrop"></div>
+  <div class="modal promo-modal" role="dialog" aria-modal="true" aria-labelledby="promo-modal-title">
+    <button type="button" class="modal-close" aria-label="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <form method="post" action="{% url 'staff:promotion_apply' %}" id="promo-form" class="promo-form" data-promo-form>
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ next_url }}">
+      {% if single %}<input type="hidden" name="ids" value="{{ staff.pk }}" data-promo-fixed
+                            data-rank="{{ staff.designation.rank|default:0 }}" data-designation="{{ staff.designation.name|default:'(no designation)' }}">{% endif %}
+
+      <div class="promo-modal-head">
+        <h3 class="modal-title" id="promo-modal-title">
+          {% if single %}Promote {{ staff.full_name }}{% else %}Promote <span data-promo-title-count>selected staff</span>{% endif %}
+        </h3>
+        <p class="promo-modal-sub" data-promo-sub>{% if single %}Currently {{ staff.designation.name|default:"without a designation" }}{% if staff.grade_level %}, grade {{ staff.grade_level }}{% endif %}.{% endif %}</p>
+      </div>
+
+      <div class="promo-modal-body">
+        <div class="promo-modal-form">
+          <div class="alert alert-warn promo-tiers" data-promo-tiers role="status" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div><strong>The selection spans several designations.</strong><div class="alert-body" data-promo-tier-list></div></div>
+          </div>
+
+          <div class="field">
+            <label for="promo-target">New designation</label>
+            <select id="promo-target" name="target" class="input" required data-promo-target>
+              <option value="">Choose…</option>
+              {% for d in targets %}
+                <option value="{{ d.pk }}" data-rank="{{ d.rank }}" data-grade="{{ d.contediss_min }}">{{ d.name }}{% if d.contediss_min %} · CONTEDISS {{ d.contediss_min }}{% endif %}</option>
+              {% endfor %}
+            </select>
+            <span class="hint">Only designations ranked above the current one are listed.</span>
+          </div>
+
+          <div class="promo-two">
+            <div class="field">
+              <label for="promo-date">Effective date</label>
+              <input type="date" id="promo-date" name="effective_date" class="input" value="{{ today|date:'Y-m-d' }}" required>
+            </div>
+            <div class="field promo-grade-field">
+              <span class="promo-grade-label">New grade level</span>
+              <span class="promo-grade-value" data-promo-grade aria-live="polite">—</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="promo-reason">Reason <span class="promo-optional">recommended</span></label>
+            <textarea id="promo-reason" name="reason" rows="3" class="input" placeholder="e.g. 2026 promotion exercise, approved by the Board on 12 March"></textarea>
+          </div>
+
+          {% if not single or staff.date_present_appointment %}
+          <div class="promo-cascade">
+            <label class="check promo-cascade-toggle">
+              <input type="checkbox" name="cascade" data-promo-cascade>
+              <span>Also cascade</span>
+            </label>
+            <p class="promo-cascade-text" data-promo-cascade-text>Also promote other staff on the same designation in the same department whose present appointment is later.</p>
+            <div class="promo-cascade-options" data-promo-cascade-options hidden>
+              <label class="promo-radio"><input type="radio" name="cascade_mode" value="step" checked> <span>…one step up the ladder <span class="badge badge-primary">Default</span></span></label>
+              <label class="promo-radio"><input type="radio" name="cascade_mode" value="same"> <span>…up to the same new designation</span></label>
+            </div>
+          </div>
+          {% endif %}
+
+          <label class="check promo-notify">
+            <input type="checkbox" name="notify" data-promo-notify{% if single %} checked{% endif %}>
+            <span>Notify affected staff <span class="promo-optional">and their department head</span></span>
+          </label>
+        </div>
+
+        <aside class="promo-modal-preview" aria-labelledby="promo-preview-title" aria-live="polite">
+          <h4 class="promo-preview-title" id="promo-preview-title">Before → after</h4>
+          <div data-promo-preview>
+            <p class="promo-preview-empty">Choose the new designation, then press <strong>Preview</strong> to see exactly who changes and how.</p>
+          </div>
+        </aside>
+      </div>
+
+      <div class="promo-modal-foot">
+        <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+        <span class="promo-foot-spacer"></span>
+        <button type="submit" class="btn btn-ghost" formaction="{% url 'staff:promotion_preview' %}" data-promo-preview-btn>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Preview
+        </button>
+        <button type="submit" class="btn btn-primary" data-promo-confirm disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          Confirm promotion
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

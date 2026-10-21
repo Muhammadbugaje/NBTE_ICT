@@ -126,9 +126,9 @@ def _request_items(user):
 
 def _asset_items(user):
     from assets.models import AssetAssignment
-    from assets.views import _can_edit_asset, _visible_assets_qs
+    from assets.access import can_manage_asset, visible_assets_queryset
 
-    visible_assets = _visible_assets_qs(user)
+    visible_assets = visible_assets_queryset(user)
     assignments = (
         AssetAssignment.objects
         .filter(
@@ -143,7 +143,7 @@ def _asset_items(user):
         if not (
             assignment.assigned_to_id == user.pk
             or assignment.assigned_by_id == user.pk
-            or _can_edit_asset(user, assignment.asset)
+            or can_manage_asset(user, assignment.asset)
         ):
             continue
         overdue_days = _age_days(assignment.expected_return_at)

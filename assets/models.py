@@ -159,6 +159,13 @@ class Asset(SoftDeleteModel):
             models.Index(fields=["current_custodian", "state"]),
             models.Index(fields=["owner_department", "state"]),
         ]
+        # Read scope. See assets/access.py. Seeded on roles by migration 0004,
+        # seed_roles and seed_default_groups.
+        permissions = [
+            ("view_all_assets", "Can view assets of ALL departments"),
+            ("view_department_assets",
+             "Can view all assets of their own department"),
+        ]
 
     def __str__(self):
         label = f"{self.brand} {self.model}".strip() or self.category.name
@@ -191,6 +198,11 @@ class Asset(SoftDeleteModel):
         from django.urls import reverse
         path = reverse("assets:detail", args=[self.asset_tag])
         return f"{settings.SITE_URL.rstrip('/')}{path}"
+
+    def barcode_svg(self):
+        """Code 128 barcode of the asset tag as inline SVG (pure Python)."""
+        from .barcode import code128_svg
+        return code128_svg(self.asset_tag)
 
     def qr_svg(self, box_size=6, border=2):
         """Return the QR code as an inline SVG string, ready for embedding
@@ -373,8 +385,8 @@ class AssetAttachment(TimeStampedModel):
     def can_download(self, user):
         if not (user and user.is_authenticated):
             return False
-        from .views import _visible_assets_qs
-        return _visible_assets_qs(user).filter(pk=self.asset_id).exists()
+        from .access import can_view_asset
+        return can_view_asset(user, self.asset)
 
     def download_url(self):
         from django.urls import reverse

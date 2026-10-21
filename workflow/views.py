@@ -72,32 +72,10 @@ def _can_view(request, req):
 
 
 def can_view_request(user, req):
-    """User-based form of `_can_view` (used by attachment downloads)."""
-    if user.is_superuser:
-        return True
-    # Review M1: the list view (`all_requests`) already shows these users
-    # every request; the detail page must agree.
-    if user.has_perm("accounts.view_all_requests"):
-        return True
-    if req.requester_id == user.pk:
-        return True
-    if req.assigned_to_id == user.pk:
-        return True
-    if req.approvals.filter(actor=user).exists():
-        return True
-    # If it's the current step and the user is the resolved approver, let them in.
-    step = services._resolve_current_step(req)
-    if step is not None:
-        actor = services.resolve_approver(step, req)
-        if actor and actor.pk == user.pk:
-            return True
-    # Receiving department director can always see.
-    if (req.receiving_department_id
-            and user.department_id == req.receiving_department_id
-            and user.role_id
-            and user.role.code == "director"):
-        return True
-    return False
+    """User-based form of `_can_view` (used by attachment downloads).
+    The rule lives in workflow/access.py."""
+    from .access import can_view_request as _rule
+    return _rule(user, req)
 
 
 def _require_view(request, pk):
@@ -316,8 +294,10 @@ def can_see_incoming(user):
         return False
     if user.is_superuser:
         return True
-    return bool(user.department_id and user.role_id
-                and user.role.code in DEPARTMENT_LEAD_ROLE_CODES)
+    from .access import is_department_request_viewer
+    return bool(is_department_request_viewer(user) or (
+        user.department_id and user.role_id
+        and user.role.code in DEPARTMENT_LEAD_ROLE_CODES))
 
 
 @login_required
@@ -364,11 +344,13 @@ def _is_director(user):
 
 
 def _can_see_office_requests(user):
-    return _is_director(user) or user.is_superuser
+    from .access import is_department_request_viewer
+    return is_department_request_viewer(user) or user.is_superuser
 
 
 def _can_see_all_requests(user):
-    return user.is_superuser or user.has_perm("accounts.view_all_requests")
+    from .access import can_view_all_requests
+    return can_view_all_requests(user)
 
 
 @login_required
@@ -663,6 +645,11 @@ def detail(request, pk):
         "resubmit_schema_fields": _schema_field_names(req.request_type) if req.status == Request.RETURNED else [],
         "is_closed": req.is_closed,
     }
+    # Link the asset only if the viewer may open it (otherwise a dead link).
+    ctx["asset_link_ok"] = False
+    if getattr(req, "asset_id", None):
+        from assets.access import can_view_asset
+        ctx["asset_link_ok"] = can_view_asset(request.user, req.asset)
     return render(request, "workflow/detail.html", ctx)
 
 

@@ -1,0 +1,21 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}My engagements · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "clock" 14 "2.2" %} Resource person</span>
+    <h1 data-qa-focus>My engagements</h1>
+    <p>The QA visits and SSQ reviews NBTE has mapped you to. After a visit, write your findings for the programme here; the Team Lead sees them while writing the post-visit report.</p>
+  </header>
+  <section class="qa-card" aria-label="Engagements">
+    <form class="qa-toolbar qa-toolbar--wrap" role="search" hx-get="{% url 'qa_portal:rp_engagements' %}" hx-target="#rp-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change">
+      <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Institution or programme" autocomplete="off"></label>
+      <select class="input qa-select" name="status" aria-label="Status">{% for v, l in statuses %}<option value="{{ v }}"{% if status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <select class="input qa-select" name="duty" aria-label="Duty"><option value="">Any duty</option>{% for v, l in duties %}<option value="{{ v }}"{% if filters.duty == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <select class="input qa-select" name="when" aria-label="When"><option value="">Past and upcoming</option><option value="upcoming"{% if filters.when == "upcoming" %} selected{% endif %}>Upcoming</option><option value="past"{% if filters.when == "past" %} selected{% endif %}>Past</option></select>
+    </form>
+    <div id="rp-rows" class="qa-region" data-qa-region aria-live="polite">{% include "qa_portal/resource_person/_engagement_rows.html" %}</div>
+  </section>
+</div>
+{% endblock %}

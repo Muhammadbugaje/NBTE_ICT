@@ -1,11 +1,18 @@
+{% if attendance_visible %}
 <section class="dash-card" id="attendance">
   <header class="dash-card-head">
     <div>
       <h2>Attendance</h2>
-      <p>Today's snapshot and 30-day trends across the directorate</p>
+      <p>{{ attendance_title }} · today's snapshot and the last {{ attendance_window_days }} days, from attendance records</p>
     </div>
-    <a href="{% url 'attendance:all_departments' %}" class="link-btn">Open full report →</a>
+    <a href="{{ attendance_link }}" class="link-btn">Open full report →</a>
   </header>
+
+  {% if not attendance_kpis.is_working_day %}
+    <div class="dash-empty mb-4">
+      <p>{{ attendance_kpis.reason|default:"Today is not a working day." }}</p>
+    </div>
+  {% endif %}
 
   <div class="dash-grid dash-grid-1-1-1 mb-4">
     <div class="dash-kpi">
@@ -13,8 +20,10 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ attendance_kpis.present }}</div>
-        <div class="dash-kpi-lbl">Present today</div>
+        <div class="dash-kpi-num">{{ attendance_kpis.came }}<span class="dash-kpi-of"> / {{ attendance_kpis.total_staff }}</span></div>
+        <div class="dash-kpi-lbl">
+          Came today{% if attendance_kpis.attendance_pct is not None %} · {{ attendance_kpis.attendance_pct }}% of staff{% endif %}
+        </div>
       </div>
     </div>
     <div class="dash-kpi">
@@ -23,7 +32,7 @@
       </div>
       <div class="dash-kpi-body">
         <div class="dash-kpi-num">{{ attendance_kpis.late }}</div>
-        <div class="dash-kpi-lbl">Late today</div>
+        <div class="dash-kpi-lbl">Of those, late</div>
       </div>
     </div>
     <div class="dash-kpi">
@@ -31,18 +40,26 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ attendance_kpis.absent }}</div>
+        <div class="dash-kpi-num">{{ attendance_kpis.absent }}<span class="dash-kpi-of"> + {{ attendance_kpis.unrecorded }} not in yet</span></div>
         <div class="dash-kpi-lbl">Absent today</div>
       </div>
     </div>
   </div>
 
+  {% if attendance_kpis.away or attendance_kpis.holiday %}
+    <p class="dash-subhead-note mb-4">
+      Also today: {{ attendance_kpis.on_leave }} on approved leave, {{ attendance_kpis.excused }} excused,
+      {{ attendance_kpis.holiday }} on holiday — counted as present
+      ({{ attendance_kpis.credited }} of {{ attendance_kpis.total_staff }} staff counted{% if attendance_kpis.credited_pct is not None %}, {{ attendance_kpis.credited_pct }}%{% endif %}).
+    </p>
+  {% endif %}
+
   <div class="dash-grid dash-grid-2-1">
     <div>
       <div class="dash-card-head mb-2">
         <div>
-          <h3 class="dash-subhead-title">Attendance rate — last 30 days</h3>
-          <p class="dash-subhead-note">% of recorded staff present per day</p>
+          <h3 class="dash-subhead-title">Attendance rate — completed working days</h3>
+          <p class="dash-subhead-note">% of people recorded that day. Days with no records, weekends and holidays are skipped; today is excluded until the day is over.</p>
         </div>
       </div>
       {% if attendance_charts.trend.labels %}
@@ -50,8 +67,12 @@
           {{ attendance_charts.trend|json_script:"chart-att-trend" }}
           <canvas></canvas>
         </div>
+        <div class="dash-chart-legend">
+          <span><i class="swatch swatch-emerald"></i>Came to work (present + late)</span>
+          <span><i class="swatch swatch-indigo"></i>Counted (incl. approved leave, excused, holiday)</span>
+        </div>
       {% else %}
-        <div class="dash-empty"><p>No attendance trend data yet.</p></div>
+        <div class="dash-empty"><p>No completed working days with attendance data yet.</p></div>
       {% endif %}
     </div>
 
@@ -59,7 +80,7 @@
       <div class="dash-card-head mb-2">
         <div>
           <h3 class="dash-subhead-title">By department</h3>
-          <p class="dash-subhead-note">Last 30 days, by status</p>
+          <p class="dash-subhead-note">Share of recorded staff-days, last {{ attendance_window_days }} days</p>
         </div>
       </div>
       {% if attendance_charts.by_dept.labels %}
@@ -70,8 +91,8 @@
         <div class="dash-chart-legend">
           <span><i class="swatch swatch-emerald"></i>Present</span>
           <span><i class="swatch swatch-amber"></i>Late</span>
+          <span><i class="swatch swatch-indigo"></i>Excused / leave / holiday</span>
           <span><i class="swatch swatch-red"></i>Absent</span>
-          <span><i class="swatch swatch-indigo"></i>Excused</span>
         </div>
       {% else %}
         <div class="dash-empty"><p>No per-department attendance yet.</p></div>
@@ -85,26 +106,31 @@
         <thead>
           <tr>
             <th>Department</th>
+            <th class="text-end">Staff</th>
             <th class="text-end">Present</th>
             <th class="text-end">Late</th>
             <th class="text-end">Absent</th>
-            <th class="text-end">Excused</th>
-            <th class="text-end">Attendance</th>
+            <th class="text-end" title="Excused + on approved leave + holiday">Excused / leave / holiday</th>
+            <th class="text-end" title="Present + late, over staff-days">Came</th>
+            <th class="text-end" title="Present + late + excused + leave + holiday, over staff-days">Counted</th>
           </tr>
         </thead>
         <tbody>
           {% for r in attendance_depts %}
             <tr>
               <td>
-                <a class="link-plain" href="{% url 'attendance:department' %}?department={{ r.department.pk }}"
-                  >
+                {% if attendance_scope == "all" %}
+                  <a class="link-plain" href="{% url 'attendance:department' %}?department={{ r.department.pk }}"><strong>{{ r.department.name }}</strong></a>
+                {% else %}
                   <strong>{{ r.department.name }}</strong>
-                </a>
+                {% endif %}
               </td>
+              <td class="text-end">{{ r.staff }}</td>
               <td class="text-end">{{ r.present }}</td>
               <td class="text-end">{% if r.late %}<span class="text-warning fw-semibold">{{ r.late }}</span>{% else %}—{% endif %}</td>
               <td class="text-end">{% if r.absent %}<span class="text-danger fw-semibold">{{ r.absent }}</span>{% else %}—{% endif %}</td>
-              <td class="text-end">{% if r.excused %}{{ r.excused }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if r.away %}{{ r.away }}{% else %}—{% endif %}</td>
+              <td class="text-end">{{ r.came_pct }}%</td>
               <td class="text-end">
                 <span class="dash-badge {% if r.pct >= 90 %}dash-badge-success{% elif r.pct >= 75 %}dash-badge-warn{% else %}dash-badge-danger{% endif %}">
                   {{ r.pct }}%
@@ -113,7 +139,25 @@
             </tr>
           {% endfor %}
         </tbody>
+        {% if attendance_scope == "all" and attendance_total %}
+          <tfoot>
+            <tr>
+              <td><strong>Directorate</strong></td>
+              <td class="text-end"><strong>{{ attendance_total.staff }}</strong></td>
+              <td class="text-end"><strong>{{ attendance_total.present }}</strong></td>
+              <td class="text-end"><strong>{{ attendance_total.late }}</strong></td>
+              <td class="text-end"><strong>{{ attendance_total.absent }}</strong></td>
+              <td class="text-end"><strong>{{ attendance_total.away }}</strong></td>
+              <td class="text-end"><strong>{{ attendance_total.came_pct }}%</strong></td>
+              <td class="text-end"><strong>{{ attendance_total.pct }}%</strong></td>
+            </tr>
+          </tfoot>
+        {% endif %}
       </table>
+      <p class="dash-subhead-note mt-2">
+        Figures are recorded staff-days over completed working days. A day with no attendance record is not counted at all; approved leave, excused days and holidays count as present in "Counted" but not in "Came".
+      </p>
     </div>
   {% endif %}
 </section>
+{% endif %}

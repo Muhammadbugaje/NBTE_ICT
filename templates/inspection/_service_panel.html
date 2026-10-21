@@ -1,0 +1,18 @@
+{% load qa_tags %}
+{% include "inspection/_subnav.html" with section="service" %}
+<header class="qa-hero"><div><span class="qa-eyebrow">{% icon "clock" 14 "2.4" %} §9 — derived, append-only</span><h1 data-qa-focus>Service history</h1>
+  <p>Who served, when, where and how often. Rows are written when a visit is recorded (attendees only) and when an SSQ review completes. A corrected attendance writes a compensating row; history is never edited.</p>
+  {% if can_export %}<div class="qa-hero__actions"><a class="btn btn-subtle" href="{% url 'qa_insp:service_export' %}?{{ request.GET.urlencode }}">{% icon "download" 16 %} Export (Excel)</a></div>{% endif %}</div></header>
+<section class="qa-card" aria-label="Service history">
+  <form class="qa-toolbar qa-toolbar--wrap" role="search" hx-get="{% url 'qa_insp:service' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Person</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Person" autocomplete="off"></label>
+    <input class="input qa-select" type="search" name="institution" value="{{ filters.institution|default:'' }}" placeholder="Institution" aria-label="Institution">
+    <input class="input qa-select" type="search" name="programme" value="{{ filters.programme|default:'' }}" placeholder="Programme" aria-label="Programme">
+    <select class="input qa-select" name="discipline" aria-label="Discipline"><option value="">Any discipline</option>{% for d in disciplines %}<option value="{{ d.code }}"{% if filters.discipline == d.code %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="duty" aria-label="Duty"><option value="">Any duty</option>{% for v, l in duties %}<option value="{{ v }}"{% if filters.duty == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="person_type" aria-label="Who">{% for v, l in person_types %}<option value="{{ v }}"{% if filters.person_type == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <label class="qa-inline-date"><span>From</span><input class="input" type="date" name="from" value="{{ filters.from|default:'' }}"></label>
+    <label class="qa-inline-date"><span>To</span><input class="input" type="date" name="to" value="{{ filters.to|default:'' }}"></label>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "inspection/_service_rows.html" %}</div>
+</section>

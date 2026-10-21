@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Min
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -17,7 +17,7 @@ from django.urls import reverse
 
 from accounts.models import User
 
-from . import services
+from . import access, services
 from .forms import ManualEditForm, ReportFilterForm, UploadMatrixForm
 from .models import AttendanceLocation, AttendanceRecord
 from .services import is_working_day
@@ -29,49 +29,25 @@ PER_PAGE = 30
 # Permission helpers
 # ===========================================================================
 def _is_director(user):
-    return bool(
-        user.is_authenticated
-        and user.department_id
-        and user.role_id
-        and user.role.code in (
-            "director", "deputy-director",
-            "office-head-admin", "office-head-ts", "office-head-dev",
-        )
-    )
+    return access.is_director(user)
 
 
 def _can_view_all_attendance(user):
-    """Cross-department attendance access.
+    """Cross-department attendance access (see attendance/access.py).
 
-    Only:
-      - superusers
-      - the Super Admin role
-      - the Executive Secretary role
-      - anyone explicitly granted `accounts.access_all_departments`
-
-    A plain Director or Deputy Director is NOT included — they see only
-    their own department. To grant one of them cross-department access,
-    give them the `accounts.access_all_departments` permission.
+    Super admin automatically; everyone else (Executive Secretary, HR, a
+    director given the right...) needs `attendance.view_all_attendance`.
+    `accounts.access_all_departments` no longer grants this: every director
+    role carries it, which let every director see every department.
     """
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    if user.role_id and user.role.code in {"super-admin", "executive-secretary"}:
-        return True
-    return user.has_perm("accounts.access_all_departments")
+    return access.can_view_all_attendance(user)
 
 
 def _can_view_department(user, department):
-    if user.is_superuser:
-        return True
-    if _can_view_all_attendance(user):
-        return department is not None
-    if not user.department_id or department is None:
-        return False
-    if user.department_id != getattr(department, "pk", department):
-        return False
-    return _is_director(user)
+    """Own-department access: that department's director / deputy / office
+    head, or a holder of `attendance.view_department_attendance`. Viewing
+    another department needs the all-departments permission."""
+    return access.can_view_department(user, department)
 
 
 def _can_upload(user):
@@ -107,6 +83,13 @@ def _backfill_absent_range(users, start, end, actor=None):
 
     today = timezone.localdate()
     latest = min(end, today - timedelta(days=1))
+
+    # Never invent absences from before attendance was being recorded: start
+    # no earlier than the first attendance record that exists at all.
+    first_recorded = AttendanceRecord.objects.aggregate(m=Min("date"))["m"]
+    if first_recorded is None:
+        return 0
+    start = max(start, first_recorded)
     if start > latest:
         return 0
 
@@ -176,7 +159,7 @@ def attendance_home(request):
     """Personal landing page. Shows today's status, this month's calendar,
     and quick stats."""
     today = timezone.localdate()
-    is_working = services.is_working_day(today)
+    is_working = not services.non_working_reason(today, request.user)
 
     today_record = AttendanceRecord.objects.filter(
         user=request.user, date=today,
@@ -267,7 +250,7 @@ def _month_grid(user, year, month):
 @login_required
 def check_in_page(request):
     today = timezone.localdate()
-    is_working = services.is_working_day(today)
+    is_working = not services.non_working_reason(today, request.user)
     today_record = AttendanceRecord.objects.filter(
         user=request.user, date=today,
     ).first()
@@ -434,7 +417,8 @@ def my_attendance(request):
     qs = (
         AttendanceRecord.objects
         .filter(user=user, date__gte=first_day, date__lte=last_day)
-        .select_related("location")
+        .select_related("location", "recorded_by", "leave_application__request")
+        .prefetch_related("leave_application__request__approvals__actor")
         .order_by("-date")
     )
 
@@ -444,27 +428,31 @@ def my_attendance(request):
     # ---- Pagination ---------------------------------------------------------
     paginator = Paginator(qs, 25)
     page = paginator.get_page(request.GET.get("page") or 1)
+    # Say *who approved* an approved-leave day (and who excused an excused day).
+    page.object_list = list(page.object_list)
+    for rec in page.object_list:
+        rec.detail = (
+            services.record_detail(rec)
+            if rec.status in services.NEUTRAL_STATUSES else ""
+        )
 
     # ---- 90-day stats (always "last 90 days") ------------------------------
     ninety_days_ago = today - timedelta(days=90)
     recent = AttendanceRecord.objects.filter(
         user=user, date__gte=ninety_days_ago, date__lte=today,
     )
-    present = recent.filter(status=AttendanceRecord.PRESENT).count()
-    late    = recent.filter(status=AttendanceRecord.LATE).count()
-    absent  = recent.filter(status=AttendanceRecord.ABSENT).count()
-    excused = recent.filter(status=AttendanceRecord.EXCUSED).count()
-    on_leave = recent.filter(status=AttendanceRecord.ON_LEAVE).count()
-    counted = present + late + absent + excused
-    present_pct = round((present / counted) * 100) if counted else 0
-
+    # Excused, holiday and approved-leave days are credited like present days.
+    t = services.summarize_period([user], ninety_days_ago, today, today=today)[user.pk]
     stats = {
-        "present": present,
-        "late": late,
-        "absent": absent,
-        "excused": excused,
-        "on_leave": on_leave,
-        "present_pct": present_pct,
+        "present": t["present"],
+        "late": t["late"],
+        "absent": t["absent"],
+        "excused": t["excused"],
+        "holiday": t["holiday"],
+        "on_leave": t["on_leave"],
+        "credited": t["credited"],
+        "expected": t["expected"],
+        "present_pct": t["pct"],
     }
 
     years_with_data = list(
@@ -559,11 +547,7 @@ def department_report(request):
     # Auto-mark past working days as absent, in scope, before we compute rows.
     _backfill_absent_range(staff, first_day, last_day, actor=request.user)
 
-    records = (
-        AttendanceRecord.objects
-        .filter(user__in=staff, date__gte=first_day, date__lte=last_day)
-        .select_related("location")
-    )
+    records = services.period_records(staff, first_day, last_day)
 
     by_user = {}
     for r in records:
@@ -576,24 +560,14 @@ def department_report(request):
     working_days_total = sum(1 for d in range_days if is_working_day(d))
 
     # ---- Rows ---------------------------------------------------------------
+    # Present + Late = attended. Excused / Holiday / On approved leave are not
+    # attendance but are credited exactly like it (see services.summarize_period).
+    tallies = services.summarize_period(staff, first_day, last_day, records=records)
+    NEUTRAL = services.NEUTRAL_STATUSES
     rows = []
     for u in staff:
         user_records = by_user.get(u.pk, {})
-
-        present = late = absent = excused = holiday = on_leave = 0
-        for rec in user_records.values():
-            if rec.status == AttendanceRecord.PRESENT:
-                present += 1
-            elif rec.status == AttendanceRecord.LATE:
-                late += 1
-            elif rec.status == AttendanceRecord.ABSENT:
-                absent += 1
-            elif rec.status == AttendanceRecord.EXCUSED:
-                excused += 1
-            elif rec.status == AttendanceRecord.HOLIDAY:
-                holiday += 1
-            elif rec.status == AttendanceRecord.ON_LEAVE:
-                on_leave += 1
+        t = tallies[u.pk]
 
         cells = []
         if month:
@@ -602,32 +576,40 @@ def department_report(request):
                 day = date_cls(year, month, d)
                 rec = user_records.get(d)
                 if rec is None:
-                    cells.append({
-                        "date": day,
-                        "record": None,
-                        "status": "" if is_working_day(day) else "off",
-                    })
+                    if day in t["holiday_dates"]:
+                        cells.append({"date": day, "record": None,
+                                      "status": AttendanceRecord.HOLIDAY,
+                                      "detail": "Holiday"})
+                    else:
+                        cells.append({
+                            "date": day,
+                            "record": None,
+                            "status": "" if is_working_day(day) else "off",
+                            "detail": "",
+                        })
                 else:
                     cells.append({
                         "date": day,
                         "record": rec,
                         "status": rec.status,
+                        "detail": services.record_detail(rec) if rec.status in NEUTRAL else "",
                     })
-
-        total_expected = working_days_total - holiday - on_leave or 1
-        pct = round(((present + late) / total_expected) * 100) if total_expected else 0
 
         rows.append({
             "user": u,
             "cells": cells,
-            "present": present,
-            "late": late,
-            "absent": absent,
-            "excused": excused,
-            "holiday": holiday,
-            "on_leave": on_leave,
-            "pct": pct,
+            "present": t["present"],
+            "late": t["late"],
+            "absent": t["absent"],
+            "excused": t["excused"],
+            "holiday": t["holiday"],
+            "on_leave": t["on_leave"],
+            "credited": t["credited"],
+            "expected": t["expected"],
+            "pct": t["pct"],
         })
+
+    dept_total = services.combine_tallies([tallies[u.pk] for u in staff])
 
     # ---- Day headers --------------------------------------------------------
     if month:
@@ -683,6 +665,7 @@ def department_report(request):
         "today": today,
         "working_days": working_days_total,
         "staff_count": len(staff),
+        "dept_total": dept_total,
         "can_upload": _can_upload(request.user),
         "can_view_all": _can_view_all_attendance(request.user),
         "departments": departments,
@@ -732,6 +715,17 @@ def upload_matrix(request):
                 f"Upload applied — {result.created} new, {result.updated} updated, "
                 f"{result.skipped} skipped."
             )
+            c = result.counts
+            if c:
+                messages.info(
+                    request,
+                    "Days recorded: "
+                    f"{c.get('present', 0)} present, {c.get('late', 0)} late, "
+                    f"{c.get('absent', 0)} absent, {c.get('excused', 0)} excused, "
+                    f"{c.get('holiday', 0)} holiday — "
+                    f"{result.credited} credited (present, late, excused and holiday "
+                    "days all count towards attendance)."
+                )
             if result.errors:
                 messages.warning(request, f"{len(result.errors)} row(s) had issues.")
 
@@ -833,13 +827,82 @@ def manual_edit(request, pk):
 # ===========================================================================
 # Exports
 # ===========================================================================
+def _export_department(request):
+    """Department an export is for: the one picked on the report page for
+    all-departments viewers, otherwise the user's own. Raises PermissionDenied
+    unless the user may view it."""
+    from staff.models import Department
+
+    dept = request.user.department
+    if _can_view_all_attendance(request.user):
+        raw = request.GET.get("department")
+        try:
+            picked = (Department.objects.filter(pk=int(raw), is_active=True).first()
+                      if raw else None)
+        except (TypeError, ValueError):
+            picked = None
+        dept = picked or dept or Department.objects.filter(is_active=True).first()
+    if dept is None or not _can_view_department(request.user, dept):
+        raise PermissionDenied("You don't have permission to export this department.")
+    return dept
+
+
+def _credited_detail_rows(records):
+    """Excused / holiday / approved-leave records (working days that have
+    already happened), sorted by person then date, for the detail tables."""
+    today = timezone.localdate()
+    rows = [
+        r for r in records
+        if r.status in services.NEUTRAL_STATUSES
+        and is_working_day(r.date) and r.date <= today
+    ]
+    rows.sort(key=lambda r: ((r.user.get_full_name() or r.user.email).lower(), r.date))
+    return rows
+
+
+def _excel_detail_sheet(wb, records, header_fill, header_font, border):
+    """Second sheet: excused / holiday / approved-leave stretches, one row per
+    unbroken run with the same approver, so the summary numbers can be traced."""
+    from openpyxl.styles import Alignment
+
+    ws = wb.create_sheet("Leave, excused & holiday")
+    headers = ["Name", "Email", "From", "To", "Days", "Status",
+               "Approved / recorded by", "Notes"]
+    for i, h in enumerate(headers, start=1):
+        c = ws.cell(row=1, column=i, value=h)
+        c.fill = header_fill
+        c.font = header_font
+        c.border = border
+        c.alignment = Alignment(horizontal="left", vertical="center")
+
+    r_idx = 2
+    for g in services.group_credited_days(_credited_detail_rows(records)):
+        vals = [
+            g["user"].get_full_name() or g["user"].email,
+            g["user"].email,
+            g["start"].strftime("%a %d %b %Y"),
+            g["end"].strftime("%a %d %b %Y"),
+            g["days"],
+            g["status_label"],
+            g["authority"],
+            g["notes_text"],
+        ]
+        for col, v in enumerate(vals, start=1):
+            c = ws.cell(row=r_idx, column=col, value=v)
+            c.border = border
+            c.alignment = Alignment(horizontal="left", vertical="center")
+        r_idx += 1
+
+    for col, w in zip("ABCDEFGH", (28, 34, 16, 16, 7, 20, 28, 40)):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A2"
+    return ws
+
+
 @login_required
 def export_excel(request):
     """Export the current user's department attendance as .xlsx."""
-    if not _can_view_department(request.user, request.user.department):
-        raise PermissionDenied("Only department directors can export attendance.")
-
-    dept = request.user.department
+    dept = _export_department(request)
     today = timezone.localdate()
 
     year = services._valid_year(request.GET.get("year"), today.year)
@@ -864,15 +927,8 @@ def export_excel(request):
     # Backfill missing past days before exporting.
     _backfill_absent_range(staff, first_day, last_day, actor=request.user)
 
-    records = (
-        AttendanceRecord.objects
-        .filter(user__in=staff, date__gte=first_day, date__lte=last_day)
-        .select_related("user", "location")
-    )
-
-    by_user = {}
-    for r in records:
-        by_user.setdefault(r.user_id, {})[r.date] = r
+    records = services.period_records(staff, first_day, last_day)
+    tallies = services.summarize_period(staff, first_day, last_day, records=records)
 
     try:
         from openpyxl import Workbook
@@ -886,6 +942,7 @@ def export_excel(request):
     ws.title = f"{dept.code or 'export'}-{year}"[:31]
 
     header_fill = PatternFill(start_color="1F6B3E", end_color="1F6B3E", fill_type="solid")
+    total_fill  = PatternFill(start_color="E8F3EE", end_color="E8F3EE", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True, size=11)
     border = Border(
         left=Side(style="thin", color="D9DCE0"),
@@ -895,50 +952,72 @@ def export_excel(request):
     )
     center = Alignment(horizontal="center", vertical="center")
 
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+    headers = ["Email", "Name", "Present", "Late", "Absent", "Excused",
+               "Holiday", "On approved leave", "Credited total",
+               "Recorded days counted", "Attendance %"]
+
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
     c = ws.cell(row=1, column=1,
                 value=f"{dept.name} — attendance for {period_label}")
     c.font = Font(bold=True, size=12, color="1F6B3E")
     c.alignment = Alignment(horizontal="left", vertical="center")
 
-    headers = ["Email", "Name", "Present", "Late", "Absent", "Attendance %"]
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+    c = ws.cell(
+        row=2, column=1,
+        value=("Credited total = Present + Late + Excused + Holiday + On approved leave. "
+               "Excused, holiday and approved-leave days count as if present; only "
+               "Absent days are not credited. Only days with an attendance record "
+               "are counted (no record = not counted). Attendance % = Credited "
+               "total / Recorded days counted."),
+    )
+    c.font = Font(italic=True, size=9, color="64748B")
+    c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    ws.row_dimensions[2].height = 30
+
     for i, h in enumerate(headers, start=1):
         cell = ws.cell(row=3, column=i, value=h)
         cell.fill = header_fill
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="left", vertical="center")
+        cell.alignment = Alignment(horizontal="left" if i <= 2 else "center",
+                                   vertical="center", wrap_text=True)
         cell.border = border
+    ws.row_dimensions[3].height = 32
 
-    for r_idx, u in enumerate(staff, start=4):
-        user_recs = by_user.get(u.pk, {})
-        present = late = absent = 0
-        for rec in user_recs.values():
-            if rec.status == AttendanceRecord.PRESENT:
-                present += 1
-            elif rec.status == AttendanceRecord.LATE:
-                late += 1
-            elif rec.status == AttendanceRecord.ABSENT:
-                absent += 1
+    def _row_vals(t):
+        return [t["present"], t["late"], t["absent"], t["excused"],
+                t["holiday"], t["on_leave"], t["credited"], t["expected"],
+                t["pct"]]
 
-        total = present + late + absent or 1
-        pct = round(((present + late) / total) * 100)
-
-        row_vals = [
-            u.email,
-            u.get_full_name() or u.email,
-            present, late, absent, pct,
-        ]
+    r_idx = 4
+    for u in staff:
+        t = tallies[u.pk]
+        row_vals = [u.email, u.get_full_name() or u.email] + _row_vals(t)
         for col_idx, val in enumerate(row_vals, start=1):
             cell = ws.cell(row=r_idx, column=col_idx, value=val)
             cell.border = border
-            cell.alignment = Alignment(horizontal="left", vertical="center")
+            cell.alignment = (Alignment(horizontal="left", vertical="center")
+                              if col_idx <= 2 else center)
+        r_idx += 1
+
+    # Department aggregate row.
+    agg = services.combine_tallies([tallies[u.pk] for u in staff])
+    agg_vals = ["", f"Department total ({len(staff)} staff)"] + _row_vals(agg)
+    for col_idx, val in enumerate(agg_vals, start=1):
+        cell = ws.cell(row=r_idx, column=col_idx, value=val)
+        cell.border = border
+        cell.fill = total_fill
+        cell.font = Font(bold=True)
+        cell.alignment = (Alignment(horizontal="left", vertical="center")
+                          if col_idx <= 2 else center)
 
     ws.column_dimensions["A"].width = 34
     ws.column_dimensions["B"].width = 28
-    for col in "CDEF":
-        ws.column_dimensions[col].width = 12
-
+    for i in range(3, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(i)].width = 14
     ws.freeze_panes = "A4"
+
+    _excel_detail_sheet(wb, records, header_fill, header_font, border)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -960,10 +1039,7 @@ def export_excel(request):
 @login_required
 def export_pdf(request):
     """Export the current user's department attendance as a PDF."""
-    if not _can_view_department(request.user, request.user.department):
-        raise PermissionDenied("Only department directors can export.")
-
-    dept = request.user.department
+    dept = _export_department(request)
     today = timezone.localdate()
 
     year = services._valid_year(request.GET.get("year"), today.year)
@@ -1171,46 +1247,99 @@ def export_pdf(request):
 
     story.append(Paragraph("Per-staff summary", section_style))
 
+    cell_c = ParagraphStyle("CellC", parent=cell_style, alignment=1)
+    head_c = ParagraphStyle("HeadC", parent=cell_head, alignment=1)
+
+    def _num_row(label, r, bold=False):
+        def P(txt, st):
+            return Paragraph(f"<b>{txt}</b>" if bold else str(txt), st)
+        return [
+            P(label, cell_style),
+            P(r["present"], cell_c), P(r["late"], cell_c), P(r["absent"], cell_c),
+            P(r["excused"], cell_c), P(r["holiday"], cell_c),
+            P(r["on_leave"], cell_c), P(r["credited"], cell_c),
+            P(f"{r['pct']}%", cell_c),
+        ]
+
     rows = [[
         Paragraph("Staff", cell_head),
-        Paragraph("Present", cell_head),
-        Paragraph("Late", cell_head),
-        Paragraph("Absent", cell_head),
-        Paragraph("Attendance %", cell_head),
+        Paragraph("Present", head_c),
+        Paragraph("Late", head_c),
+        Paragraph("Absent", head_c),
+        Paragraph("Excused", head_c),
+        Paragraph("Holiday", head_c),
+        Paragraph("Leave", head_c),
+        Paragraph("Credited", head_c),
+        Paragraph("Att. %", head_c),
     ]]
     for row in summary["users"]:
-        rows.append([
-            Paragraph(row["user"].get_full_name() or row["user"].email, cell_style),
-            Paragraph(str(row["present"]), cell_style),
-            Paragraph(str(row["late"]), cell_style),
-            Paragraph(str(row["absent"]), cell_style),
-            Paragraph(f"{row['pct']}%", cell_style),
-        ])
+        rows.append(_num_row(row["user"].get_full_name() or row["user"].email, row))
+    total = summary["total"]
+    rows.append(_num_row(f"Department total ({len(summary['users'])})", total, bold=True))
 
-    t = Table(rows, colWidths=[7.2 * cm, 2.3 * cm, 2.3 * cm, 2.3 * cm, 3.5 * cm], repeatRows=1)
+    t = Table(
+        rows,
+        colWidths=[4.4 * cm, 1.55 * cm, 1.3 * cm, 1.45 * cm, 1.6 * cm,
+                   1.55 * cm, 1.3 * cm, 1.75 * cm, 2.1 * cm],
+        repeatRows=1,
+    )
     t.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, 0), HexColor(GREEN)),
         ("TEXTCOLOR",     (0, 0), (-1, 0), white),
         ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE",      (0, 0), (-1, -1), 9),
-        ("ALIGN",         (1, 1), (-1, -1), "CENTER"),
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING",    (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("GRID",          (0, 0), (-1, -1), 0.25, HexColor(BORDER)),
-        ("ROWBACKGROUNDS",(0, 1), (-1, -1), [white, HexColor("#F8FAFC")]),
+        ("ROWBACKGROUNDS",(0, 1), (-1, -2), [white, HexColor("#F8FAFC")]),
+        ("BACKGROUND",    (0, -1), (-1, -1), HexColor("#E8F3EE")),
     ]))
     story.append(t)
 
-    story.append(Spacer(1, 18))
+    story.append(Spacer(1, 12))
     legend = Paragraph(
         "<b>Legend:</b> Present = on time, Late = after grace window, "
-        "Absent = no record or marked absent. "
-        "Attendance % is presence over the working days in the period, "
-        "excluding holidays.",
+        "Absent = no record or marked absent, Excused, Holiday and Leave "
+        "(approved leave) = day away that is counted as if present. "
+        "<b>Credited</b> = Present + Late + Excused + Holiday + Leave. "
+        "<b>Att. %</b> = Credited over the recorded days in the period; only "
+        "Absent days lower it. Days with no attendance record are not counted.",
         cell_style,
     )
     story.append(legend)
+
+    groups = summary.get("detail_groups") or []
+    if groups:
+        story.append(Spacer(1, 16))
+        story.append(Paragraph(
+            "Excused, holiday and approved-leave days", section_style))
+        drows = [[
+            Paragraph("Staff", cell_head),
+            Paragraph("Dates", cell_head),
+            Paragraph("Days", head_c),
+            Paragraph("Status", cell_head),
+            Paragraph("Approved / recorded by", cell_head),
+        ]]
+        for g in groups:
+            drows.append([
+                Paragraph(g["user"].get_full_name() or g["user"].email, cell_style),
+                Paragraph(g["dates"], cell_style),
+                Paragraph(str(g["days"]), cell_c),
+                Paragraph(g["status_label"], cell_style),
+                Paragraph(g["authority"] or "—", cell_style),
+            ])
+        dt = Table(drows, colWidths=[3.9 * cm, 5.3 * cm, 1.2 * cm, 2.9 * cm, 3.7 * cm],
+                   repeatRows=1)
+        dt.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), HexColor(GREEN)),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("GRID",          (0, 0), (-1, -1), 0.25, HexColor(BORDER)),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [white, HexColor("#F8FAFC")]),
+        ]))
+        story.append(dt)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -1387,14 +1516,7 @@ def all_departments_report(request):
     # Auto-mark past working days as absent for everyone in scope.
     _backfill_absent_range(all_users, first_day, last_day, actor=request.user)
 
-    records = (
-        AttendanceRecord.objects
-        .filter(user__in=all_users, date__gte=first_day, date__lte=last_day)
-        .select_related("location")
-    )
-    by_user = {}
-    for r in records:
-        by_user.setdefault(r.user_id, {})[r.date] = r
+    records = services.period_records(all_users, first_day, last_day)
 
     range_days = [
         first_day + timedelta(days=i)
@@ -1402,35 +1524,22 @@ def all_departments_report(request):
     ]
     working_days_total = sum(1 for d in range_days if is_working_day(d))
 
+    tallies = services.summarize_period(all_users, first_day, last_day, records=records)
+
     flat = []
     for u in all_users:
-        user_recs = by_user.get(u.pk, {})
-        present = late = absent = excused = holiday = on_leave = 0
-        for rec in user_recs.values():
-            s = rec.status
-            if s == AttendanceRecord.PRESENT:
-                present += 1
-            elif s == AttendanceRecord.LATE:
-                late += 1
-            elif s == AttendanceRecord.ABSENT:
-                absent += 1
-            elif s == AttendanceRecord.EXCUSED:
-                excused += 1
-            elif s == AttendanceRecord.HOLIDAY:
-                holiday += 1
-            elif s == AttendanceRecord.ON_LEAVE:
-                on_leave += 1
-        total_expected = working_days_total - holiday - on_leave or 1
-        pct = round(((present + late) / total_expected) * 100) if total_expected else 0
+        t = tallies[u.pk]
         flat.append({
             "user": u,
-            "present": present,
-            "late": late,
-            "absent": absent,
-            "excused": excused,
-            "holiday": holiday,
-            "on_leave": on_leave,
-            "pct": pct,
+            "present": t["present"],
+            "late": t["late"],
+            "absent": t["absent"],
+            "excused": t["excused"],
+            "holiday": t["holiday"],
+            "on_leave": t["on_leave"],
+            "credited": t["credited"],
+            "expected": t["expected"],
+            "pct": t["pct"],
         })
 
     grouped = []
@@ -1438,34 +1547,17 @@ def all_departments_report(request):
         dept_rows = [r for r in flat if r["user"].department_id == dept.pk]
         if not dept_rows:
             continue
-        agg = {
-            "present": sum(r["present"] for r in dept_rows),
-            "late":    sum(r["late"]    for r in dept_rows),
-            "absent":  sum(r["absent"]  for r in dept_rows),
-            "excused": sum(r["excused"] for r in dept_rows),
-            "holiday": sum(r["holiday"] for r in dept_rows),
-            "on_leave": sum(r["on_leave"] for r in dept_rows),
-        }
-        denom = agg["present"] + agg["late"] + agg["absent"] + agg["excused"] or 1
-        agg_pct = round(((agg["present"] + agg["late"]) / denom) * 100)
+        agg = services.combine_tallies([tallies[r["user"].pk] for r in dept_rows])
         grouped.append({
             "department": dept,
             "rows": dept_rows,
             "staff_count": len(dept_rows),
             "aggregate": agg,
-            "aggregate_pct": agg_pct,
+            "aggregate_pct": agg["pct"],
         })
 
-    totals = {
-        "staff":   len(flat),
-        "present": sum(r["present"] for r in flat),
-        "late":    sum(r["late"]    for r in flat),
-        "absent":  sum(r["absent"]  for r in flat),
-        "excused": sum(r["excused"] for r in flat),
-        "on_leave": sum(r["on_leave"] for r in flat),
-    }
-    grand_denom = totals["present"] + totals["late"] + totals["absent"] + totals["excused"] or 1
-    totals["pct"] = round(((totals["present"] + totals["late"]) / grand_denom) * 100)
+    totals = services.combine_tallies(tallies.values())
+    totals["staff"] = len(flat)
 
     years_with_data = list(
         AttendanceRecord.objects
@@ -1545,19 +1637,8 @@ def export_all_excel(request):
     # Backfill missing past working days before exporting.
     _backfill_absent_range(all_users, first_day, last_day, actor=request.user)
 
-    records = (
-        AttendanceRecord.objects
-        .filter(user__in=all_users, date__gte=first_day, date__lte=last_day)
-    )
-    by_user = {}
-    for r in records:
-        by_user.setdefault(r.user_id, {})[r.date] = r
-
-    range_days = [
-        first_day + timedelta(days=i)
-        for i in range((last_day - first_day).days + 1)
-    ]
-    working_days_total = sum(1 for d in range_days if is_working_day(d))
+    records = services.period_records(all_users, first_day, last_day)
+    tallies = services.summarize_period(all_users, first_day, last_day, records=records)
 
     try:
         from openpyxl import Workbook
@@ -1580,22 +1661,56 @@ def export_all_excel(request):
         bottom=Side(style="thin", color="D9DCE0"),
     )
     center = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center")
 
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=9)
+    headers = ["Department", "Email", "Name",
+               "Present", "Late", "Absent", "Excused", "Holiday",
+               "On approved leave", "Credited total",
+               "Recorded days counted", "Attendance %"]
+
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
     c = ws.cell(row=1, column=1,
                 value=f"ICT Directorate — attendance for {period_label}")
     c.font = Font(bold=True, size=12, color="1F6B3E")
-    c.alignment = Alignment(horizontal="left", vertical="center")
+    c.alignment = left
     ws.row_dimensions[1].height = 22
 
-    headers = ["Department", "Email", "Name",
-               "Present", "Late", "Absent", "Excused", "On leave", "Attendance %"]
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+    c = ws.cell(
+        row=2, column=1,
+        value=("Credited total = Present + Late + Excused + Holiday + On approved leave. "
+               "Excused, holiday and approved-leave days count as if present; only "
+               "Absent days are not credited. Only days with an attendance record "
+               "are counted (no record = not counted). Attendance % = Credited "
+               "total / Recorded days counted."),
+    )
+    c.font = Font(italic=True, size=9, color="64748B")
+    c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    ws.row_dimensions[2].height = 30
+
     for i, h in enumerate(headers, start=1):
         cell = ws.cell(row=3, column=i, value=h)
         cell.fill = header_fill
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="left", vertical="center")
+        cell.alignment = Alignment(horizontal="left" if i <= 3 else "center",
+                                   vertical="center", wrap_text=True)
         cell.border = border
+    ws.row_dimensions[3].height = 32
+
+    def _nums(t):
+        return [t["present"], t["late"], t["absent"], t["excused"],
+                t["holiday"], t["on_leave"], t["credited"], t["expected"],
+                t["pct"]]
+
+    def _write(r, vals, bold=False, fill=None):
+        for col_idx, val in enumerate(vals, start=1):
+            cell = ws.cell(row=r, column=col_idx, value=val)
+            cell.border = border
+            cell.alignment = left if col_idx <= 3 else center
+            if bold:
+                cell.font = Font(bold=True)
+            if fill is not None:
+                cell.fill = fill
 
     r_idx = 4
     for dept in departments:
@@ -1609,47 +1724,33 @@ def export_all_excel(request):
                     value=f"{dept.name} · {len(dept_users)} staff")
         c.fill = group_fill
         c.font = group_font
-        c.alignment = Alignment(horizontal="left", vertical="center")
+        c.alignment = left
         for col in range(1, len(headers) + 1):
             ws.cell(row=r_idx, column=col).border = border
         r_idx += 1
 
         for u in dept_users:
-            user_recs = by_user.get(u.pk, {})
-            present = late = absent = excused = on_leave = 0
-            for rec in user_recs.values():
-                s = rec.status
-                if s == AttendanceRecord.PRESENT:
-                    present += 1
-                elif s == AttendanceRecord.LATE:
-                    late += 1
-                elif s == AttendanceRecord.ABSENT:
-                    absent += 1
-                elif s == AttendanceRecord.EXCUSED:
-                    excused += 1
-                elif s == AttendanceRecord.ON_LEAVE:
-                    on_leave += 1
-            pct = round(((present + late) / (working_days_total - on_leave or 1)) * 100)
-
-            row_vals = [
-                dept.name, u.email, u.get_full_name() or u.email,
-                present, late, absent, excused, on_leave, pct,
-            ]
-            for col_idx, val in enumerate(row_vals, start=1):
-                cell = ws.cell(row=r_idx, column=col_idx, value=val)
-                cell.border = border
-                if col_idx >= 4:
-                    cell.alignment = center
-                else:
-                    cell.alignment = Alignment(horizontal="left", vertical="center")
+            _write(r_idx, [dept.name, u.email, u.get_full_name() or u.email]
+                   + _nums(tallies[u.pk]))
             r_idx += 1
+
+        dept_agg = services.combine_tallies([tallies[u.pk] for u in dept_users])
+        _write(r_idx, [dept.name, "", f"{dept.name} total"] + _nums(dept_agg),
+               bold=True, fill=group_fill)
+        r_idx += 1
+
+    grand = services.combine_tallies(tallies.values())
+    _write(r_idx, ["All departments", "", f"Directorate total ({len(all_users)} staff)"]
+           + _nums(grand), bold=True, fill=group_fill)
 
     ws.column_dimensions["A"].width = 26
     ws.column_dimensions["B"].width = 32
-    ws.column_dimensions["C"].width = 26
-    for col in "DEFGH":
-        ws.column_dimensions[col].width = 12
+    ws.column_dimensions["C"].width = 28
+    for col in "DEFGHIJKL":
+        ws.column_dimensions[col].width = 14
     ws.freeze_panes = "A4"
+
+    _excel_detail_sheet(wb, records, header_fill, header_font, border)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -1746,6 +1847,12 @@ def check_in_manual(request):
     from .forms import ManualCodeCheckInForm
 
     today = timezone.localdate()
+
+    # Same rule as GPS check-in: no attendance on a weekend, off day or holiday.
+    blocked = services.non_working_reason(today, request.user)
+    if blocked:
+        messages.info(request, blocked)
+        return redirect("attendance:home")
 
     if not code_service.manual_checkin_enabled():
         messages.info(

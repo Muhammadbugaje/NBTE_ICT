@@ -1,0 +1,11 @@
+{% load qa_tags %}
+{% if page.rows %}
+<ul class="qa-rowlist" role="list">{% for i in page.rows %}
+  <li><a class="qa-rowlink" href="{% url 'qa_insp:inspection' i.pk %}" hx-get="{% url 'qa_insp:inspection' i.pk %}" hx-target="#qa-panel" hx-push-url="true">
+    <span class="qa-rowlink__badge">{{ i.case.institution.code }}</span>
+    <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ i.case.institution.name }}</span>
+      <span class="qa-rowlink__meta"><span class="qa-mono">{{ i.reference }}</span><span>· {{ i.scheduled_start|date:"j M" }}–{{ i.scheduled_end|date:"j M Y" }}</span><span>· Team lead {{ i.team_lead|who }}</span></span></span>
+    <span class="qa-rowlink__side"><span class="qa-chip {{ i.status|tone }}">{% if i.status == "closed" %}Visit recorded{% else %}{{ i.status|humanize_code }}{% endif %}</span></span></a></li>
+{% endfor %}</ul>
+{% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "map" 28 %}</span><h3 class="nbte-empty-state__title">No inspections</h3><p class="nbte-empty-state__body">They appear when the ES approves a case's visit.</p></div>{% endif %}

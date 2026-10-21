@@ -1,0 +1,33 @@
+{% load qa_tags %}
+{% comment %}Phase 7: settings as grouped cards (one section per group, one row per setting).{% endcomment %}
+{% if page.rows %}
+  <div class="sh">
+  {% regroup page.rows by group as sections %}
+  {% for section in sections %}
+    <section class="sh-section" aria-labelledby="sh-group-{{ forloop.counter }}">
+      <header class="sh-section__head">
+        <div>
+          <h3 id="sh-group-{{ forloop.counter }}">{{ section.grouper|group_title }}</h3>
+          {% if section.grouper|group_blurb %}<p>{{ section.grouper|group_blurb }}</p>{% endif %}
+        </div>
+        <span class="qa-chip">{{ section.list|length }} setting{{ section.list|length|pluralize }}</span>
+      </header>
+      <div class="sh-section__body">
+        {% for e in section.list %}{% include "qa_core/settings/_rule_row.html" %}{% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+  </div>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state nbte-empty-state--filtered qa-empty" data-qa-announce="No rules match these filters">
+    <span class="nbte-empty-state__icon" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </span>
+    <h3 class="nbte-empty-state__title">No rules match these filters</h3>
+    <p class="nbte-empty-state__body">Try another word, or clear the filters to see every QA rule.</p>
+    <div class="nbte-empty-state__action">
+      <a class="btn btn-subtle" href="{% url 'qa:settings_rules' %}" hx-get="{% url 'qa:settings_rules' %}" hx-target="#qa-panel" hx-push-url="true">Clear filters</a>
+    </div>
+  </div>
+{% endif %}

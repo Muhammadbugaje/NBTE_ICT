@@ -1,0 +1,27 @@
+{% load qa_tags %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "check" 14 "2.4" %} Quality Assurance · SOP-02</span>
+    <h1 data-qa-focus>QA requests</h1>
+    <p>Approved institutions request accreditation, reaccreditation and the other QA types on the portal. A request moves through programme clearance (new programmes only), the QA fee and the self-study questionnaires; when every SSQ is in, a QA case opens.</p>
+    <div class="qa-hero__actions">
+      <a class="btn btn-primary" href="{% url 'qa_req:ssq_queue' %}" hx-get="{% url 'qa_req:ssq_queue' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "shield" 16 %} SSQ review queue</a>
+      <a class="btn btn-subtle" href="{% url 'qa_req:queries' %}" hx-get="{% url 'qa_req:queries' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "mail" 16 %} Queries</a>
+    </div>
+  </div>
+  <div class="qa-hero__stats">
+    <div class="qa-stat"><strong>{{ counts.total }}</strong><span>Visible to you</span></div>
+    <a class="qa-stat qa-stat--info qa-stat--link" href="?stage=clearance" hx-get="{% url 'qa_req:list' %}?stage=clearance" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.clearance }}</strong><span>Programme clearance</span></a>
+    <a class="qa-stat qa-stat--warn qa-stat--link" href="{% url 'qa_req:ssq_queue' %}" hx-get="{% url 'qa_req:ssq_queue' %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.ssq_waiting }}</strong><span>SSQs to review</span></a>
+    <a class="qa-stat qa-stat--link" href="{% url 'qa_req:queries' %}" hx-get="{% url 'qa_req:queries' %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.open_queries }}</strong><span>Open queries</span></a>
+  </div>
+</header>
+<section class="qa-card" aria-label="QA requests">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_req:list' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference, institution or code" autocomplete="off"></label>
+    <select class="input qa-select" name="stage" aria-label="Stage">{% for v, l in stages %}<option value="{{ v }}"{% if filters.stage == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="type" aria-label="QA type"><option value="">Any QA type</option>{% for t in types %}<option value="{{ t.code }}"{% if filters.type == t.code %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="fee_note" aria-label="Fee"><option value="">Any fee state</option><option value="yes"{% if filters.fee_note == "yes" %} selected{% endif %}>Fee not issued yet</option></select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "accreditation/qa/_rows.html" %}</div>
+</section>

@@ -1,0 +1,79 @@
+{% load qa_tags %}
+{% comment %}One setting (Phase 7 card row). The wrapper keeps id="rule-<pk>" so the editor and history swap in place.{% endcomment %}
+<div id="rule-{{ e.pk }}" class="qa-rule">
+  <div class="sh-row{% if just_saved %} is-flash{% endif %}">
+    <div class="sh-row__text">
+      <span class="sh-row__title">{{ e.key|setting_title }}</span>
+      {% if e.description %}<span class="sh-row__desc">{{ e.description }}</span>{% endif %}
+      <span class="sh-row__key qa-key">{{ e.key }}</span>
+      <span class="sh-row__meta">
+        {% if e.control == "locked" %}
+          <span class="qa-chip qa-chip--locked" title="Fixed by policy. Changing it needs a code release.">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Fixed by policy</span>
+        {% elif e.control == "dual" %}
+          <span class="qa-chip qa-chip--dual" title="Saving sends the change to a second officer to confirm.">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Needs a second officer</span>
+        {% endif %}
+        {% if e.pending_reference %}
+          <a class="qa-chip qa-chip--pending" href="{% url 'qa:pending_list' %}?status=pending&q={{ e.pending_reference|urlencode }}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            {{ e.pending_reference }} awaiting confirmation</a>
+        {% endif %}
+      </span>
+      {% if just_saved == "pending" %}<span class="sr-only" data-qa-announce="Sent for confirmation">Sent for confirmation</span>{% elif just_saved %}<span class="sr-only" data-qa-announce="Saved">Saved</span>{% endif %}
+    </div>
+    <div class="sh-row__control">
+      {% if e.value_type == "bool" and e.can_edit and not e.pending_reference and e.control != "dual" %}
+        <form hx-post="{% url 'qa:setting_save' e.pk %}" hx-target="#rule-{{ e.pk }}" hx-swap="outerHTML"
+              method="post" action="{% url 'qa:setting_save' e.pk %}" data-qa-no-overlay>
+          {% csrf_token %}
+          <input type="hidden" name="value" value="false">
+          <label class="sh-switch">
+            <input type="checkbox" name="value" value="true" data-autosubmit{% if e.display == "Yes" %} checked{% endif %}
+                   aria-label="{{ e.key|setting_title }}">
+            <span class="sh-switch__track" aria-hidden="true"></span>
+            <span class="sh-switch__label">{% if e.display == "Yes" %}On{% else %}Off{% endif %}</span>
+          </label>
+          <noscript><button class="btn btn-sm btn-subtle" type="submit">Save</button></noscript>
+        </form>
+      {% elif e.value_type == "bool" %}
+        <span class="sh-switch" title="{% if e.control == 'locked' %}Fixed by policy{% elif not e.can_edit %}{{ e.cannot_edit_reason }}{% else %}Changes go to a second officer{% endif %}">
+          <input type="checkbox" disabled{% if e.display == "Yes" %} checked{% endif %} aria-label="{{ e.key|setting_title }} ({% if e.display == 'Yes' %}on{% else %}off{% endif %})">
+          <span class="sh-switch__track" aria-hidden="true"></span>
+          <span class="sh-switch__label">{% if e.display == "Yes" %}On{% else %}Off{% endif %}</span>
+        </span>
+        {% if e.can_edit and not e.pending_reference %}
+          <button type="button" class="btn btn-sm btn-subtle" hx-get="{% url 'qa:setting_edit' e.pk %}" hx-target="#rule-{{ e.pk }}" hx-swap="outerHTML"
+                  aria-label="Change {{ e.key }}">Change</button>
+        {% endif %}
+      {% else %}
+        {% if e.value == "" %}
+          <span class="sh-row__value sh-row__value--empty">Not set</span>
+        {% elif e.value_type == "json" or e.value_type == "str" %}
+          <span class="sh-row__value sh-row__value--mono" title="{{ e.display }}">{{ e.display }}</span>
+        {% else %}
+          <span class="sh-row__value">{{ e.display }}</span>
+        {% endif %}
+        {% if e.can_edit and not e.pending_reference %}
+          <button type="button" class="btn btn-sm btn-subtle"
+                  hx-get="{% url 'qa:setting_edit' e.pk %}" hx-target="#rule-{{ e.pk }}" hx-swap="outerHTML"
+                  aria-label="Edit {{ e.key }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            Edit</button>
+        {% elif e.control != "locked" and not e.can_edit %}
+          <span class="qa-locked-note" title="{{ e.cannot_edit_reason }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="sr-only">You cannot edit this: {{ e.cannot_edit_reason }}</span></span>
+        {% endif %}
+      {% endif %}
+      <button type="button" class="btn btn-sm btn-ghost"
+              hx-get="{% url 'qa:setting_history' e.pk %}" hx-target="#rule-{{ e.pk }}-extra" hx-swap="outerHTML"
+              aria-label="Change history for {{ e.key }}" data-qa-no-overlay>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+        History</button>
+    </div>
+  </div>
+  <div id="rule-{{ e.pk }}-extra" class="qa-slot"></div>
+</div>

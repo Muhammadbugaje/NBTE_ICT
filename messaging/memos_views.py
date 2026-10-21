@@ -58,7 +58,7 @@ def _sender_signature_lines(memo):
     try:
         sp = getattr(sender, "staff_profile", None)
         if sp is not None:
-            designation = getattr(sp, "designation", "") or ""
+            designation = str(getattr(sp, "designation", "") or "")  # FK since the nominal-roll stage
             dept = getattr(sp, "department", None)
             if dept is not None:
                 dept_name = dept.name
@@ -76,81 +76,8 @@ def _sender_signature_lines(memo):
 
 
 def _annotate_chain(memo):
-    """Return a list of chain rows for the template.
-
-    Each row: {step, actor, state, comment, decided_by, decided_at,
-               position, is_current}
-    where state ∈ {approved, returned, rejected, current, skipped, pending}
-    """
-    chain = routing.build_memo_chain(memo)
-    if not chain:
-        return []
-
-    approvals = {
-        routing.step_key(a.step): a
-        for a in memo.approvals.select_related("step", "actor")
-        if a.step_id
-    }
-
-    current_key = memo.current_step_key or ""
-    status = memo.status
-
-    current_position = -1
-    if current_key:
-        for i, s in enumerate(chain):
-            if routing.step_key(s) == current_key:
-                current_position = i
-                break
-
-    is_published = status == Memo.PUBLISHED
-    is_awaiting = status == Memo.AWAITING
-    is_returned = status == Memo.RETURNED
-    is_cancelled = status == Memo.CANCELLED
-
-    rows = []
-    for i, step in enumerate(chain):
-        key = routing.step_key(step)
-        approval = approvals.get(key)
-        actor = routing.resolve_memo_approver(step, memo)
-
-        state = "pending"
-        comment = ""
-        decided_by = None
-        decided_at = None
-
-        if approval:
-            decided_by = approval.actor
-            decided_at = approval.decided_at
-            comment = approval.comment or ""
-            if approval.decision == MemoApproval.APPROVE:
-                state = "approved"
-            elif approval.decision == MemoApproval.RETURN:
-                state = "returned"
-            elif approval.decision == MemoApproval.REJECT:
-                state = "rejected"
-        elif is_awaiting and current_key and key == current_key:
-            state = "current"
-        elif is_published and not current_key:
-            state = "skipped"
-        elif is_awaiting and current_position >= 0 and i < current_position:
-            state = "skipped"
-        elif is_returned and current_position >= 0 and i < current_position:
-            state = "skipped"
-        elif is_cancelled:
-            state = "skipped"
-
-        rows.append({
-            "step": step,
-            "actor": actor,
-            "state": state,
-            "comment": comment,
-            "decided_by": decided_by,
-            "decided_at": decided_at,
-            "position": i + 1,
-            "is_current": state == "current",
-        })
-
-    return rows
+    """Chain rows for the template — see routing.chain_view."""
+    return routing.chain_view(memo)
 
 
 # ===========================================================================
@@ -222,9 +149,27 @@ def memo_list(request):
 # ===========================================================================
 # Detail
 # ===========================================================================
+def _gone(request):
+    """A memo link that no longer leads anywhere (deleted memo, old link in a
+    notification): explain, and go to the memo list instead of a 404."""
+    messages.info(request, "That memo is no longer available — it may have been deleted.")
+    return redirect("messaging:memo_list")
+
+
 @login_required
 def memo_detail(request, pk):
+    if not Memo.objects.filter(pk=pk).exists():
+        return _gone(request)
     memo = _require_view(request.user, pk)
+
+    # A memo waiting on a step nobody can act on, or on a step that was
+    # changed or deleted, moves on as soon as it can.
+    if memo.status == Memo.AWAITING and routing.actor_for_memo(memo) is None:
+        try:
+            if routing.reconcile_memo(memo):
+                memo = _require_view(request.user, pk)
+        except Exception:
+            logger.exception("Could not re-check memo %s", memo.reference)
 
     receipt = memo.memo_recipients.filter(user=request.user).first()
     if (
@@ -264,6 +209,12 @@ def memo_detail(request, pk):
         routing.resolve_memo_approver(current_step, memo)
         if current_step else None
     )
+    acting_for = can_act and current_actor is not None and current_actor.pk != request.user.pk
+    parked_reason = (routing.describe_missing(current_step, memo)
+                     if memo.status == Memo.AWAITING and current_step and current_actor is None else "")
+    can_recheck = memo.status == Memo.AWAITING and (
+        request.user.is_superuser or request.user.has_perm("messaging.manage_memoroute")
+        or request.user.has_perm("messaging.manage_memo"))
 
     chain_rows = _annotate_chain(memo)
 
@@ -288,6 +239,9 @@ def memo_detail(request, pk):
         "can_act": can_act,
         "current_step": current_step,
         "current_actor": current_actor,
+        "acting_for": acting_for,
+        "parked_reason": parked_reason,
+        "can_recheck": can_recheck,
         "chain_rows": chain_rows,
     })
 
@@ -781,3 +735,25 @@ def memo_download_docx(request, pk):
     resp["Content-Disposition"] = f'attachment; filename="{memo.reference}.docx"'
     resp["Cache-Control"] = "private, no-store"
     return resp
+
+
+@login_required
+@require_POST
+def memo_recheck(request, pk):
+    """Re-run the routing rules on a waiting memo (after fixing people or the
+    route). Skips what can be skipped, moves to whoever can act now."""
+    memo = _require_view(request.user, pk)
+    if not (request.user.is_superuser or request.user.has_perm("messaging.manage_memoroute")
+            or request.user.has_perm("messaging.manage_memo")):
+        raise PermissionDenied
+    moved = routing.reconcile_memo(memo)
+    memo.refresh_from_db()
+    if memo.status == Memo.PUBLISHED:
+        messages.success(request, "Routing re-checked: every remaining step was skipped, so the memo was delivered.")
+    elif moved:
+        step = routing.current_step(memo)
+        messages.success(request, f"Routing re-checked: the memo moved to “{step.name if step else '—'}”.")
+    else:
+        messages.info(request, "Routing re-checked: nothing has changed yet. Fix the people or the route shown "
+                               "on the step, or act on it as an administrator.")
+    return redirect("messaging:memo_detail", pk=memo.pk)

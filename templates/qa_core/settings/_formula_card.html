@@ -1,0 +1,101 @@
+{% comment %}One formula setting: current expression, editor (dual control) and the "test with sample values" panel.{% endcomment %}
+<article id="formula-{{ e.pk }}" class="qa-card qa-formula" aria-labelledby="formula-{{ e.pk }}-title">
+  <header class="qa-card__head">
+    <div>
+      <h3 id="formula-{{ e.pk }}-title" class="qa-key qa-key--lg">{{ e.key }}</h3>
+      {% if e.description %}<p>{{ e.description }}</p>{% endif %}
+    </div>
+    <span class="qa-inline-actions">
+      {% if e.control == "dual" %}<span class="qa-chip qa-chip--dual">Dual control</span>{% elif e.control == "locked" %}<span class="qa-chip qa-chip--locked">Fixed by policy</span>{% else %}<span class="qa-chip qa-chip--direct">Direct</span>{% endif %}
+      <span class="qa-chip qa-chip--mono">→ {{ e.returns }}</span>
+    </span>
+  </header>
+
+  <div class="qa-card__body qa-formula-grid">
+    <div class="qa-stack">
+      <div>
+        <span class="qa-label">Current formula</span>
+        <code class="qa-code">{{ e.expr }}</code>
+      </div>
+      <div>
+        <span class="qa-label">Variables</span>
+        <div class="qa-vars">
+          {% for v in e.vars %}<span class="qa-chip qa-chip--mono">{{ v }}</span>{% empty %}<span class="qa-small qa-muted">None — this formula uses only numbers and other settings.</span>{% endfor %}
+        </div>
+      </div>
+
+      {% if e.pending_reference %}
+        <div class="qa-callout">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <div>
+            <strong>{{ e.pending_reference }} is waiting for a second officer</strong>
+            <p>The formula above stays in force until it is confirmed. <a href="{% url 'qa:pending_list' %}?status=pending&q={{ e.pending_reference|urlencode }}">Open the pending confirmation</a></p>
+          </div>
+        </div>
+      {% elif e.can_edit %}
+        <form class="qa-edit" hx-post="{% url 'qa:formula_save' e.pk %}" hx-target="#formula-{{ e.pk }}" hx-swap="outerHTML"
+              method="post" action="{% url 'qa:formula_save' e.pk %}">
+          {% csrf_token %}
+          <label class="qa-label" for="formula-{{ e.pk }}-expr">Propose a new formula</label>
+          {% if error %}<ul class="qa-errors" role="alert"><li>{{ error }}</li></ul>{% endif %}
+          <textarea class="input" id="formula-{{ e.pk }}-expr" name="expr" rows="3" spellcheck="false"
+                    {% if error %}data-qa-focus aria-invalid="true"{% endif %}>{{ draft_expr|default:e.expr }}</textarea>
+          {% if e.control == "dual" %}
+            <input class="input" type="text" name="reason" value="{{ reason|default:'' }}" maxlength="500"
+                   placeholder="Reason for the second officer (e.g. approved fee memo)" aria-label="Reason for the second officer">
+          {% endif %}
+          <div class="qa-edit__row">
+            <button type="submit" class="btn btn-primary btn-sm">{% if e.control == "dual" %}Send for confirmation{% else %}Save formula{% endif %}</button>
+            <span class="qa-small qa-muted">Tip: test the draft on the right before sending it.</span>
+          </div>
+        </form>
+      {% else %}
+        <p class="qa-small qa-muted">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          {{ e.cannot_edit_reason|default:"You can test this formula but not change it." }}
+        </p>
+      {% endif %}
+    </div>
+
+    <form class="qa-test" hx-post="{% url 'qa:formula_test' e.pk %}" hx-target="#formula-{{ e.pk }}-result"
+          {% if e.can_edit and not e.pending_reference %}hx-include="#formula-{{ e.pk }}-expr"{% endif %}
+          method="post" action="{% url 'qa:formula_test' e.pk %}" data-qa-no-overlay>
+      {% csrf_token %}
+      <h4>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v6l-5 9a3 3 0 0 0 2.6 4.5h10.8A3 3 0 0 0 20 17l-5-9V2"/><line x1="8" y1="2" x2="16" y2="2"/></svg>
+        Test with sample values
+      </h4>
+      {% if e.vars %}
+        <div class="qa-test__inputs">
+          {% for v in e.vars %}
+            <label>
+              <code>{{ v }}</code>
+              {% if v == "ownership" %}
+                <select class="input" name="var_{{ v }}">
+                  <option value="private">private</option>
+                  <option value="public">public</option>
+                  <option value="federal">federal</option>
+                  <option value="state">state</option>
+                </select>
+              {% else %}
+                <input class="input" type="text" inputmode="decimal" name="var_{{ v }}" value="3">
+              {% endif %}
+            </label>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <div class="qa-edit__row">
+        <button type="submit" class="btn btn-subtle btn-sm">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+          Run test
+        </button>
+        <span class="qa-small qa-muted">{% if e.can_edit and not e.pending_reference %}Tests the formula in the editor, not the saved one.{% else %}Tests the saved formula.{% endif %} Nothing is saved.</span>
+      </div>
+      <div id="formula-{{ e.pk }}-result" class="qa-region" aria-live="polite">
+        <div class="qa-result qa-result--idle">
+          <span class="qa-result__meta">The result appears here.</span>
+        </div>
+      </div>
+    </form>
+  </div>
+</article>

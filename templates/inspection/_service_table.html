@@ -1,0 +1,13 @@
+{% load qa_tags %}
+{% if rows %}
+<div class="qa-table-wrap"><table class="qa-table qa-table--compact">
+  <thead><tr><th scope="col">Served</th><th scope="col">Duty</th><th scope="col">Institution · programme</th><th scope="col" class="num">Visits</th><th scope="col" class="num">SSQs</th><th scope="col">Note</th></tr></thead>
+  <tbody>{% for r in rows %}<tr class="{% if r.visit_count < 0 or r.ssq_count < 0 %}is-compensating{% endif %}">
+    <td>{{ r.served_from|date:"j M Y" }}{% if r.served_to != r.served_from %} – {{ r.served_to|date:"j M Y" }}{% endif %}</td>
+    <td>{{ r.get_duty_display }}{% if r.role_on_team and r.role_on_team != r.get_duty_display %}<br><span class="qa-small qa-muted">{{ r.role_on_team }}</span>{% endif %}</td>
+    <td>{{ r.institution.name|default:"—" }}{% if r.programme %}<br><span class="qa-small qa-muted">{{ r.programme.name }}</span>{% endif %}</td>
+    <td class="num">{{ r.visit_count }}</td><td class="num">{{ r.ssq_count }}</td>
+    <td class="qa-small">{% if r.voids_id %}<span class="qa-chip qa-tone-warn">Compensating</span> {% endif %}{% if r.reason %}{{ r.reason }}{% else %}{{ r.source|humanize_code }}{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<div class="qa-card__body"><p class="qa-muted qa-small">No service recorded.</p></div>{% endif %}

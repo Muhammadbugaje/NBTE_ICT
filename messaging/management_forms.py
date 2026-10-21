@@ -124,10 +124,12 @@ class MemoRouteRuleForm(forms.ModelForm):
             "target_kind",
             "sender_role_codes",
             "target_role_codes",
+            "department_relation",
             "priority",
             "is_active",
         ]
         widgets = {
+            "department_relation": forms.Select(attrs={"class": "mm-input"}),
             "name": forms.TextInput(attrs={"class": "mm-input", "autofocus": True,
                                            "placeholder": "e.g. Staff memo to a Director"}),
             "route": forms.Select(attrs={"class": "mm-input"}),

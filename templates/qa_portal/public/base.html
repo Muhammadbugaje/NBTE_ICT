@@ -1,0 +1,93 @@
+{% load static %}<!DOCTYPE html>
+{% comment %}
+  Layout for the portal's public pages (landing, how-to, registration).
+  static/css/qa-public.css (scoped under .qp) for the page furniture,
+  static/css/vivid.css for the coloured heroes, tiles, bands and footer.
+{% endcomment %}
+<html lang="en" data-view="auto">
+<head>
+  {% include "partials/head.html" %}
+  <meta name="description" content="{% block description %}The NBTE Quality Assurance Portal: register a TVET institution, request accreditation, pay fees and follow every decision online.{% endblock %}">
+  <title>{% block title %}{{ portal_name|default:"NBTE Quality Assurance Portal" }}{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/qa-public.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/vivid.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/polish.css' %}?v=2">
+  {% block extra_css %}{% endblock %}
+</head>
+<body class="qp vv-scope nbte-watermark-page{% block body_class %}{% endblock %}">
+  <a class="qp-skip" href="#qp-main">Skip to content</a>
+  {% if maintenance_message %}
+    <div class="qp-wrap qp-banner"><div class="qp-notice" role="status">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <p>{{ maintenance_message }}</p></div></div>
+  {% endif %}
+
+  <header class="qp-nav" data-qp-nav>
+    <div class="vv-wrap qp-nav__in">
+      <a class="qp-brand" href="{% url 'qa_portal:dashboard' %}" aria-label="NBTE Quality Assurance Portal, home">
+        <img src="{% static 'img/NBTE_logo.png' %}" alt="" width="36" height="38">
+        <span><strong>Quality Assurance Portal</strong><em>National Board for Technical Education</em></span>
+      </a>
+      <nav class="qp-nav__links" aria-label="Main">
+        <a class="qp-nav__link qp-nav__link--wide" href="{% url 'qa_portal:dashboard' %}#services">Services</a>
+        <a class="qp-nav__link qp-nav__link--wide" href="{% url 'qa_portal:how_to' %}"{% if page == "how_to" %} aria-current="page"{% endif %}>How it works</a>
+        <a class="qp-nav__link qp-nav__link--wide" href="{% url 'qa_portal:how_to' %}#downloads">Guides</a>
+        <a class="qp-nav__link" href="{% url 'qa_portal:login' %}">Log in</a>
+        {% if registration_open and page != "register" %}<a class="qp-btn qp-btn--primary qp-btn--sm qp-nav__link--wide" href="{% url 'qa_portal:register' %}">Register</a>{% endif %}
+        <button class="qp-theme" type="button" aria-label="Switch between light and dark" aria-pressed="false" data-theme-toggle>
+          <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="qp-main" tabindex="-1">{% block content %}{% endblock %}</main>
+
+  <footer class="vv-foot">
+    <div class="vv-wrap">
+      <div class="vv-foot__in">
+        <div class="vv-foot__brand">
+          <img src="{% static 'img/NBTE_logo.png' %}" alt="" width="52" height="52">
+          <div><strong>NBTE Quality Assurance Portal</strong>
+            <p>The National Board for Technical Education regulates technical and vocational education in Nigeria. This portal is where institutions and resource persons work with NBTE on quality assurance.</p></div>
+        </div>
+        <div><h4>Portal</h4><ul>
+          <li><a href="{% url 'qa_portal:login' %}">Log in</a></li>
+          {% if registration_open %}<li><a href="{% url 'qa_portal:register' %}">Register an institution</a></li>{% endif %}
+          <li><a href="{% url 'qa_portal:password_forgot' %}">Forgot password</a></li>
+        </ul></div>
+        <div><h4>Help</h4><ul>
+          <li><a href="{% url 'qa_portal:how_to' %}">How it works</a></li>
+          <li><a href="{% url 'qa_portal:how_to' %}#qa-types">Kinds of QA</a></li>
+          <li><a href="{% url 'qa_portal:how_to' %}#payments">Payments</a></li>
+          <li><a href="{% url 'qa_portal:how_to' %}#downloads">Download the guides</a></li>
+        </ul></div>
+        <div><h4>Contact NBTE</h4><ul>
+          {% if contact_email %}<li><a href="mailto:{{ contact_email }}">{{ contact_email }}</a></li>{% endif %}
+          {% if contact_phone %}<li><a href="tel:{{ contact_phone|cut:' ' }}">{{ contact_phone }}</a></li>{% endif %}
+          {% if site_info.address %}<li>{{ site_info.address }}</li>{% endif %}
+        </ul></div>
+      </div>
+      <div class="vv-foot__bottom">
+        <span>© {% now "Y" %} National Board for Technical Education, Kaduna</span>
+        <span>Every action on this portal is recorded on your institution's timeline.</span>
+      </div>
+    </div>
+  </footer>
+
+  {% block dock %}
+  <div class="qp-dock" data-qp-dock>
+    <a class="qp-btn qp-btn--quiet" href="{% url 'qa_portal:login' %}">Log in</a>
+    {% if registration_open %}<a class="qp-btn qp-btn--primary" href="{% url 'qa_portal:register' %}">Register</a>{% else %}<a class="qp-btn qp-btn--primary" href="{% url 'qa_portal:how_to' %}">How it works</a>{% endif %}
+  </div>
+  {% endblock %}
+
+  <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+  <script src="{% static 'js/app.js' %}?v=21" defer></script>
+  <script src="{% static 'js/qa-public.js' %}?v=2" defer></script>
+  <script src="{% static 'js/vivid.js' %}?v=1" defer></script>
+  {% block extra_js %}{% endblock %}
+  <script src="{% static 'js/polish.js' %}?v=1" defer></script>
+</body>
+</html>

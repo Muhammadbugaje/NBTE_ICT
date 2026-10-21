@@ -12,8 +12,21 @@ from .services import prepare_new_user
 
 
 class EmailAuthenticationForm(AuthenticationForm):
-    username = forms.EmailField(label="Email",
-                                widget=forms.EmailInput(attrs={"autofocus": True}))
+    # Nominal-roll release: staff without an email sign in with their file
+    # number; accounts.backends maps it to the account.
+    username = forms.CharField(label="Email or file number", max_length=254,
+                               widget=forms.TextInput(attrs={"autofocus": True}))
+
+    def confirm_login_allowed(self, user):
+        super().confirm_login_allowed(user)
+        # QA (Master Plan §3): institution users and resource persons sign in
+        # on the QA portal. ExternalUserGuardMiddleware is the real control;
+        # refusing here just gives a clear message instead of a 403.
+        if getattr(user, "user_type", "staff") != "staff":
+            raise forms.ValidationError(
+                "This account signs in at the NBTE Quality Assurance Portal, not here.",
+                code="external_user",
+            )
 
 
 # ---------------------------------------------------------------------------

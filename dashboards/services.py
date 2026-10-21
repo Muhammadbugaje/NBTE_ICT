@@ -98,37 +98,6 @@ def _staff_by_department():
     return _safe(_q, []) or []
 
 
-def _attendance_excused_today():
-    def _q():
-        from attendance.models import AttendanceRecord
-        today = timezone.localdate()
-        return AttendanceRecord.objects.filter(
-            date=today, status=AttendanceRecord.EXCUSED,
-        ).count()
-    return _safe(_q, 0)
-
-
-def _attendance_present_today():
-    def _q():
-        from attendance.models import AttendanceRecord
-        today = timezone.localdate()
-        return AttendanceRecord.objects.filter(
-            date=today,
-            status__in=[AttendanceRecord.PRESENT, AttendanceRecord.LATE],
-        ).count()
-    return _safe(_q, 0)
-
-
-def _attendance_absent_today():
-    def _q():
-        from attendance.models import AttendanceRecord
-        today = timezone.localdate()
-        return AttendanceRecord.objects.filter(
-            date=today, status=AttendanceRecord.ABSENT,
-        ).count()
-    return _safe(_q, 0)
-
-
 def _unread_notifications(user):
     def _q():
         from notifications.models import Notification
@@ -148,10 +117,25 @@ def _leadership_current():
     return _safe(_q, []) or []
 
 
+def _requests(user=None):
+    """Requests a dashboard figure may count or list.
+
+    `user=None` keeps the old system-wide behaviour (chairman / super-admin
+    boards). The director, deputy and ES boards pass the viewer, so they only
+    ever count and list what that person may see (workflow/access.py): a
+    director sees their own department, only holders of "view all requests"
+    (Executive Secretary by default) see everything."""
+    from workflow.models import Request
+    if user is None:
+        return Request.objects.all()
+    from workflow.access import visible_requests_queryset
+    return visible_requests_queryset(user)
+
+
 # ---------------------------------------------------------------------------
 # Workflow KPIs
 # ---------------------------------------------------------------------------
-def _workflow_kpis():
+def _workflow_kpis(user=None):
     from workflow.models import Request
 
     pending_statuses = [Request.AWAITING, Request.AWAITING_RECEIVING]
@@ -163,17 +147,17 @@ def _workflow_kpis():
 
     def _q():
         return {
-            "pending":   Request.objects.filter(status__in=pending_statuses).count(),
-            "in_flight": Request.objects.filter(status__in=open_statuses).count(),
-            "completed_30d": Request.objects.filter(
+            "pending":   _requests(user).filter(status__in=pending_statuses).count(),
+            "in_flight": _requests(user).filter(status__in=open_statuses).count(),
+            "completed_30d": _requests(user).filter(
                 status=Request.COMPLETED,
                 completed_at__gte=timezone.now() - timedelta(days=30),
             ).count(),
-            "rejected_30d": Request.objects.filter(
+            "rejected_30d": _requests(user).filter(
                 status=Request.REJECTED,
                 closed_at__gte=timezone.now() - timedelta(days=30),
             ).count(),
-            "aged": _aged_approval_count(7),
+            "aged": _aged_approval_count(7, user),
         }
 
     return _safe(_q, {
@@ -185,10 +169,10 @@ def _workflow_kpis():
     }
 
 
-def _aged_approval_count(days=7):
+def _aged_approval_count(days=7, user=None):
     from workflow.models import Request
     threshold = timezone.now() - timedelta(days=days)
-    return Request.objects.filter(
+    return _requests(user).filter(
         status__in=[Request.AWAITING, Request.AWAITING_RECEIVING],
         current_step_started_at__lt=threshold,
     ).count()
@@ -223,16 +207,16 @@ def _parked_requests(cap=10):
 # ---------------------------------------------------------------------------
 # Chart builders — workflow
 # ---------------------------------------------------------------------------
-def _activity_series(days=30):
+def _activity_series(days=30, user=None):
     from workflow.models import Request
 
     end = timezone.localdate()
     start = end - timedelta(days=days - 1)
 
-    opened = list(Request.objects.filter(
+    opened = list(_requests(user).filter(
         created_at__date__gte=start,
     ).values_list("created_at__date", flat=True))
-    completed = list(Request.objects.filter(
+    completed = list(_requests(user).filter(
         completed_at__date__gte=start,
     ).values_list("completed_at__date", flat=True))
 
@@ -258,7 +242,7 @@ def _activity_series(days=30):
     }
 
 
-def _status_mix():
+def _status_mix(user=None):
     from workflow.models import Request
 
     palette = {
@@ -272,7 +256,7 @@ def _status_mix():
         Request.RETURNED:             ("Returned",            "#BE185D"),
         Request.CANCELLED:            ("Cancelled",           "#94A3B8"),
     }
-    rows = Request.objects.values("status").annotate(n=Count("id"))
+    rows = _requests(user).values("status").annotate(n=Count("id"))
     labels, values, colors = [], [], []
     for r in rows:
         label, colour = palette.get(r["status"], (r["status"], "#94A3B8"))
@@ -282,14 +266,14 @@ def _status_mix():
     return {"labels": labels, "values": values, "colors": colors}
 
 
-def _categories_series(days=30):
+def _categories_series(days=30, user=None):
     from workflow.models import Request, RequestCategory
 
     since = timezone.now() - timedelta(days=days)
     labels, pending, inflight, done = [], [], [], []
 
     for c in RequestCategory.objects.filter(is_active=True).order_by("sort_order", "name"):
-        base = Request.objects.filter(request_type__category=c, created_at__gte=since)
+        base = _requests(user).filter(request_type__category=c, created_at__gte=since)
         p = base.filter(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING]).count()
         i = base.filter(status__in=[
             Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT, Request.READY,
@@ -312,7 +296,7 @@ def _categories_series(days=30):
     }
 
 
-def _approvals_series(weeks=12):
+def _approvals_series(weeks=12, user=None):
     from workflow.models import RequestApproval
 
     end = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -320,6 +304,7 @@ def _approvals_series(weeks=12):
 
     rows = RequestApproval.objects.filter(
         decided_at__gte=start, decision="approve",
+        request__in=_requests(user).values("pk"),
     ).values_list("decided_at", flat=True)
 
     buckets = {}
@@ -337,7 +322,7 @@ def _approvals_series(weeks=12):
     return {"labels": labels, "series": [{"name": "Approvals", "values": values, "color": "#1F6B3E"}]}
 
 
-def _dept_activity_chart(days=30):
+def _dept_activity_chart(days=30, user=None):
     from workflow.models import Request
     from staff.models import Department
 
@@ -345,7 +330,7 @@ def _dept_activity_chart(days=30):
     labels, pending, inflight, done = [], [], [], []
 
     for d in Department.objects.filter(is_active=True).order_by("name"):
-        base = Request.objects.filter(receiving_department=d, created_at__gte=since)
+        base = _requests(user).filter(receiving_department=d, created_at__gte=since)
         p = base.filter(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING]).count()
         i = base.filter(status__in=[
             Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT, Request.READY,
@@ -369,140 +354,241 @@ def _dept_activity_chart(days=30):
 
 
 # ---------------------------------------------------------------------------
-# Attendance chart builders
+# Attendance dashboard (scoped + headcount based)
+#
+# Only real attendance RECORDS are counted (same rule as the reports):
+#   Came     = Present + Late                         (people who actually came)
+#   Counted  = Came + Excused + Holiday + On leave    (credited, like reports)
+#   Absent   = records marked absent
+# A day or a person with no record is simply not part of the calculation, so
+# a system that only started recently is not diluted by days it never saw, and
+# a weekend never shows up as a 0% day. The one exception is the "today"
+# snapshot, which shows how many of the current staff headcount have checked
+# in so far (the rest are listed as "not in yet").
+#
+# Scope (attendance/access.py): everyone with all-departments access sees the
+# whole directorate; a director / department-permission holder sees ONLY their
+# own department; anyone else gets no attendance section at all.
 # ---------------------------------------------------------------------------
-def _attendance_today_kpis():
-    """Today's attendance counts, plus total staff and unrecorded."""
-    from attendance.models import AttendanceRecord
+def _attendance_hidden():
+    return {
+        "attendance_visible": False,
+        "attendance_scope": "none",
+        "attendance_link": "",
+        "attendance_title": "",
+        "attendance_kpis": {},
+        "attendance_charts": {"trend": _chart_empty(), "by_dept": _chart_empty()},
+        "attendance_depts": [],
+        "attendance_total": {},
+    }
+
+
+def _pct(part, whole, places=0):
+    if not whole:
+        return 0
+    value = (part / whole) * 100
+    return round(value, places) if places else round(value)
+
+
+def _attendance_dashboard(user, days=30):
     from accounts.models import User
-
-    today = timezone.localdate()
-
-    def _q():
-        qs = AttendanceRecord.objects.filter(date=today)
-        return {
-            "present": qs.filter(status=AttendanceRecord.PRESENT).count(),
-            "late":    qs.filter(status=AttendanceRecord.LATE).count(),
-            "absent":  qs.filter(status=AttendanceRecord.ABSENT).count(),
-            "excused": qs.filter(status=AttendanceRecord.EXCUSED).count(),
-        }
-
-    stats = _safe(_q) or {"present": 0, "late": 0, "absent": 0, "excused": 0}
-
-    total_staff = _safe(
-        lambda: User.objects.filter(is_active=True, department__isnull=False).count(),
-        0,
-    ) or 0
-
-    recorded = stats["present"] + stats["late"] + stats["absent"] + stats["excused"]
-    stats["total_staff"] = total_staff
-    stats["unrecorded"] = max(0, total_staff - recorded)
-    stats["attendance_pct"] = round(
-        ((stats["present"] + stats["late"]) / (recorded or 1)) * 100,
-    )
-    return stats
-
-
-def _attendance_trend(days=30):
-    """Line: attendance % per day over the last N calendar days."""
+    from attendance import access, services as att
     from attendance.models import AttendanceRecord
-
-    def _q():
-        end = timezone.localdate()
-        start = end - timedelta(days=days - 1)
-
-        rows = (
-            AttendanceRecord.objects
-            .filter(date__gte=start, date__lte=end)
-            .values_list("date", "status")
-        )
-
-        buckets = {}
-        for d, status in rows:
-            b = buckets.setdefault(d, {
-                "present": 0, "late": 0, "absent": 0,
-                "excused": 0, "holiday": 0,
-            })
-            b[status] = b.get(status, 0) + 1
-
-        labels, pct = [], []
-        for i in range(days):
-            d = start + timedelta(days=i)
-            labels.append(f"{d.strftime('%b')} {d.day}")   # ← Windows-safe
-            b = buckets.get(d, {})
-            p = b.get("present", 0) + b.get("late", 0)
-            total = p + b.get("absent", 0) + b.get("excused", 0)
-            pct.append(round((p / total) * 100) if total else 0)
-
-        return {
-            "labels": labels,
-            "series": [{
-                "name": "Attendance %", "values": pct,
-                "color": "#1F6B3E", "fill": True,
-            }],
-        }
-
-    return _safe(_q, _chart_empty()) or _chart_empty()
-
-
-def _attendance_by_department(days=30):
-    """Stacked bar: per department, present / late / absent / excused."""
-    from attendance.models import AttendanceRecord
+    from django.urls import reverse
     from staff.models import Department
 
-    def _q():
-        since = timezone.localdate() - timedelta(days=days - 1)
-        labels, present, late, absent, excused = [], [], [], [], []
+    scope = access.attendance_scope(user)
+    if scope == "all":
+        depts = list(Department.objects.filter(is_active=True).order_by("sort_order", "name"))
+    elif scope == "department" and user.department_id:
+        depts = list(Department.objects.filter(pk=user.department_id))
+    else:
+        depts = []
+    if not depts:
+        return _attendance_hidden()
 
-        for d in Department.objects.filter(is_active=True).order_by("name"):
-            qs = AttendanceRecord.objects.filter(user__department=d, date__gte=since)
-            if not qs.exists():
-                continue
-            labels.append(d.name)
-            present.append(qs.filter(status=AttendanceRecord.PRESENT).count())
-            late.append(qs.filter(status=AttendanceRecord.LATE).count())
-            absent.append(qs.filter(status=AttendanceRecord.ABSENT).count())
-            excused.append(qs.filter(status=AttendanceRecord.EXCUSED).count())
+    today = timezone.localdate()
+    start = today - timedelta(days=days - 1)
+    dept_ids = [d.pk for d in depts]
 
-        return {
+    staff = list(User.objects.filter(is_active=True, department_id__in=dept_ids))
+    staff_by_dept = {}
+    for u in staff:
+        staff_by_dept.setdefault(u.department_id, []).append(u)
+
+    status_of = {}
+    for uid, d, st in (
+        AttendanceRecord.objects
+        .filter(user__is_active=True, user__department_id__in=dept_ids,
+                date__gte=start, date__lte=today)
+        .values_list("user_id", "date", "status")
+    ):
+        status_of[(uid, d)] = st
+
+    working = [
+        start + timedelta(days=i) for i in range(days)
+        if att.is_working_day(start + timedelta(days=i))
+    ]
+
+    keys = ("present", "late", "excused", "holiday", "on_leave", "absent")
+
+    def counts_for(users, d):
+        """Status counts for `users` on day `d`, from attendance records only.
+        `headcount` is the number of people who HAVE a record that day."""
+        c = {k: 0 for k in keys}
+        c["headcount"] = 0
+        c["unrecorded"] = 0
+        for u in users:
+            st = status_of.get((u.pk, d))
+            if st in c:
+                c[st] += 1
+                c["headcount"] += 1
+            else:
+                c["unrecorded"] += 1
+        return c
+
+    def came(c):
+        return c["present"] + c["late"]
+
+    def away(c):
+        return c["excused"] + c["holiday"] + c["on_leave"]
+
+    # ---- Today's snapshot ------------------------------------------------
+    reason = att.non_working_reason(today)
+    today_working = att.is_working_day(today)
+    t = {k: 0 for k in keys}
+    t["headcount"] = t["unrecorded"] = 0
+    for d in depts:
+        c = counts_for(staff_by_dept.get(d.pk, []), today)
+        for k in t:
+            t[k] += c[k]
+    # Today only: headcount = current staff (people not in yet are listed).
+    t["headcount"] = len(staff)
+    kpis = {
+        **{k: t[k] for k in keys},
+        "unrecorded": t["unrecorded"],
+        "total_staff": len(staff),
+        "is_working_day": today_working and not reason,
+        "reason": reason,
+        "came": came(t),
+        "away": t["excused"] + t["on_leave"],
+        "credited": came(t) + away(t),
+    }
+    if kpis["is_working_day"] and t["headcount"]:
+        kpis["attendance_pct"] = _pct(came(t), t["headcount"])
+        kpis["credited_pct"] = _pct(kpis["credited"], t["headcount"])
+    else:
+        kpis["attendance_pct"] = None
+        kpis["credited_pct"] = None
+
+    # ---- Completed working days (today excluded: it is still in progress) --
+    done = [d for d in working if d < today]
+    per_dept_day = {}
+    for dep in depts:
+        users = staff_by_dept.get(dep.pk, [])
+        for d in done:
+            per_dept_day[(dep.pk, d)] = counts_for(users, d)
+
+    labels, came_pct, counted_pct = [], [], []
+    for d in done:
+        hc = sum(per_dept_day[(dep.pk, d)]["headcount"] for dep in depts)
+        if not hc:
+            continue
+        cm = sum(came(per_dept_day[(dep.pk, d)]) for dep in depts)
+        aw = sum(away(per_dept_day[(dep.pk, d)]) for dep in depts)
+        labels.append(f"{d.strftime('%b')} {d.day}")
+        came_pct.append(_pct(cm, hc))
+        counted_pct.append(_pct(cm + aw, hc))
+
+    trend = _chart_empty()
+    if labels:
+        trend = {
             "labels": labels,
             "series": [
-                {"name": "Present", "values": present, "color": "#10B981"},
-                {"name": "Late",    "values": late,    "color": "#F59E0B"},
-                {"name": "Absent",  "values": absent,  "color": "#EF4444"},
-                {"name": "Excused", "values": excused, "color": "#6366F1"},
+                {"name": "Came to work (present + late) %", "values": came_pct,
+                 "color": "#1F6B3E", "fill": True},
+                {"name": "Counted incl. leave, excused, holiday %",
+                 "values": counted_pct, "color": "#6366F1", "fill": False},
             ],
         }
 
-    return _safe(_q, _chart_empty()) or _chart_empty()
+    # ---- Per department over the window ----------------------------------
+    chart_labels, p_present, p_late, p_away, p_absent = [], [], [], [], []
+    rows = []
+    total = {k: 0 for k in keys}
+    total["expected"] = 0
+    for dep in depts:
+        users = staff_by_dept.get(dep.pk, [])
+        agg = {k: 0 for k in keys}
+        expected = 0
+        for d in done:
+            c = per_dept_day[(dep.pk, d)]
+            expected += c["headcount"]
+            for k in keys:
+                agg[k] += c[k]
+        if not users or not expected:
+            continue
+        pr = _pct(agg["present"], expected, 1)
+        lt = _pct(agg["late"], expected, 1)
+        aw = _pct(away(agg), expected, 1)
+        ab = max(0.0, round(100 - pr - lt - aw, 1))
+        chart_labels.append(dep.name)
+        p_present.append(pr)
+        p_late.append(lt)
+        p_away.append(aw)
+        p_absent.append(ab)
+        rows.append({
+            "department": dep,
+            "staff": len(users),
+            "present": agg["present"], "late": agg["late"],
+            "absent": agg["absent"], "excused": agg["excused"],
+            "holiday": agg["holiday"], "on_leave": agg["on_leave"],
+            "away": away(agg),
+            "expected": expected,
+            "came_pct": _pct(came(agg), expected),
+            "pct": _pct(came(agg) + away(agg), expected),
+        })
+        for k in keys:
+            total[k] += agg[k]
+        total["expected"] += expected
 
+    by_dept = _chart_empty()
+    if chart_labels:
+        by_dept = {
+            "labels": chart_labels,
+            "series": [
+                {"name": "Present %", "values": p_present, "color": "#10B981"},
+                {"name": "Late %", "values": p_late, "color": "#F59E0B"},
+                {"name": "Excused / leave / holiday %", "values": p_away, "color": "#6366F1"},
+                {"name": "Absent %", "values": p_absent, "color": "#EF4444"},
+            ],
+        }
 
-def _attendance_department_rows(days=30):
-    """One row per department with % and counts — for the drill-down table."""
-    from attendance.models import AttendanceRecord
-    from staff.models import Department
+    total_row = {}
+    if total["expected"]:
+        total_row = {
+            **total,
+            "staff": len(staff),
+            "away": away(total),
+            "came_pct": _pct(came(total), total["expected"]),
+            "pct": _pct(came(total) + away(total), total["expected"]),
+        }
 
-    def _q():
-        since = timezone.localdate() - timedelta(days=days - 1)
-        rows = []
-        for d in Department.objects.filter(is_active=True).order_by("name"):
-            qs = AttendanceRecord.objects.filter(user__department=d, date__gte=since)
-            total = qs.count()
-            if total == 0:
-                continue
-            present = qs.filter(status=AttendanceRecord.PRESENT).count()
-            late    = qs.filter(status=AttendanceRecord.LATE).count()
-            absent  = qs.filter(status=AttendanceRecord.ABSENT).count()
-            excused = qs.filter(status=AttendanceRecord.EXCUSED).count()
-            pct = round(((present + late) / total) * 100) if total else 0
-            rows.append({
-                "department": d,
-                "present": present, "late": late, "absent": absent,
-                "excused": excused, "total": total, "pct": pct,
-            })
-        return rows
-
-    return _safe(_q, []) or []
+    return {
+        "attendance_visible": True,
+        "attendance_scope": scope,
+        "attendance_link": reverse(
+            "attendance:all_departments" if scope == "all" else "attendance:department"
+        ),
+        "attendance_title": (
+            "Across the directorate" if scope == "all" else f"{depts[0].name} only"
+        ),
+        "attendance_kpis": kpis,
+        "attendance_charts": {"trend": trend, "by_dept": by_dept},
+        "attendance_depts": rows,
+        "attendance_total": total_row,
+        "attendance_window_days": days,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -578,12 +664,12 @@ def _queue_es_signoff(cap=20):
     return result
 
 
-def _aged_approvals(days=7, cap=10):
+def _aged_approvals(days=7, cap=10, user=None):
     from workflow.models import Request
 
     threshold = timezone.now() - timedelta(days=days)
     rows = (
-        Request.objects
+        _requests(user)
         .filter(
             status__in=[Request.AWAITING, Request.AWAITING_RECEIVING],
             current_step_started_at__lt=threshold,
@@ -594,14 +680,14 @@ def _aged_approvals(days=7, cap=10):
     return [{"request": r, "age_days": _age_days(r.current_step_started_at)} for r in rows]
 
 
-def _office_breakdown():
+def _office_breakdown(user=None):
     from workflow.models import Request
     from staff.models import Department
 
     since = timezone.now() - timedelta(days=30)
     rows = []
     for d in Department.objects.filter(is_active=True).order_by("name"):
-        base = Request.objects.filter(receiving_department=d)
+        base = _requests(user).filter(receiving_department=d)
         pending   = base.filter(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING]).count()
         inflight  = base.filter(status__in=[
             Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT, Request.READY,
@@ -617,10 +703,11 @@ def _office_breakdown():
     return rows
 
 
-def _recent_activity(cap=10):
+def _recent_activity(cap=10, user=None):
     from workflow.models import RequestActivity
     return list(
         RequestActivity.objects
+        .filter(request__in=_requests(user).values("pk"))
         .select_related("request", "actor", "request__request_type")
         .order_by("-created_at")[:cap]
     )
@@ -819,69 +906,65 @@ def user_role_breakdown():
 # ---------------------------------------------------------------------------
 # Attendance + workflow sub-dicts (shared by every context)
 # ---------------------------------------------------------------------------
-def _attendance_block():
-    return {
-        "attendance_kpis": _safe(_attendance_today_kpis, {}) or {},
-        "attendance_charts": {
-            "trend":   _safe(_attendance_trend, _chart_empty()) or _chart_empty(),
-            "by_dept": _safe(_attendance_by_department, _chart_empty()) or _chart_empty(),
-        },
-        "attendance_depts": _safe(_attendance_department_rows, []) or [],
-    }
+def _attendance_block(user):
+    return _safe(lambda: _attendance_dashboard(user), None) or _attendance_hidden()
 
 
 # ---------------------------------------------------------------------------
 # Contexts
 # ---------------------------------------------------------------------------
 def director_context(user):
-    kpis = _workflow_kpis()
+    att = _attendance_block(user)
+    kpis = _workflow_kpis(user)
     return {
         "kpis": {
             **kpis,
             "staff_total":    _staff_total(),
-            "staff_on_leave": _attendance_excused_today(),
+            "staff_on_leave": att["attendance_kpis"].get("away", 0),
             "unread":         _unread_notifications(user),
         },
         "charts": {
-            "activity":   _safe(_activity_series, _chart_empty()) or _chart_empty(),
-            "status_mix": _safe(_status_mix, _donut_empty()) or _donut_empty(),
-            "categories": _safe(_categories_series, _chart_empty()) or _chart_empty(),
-            "approvals":  _safe(_approvals_series, _chart_empty()) or _chart_empty(),
-            "depts":      _safe(_dept_activity_chart, _chart_empty()) or _chart_empty(),
+            "activity":   _safe(lambda: _activity_series(user=user), _chart_empty()) or _chart_empty(),
+            "status_mix": _safe(lambda: _status_mix(user=user), _donut_empty()) or _donut_empty(),
+            "categories": _safe(lambda: _categories_series(user=user), _chart_empty()) or _chart_empty(),
+            "approvals":  _safe(lambda: _approvals_series(user=user), _chart_empty()) or _chart_empty(),
+            "depts":      _safe(lambda: _dept_activity_chart(user=user), _chart_empty()) or _chart_empty(),
         },
         "queue":            _safe(lambda: _queue_for_user(user, cap=15), []) or [],
-        "aged_approvals":   _safe(lambda: _aged_approvals(7, 8), []) or [],
-        "office_breakdown": _safe(_office_breakdown, []) or [],
-        "recent_activity":  _safe(lambda: _recent_activity(8), []) or [],
-        **_attendance_block(),
+        "aged_approvals":   _safe(lambda: _aged_approvals(7, 8, user), []) or [],
+        "office_breakdown": _safe(lambda: _office_breakdown(user), []) or [],
+        "recent_activity":  _safe(lambda: _recent_activity(8, user), []) or [],
+        **att,
     }
 
 
 def deputy_context(user):
-    kpis = _workflow_kpis()
+    att = _attendance_block(user)
+    kpis = _workflow_kpis(user)
     return {
         "kpis": {
             **kpis,
             "staff_total":    _staff_total(),
-            "present_today":  _attendance_present_today(),
+            "present_today":  att["attendance_kpis"].get("came", 0),
             "unread":         _unread_notifications(user),
         },
         "charts": {
-            "activity":   _safe(_activity_series, _chart_empty()) or _chart_empty(),
-            "status_mix": _safe(_status_mix, _donut_empty()) or _donut_empty(),
-            "approvals":  _safe(_approvals_series, _chart_empty()) or _chart_empty(),
-            "depts":      _safe(_dept_activity_chart, _chart_empty()) or _chart_empty(),
+            "activity":   _safe(lambda: _activity_series(user=user), _chart_empty()) or _chart_empty(),
+            "status_mix": _safe(lambda: _status_mix(user=user), _donut_empty()) or _donut_empty(),
+            "approvals":  _safe(lambda: _approvals_series(user=user), _chart_empty()) or _chart_empty(),
+            "depts":      _safe(lambda: _dept_activity_chart(user=user), _chart_empty()) or _chart_empty(),
         },
         "queue":            _safe(lambda: _queue_for_user(user, cap=25), []) or [],
-        "aged_approvals":   _safe(lambda: _aged_approvals(3, 12), []) or [],
-        "office_breakdown": _safe(_office_breakdown, []) or [],
-        **_attendance_block(),
+        "aged_approvals":   _safe(lambda: _aged_approvals(3, 12, user), []) or [],
+        "office_breakdown": _safe(lambda: _office_breakdown(user), []) or [],
+        **att,
     }
 
 
 def es_context(user):
+    att = _attendance_block(user)
     from workflow.models import ApprovalStep
-    kpis = _workflow_kpis()
+    kpis = _workflow_kpis(user)
     return {
         "kpis": {
             **kpis,
@@ -891,27 +974,28 @@ def es_context(user):
             "unread":       _unread_notifications(user),
         },
         "charts": {
-            "activity":   _safe(_activity_series, _chart_empty()) or _chart_empty(),
-            "status_mix": _safe(_status_mix, _donut_empty()) or _donut_empty(),
-            "approvals":  _safe(_approvals_series, _chart_empty()) or _chart_empty(),
+            "activity":   _safe(lambda: _activity_series(user=user), _chart_empty()) or _chart_empty(),
+            "status_mix": _safe(lambda: _status_mix(user=user), _donut_empty()) or _donut_empty(),
+            "approvals":  _safe(lambda: _approvals_series(user=user), _chart_empty()) or _chart_empty(),
         },
         "queue":         _safe(lambda: _queue_es_signoff(cap=20), []) or [],
         "queue_filing":  _safe(lambda: _queue_at_step_kind(
             ApprovalStep.KIND_CLOSURE, cap=20), []) or [],
-        "aged_approvals": _safe(lambda: _aged_approvals(5, 10), []) or [],
+        "aged_approvals": _safe(lambda: _aged_approvals(5, 10, user), []) or [],
         "leadership":    _leadership_current(),
-        **_attendance_block(),
+        **att,
     }
 
 
 def chairman_context(user):
+    att = _attendance_block(user)
     kpis = _workflow_kpis()
     return {
         "kpis": {
             **kpis,
             "staff_total":    _staff_total(),
             "users_total":    _users_total(),
-            "present_today":  _attendance_present_today(),
+            "present_today":  att["attendance_kpis"].get("came", 0),
         },
         "charts": {
             "activity":   _safe(_activity_series, _chart_empty()) or _chart_empty(),
@@ -921,11 +1005,12 @@ def chairman_context(user):
         },
         "dept_summary": _safe(_staff_by_department, []) or [],
         "leadership":   _leadership_current(),
-        **_attendance_block(),
+        **att,
     }
 
 
 def superadmin_context(user):
+    att = _attendance_block(user)
     kpis = _workflow_kpis()
     return {
         "kpis": {
@@ -946,7 +1031,7 @@ def superadmin_context(user):
         "critical_audit":   _safe(lambda: recent_audit_critical(cap=8), []) or [],
         "role_breakdown":   _safe(user_role_breakdown, []) or [],
         "office_breakdown": _safe(_office_breakdown, []) or [],
-        **_attendance_block(),
+        **att,
     }
 
 

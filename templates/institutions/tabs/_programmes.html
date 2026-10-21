@@ -1,0 +1,21 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="tab-prog">
+  <header class="qa-card__head"><div><h2 id="tab-prog" data-qa-focus-heading>Programmes</h2><p>{{ programmes|length }} shown. Drop programmes from the actions menu.</p></div>
+    <form hx-get="{% url 'qa_inst:detail' inst.code %}" hx-target="#qa-tab" hx-push-url="true" hx-trigger="change" data-qa-no-overlay>
+      <input type="hidden" name="tab" value="programmes">
+      <label class="sr-only" for="pstatus">Status</label>
+      <select class="input qa-select" id="pstatus" name="pstatus"><option value="">Any status</option>{% for v, l in programme_statuses %}<option value="{{ v }}"{% if pstatus == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    </form>
+  </header>
+  <div class="qa-table-wrap">
+    <table class="qa-table">
+      <thead><tr><th>Programme</th><th>Level</th><th>Category</th><th>Status</th><th>Streams</th><th>Expiry</th></tr></thead>
+      <tbody>
+        {% for p in programmes %}
+          <tr><td data-label="Programme"><strong>{{ p.name }}</strong></td><td data-label="Level">{{ p.level.code|upper|default:"—" }}</td><td data-label="Category">{{ p.category.name|default:"—" }}</td>
+            <td data-label="Status"><span class="qa-chip {{ p.status|tone }}">{{ p.get_status_display }}</span></td><td data-label="Streams">{{ p.approved_streams }}</td><td data-label="Expiry">{{ p.expiry_date|date:"j M Y"|default:"—" }}</td></tr>
+        {% empty %}<tr><td colspan="6" class="qa-muted">No programmes recorded.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>

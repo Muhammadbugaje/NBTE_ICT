@@ -117,10 +117,13 @@
    -------------------------------------------------------------------------- */
 :root {
   /* Typography */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", Inter,
-               Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: ui-serif, "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
-                  Georgia, "Times New Roman", serif;
+  /* Phase 6 (Apple design pass): the system SF face everywhere. Headings
+     used a serif display face; they now use SF Display through the same
+     stack, with negative tracking (base.css). */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI",
+               "Helvetica Neue", sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI",
+                  "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
 
   --fs-2xs: 0.6875rem;  /* 11px — badges, eyebrow labels */
@@ -143,7 +146,8 @@
   --fw-semibold: 600;
   --fw-bold: 700;
 
-  --tracking-tight: -0.02em;
+  --tracking-tight: -0.022em;
+  --tracking-tighter: -0.035em;   /* large titles */
   --tracking-normal: 0;
   --tracking-wide: 0.04em;
   --tracking-widest: 0.12em;
@@ -166,12 +170,12 @@
   --space-12: 12rem;
 
   /* Radii */
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
-  --radius-2xl: 40px;
+  --radius-xs: 6px;    /* chips, tiny marks */
+  --radius-sm: 10px;   /* inputs, small controls */
+  --radius-md: 12px;   /* thumbnails, nav items, rows */
+  --radius-lg: 18px;   /* cards */
+  --radius-xl: 22px;   /* large panels */
+  --radius-2xl: 26px;  /* hero / focal card */
   --radius-pill: 999px;
   --radius-round: 50%;
 
@@ -180,9 +184,9 @@
   --dur: 200ms;
   --dur-slow: 320ms;
   --dur-hero: 900ms;           /* deliberate hero / carousel cross-fade only */
-  --ease-standard: cubic-bezier(.2, .7, .2, 1);
-  --ease-emphasized: cubic-bezier(.2, .8, .2, 1);
-  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-standard: cubic-bezier(.25, 1, .5, 1);       /* small moves */
+  --ease-emphasized: cubic-bezier(.32, .72, 0, 1);    /* sheets, drawers */
+  --ease-spring: cubic-bezier(.32, .72, 0, 1);        /* no overshoot */
   --ease-linear: linear;
 
   /* Z-index */
@@ -216,23 +220,23 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg: var(--ink-75);
-  --surface: var(--ink-0);
-  --surface-2: var(--ink-50);
-  --surface-sunken: var(--ink-100);
-  --surface-glass: rgba(255, 255, 255, 0.78);
-  --surface-glass-strong: rgba(255, 255, 255, 0.94);
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-2: #fbfbfd;
+  --surface-sunken: #f0f0f3;
+  --surface-glass: rgba(250, 250, 252, 0.72);
+  --surface-glass-strong: rgba(255, 255, 255, 0.92);
 
-  --text: var(--ink-800);
-  --text-muted: var(--ink-500);
-  --text-subtle: var(--ink-450);
+  --text: #1d1d1f;
+  --text-muted: #5f5f64;
+  --text-subtle: #6e6e73;
   --text-inverse: var(--ink-0);
   --link: var(--brand-500);
   --link-hover: var(--brand-600);
 
-  --border: rgba(15, 23, 42, 0.11);
-  --border-strong: rgba(15, 23, 42, 0.2);
-  --divider: rgba(15, 23, 42, 0.08);
+  --border: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.18);
+  --divider: rgba(0, 0, 0, 0.07);
 
   --primary: var(--brand-500);
   --primary-hover: var(--brand-600);
@@ -257,18 +261,18 @@
   --neutral-subtle: var(--ink-100);
   --neutral-fg: var(--ink-600);
 
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 2px 6px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.05);
-  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
-  --shadow-xl: 0 32px 80px rgba(15, 23, 42, 0.16);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.05), 0 14px 40px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 2px 8px rgba(0, 0, 0, 0.10), 0 30px 80px rgba(0, 0, 0, 0.22);
   --shadow-focus: 0 0 0 3px var(--surface), 0 0 0 5px var(--brand-500);
   --shadow-focus-danger: 0 0 0 3px var(--surface), 0 0 0 5px var(--red-700);
 
-  --overlay: rgba(15, 23, 42, 0.42);
-  --overlay-blur: blur(6px);
-  --skeleton-base: var(--ink-100);
-  --skeleton-shine: var(--ink-50);
+  --overlay: rgba(0, 0, 0, 0.32);
+  --overlay-blur: blur(8px);
+  --skeleton-base: #ececf0;
+  --skeleton-shine: #f7f7f9;
   --hero-gradient: linear-gradient(135deg, var(--brand-700) 0%, var(--brand-500) 55%, var(--brand-glow-500) 100%);
   --hero-scrim: linear-gradient(180deg, rgba(6, 28, 14, 0.25) 0%, rgba(6, 28, 14, 0.72) 100%);
 }
@@ -281,21 +285,21 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: var(--ink-950);
-    --surface: var(--ink-850);
-    --surface-2: #1c2228;
-    --surface-sunken: #0b0e10;
-    --surface-glass: rgba(20, 24, 28, 0.78);
-    --surface-glass-strong: rgba(20, 24, 28, 0.94);
-    --text: #edf0f2;
-    --text-muted: #a3abb5;
-    --text-subtle: #969ea8;
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #232325;
+    --surface-sunken: #111113;
+    --surface-glass: rgba(28, 28, 30, 0.72);
+    --surface-glass-strong: rgba(28, 28, 30, 0.92);
+    --text: #f5f5f7;
+    --text-muted: #aeaeb2;
+    --text-subtle: #98989d;
     --text-inverse: var(--ink-950);
     --link: var(--brand-glow-400);
     --link-hover: var(--brand-glow-200);
-    --border: rgba(255, 255, 255, 0.09);
-    --border-strong: rgba(255, 255, 255, 0.17);
-    --divider: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.2);
+    --divider: rgba(255, 255, 255, 0.08);
     --primary: var(--brand-glow-600);
     --primary-hover: var(--brand-glow-500);
     --primary-active: var(--brand-500);
@@ -325,28 +329,28 @@
     --shadow-focus: 0 0 0 3px var(--surface), 0 0 0 5px var(--brand-glow-400);
     --shadow-focus-danger: 0 0 0 3px var(--surface), 0 0 0 5px var(--red-400);
     --overlay: rgba(0, 0, 0, 0.62);
-    --skeleton-base: #1f262d;
-    --skeleton-shine: #2a323a;
+    --skeleton-base: #2c2c2e;
+    --skeleton-shine: #3a3a3c;
     --hero-gradient: linear-gradient(135deg, var(--brand-900) 0%, var(--brand-700) 55%, var(--brand-500) 100%);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: var(--ink-950);
-  --surface: var(--ink-850);
-  --surface-2: #1c2228;
-  --surface-sunken: #0b0e10;
-  --surface-glass: rgba(20, 24, 28, 0.78);
-  --surface-glass-strong: rgba(20, 24, 28, 0.94);
-  --text: #edf0f2;
-  --text-muted: #a3abb5;
-  --text-subtle: #969ea8;
+  --bg: #000000;
+  --surface: #1c1c1e;
+  --surface-2: #232325;
+  --surface-sunken: #111113;
+  --surface-glass: rgba(28, 28, 30, 0.72);
+  --surface-glass-strong: rgba(28, 28, 30, 0.92);
+  --text: #f5f5f7;
+  --text-muted: #aeaeb2;
+  --text-subtle: #98989d;
   --text-inverse: var(--ink-950);
   --link: var(--brand-glow-400);
   --link-hover: var(--brand-glow-200);
-  --border: rgba(255, 255, 255, 0.09);
-  --border-strong: rgba(255, 255, 255, 0.17);
-  --divider: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --divider: rgba(255, 255, 255, 0.08);
   --primary: var(--brand-glow-600);
   --primary-hover: var(--brand-glow-500);
   --primary-active: var(--brand-500);
@@ -376,8 +380,8 @@
   --shadow-focus: 0 0 0 3px var(--surface), 0 0 0 5px var(--brand-glow-400);
   --shadow-focus-danger: 0 0 0 3px var(--surface), 0 0 0 5px var(--red-400);
   --overlay: rgba(0, 0, 0, 0.62);
-  --skeleton-base: #1f262d;
-  --skeleton-shine: #2a323a;
+  --skeleton-base: #2c2c2e;
+  --skeleton-shine: #3a3a3c;
   --hero-gradient: linear-gradient(135deg, var(--brand-900) 0%, var(--brand-700) 55%, var(--brand-500) 100%);
 }
 
@@ -463,6 +467,26 @@
   --gutter-tablet: var(--space-5);
   --gutter-desktop: var(--space-6);
   --topbar-offset-bottom: var(--topbar-h);   /* updated at runtime by app.js */
+}
+
+/* --------------------------------------------------------------------------
+   5. QA PORTAL (Master Plan §16) — two semantic aliases only. The portal
+   inherits every other token; these resolve against the active theme.
+   -------------------------------------------------------------------------- */
+:root {
+  --portal-accent: var(--brand-500);
+  --impersonation-band: var(--amber-400);
+  --impersonation-band-fg: var(--amber-ink);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --portal-accent: var(--brand-glow-400);
+    --impersonation-band: var(--amber-500);
+  }
+}
+:root[data-theme="dark"] {
+  --portal-accent: var(--brand-glow-400);
+  --impersonation-band: var(--amber-500);
 }
 
 .no-transition,

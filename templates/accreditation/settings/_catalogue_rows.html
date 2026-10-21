@@ -1,0 +1,25 @@
+{% load qa_tags %}
+<div id="cat-rows" class="qa-table-wrap qa-region" data-qa-region aria-live="polite"><table class="qa-table">
+  <thead><tr><th>Programme</th><th>Kind</th><th>Item</th><th class="qa-num">Required</th><th>Unit</th><th>Version</th><th class="qa-col-actions"><span class="sr-only">Change</span></th></tr></thead>
+  <tbody>
+    {% for it in items %}
+      <tr class="{% if not it.is_active %}is-muted{% endif %}">
+        <td data-label="Programme">{{ it.programme_name|default:"(all in category)" }}<div class="qa-small qa-muted">{{ it.category.name|default:"" }}</div></td>
+        <td data-label="Kind"><span class="qa-chip {{ it.kind|tone }}">{{ it.get_kind_display }}</span></td>
+        <td data-label="Item">{{ it.name }}</td>
+        <td data-label="Required" class="qa-num">{{ it.required_quantity|floatformat:"-2" }}</td>
+        <td data-label="Unit">{{ it.unit }}</td>
+        <td data-label="Version">v{{ it.version }}{% if not it.is_active %} <span class="qa-chip">Retired</span>{% endif %}<div class="qa-small qa-muted">from {{ it.effective_from|date:"j M Y" }}</div></td>
+        <td class="qa-col-actions">{% if editable and it.is_active %}
+          <details class="qa-menu"><summary class="btn btn-sm btn-subtle">Change…</summary><div class="qa-menu__panel" style="width:min(340px,calc(100vw - 32px))">
+            <form class="qa-form qa-stack" hx-post="{% url 'qa_set:catalogue_item' it.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="op" value="revise">
+              <div class="qa-field"><label for="cr-n-{{ it.pk }}">Name</label><input class="input" id="cr-n-{{ it.pk }}" name="name" value="{{ it.name }}"></div>
+              <div class="qa-row qa-gap-sm"><div class="qa-field"><label for="cr-q-{{ it.pk }}">Required</label><input class="input" id="cr-q-{{ it.pk }}" name="required_quantity" value="{{ it.required_quantity|floatformat:'-2' }}" inputmode="decimal"></div>
+              <div class="qa-field"><label for="cr-u-{{ it.pk }}">Unit</label><input class="input" id="cr-u-{{ it.pk }}" name="unit" value="{{ it.unit }}"></div></div>
+              <button class="btn btn-sm btn-primary" type="submit">Save as version {{ it.version|add:1 }}</button></form>
+            <form class="qa-mt-sm" hx-post="{% url 'qa_set:catalogue_item' it.pk %}" hx-target="#qa-panel" hx-trigger="qa:confirmed" data-qa-confirm="New SSQs no longer list this item. Submitted SSQs keep it." data-qa-confirm-title="Retire {{ it.name }}?" data-qa-confirm-label="Retire" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="op" value="retire"><button class="btn btn-sm btn-subtle qa-btn-reject" type="submit">Retire item</button></form>
+          </div></details>{% endif %}</td>
+      </tr>
+    {% empty %}<tr><td colspan="7" class="qa-muted">No catalogue items match.</td></tr>{% endfor %}
+  </tbody>
+</table>{% if page %}{% include "qa_core/partials/_pagination.html" with target="#cat-rows" swap="outerHTML" %}{% endif %}</div>

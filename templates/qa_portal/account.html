@@ -1,0 +1,36 @@
+{% extends base_template %}
+{% block title %}Account settings · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page qa-portal-page--narrow">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">Your account</span>
+    <h1 data-qa-focus>Account settings</h1>
+    <p>Your name, sign-in details and password for the QA portal.</p>
+  </header>
+
+  <div class="qa-stack">
+    <section class="qa-card" aria-labelledby="qa-signin-title">
+      <header class="qa-card__head">
+        <div><h2 id="qa-signin-title">Sign-in details</h2><p>Only NBTE can change your email address or role.</p></div>
+      </header>
+      <div class="qa-card__body">
+        <dl class="qa-meta">
+          <dt>Email</dt><dd>{{ request.user.email }}</dd>
+          <dt>Account type</dt><dd>{{ request.user.get_user_type_display }}</dd>
+          {% if request.user.role %}<dt>Role</dt><dd>{{ request.user.role.name }}</dd>{% endif %}
+          {% if institution %}<dt>Institution</dt><dd>{{ institution.name }} <span class="qa-chip qa-chip--mono">{{ institution.code }}</span></dd>{% endif %}
+          {% if request.user.last_login %}<dt>Last sign-in</dt><dd>{{ request.user.last_login|date:"j M Y, H:i" }}</dd>{% endif %}
+        </dl>
+      </div>
+    </section>
+
+    <div id="qa-profile-card" class="qa-region" data-qa-region>
+      {% include "qa_portal/_profile_card.html" %}
+    </div>
+
+    <div id="qa-password-card" class="qa-region" data-qa-region>
+      {% include "qa_portal/_password_card.html" %}
+    </div>
+  </div>
+</div>
+{% endblock %}

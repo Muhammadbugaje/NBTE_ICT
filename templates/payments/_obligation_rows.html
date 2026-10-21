@@ -1,0 +1,14 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for ob in page.rows %}
+      <li><a class="qa-rowlink" href="{% url 'qa_fin:obligation' ob.pk %}" hx-get="{% url 'qa_fin:obligation' ob.pk %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="qa-rowlink__badge">{{ ob.institution.code }}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ ob.description }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ ob.reference }}</span><span>· {{ ob.created_at|date:"j M Y" }}</span>{% for f in ob.flags %}<span class="qa-chip qa-tone-danger">{{ f|humanize_code }}</span>{% endfor %}</span></span>
+        <span class="qa-rowlink__side"><span class="qa-rowlink__amount">{{ ob.amount|naira }}</span><span class="qa-chip {{ ob.status|tone }}">{{ ob.stage }}</span></span></a></li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "card" 28 %}</span><h3 class="nbte-empty-state__title">No bills</h3><p class="nbte-empty-state__body">Bills are issued by the workflows (for example when all departments clear an application).</p></div>
+{% endif %}

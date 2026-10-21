@@ -1,5 +1,7 @@
 # NBTE ICT Directorate Internal Operating System
 
+**Setting up a fresh database? Follow [SETUP.md](SETUP.md) — every command, in order.**
+
 See `REPORT.md` for what is built/verified. Quick start (dev, SQLite, no Redis needed):
 
     python -m venv .venv && source .venv/bin/activate

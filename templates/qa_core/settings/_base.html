@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load static %}
+{% comment %}
+  Settings → QA (Master Plan §13, §14). The hero stays put; the tabs and the
+  active section live in #qa-panel and are swapped by HTMX (§20: no full
+  reloads), with the URL pushed so every view can be bookmarked and Back works.
+{% endcomment %}
+{% block title %}QA settings · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}QA settings{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/qa.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/qa-p2.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/qa-p3.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/qa-p4.css' %}?v=1">
+{% endblock %}
+{% block content %}
+<div class="qa-page">
+  <header class="qa-hero">
+    <div>
+      <span class="qa-eyebrow">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        Quality Assurance · Settings
+      </span>
+      <h1>QA settings</h1>
+      <p>Every rule the QA system runs on — fees, thresholds, reference numbers, workflows and messages — lives here, not in code. Changes marked <strong>dual control</strong> wait for a second officer; rules <strong>fixed by policy</strong> cannot be changed.</p>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ hero.settings }}</strong><span>Settings</span></div>
+      <div class="qa-stat qa-stat--warn"><strong>{{ hero.dual }}</strong><span>Dual control</span></div>
+      <div class="qa-stat"><strong>{{ hero.locked }}</strong><span>Fixed by policy</span></div>
+      {% if pending_mine %}
+        <a class="qa-stat qa-stat--info qa-stat--link" href="{% url 'qa:pending_list' %}?who=mine">
+          <strong>{{ pending_mine }}</strong><span>Mine awaiting</span>
+        </a>
+      {% else %}
+        <div class="qa-stat"><strong>{{ hero.flows }}</strong><span>Workflows</span></div>
+      {% endif %}
+    </div>
+  </header>
+
+  <div id="qa-panel" class="qa-region" data-qa-region>
+    {% block panel %}{% endblock %}
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+  <script>document.body.setAttribute("data-qa-timeout", "{{ qa_timeout_ms|default:15000 }}");</script>
+  <script src="{% static 'js/qa.js' %}?v=3" defer></script>
+{% endblock %}

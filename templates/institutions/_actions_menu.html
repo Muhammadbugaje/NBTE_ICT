@@ -1,0 +1,24 @@
+{% load qa_tags %}
+<details class="qa-menu">
+  <summary class="btn btn-primary">{% icon "edit" 16 %} Actions</summary>
+  <div class="qa-menu__panel" role="menu">
+    {% for g in menu %}
+      <div class="qa-menu__group">{{ g.group }}</div>
+      <div class="qa-menu__grid">
+        {% for a in g.items %}{% if a.code != "institutions.add_tvet" and a.code != "institutions.bulk_import" %}
+          {% if a.enabled %}
+            <a class="qa-act" role="menuitem" href="{{ a.url }}" hx-get="{{ a.url }}" hx-target="#qa-panel" hx-push-url="true">
+              <span class="qa-act__icon">{% icon a.icon 16 %}</span>
+              <span class="qa-act__text"><strong>{{ a.label }}</strong><small>{% if a.two_step %}Needs a second officer{% else %}Single step, audited{% endif %}</small></span>
+            </a>
+          {% else %}
+            <span class="qa-act is-disabled" role="menuitem" aria-disabled="true" tabindex="0" title="{{ a.reason }}">
+              <span class="qa-act__icon">{% icon a.icon 16 %}</span>
+              <span class="qa-act__text"><strong>{{ a.label }}</strong><small>{{ a.reason|default:"Not available" }}</small></span>
+            </span>
+          {% endif %}
+        {% endif %}{% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+</details>

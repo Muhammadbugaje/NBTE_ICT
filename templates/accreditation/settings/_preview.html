@@ -1,0 +1,25 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="pv-h">
+  <header class="qa-card__head"><div><h3 id="pv-h" data-qa-focus>Preview · v{{ template.version }}</h3><p>What the institution sees (inputs disabled).</p></div></header>
+  <div class="qa-card__body qa-stack qa-preview">
+    {% for s in sections %}
+      <fieldset class="qa-fieldset" disabled><legend>{{ forloop.counter }}. {{ s.title }}</legend>
+        {% if s.description %}<p class="qa-help">{{ s.description }}</p>{% endif %}
+        {% for f in s.fields %}
+          <div class="qa-field"><label>{{ f.label }}{% if f.required %} <span aria-hidden="true">*</span>{% endif %}</label>
+            {% if f.type == "textarea" %}<textarea class="input" rows="2"></textarea>
+            {% elif f.type == "choice" %}<select class="input"><option>— choose —</option>{% for o in f.options %}<option>{{ o.label|default:o }}</option>{% endfor %}</select>
+            {% elif f.type == "multi_choice" %}{% for o in f.options %}<label class="qa-field--check"><input type="checkbox"> {{ o.label|default:o }}</label>{% endfor %}
+            {% elif f.type == "yes_no" %}<span class="qa-row qa-gap-sm"><label class="qa-field--check"><input type="radio"> Yes</label><label class="qa-field--check"><input type="radio"> No</label></span>
+            {% elif f.type == "file" %}<span class="qa-small qa-muted">{% icon "upload" 14 %} Upload{% if f.document_kind %} or re-use your accepted {{ f.document_kind }}{% endif %}</span>
+            {% elif f.type == "catalogue" %}<span class="qa-small qa-muted">Rows from the catalogue ({{ f.catalogue.kind }}) — quantity column only</span>
+            {% elif f.type == "table" %}<span class="qa-small qa-muted">Table: {% for c in f.columns %}{{ c.label }}{% if not forloop.last %} · {% endif %}{% endfor %}</span>
+            {% else %}<input class="input" type="{% if f.type == 'date' %}date{% elif f.type == 'number' or f.type == 'integer' %}number{% else %}text{% endif %}">{% endif %}
+            {% if f.help %}<p class="qa-help">{{ f.help }}</p>{% endif %}
+            {% if f.prefill_from %}<span class="qa-chip qa-tone-info">Prefilled from the record</span>{% endif %}
+          </div>
+        {% endfor %}
+      </fieldset>
+    {% endfor %}
+  </div>
+</section>

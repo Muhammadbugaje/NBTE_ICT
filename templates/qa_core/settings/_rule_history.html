@@ -1,0 +1,41 @@
+{% load qa_tags %}
+<div id="rule-{{ e.pk }}-extra" class="qa-subrow sh-edit">
+    <div class="qa-subpanel">
+      <div class="qa-split">
+        <h3 class="qa-subpanel__title" data-qa-focus>Change history · <code>{{ e.key }}</code></h3>
+        <button type="button" class="btn btn-sm btn-ghost" data-qa-collapse="#rule-{{ e.pk }}-extra">Close</button>
+      </div>
+      {% if pending %}
+        <h4 class="qa-subpanel__kicker">Confirmations</h4>
+        <ul class="qa-history">
+          {% for pa in pending %}
+            <li>
+              <a class="qa-chip qa-chip--mono" href="{% url 'qa:pending_detail' pa.pk %}">{{ pa.reference }}</a>
+              <span class="qa-chip qa-status-{{ pa.status }}">{{ pa.get_status_display }}</span>
+              <span>{{ pa.initiated_by.get_full_name|default:pa.initiated_by.email }}</span>
+              {% if pa.decided_by %}<span class="qa-muted">→ {{ pa.decided_by.get_full_name|default:pa.decided_by.email }}</span>{% endif %}
+              <time class="qa-muted" datetime="{{ pa.initiated_at|date:'c' }}">{{ pa.initiated_at|date:"j M Y, H:i" }}</time>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <h4 class="qa-subpanel__kicker">Audit log</h4>
+      {% if history %}
+        <ul class="qa-history">
+          {% for h in history %}
+            <li>
+              <time datetime="{{ h.timestamp|date:'c' }}">{{ h.timestamp|date:"j M Y, H:i" }}</time>
+              <strong>{{ h.actor_repr|default:"System" }}</strong>
+              <span class="qa-chip">{{ h.get_action_display }}</span>
+              {% for field, old, new in h.changes|audit_changes %}
+                <span class="qa-muted">{{ field }}:</span> {% if old %}<code>{{ old }}</code> → {% endif %}<code>{{ new }}</code>
+              {% endfor %}
+              {% if h.note %}<span class="qa-muted">· {{ h.note }}</span>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="qa-small qa-muted">No changes recorded yet — this is the value seeded at start-up.</p>
+      {% endif %}
+    </div>
+</div>

@@ -1,0 +1,25 @@
+{% load qa_tags %}
+{% include "institutions/pb/_subnav.html" %}
+<header class="qa-hero"><div>
+  <h1 data-qa-focus>Import from Excel</h1>
+  <p>Add or update bodies and their programme mappings in bulk. Check the file first: nothing is saved until you choose Import, and one bad row stops the whole file.</p>
+  <div class="qa-hero__actions">
+    <a class="btn btn-ghost" href="{% url 'qa_pb:import_template' %}" download>{% icon "download" 16 %} Download the template</a>
+    <a class="btn btn-ghost" href="{% url 'qa_pb:export' %}" download>{% icon "download" 16 %} Export what is on file</a>
+  </div>
+</div></header>
+<section class="qa-card" aria-labelledby="pb-up">
+  <header class="qa-card__head"><div><h2 id="pb-up">Upload the workbook</h2><p>.xlsx, up to 10 MB. Rows match existing records by name, so importing the same file twice changes nothing.</p></div></header>
+  <div class="qa-card__body">
+    <form method="post" enctype="multipart/form-data" action="{% url 'qa_pb:import' %}" hx-post="{% url 'qa_pb:import' %}" hx-encoding="multipart/form-data" hx-target="#pb-import-result" data-qa-progress>
+      {% csrf_token %}
+      {% include "qa_core/partials/_form_errors.html" %}
+      <div class="qa-fields">{% include "qa_core/partials/_field.html" with field=form.file wide=True %}</div>
+      <div class="qa-form-actions">
+        <button type="submit" name="mode" value="check" class="btn btn-ghost">{% icon "check" 16 %} Check the file</button>
+        <button type="submit" name="mode" value="apply" class="btn btn-primary">{% icon "upload" 16 %} Import</button>
+      </div>
+    </form>
+  </div>
+</section>
+<div id="pb-import-result" aria-live="polite">{% include "institutions/pb/_import_result.html" %}</div>

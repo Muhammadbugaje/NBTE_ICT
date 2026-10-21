@@ -116,24 +116,10 @@ class RequestSearchProvider(BaseSearchProvider):
     icon = "file-text"
 
     def search(self, user, query, limit):
-        from workflow.models import Request
+        from workflow.access import visible_requests_queryset
 
-        base = Request.objects.select_related(
-            "requester", "request_type", "receiving_department",
-        )
-
-        if user.is_superuser or user.has_perm("accounts.view_all_requests"):
-            # Review M1: same rule as workflow.views.all_requests / detail.
-            qs = base
-        else:
-            q = Q(requester=user) | Q(assigned_to=user) | Q(approvals__actor=user)
-            if (
-                user.department_id
-                and user.role_id
-                and user.role.code == "director"
-            ):
-                q |= Q(receiving_department_id=user.department_id)
-            qs = base.filter(q).distinct()
+        # One rule for lists, detail pages and search (workflow/access.py).
+        qs = visible_requests_queryset(user)
 
         qs = qs.filter(
             Q(reference__icontains=query)
@@ -180,7 +166,7 @@ class StaffSearchProvider(BaseSearchProvider):
             | Q(last_name__icontains=query)
             | Q(employee_no__icontains=query)
             | Q(email__icontains=query)
-            | Q(designation__icontains=query)
+            | Q(designation__name__icontains=query)  # designation is a FK since the nominal-roll stage
         ).order_by("last_name", "first_name")[:limit]
 
         out = []
@@ -191,7 +177,7 @@ class StaffSearchProvider(BaseSearchProvider):
                 "url": self._url("staff:detail", s.pk),
                 "meta": " · ".join(filter(None, [
                     s.employee_no,
-                    s.designation,
+                    str(s.designation or ""),
                     s.department.name if s.department_id else "",
                 ])),
                 "badge": "",
@@ -210,12 +196,12 @@ class AssetSearchProvider(BaseSearchProvider):
 
     def search(self, user, query, limit):
         try:
-            from assets.views import _visible_assets_qs
+            from assets.access import visible_assets_queryset
         except Exception:
             logger.exception("Asset search: could not import visibility helper")
             return []
 
-        qs = _visible_assets_qs(user).filter(
+        qs = visible_assets_queryset(user).filter(
             Q(asset_tag__icontains=query)
             | Q(serial_number__icontains=query)
             | Q(brand__icontains=query)
@@ -478,11 +464,12 @@ class AttendanceSearchProvider(BaseSearchProvider):
 
     def search(self, user, query, limit):
         from attendance.models import AttendanceRecord
-        from attendance.views import _can_view_all_attendance, _is_director
+        from attendance import access
 
-        if user.is_superuser or _can_view_all_attendance(user):
+        scope = access.attendance_scope(user)
+        if scope == "all":
             base = AttendanceRecord.objects.all()
-        elif _is_director(user) and user.department_id:
+        elif scope == "department":
             base = AttendanceRecord.objects.filter(
                 user__department_id=user.department_id,
             )

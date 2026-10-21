@@ -1,0 +1,70 @@
+{% load qa_tags %}
+{% comment %}
+  Phase 7: the QA overview for leadership (ES, Directors, Deputy, Super Admin).
+  Needs `qa` from dashboards.qa_metrics.overview(). Charts: static/js/qa-insights.js
+  (Chart.js, drawn when the panel scrolls into view); numbers count up (polish.js).
+{% endcomment %}
+<section class="qi" aria-labelledby="qi-title">
+  <header class="qi-head">
+    <div>
+      <h2 id="qi-title">Quality assurance at a glance</h2>
+      <p>Money confirmed, institutions on the register, how often deadlines are met, and where the cases are now.</p>
+    </div>
+    <div class="qi-head__links">
+      <a class="btn btn-sm btn-subtle" href="{% url 'qa_case:board' %}">Case Board</a>
+      {% if qa.complaints.open is not None %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_complaints:queue' %}">Complaints</a>{% endif %}
+    </div>
+  </header>
+
+  <div class="qi-kpis">
+    <article class="qi-kpi qi-kpi--money" data-reveal>
+      <span class="qi-kpi__label">Revenue confirmed, {% now "Y" %}</span>
+      <strong class="qi-kpi__value" data-countup="{{ qa.revenue.year|default:0|floatformat:0 }}" data-countup-prefix="₦">₦{{ qa.revenue.year|default:0|floatformat:"0g" }}</strong>
+      <span class="qi-kpi__foot">{% if qa.revenue.trend is not None %}<span class="qi-trend {% if qa.revenue.trend >= 0 %}is-up{% else %}is-down{% endif %}">{% if qa.revenue.trend >= 0 %}▲{% else %}▼{% endif %} {{ qa.revenue.trend|floatformat:0 }}%</span> on last month{% else %}This month ₦{{ qa.revenue.month|default:0|floatformat:"0g" }}{% endif %}</span>
+    </article>
+    <article class="qi-kpi" data-reveal data-reveal-delay="80">
+      <span class="qi-kpi__label">Institutions on the register</span>
+      <strong class="qi-kpi__value" data-countup="{{ qa.institutions.total|default:0 }}">{{ qa.institutions.total|default:0 }}</strong>
+      <span class="qi-kpi__foot">{{ qa.institutions.approved|default:0 }} approved</span>
+    </article>
+    <article class="qi-kpi" data-reveal data-reveal-delay="160">
+      <span class="qi-kpi__label">Deadlines met (6 months)</span>
+      {% if qa.sla.rate is not None %}
+        <strong class="qi-kpi__value" data-countup="{{ qa.sla.rate }}" data-countup-decimals="1" data-countup-suffix="%">{{ qa.sla.rate }}%</strong>
+      {% else %}<strong class="qi-kpi__value">—</strong>{% endif %}
+      <span class="qi-kpi__foot">{{ qa.sla.closed|default:0 }} stage{{ qa.sla.closed|default:0|pluralize }} closed</span>
+    </article>
+    <article class="qi-kpi{% if qa.sla.overdue_now or qa.complaints.breached %} qi-kpi--alert{% endif %}" data-reveal data-reveal-delay="240">
+      <span class="qi-kpi__label">Open QA cases</span>
+      <strong class="qi-kpi__value" data-countup="{{ qa.cases.open|default:0 }}">{{ qa.cases.open|default:0 }}</strong>
+      <span class="qi-kpi__foot">{% if qa.sla.overdue_now %}<span class="qi-pulse" aria-hidden="true"></span>{{ qa.sla.overdue_now }} stage{{ qa.sla.overdue_now|pluralize }} overdue{% else %}Nothing overdue{% endif %}{% if qa.complaints.open %} · {{ qa.complaints.open }} complaint{{ qa.complaints.open|pluralize }} open{% endif %}</span>
+    </article>
+  </div>
+
+  {{ qa.charts|json_script:"qi-data" }}
+  <div class="qi-charts">
+    <figure class="qi-chart qi-chart--wide" data-reveal>
+      <figcaption><strong>Revenue by month</strong><span>Confirmed payments, last 12 months (₦)</span></figcaption>
+      <div class="qi-canvas"><canvas data-qi="revenue" role="img" aria-label="Bar chart of confirmed revenue for each of the last 12 months"></canvas></div>
+    </figure>
+    <figure class="qi-chart" data-reveal>
+      <figcaption><strong>Institutions</strong><span>By status on the register</span></figcaption>
+      <div class="qi-canvas qi-canvas--donut"><canvas data-qi="institutions" role="img" aria-label="Doughnut chart of institutions by status"></canvas>
+        <div class="qi-donut-centre"><strong>{{ qa.institutions.total|default:0 }}</strong><span>total</span></div></div>
+    </figure>
+    <figure class="qi-chart" data-reveal>
+      <figcaption><strong>Deadlines met</strong><span>Share of stages closed on time, by month</span></figcaption>
+      <div class="qi-canvas"><canvas data-qi="sla" role="img" aria-label="Line chart of the share of stages closed on time each month"></canvas></div>
+    </figure>
+    <figure class="qi-chart" data-reveal>
+      <figcaption><strong>Cases by stage</strong><span>Where the open QA cases are</span></figcaption>
+      <div class="qi-canvas"><canvas data-qi="cases" role="img" aria-label="Bar chart of open QA cases by stage group"></canvas></div>
+    </figure>
+    {% if qa.complaints.top %}
+    <figure class="qi-chart" data-reveal>
+      <figcaption><strong>Top complaint layers</strong><span>Open complaints by kind</span></figcaption>
+      <ol class="qi-bars">{% for t in qa.complaints.top %}<li><span>{{ t.label }}</span><b>{{ t.count }}</b></li>{% endfor %}</ol>
+    </figure>
+    {% endif %}
+  </div>
+</section>

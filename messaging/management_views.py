@@ -691,41 +691,8 @@ def resolution_tester(request):
                 preview.route = route
                 steps_preview = []
                 if route is not None:
-                    # Walk the chain, applying skips, without saving.
-                    chain = list(route.steps.select_related(
-                        "approver_role", "approver_user",
-                    ).order_by("position"))
-                    sender_rank = routing._rank_of(sender)
-                    same_rank_mode = route.same_rank_behaviour
-
-                    for s in chain:
-                        actor = routing.resolve_memo_approver(s, preview)
-                        decision = "act"
-                        reason = ""
-                        if actor is None and s.is_optional:
-                            decision = "skip"
-                            reason = "no actor (optional)"
-                        elif actor is None:
-                            decision = "park"
-                            reason = "no actor (required)"
-                        elif actor.pk == sender.pk:
-                            decision = "skip"
-                            reason = "sender is the actor"
-                        elif s.is_hierarchical:
-                            a_rank = routing._rank_of(actor)
-                            if a_rank < sender_rank:
-                                decision = "skip"
-                                reason = f"junior to sender (rank {a_rank} < {sender_rank})"
-                            elif a_rank == sender_rank and same_rank_mode == "skip":
-                                decision = "skip"
-                                reason = "same rank as sender; route = skip"
-
-                        steps_preview.append({
-                            "step": s,
-                            "actor": actor,
-                            "decision": decision,
-                            "reason": reason,
-                        })
+                    # Same rules as the engine and the memo page (routing.evaluate_step).
+                    steps_preview = routing.simulate_chain(preview)
 
                 result = {
                     "route":  route,

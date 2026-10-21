@@ -1,0 +1,12 @@
+{% load qa_tags %}
+{% if rows %}
+  <ul class="qa-rowlist" role="list">{% for q in rows %}
+    <li><a class="qa-rowlink" href="{% url 'qa_portal:query' q.pk %}" hx-get="{% url 'qa_portal:query' q.pk %}" hx-target="#qa-main" hx-push-url="true">
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ q.title }}</span>
+        <span class="qa-rowlink__meta"><span class="qa-mono">{{ q.reference }}</span><span>· {{ q.subject_label }}</span><span>· respond by {{ q.due_at|date:"j M Y" }}</span></span></span>
+      <span class="qa-rowlink__side"><span class="qa-chip {{ q.status|tone }}">{% if q.status == "open" %}Waiting for your answer{% else %}{{ q.get_status_display }}{% endif %}</span>{% if q.is_overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}</span></a></li>
+  {% endfor %}</ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-query-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "mail" 28 %}</span><h3 class="nbte-empty-state__title">No queries here</h3><p class="nbte-empty-state__body">When NBTE asks you something about a QA request, it appears here and you get a notification.</p></div>
+{% endif %}
