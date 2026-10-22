@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{% if status == "paid" %}Payment received{% elif status == "failed" %}Payment not completed{% else %}Payment pending{% endif %} · {{ portal_name }}</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f5f7f6; --card: #fff; --text: #14231a; --muted: #5b6b62;
+            --brand: #1F6B3E; --good: #1F6B3E; --warn: #B45309; --bad: #B91C1C; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0f1512; --card: #18211c; --text: #e8efe9; --muted: #9db0a4; --brand: #3fa368;
+              --good: #4cc17f; --warn: #f0a44b; --bad: #f87171; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           padding: 16px; }
+    main { width: 100%; max-width: 420px; background: var(--card); border-radius: 16px; padding: 28px 24px;
+           box-shadow: 0 2px 16px rgba(0,0,0,.08); text-align: center; }
+    h1 { font-size: 1.35rem; margin: 0 0 8px; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    .status { display: inline-block; font-weight: 600; font-size: .85rem; padding: 4px 12px; border-radius: 999px;
+              margin-bottom: 14px; border: 1px solid currentColor; }
+    .paid { color: var(--good); } .pending { color: var(--warn); } .failed { color: var(--bad); }
+    .ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; word-break: break-all; }
+    a.button { display: block; margin-top: 20px; padding: 14px 18px; border-radius: 12px; background: var(--brand);
+               color: #fff; font-weight: 600; text-decoration: none; font-size: 1.05rem; }
+    a.button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+    .small { font-size: .85rem; margin-top: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <span class="status {{ status }}">{% if status == "paid" %}Payment received{% elif status == "failed" %}Not completed{% else %}Pending{% endif %}</span>
+  {% if status == "paid" %}
+    <h1>Payment received by the provider</h1>
+    <p>NBTE Finance will now confirm it. You will be notified in the app.</p>
+  {% elif status == "failed" %}
+    <h1>The payment did not go through</h1>
+    <p>{{ failure_reason|default:"Try again or choose another way to pay." }}</p>
+  {% else %}
+    <h1>Your payment is being checked</h1>
+    <p>We have not heard back from the provider yet. The app will show the result as soon as it arrives.</p>
+  {% endif %}
+  {% if reference %}<p class="ref">Reference: {{ reference }}</p>{% endif %}
+  <a class="button" id="return-to-app" href="{{ deep_link }}">Return to the Digital NBTE app</a>
+  <p class="small">If the app does not open by itself, tap the button above.</p>
+</main>
+<script>
+  // Hand over to the app; the button above is the fallback.
+  setTimeout(function () { window.location.href = "{{ deep_link|escapejs }}"; }, 600);
+</script>
+</body>
+</html>

@@ -109,7 +109,8 @@ def test_staff_id_is_staff_door_only(portal_api, institution_user):
 # ---------------------------------------------------------------------------
 # home/
 # ---------------------------------------------------------------------------
-STAFF_HOME = {"greeting", "date_label", "attendance", "counts", "pinned_chats", "up_next", "announcement"}
+STAFF_HOME = {"greeting", "date_label", "attendance", "counts", "pinned_chats", "up_next", "announcement",
+              "features"}
 
 
 def test_home_staff_empty(staff_api, staff_user):
@@ -146,7 +147,8 @@ def test_home_staff_tasks_and_attendance(staff_api, qa_seed, make_user):
 def test_home_institution_empty(portal_api, institution_user):
     home = bearer(portal_api, institution_user).get(BASE + "home/").json()
     assert set(home) == {"institution", "application", "bills_due", "programmes_expiring", "payments_by_month",
-                         "action_items", "recent_activity", "programme_board", "programme_count", "sections"}
+                         "action_items", "recent_activity", "programme_board", "programme_count", "sections",
+                         "features"}
     assert home["institution"]["code"] == "APX"
     assert home["application"] is None and home["bills_due"] == [] and home["programmes_expiring"] == []
     assert len(home["payments_by_month"]) == 12
@@ -166,6 +168,7 @@ def test_home_institution_with_application_and_bill(portal_api, inst_user, fee_o
 def test_home_resource_person_empty(portal_api, rp_user):
     home = bearer(portal_api, rp_user).get(BASE + "home/").json()
     sections = home.pop("sections")
+    assert home.pop("features") == {"search": False, "executive_dashboard": False, "office_code_check_in": False}
     assert home == {"next_visit": None, "todo": [], "history": []}
     assert [s["key"] for s in sections] == ["engagements", "service", "profile", "complaints"]
 

@@ -224,3 +224,87 @@ def verify_check_in_code(user, raw_code, now=None):
 
     _bump_attempts(user)
     return None, None
+
+# ===========================================================================
+# Check-in with a code (Phase 9: shared by the website's check_in_manual view
+# and the mobile API's attendance/check-in/code/)
+# ===========================================================================
+INVALID_CODE_MESSAGE = (
+    "That code isn't valid right now. Ask the office contact "
+    "for the current code and try again."
+)
+ON_LEAVE_MESSAGE = "You can't sign attendance because you're on approved leave today."
+DISABLED_MESSAGE = "Manual check-in is currently disabled. Please use GPS check-in."
+ALREADY_MESSAGE = "You already have an attendance record for today."
+
+
+def code_check_in_block_reason(user, day=None):
+    """The refusals of the code check-in page that do not depend on the code,
+    in the page's order, or "" when the user may enter a code."""
+    from .models import AttendanceRecord
+
+    day = day or timezone.localdate()
+    blocked = non_working_reason(day, user)
+    if blocked:
+        return blocked
+    if not manual_checkin_enabled():
+        return DISABLED_MESSAGE
+    existing = AttendanceRecord.objects.filter(user=user, date=day).first()
+    if existing is not None and existing.status != AttendanceRecord.ON_LEAVE:
+        return ALREADY_MESSAGE
+    if existing is not None:
+        return ON_LEAVE_MESSAGE
+    return ""
+
+
+def check_in_with_code(user, raw_code, now=None):
+    """The whole office-code check-in: block reasons, the attempt limit and
+    code match (verify_check_in_code), lateness (_status_for_check_in) and the
+    record + attendance log (mark_status, source "manual").
+
+    Returns a services.CheckInResult with an extra ``error``:
+    "" (ok), "refused" (cannot check in today) or "code" (the code itself:
+    empty, wrong, or too many wrong attempts).
+    """
+    from . import services
+    from .models import AttendanceRecord
+
+    now = now or timezone.now()
+    today = timezone.localtime(now).date()
+
+    def fail(message, error):
+        result = services.CheckInResult(ok=False, message=message)
+        result.error = error
+        return result
+
+    reason = code_check_in_block_reason(user, today)
+    if reason:
+        return fail(reason, "refused")
+    try:
+        location, _row = verify_check_in_code(user, raw_code, now=now)
+    except ValidationError as exc:
+        return fail("; ".join(exc.messages), "code")
+    if location is None:
+        return fail(INVALID_CODE_MESSAGE, "code")
+
+    status = services._status_for_check_in(location, timezone.localtime(now))
+    try:
+        record = services.mark_status(
+            user, today, status,
+            source=AttendanceRecord.SOURCE_MANUAL,
+            actor=user,
+            location=location,
+            check_in_at=now,
+            notes=f"Manual check-in via location code · {location.name}",
+        )
+    except ValidationError as exc:
+        joined = " ".join(getattr(exc, "messages", None) or [str(exc)])
+        return fail(ON_LEAVE_MESSAGE if "approved leave" in joined.lower() else joined, "refused")
+
+    result = services.CheckInResult(
+        ok=True, status=status, record=record, location=location,
+        message=f"Checked in via {location.name}. "
+                + ("You're on time." if status == AttendanceRecord.PRESENT else "Recorded as late."),
+    )
+    result.error = ""
+    return result

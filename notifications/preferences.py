@@ -17,6 +17,8 @@ are mapped through CATEGORY_TO_KIND. Other helpers:
     save_preferences(user, data) -> NotificationPreference
     in_quiet_hours(pref, now=None) -> bool
     kind_for(category) -> str
+    is_urgent(notification) -> bool
+    push_allowed(pref, notification, kind, now=None) -> bool   (push rule, row already loaded)
 """
 from __future__ import annotations
 
@@ -126,6 +128,25 @@ def should_deliver(user, kind, urgent=False, channel="push", now=None):
         return bool(pref.email_digest)
     if in_quiet_hours(pref, now=now):
         return bool(urgent and pref.allow_urgent_during_quiet)
+    return True
+
+
+def is_urgent(notification):
+    """A notification that may break through quiet hours (when the user
+    allows it): level "error", or ``metadata.urgent`` / ``metadata.priority
+    == "urgent"`` set by the sender."""
+    meta = notification.metadata if isinstance(getattr(notification, "metadata", None), dict) else {}
+    return bool(getattr(notification, "level", "") == Notification.ERROR or meta.get("urgent")
+                or meta.get("priority") == "urgent")
+
+
+def push_allowed(pref, notification, kind, now=None):
+    """should_deliver(channel="push") for an already-loaded preference row,
+    so callers that check many notifications read the row once."""
+    if not getattr(pref, kind_for(kind), True):
+        return False
+    if in_quiet_hours(pref, now=now):
+        return bool(is_urgent(notification) and pref.allow_urgent_during_quiet)
     return True
 
 

@@ -349,9 +349,26 @@ def resource_person_home(user, request):
     return {"next_visit": next_visit, "todo": todo, "history": history, "sections": portal_sections(user, None)}
 
 
+def features(user):
+    """Which optional app screens this account has (staff door only):
+    search/ (everyone on the staff door), dashboard/executive/ (the website's
+    leadership-board rule, api.services.dashboard.can_view) and office-code
+    check-in (attendance.codes.manual_checkin_enabled)."""
+    if user.user_type != "staff":
+        return {"search": False, "executive_dashboard": False, "office_code_check_in": False}
+    from attendance.codes import manual_checkin_enabled
+
+    from .dashboard import can_view
+
+    return {"search": True, "executive_dashboard": bool(_safe("features", lambda: can_view(user), False)),
+            "office_code_check_in": bool(_safe("features", manual_checkin_enabled, False))}
+
+
 def home_payload(user, request):
     if user.user_type == "institution":
-        return institution_home(user, request)
-    if user.user_type == "resource_person":
-        return resource_person_home(user, request)
-    return staff_home(user, request)
+        payload = institution_home(user, request)
+    elif user.user_type == "resource_person":
+        payload = resource_person_home(user, request)
+    else:
+        payload = staff_home(user, request)
+    return {**payload, "features": features(user)}

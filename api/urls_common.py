@@ -30,6 +30,7 @@ def common_patterns(urlconf):
         path("home/", home.HomeView.as_view(), name="home"),
         # --- notifications ---
         path("notifications/", notifications_views.NotificationListView.as_view(), name="notifications"),
+        path("notifications/feed/", notifications_views.NotificationFeedView.as_view(), name="notifications_feed"),
         path("notifications/unread-count/", notifications_views.NotificationUnreadCountView.as_view(),
              name="notifications_unread_count"),
         path("notifications/read-all/", notifications_views.NotificationReadAllView.as_view(),

@@ -69,3 +69,27 @@ class NotificationBulkResponseSerializer(serializers.Serializer):
     skipped = NotificationSkippedSerializer(many=True)
     message = serializers.CharField()
     unread = serializers.IntegerField()
+
+
+class NotificationFeedQuerySerializer(serializers.Serializer):
+    after = serializers.IntegerField(required=False, min_value=0,
+                                     help_text="The latest_id you stored. Omit on first run to get only the cursor.")
+
+
+class NotificationFeedItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    category = serializers.CharField()
+    kind = serializers.CharField(help_text=" | ".join(KINDS))
+    level = serializers.CharField(help_text="info | success | warning | error")
+    title = serializers.CharField()
+    body = serializers.CharField(allow_blank=True)
+    target = NotificationTargetSerializer(allow_null=True)
+    created_at = serializers.DateTimeField()
+
+
+class NotificationFeedSerializer(serializers.Serializer):
+    server_time = serializers.DateTimeField()
+    latest_id = serializers.IntegerField(help_text="Store it and send it back as `after` next time.")
+    quiet_now = serializers.BooleanField(help_text="The user's quiet hours are on right now.")
+    show_previews = serializers.CharField(help_text="always | unlocked | never (me/preferences).")
+    items = NotificationFeedItemSerializer(many=True)

@@ -60,3 +60,10 @@ def send_email_task(self, log_id, subject, recipients, html, text):
         log.pk, log.category, provider, log.attempts,
     )
     return provider
+
+@shared_task(ignore_result=True)
+def send_push_task(notification_id):
+    """Phase 9: FCM push for one in-app notification (notifications.push)."""
+    from . import push
+
+    return push.send_notification(notification_id)

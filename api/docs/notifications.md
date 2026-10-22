@@ -47,6 +47,9 @@ Common errors: see `me.md` (401 `not_authenticated` / `token_expired` / `token_r
 | `finance_item` | `/finance/queue/<id>` | `/qa/finance/queue/<id>/` |
 | `bill` | `/bills/<id>` | portal `/payments/<id>/` |
 | `application` | `/application` (`id` null) | portal `/application/` |
+| `staff` | `/staff/<id>` | staff profile (`staff/<id>/`); used by `search/` |
+| `asset` | `/assets/<tag>` (`id` = asset id) | `/assets/<tag>/`; used by `search/` |
+| `institution` | `/qa/institutions/<code>` (`id` = institution id) | `/qa/institutions/<code>/` (QA staff `qa/institutions/<code>/`); used by `search/` |
 | `web` | `null` (`id` null) | anything else — open `url` in the browser |
 
 ## GET `notifications/`
@@ -92,3 +95,32 @@ Response 200:
 ```
 Ids that are not the user's are skipped (never an error). Errors: 400 `validation_error` —
 `{"ids": ["This list may not be empty."]}`, `{"action": ["\"x\" is not a valid choice."]}`.
+
+## GET `notifications/feed/?after=<id>` — background polling
+
+For a phone that polls in the background (e.g. Android WorkManager every 15 min) and shows
+local notifications. Cheap: two queries. My own notifications only.
+
+Query: `after` (optional, ≥ 0) = the `latest_id` you stored. **Omit it on the first run**: you
+get `items: []` and the current `latest_id` (so an install does not replay old notifications).
+
+Response 200:
+```json
+{"server_time": "2026-10-22T09:15:02+01:00", "latest_id": 9024, "quiet_now": false,
+ "show_previews": "always",
+ "items": [{"id": 9024, "category": "task", "kind": "tasks_tickets", "level": "info",
+            "title": "Task assigned to you", "body": "TSK-2026-0418 — Update the server inventory",
+            "target": {"type": "task", "id": 418, "route": "/tasks/418", "url": "https://<host>/tasks/418/"},
+            "created_at": "2026-10-22T09:12:00+01:00"}]}
+```
+- `items`: newest first, at most 20, `id > after`, leaving out: notifications already read
+  (on any device), kinds switched off in `me/preferences/`, and — while `quiet_now` — anything
+  not urgent (urgent = level `error`; it breaks through only if `allow_urgent_during_quiet`).
+  The same rule decides FCM pushes, so feed and push never disagree.
+- `latest_id`: store it and send it as `after` next time (it moves past rows left out above).
+  When nothing is newer it equals `after`.
+- `show_previews`: `never` → show "New notification" instead of the text on the lock screen.
+- Use `id` (or the push's `notification_id`) to avoid showing the same item twice when push
+  is also on.
+
+Errors: 400 `validation_error` — `{"after": ["Ensure this value is greater than or equal to 0."]}`.

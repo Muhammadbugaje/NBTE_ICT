@@ -36,6 +36,10 @@ class TodaySerializer(serializers.Serializer):
     locations = LocationSerializer(many=True)
     max_accuracy_meters = serializers.IntegerField()
     manual_check_in_enabled = serializers.BooleanField()
+    office_code_enabled = serializers.BooleanField(
+        help_text="Office-code check-in (attendance/check-in/code/) is switched on.")
+    office_code_reason = serializers.CharField(
+        allow_blank=True, help_text="Why a code check-in is not possible today (empty when it is).")
     check_out_supported = serializers.BooleanField()
 
 
@@ -45,6 +49,11 @@ class CheckInRequestSerializer(serializers.Serializer):
     accuracy = serializers.FloatField(help_text="Metres, as reported by the device.")
     is_mocked = serializers.BooleanField(required=False, default=False,
                                          help_text="True when the OS reports a mock / fake location.")
+
+
+class CodeCheckInRequestSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=12, trim_whitespace=True,
+                                 help_text="The rotating office code (case and spaces ignored).")
 
 
 class CheckInResultSerializer(serializers.Serializer):

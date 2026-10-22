@@ -978,13 +978,18 @@ class OnlinePaymentSerializer(s.Serializer):
     provider = s.ChoiceField(choices=["remita", "paystack"])
     amount = s.CharField(required=False, allow_blank=True,
                          help_text="Defaults to the balance; part payments only where allowed.")
+    return_to = s.ChoiceField(choices=["web", "app"], required=False, default="web",
+                              help_text="\"app\": after the provider, the browser shows a result page that "
+                                        "opens digitalnbte://payment-return?bill=&status=&reference=.")
 
 
 class CheckoutSerializer(s.Serializer):
     checkout_url = s.CharField(help_text="Open in the browser / a web view; never collect card data in the app.")
     reference = s.CharField(help_text="The attempt's provider reference (order id).")
     provider = s.CharField()
-    return_url = s.CharField(help_text="Where the provider sends the payer back (the portal payment page).")
+    return_url = s.CharField(help_text="Where the provider sends the payer back (the portal payment page, or the "
+                                       "app-return page when return_to is \"app\").")
+    return_to = s.ChoiceField(choices=["web", "app"], required=False)
 
 
 class VerifyRequestSerializer(s.Serializer):

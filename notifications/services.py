@@ -28,7 +28,7 @@ def notify(recipient, *, title, body="", url="", level=Notification.INFO,
     if actor is not None and not getattr(actor, "pk", None):
         actor = None
     try:
-        return Notification.objects.create(
+        notification = Notification.objects.create(
             recipient=recipient,
             actor=actor,
             title=str(title)[:255],
@@ -41,6 +41,8 @@ def notify(recipient, *, title, body="", url="", level=Notification.INFO,
     except Exception:
         logger.exception("Failed to create notification for user %s", getattr(recipient, "pk", None))
         return None
+    _push([notification])
+    return notification
 
 
 def notify_many(recipients, **kwargs):
@@ -69,10 +71,23 @@ def notify_many(recipients, **kwargs):
     if not rows:
         return []
     try:
-        return Notification.objects.bulk_create(rows)
+        created = Notification.objects.bulk_create(rows)
     except Exception:
         logger.exception("Failed to bulk-create %d notifications", len(rows))
         return []
+    _push(created)
+    return created
+
+
+def _push(notifications):
+    """Phase 9: push to the recipients' app devices (notifications.push; a
+    no-op unless FCM is configured). Never raises into the caller."""
+    try:
+        from . import push
+
+        push.queue(notifications)
+    except Exception:
+        logger.exception("Failed to queue push notifications")
 
 # ---------------------------------------------------------------------------
 # Bulk actions (Phase 8; shared by the website's bulk views and the Phase 9

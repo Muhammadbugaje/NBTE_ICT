@@ -193,6 +193,12 @@ class AnnouncementRefSerializer(serializers.Serializer):
     acknowledged = serializers.BooleanField()
 
 
+class HomeFeaturesSerializer(serializers.Serializer):
+    search = serializers.BooleanField(help_text="search/ is available (staff door).")
+    executive_dashboard = serializers.BooleanField(help_text="dashboard/executive/ is available to this account.")
+    office_code_check_in = serializers.BooleanField(help_text="attendance/check-in/code/ is switched on.")
+
+
 class StaffHomeSerializer(serializers.Serializer):
     greeting = serializers.CharField()
     date_label = serializers.CharField()
@@ -201,6 +207,7 @@ class StaffHomeSerializer(serializers.Serializer):
     pinned_chats = PinnedChatSerializer(many=True)
     up_next = UpNextSerializer(many=True)
     announcement = AnnouncementRefSerializer(allow_null=True)
+    features = HomeFeaturesSerializer()
 
 
 class ApplicationSummarySerializer(serializers.Serializer):
@@ -267,6 +274,7 @@ class InstitutionHomeSerializer(serializers.Serializer):
     programme_board = BoardCountSerializer(many=True, help_text="Programmes per status.")
     programme_count = serializers.IntegerField()
     sections = PortalSectionSerializer(many=True, help_text="Portal sections this account has, in order.")
+    features = HomeFeaturesSerializer()
 
 
 class NextVisitSerializer(serializers.Serializer):
@@ -296,6 +304,7 @@ class ResourcePersonHomeSerializer(serializers.Serializer):
     todo = TodoSerializer(many=True)
     history = HistorySerializer(many=True)
     sections = PortalSectionSerializer(many=True)
+    features = HomeFeaturesSerializer()
 
 
 # ---------------------------------------------------------------------------

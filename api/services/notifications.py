@@ -124,3 +124,33 @@ def notification_dict(n, request=None):
 
 def unread_count(user):
     return mine(user).filter(is_read=False).count()
+
+
+FEED_SIZE = 20
+
+
+def feed(user, after=None, request=None, now=None):
+    """notifications/feed/ - what a phone polling in the background should
+    show now. Two queries: the preference row and the newest rows above
+    ``after``. Items leave out notifications already read (on any device),
+    kinds switched off in me/preferences and, during quiet hours, anything
+    not urgent (notifications.preferences.push_allowed - the push rule).
+    ``after`` omitted: no items, just the cursor (prime it on first run)."""
+    from django.utils import timezone
+
+    from notifications.preferences import get_preferences, in_quiet_hours, push_allowed
+
+    now = now or timezone.now()
+    pref = get_preferences(user)
+    base = mine(user).only("id", "category", "level", "title", "body", "url", "metadata", "created_at", "is_read")
+    if after is None:
+        latest = base.order_by("-id").values_list("id", flat=True).first() or 0
+        rows = []
+    else:
+        rows = list(base.filter(pk__gt=after).order_by("-id")[:FEED_SIZE])
+        latest = rows[0].pk if rows else after
+    items = [{"id": n.pk, "category": n.category, "kind": kind_of(n), "level": n.level, "title": n.title,
+              "body": n.body, "target": target_for(n, request), "created_at": n.created_at}
+             for n in rows if not n.is_read and push_allowed(pref, n, kind_of(n), now=now)]
+    return {"server_time": now, "latest_id": latest, "quiet_now": in_quiet_hours(pref, now=now),
+            "show_previews": pref.show_previews, "items": items}

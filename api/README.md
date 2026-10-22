@@ -97,7 +97,10 @@ build error responses by hand.
 | `home/` | both | done (staff `pinned_chats` from messaging, `announcement` = newest waiting action_needed/urgent) |
 | `me/preferences/`, `me/devices/…`, `me/push-token/`, `me/deletion-request/` | both | done — `docs/me.md` |
 | `me/staff-id/` | staff | done — `docs/me.md` |
-| `notifications/…` | both | done — `docs/notifications.md` |
+| `notifications/…` | both | done (incl. `notifications/feed/` for background polling) — `docs/notifications.md` |
+| `search/` | staff | done (the website's `core.search` scoping, grouped) — `docs/search.md` |
+| `dashboard/executive/` | staff | done (director / deputy / ES / chairman boards, same access rule) — `docs/dashboard.md` |
+| push (FCM HTTP v1) | both | `notifications/push.py`, off unless `FCM_SERVICE_ACCOUNT_FILE` is set — `web/PUSH_NOTIFICATIONS.md` |
 | `announcements/…` | staff | done — `docs/announcements.md` |
 | `insights/` | staff | done — `docs/insights.md` |
 | `schema/`, `docs/` | both | DEBUG, or a signed-in superuser |
@@ -107,7 +110,7 @@ build error responses by hand.
 | `chats/…` (threads, messages, updates, polls, voice, search) | staff | done — `api/docs/chats.md` |
 | `memos/…` (tabs, detail, actions, create, files) | staff | done — `api/docs/memos.md` |
 | `tasks/…`, `tickets/…`, `requests/…`, `leave/…` | staff | done — see `docs/work.md` |
-| `attendance/…` | staff | done (check-out 501: the website records check-in only) — `docs/attendance.md` |
+| `attendance/…` | staff | done (check-out 501: the website records check-in only; office-code check-in `attendance/check-in/code/`) — `docs/attendance.md` |
 | `assets/…`, `staff/…`, `workspace/` | staff | done — `docs/assets_staff.md` |
 | `qa/…` (summary, cases, confirmations, finance, institutions, applications, requests/SSQ, complaints, inspections, files) | staff | done — see `api/docs/qa_staff.md` |
 

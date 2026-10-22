@@ -183,6 +183,7 @@ urlpatterns += [
     # Attendance
     path("attendance/today/", work_attendance.TodayView.as_view(), name="attendance_today"),
     path("attendance/check-in/", work_attendance.CheckInView.as_view(), name="attendance_check_in"),
+    path("attendance/check-in/code/", work_attendance.CodeCheckInView.as_view(), name="attendance_check_in_code"),
     path("attendance/check-out/", work_attendance.CheckOutView.as_view(), name="attendance_check_out"),
     path("attendance/history/", work_attendance.HistoryView.as_view(), name="attendance_history"),
     path("attendance/summary/", work_attendance.SummaryView.as_view(), name="attendance_summary"),
@@ -201,3 +202,12 @@ urlpatterns += [
     path("workspace/", work_workspace.WorkspaceView.as_view(), name="workspace"),
 ]
 # --- end work ---
+
+# --- search, executive dashboard ---
+from .views import dashboard as dashboard_views  # noqa: E402
+from .views import search as search_views  # noqa: E402
+
+urlpatterns += [
+    path("dashboard/executive/", dashboard_views.ExecutiveDashboardView.as_view(), name="dashboard_executive"),
+    path("search/", search_views.SearchView.as_view(), name="search"),
+]

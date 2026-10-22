@@ -1854,56 +1854,18 @@ def check_in_manual(request):
             for err in form.errors.get("code", []):
                 messages.error(request, err)
         else:
-            try:
-                location, code_row = code_service.verify_check_in_code(
-                    request.user, form.cleaned_data["code"],
-                )
-            except ValidationError as exc:
-                messages.error(request, "; ".join(exc.messages))
-                location = None
-
-            if location is not None:
-                status = services._status_for_check_in(
-                    location, timezone.localtime(),
-                )
-                try:
-                    services.mark_status(
-                        request.user, today, status,
-                        source=AttendanceRecord.SOURCE_MANUAL,
-                        actor=request.user,
-                        location=location,
-                        check_in_at=timezone.now(),
-                        notes=f"Manual check-in via location code · {location.name}",
-                    )
-                except ValidationError as exc:
-                    # mark_status refuses to touch a day that's flagged
-                    # ON_LEAVE. Translate that into plain English.
-                    msgs = getattr(exc, "messages", None) or [str(exc)]
-                    joined = " ".join(msgs)
-                    if "approved leave" in joined.lower():
-                        messages.error(
-                            request,
-                            "You can't sign attendance because you're on "
-                            "approved leave today.",
-                        )
-                    else:
-                        messages.error(request, joined)
-                    return redirect("attendance:home")
-
-                messages.success(
-                    request,
-                    f"Checked in via {location.name}. "
-                    + ("You're on time." if status == AttendanceRecord.PRESENT
-                       else "Recorded as late."),
-                )
+            # Phase 9: one implementation for this page and the mobile API
+            # (attendance.codes.check_in_with_code): code match, attempt
+            # limit, lateness and the record + attendance log.
+            result = code_service.check_in_with_code(
+                request.user, form.cleaned_data["code"],
+            )
+            if result.ok:
+                messages.success(request, result.message)
                 return redirect("attendance:home")
-            elif form.is_valid():
-                # Invalid code, form itself was fine.
-                messages.error(
-                    request,
-                    "That code isn't valid right now. Ask the office contact "
-                    "for the current code and try again.",
-                )
+            messages.error(request, result.message)
+            if result.error == "refused":
+                return redirect("attendance:home")
     else:
         form = ManualCodeCheckInForm()
 

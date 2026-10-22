@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from ..pagination import StandardPagination
 from ..serializers_notifications import (
+    NotificationFeedQuerySerializer, NotificationFeedSerializer,
     NotificationBulkRequestSerializer, NotificationBulkResponseSerializer, NotificationMarkResponseSerializer, NotificationListQuerySerializer,
     NotificationSerializer, NotificationReadAllResponseSerializer, NotificationUnreadCountSerializer,
 )
@@ -96,3 +97,16 @@ class NotificationUnreadCountView(APIView):
     def get(self, request):
         return Response(NotificationUnreadCountSerializer({"unread": svc.unread_count(request.user)}).data)
 
+
+
+class NotificationFeedView(APIView):
+    """Background polling: my newest notifications above ``after`` that a
+    push would show now (kind switches and quiet hours respected)."""
+
+    @extend_schema(operation_id="notifications_feed", parameters=[NotificationFeedQuerySerializer],
+                   responses={200: NotificationFeedSerializer, **errors(400), **AUTHED_ERRORS})
+    def get(self, request):
+        s = NotificationFeedQuerySerializer(data=request.query_params)
+        s.is_valid(raise_exception=True)
+        return Response(NotificationFeedSerializer(
+            svc.feed(request.user, s.validated_data.get("after"), request)).data)

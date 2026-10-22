@@ -288,6 +288,38 @@ def verify(request, token):
 
 
 # ---------------------------------------------------------------------------
+# Phase 9: back to the mobile app after an online payment (payments/app_return.py)
+# ---------------------------------------------------------------------------
+@require_http_methods(["GET"])
+def payment_app_return(request, pk, token):
+    """The provider's return page for a payment started in the app: verify
+    the attempt as the portal page does, then hand over to the app. No
+    website session needed - the signed token is the permission."""
+    from . import app_return
+
+    if not app_return.token_ok(token, pk):
+        raise Http404
+    ob = PaymentObligation.unscoped.filter(pk=pk).first()
+    if ob is None:
+        raise Http404
+    attempt = None
+    if any(k in request.GET for k in ("reference", "trxref", "RRR", "rrr", "orderID")):
+        attempt = services.verify_on_return(ob, request.GET)
+    if attempt is None:
+        attempt = PaymentAttempt.unscoped.filter(obligation=ob).order_by("-created_at").first()
+    ob.refresh_from_db()
+    status = app_return.status_of(ob, attempt)
+    response = render(request, "qa_portal/payments/app_return.html", {
+        "portal_name": PORTAL_NAME, "status": status, "deep_link": app_return.deep_link(ob, attempt),
+        "reference": attempt.provider_reference if attempt is not None else "",
+        "failure_reason": (attempt.failure_reason or "") if attempt is not None and status == "failed" else "",
+    })
+    response["Cache-Control"] = "no-store"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+# ---------------------------------------------------------------------------
 # Development payment simulator (QA_PAYMENTS_SIMULATE only)
 # ---------------------------------------------------------------------------
 @require_http_methods(["GET", "POST"])
@@ -307,6 +339,15 @@ def pay_simulator(request, provider, ref):
         if outcome not in ("success", "failed", "webhook_only"):
             outcome = "success"
         services.simulate_provider_callback(provider, ref, outcome)
+        from . import app_return
+
+        if app_return.is_app_attempt(attempt):
+            # Phase 9: a payment started from the app goes back to the app
+            # (the simulator ignores return URLs, so it adds the reference
+            # the real provider would).
+            ob = attempt.obligation
+            return HttpResponseRedirect(app_return.return_url(ob, request) + "?" + (
+                f"reference={ref}" if provider == "paystack" else f"RRR={ref}"))
         if attempt is not None:
             from qa_core.hosts import portal_absolute
 

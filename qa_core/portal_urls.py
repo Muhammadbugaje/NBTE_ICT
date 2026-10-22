@@ -84,6 +84,8 @@ portal_patterns = ([
     path("inspections/", inspection_views.institution_inspections, name="inspections"),
     path("payments/", payment_views.payments, name="payments"),
     path("payments/<int:pk>/", payment_views.payment, name="payment"),
+    path("payments/<int:pk>/app-return/<str:token>/", payment_views.payment_app_return,
+         name="payment_app_return"),  # Phase 9: back to the mobile app
     path("payments/<int:pk>/slip/", payment_views.payment_slip, name="payment_slip"),
     path("payments/<int:pk>/online/", payment_views.payment_online, name="payment_online"),
     path("payments/<int:pk>/proof/", payment_views.payment_proof, name="payment_proof"),

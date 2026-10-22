@@ -93,18 +93,27 @@ class PaymentOnlineView(APIView):
         from payments import services
         from qa_core.hosts import portal_absolute
 
+        from payments import app_return
+
         ob = _bill(request, pk)
         data = body(sp.OnlinePaymentSerializer, request)
-        callback = portal_absolute(reverse("qa_portal:payment", args=[ob.pk]), request._request)
+        to_app = data.get("return_to") == "app"
+        if to_app:  # Phase 9: back to the app after the provider (payments/app_return.py)
+            callback = app_return.return_url(ob, request._request)
+        else:
+            callback = portal_absolute(reverse("qa_portal:payment", args=[ob.pk]), request._request)
         with website_rules():
             attempt = services.start_online_payment(ob, data["provider"], user=request.user,
                                                     amount=data.get("amount") or None, callback_url=callback,
                                                     request=request._request)
         if not attempt.checkout_url:
             raise Forbidden(attempt.failure_reason or "The payment could not be started. Try again.")
+        if to_app:
+            app_return.mark_attempt(attempt)
         return Response(sp.CheckoutSerializer({"checkout_url": attempt.checkout_url,
                                                "reference": attempt.provider_reference,
-                                               "provider": attempt.provider, "return_url": callback}).data,
+                                               "provider": attempt.provider, "return_url": callback,
+                                               "return_to": "app" if to_app else "web"}).data,
                         status=status.HTTP_201_CREATED)
 
 

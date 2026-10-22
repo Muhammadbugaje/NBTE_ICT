@@ -722,20 +722,43 @@ Row fields plus:
 {"provider": "paystack"}
 ```
 
-(`amount` optional; defaults to the balance — part payments only where allowed.)
+(`amount` optional; defaults to the balance — part payments only where allowed.
+`return_to` optional: `"web"` (default) | `"app"`, see "Back to the app" below.)
 → 201
 
 ```json
 {"checkout_url": "https://checkout.paystack.com/…",
  "reference": "NBTE-QAP-2026-DMP-000003-27-P2",
  "provider": "paystack",
- "return_url": "https://qa.nbte.gov.ng/payments/3/"}
+ "return_url": "https://qa.nbte.gov.ng/payments/3/",
+ "return_to": "web"}
 ```
 
 Open `checkout_url` in the system browser / an in-app browser tab. When
 the browser reaches `return_url` (Paystack adds `?reference=&trxref=`,
 Remita `?RRR=&orderID=`), close it and call `verify/` with those query
-parameters. Same initiation as the website's "Pay with …" button
+parameters.
+
+**Back to the app (`"return_to": "app"`).** Send it when the checkout opens
+in the phone's *system browser* (no website session there). `return_url`
+is then `https://<portal>/payments/<id>/app-return/<signed token>/`. After
+the provider (or, in development, the simulator) sends the payer back, that
+page checks the payment with the provider exactly like the portal page
+(`verify_on_return`), shows the result with a **"Return to the Digital NBTE
+app"** button and opens, after ~0.6 s (the button is the fallback):
+
+```
+digitalnbte://payment-return?bill=3&status=paid&reference=NBTE-QAP-2026-DMP-000003-27-P2
+```
+
+`status`: `paid` (the provider reports it paid — NBTE Finance still
+confirms) · `pending` (no answer yet) · `failed`. Register the
+`digitalnbte` scheme (host `payment-return`) in the app; on open, reload
+`payments/<bill>/` (and you may call `verify/` with `{"params":
+{"reference": "<reference>"}}`). The page needs no sign-in (the token in the
+path, valid 3 days, is the permission) and shows no bill details. Without
+`return_to` nothing changes: the payer lands on the normal portal payment
+page. Same initiation as the website's "Pay with …" button
 (`payments.services.start_online_payment`). 400 `fields.provider` (not
 `remita|paystack`), or the website's message ("Part payments are not
 accepted online. Pay the full balance of ₦…", "Paystack is not available.",

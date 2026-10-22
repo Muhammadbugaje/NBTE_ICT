@@ -6,7 +6,8 @@ checks of the website's check_in_api), check_in_user (the whole check-in),
 non_working_reason, summarize_period, attendance_stats, record_detail,
 NEUTRAL_STATUSES; attendance.views._backfill_absent_range (the website's
 absent backfill before showing history) and attendance.codes
-.manual_checkin_enabled.
+.manual_checkin_enabled; office-code check-in is attendance.codes
+.check_in_with_code (the website's check_in_manual page uses it too).
 
 Mock locations: the website (a browser) cannot detect a mocked position, so
 it has no policy. The app reports ``is_mocked``; when true the check-in is
@@ -64,6 +65,8 @@ def today(user):
         "locations": [location_item(loc) for loc in my_locations(user)],
         "max_accuracy_meters": services._cfg_int("attendance.max_gps_accuracy_m", 200),
         "manual_check_in_enabled": bool(codes.manual_checkin_enabled()),
+        "office_code_enabled": bool(codes.manual_checkin_enabled()),
+        "office_code_reason": codes.code_check_in_block_reason(user, day),
         "check_out_supported": False,
     }
 

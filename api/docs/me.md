@@ -116,7 +116,17 @@ No body. Signs out every other device (app and web), keeps this one. 204.
 
 ### POST `me/push-token/` — both doors
 
-Stores the push token on **this** device row (push sending comes in a later release).
+Stores the push token on **this** device row. When the server has FCM configured
+(`web/PUSH_NOTIFICATIONS.md`), every new in-app notification is pushed to each signed-in app
+device with a token (FCM HTTP v1), following `me/preferences/` (kind switches, quiet hours —
+urgent ones break through when `allow_urgent_during_quiet` — and `show_previews: never` sends
+"You have a new notification. Open the app to read it." instead of the text). Tokens FCM reports
+as `UNREGISTERED` are cleared; send a fresh one when the FCM SDK rotates it.
+
+Push message: `notification` = `{title, body}`; `data` (all strings) =
+`{"notification_id": "9021", "category": "task", "kind": "tasks_tickets", "target": "<JSON of the
+notification target, or empty>"}`; Android `priority: high`, `tag` `n<id>` (use it to replace /
+dedupe with the background feed, `notifications/feed/`).
 ```json
 {"push_token": "fcm-or-apns-token", "device_id": "uuid-generated-on-first-launch"}
 ```

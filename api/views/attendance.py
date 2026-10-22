@@ -65,6 +65,33 @@ class CheckInView(APIView):
         }).data, status=201)
 
 
+class CodeCheckInView(APIView):
+    @extend_schema(operation_id="attendance_check_in_code", request=s.CodeCheckInRequestSerializer,
+                   responses={201: s.CheckInResultSerializer,
+                              400: OpenApiResponse(description="validation_error on `code` (wrong code, too "
+                                                               "many wrong codes, empty); check_in_refused "
+                                                               "(non-working day, already checked in, on "
+                                                               "approved leave, office codes switched off)"),
+                              **AUTHED_ERRORS})
+    def post(self, request):
+        """Check in with the rotating office code, exactly like the website's
+        "Check in with a code" page (attendance.codes.check_in_with_code)."""
+        from attendance import codes
+
+        body = s.CodeCheckInRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        result = codes.check_in_with_code(request.user, body.validated_data["code"])
+        if not result.ok:
+            if result.error == "code":
+                raise serializers.ValidationError({"code": [result.message]})
+            raise CheckInRefused(result.message)
+        rec = result.record
+        return Response(s.CheckInResultSerializer({
+            "status": result.status, "status_display": rec.get_status_display(), "message": result.message,
+            "distance_meters": None, "location": result.location.name, "record": svc.record_item(rec),
+        }).data, status=201)
+
+
 class CheckOutView(APIView):
     @extend_schema(operation_id="attendance_check_out", request=None,
                    responses={501: OpenApiResponse(description="not_ready: the website records check-in only."),

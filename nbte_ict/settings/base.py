@@ -703,3 +703,8 @@ API_MIN_APP_VERSION = "1.0.0"
 # Development only: `X-NBTE-Door: portal` on /api/ requests selects the portal
 # door (qa_core/hosts.py). Ignored unless DEBUG is also on; dev.py turns it on.
 API_DEV_DOOR_HEADER = False
+
+# Phase 9: push notifications to the app (FCM HTTP v1, notifications/push.py).
+# Off unless this points to a Firebase service-account JSON file - see
+# PUSH_NOTIFICATIONS.md.
+FCM_SERVICE_ACCOUNT_FILE = os.environ.get("FCM_SERVICE_ACCOUNT_FILE", "").strip()
