@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from django.contrib import messages
 from django.contrib.messages import get_messages
 from django.contrib.auth.decorators import login_required
@@ -9,91 +7,50 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from django.conf import settings
+from django.core.exceptions import ValidationError
+
 from accounts.models import User
 
 from .models import (
-    Message, MessageAttachment, MessageDeletion, MessageRead, Thread,
-    ThreadParticipant, start_thread,
+    REACTION_EMOJIS, Message, MessageAttachment, Thread, ThreadParticipant,
+    start_thread,
 )
 
-MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
-EDIT_WINDOW = timedelta(minutes=15)
-READ_EDIT_WINDOW = timedelta(minutes=5)
+from . import chat_services
+from .chat_services import (  # noqa: F401  (re-exported for older imports)
+    EDIT_WINDOW, MAX_ATTACHMENT_BYTES, READ_EDIT_WINDOW,
+)
 
-# Deterministic avatar colour palette. Both the full render and the AJAX
-# fragment go through _prepare_message_for_render, so a message keeps the
-# same colour whether it arrived by page load or by fetch.
-_AVATAR_COLORS = ["c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7"]
+# Phase 9: the chat logic now lives in messaging/chat_services.py so the web
+# views and the mobile API share it. The helpers below are thin wrappers kept
+# for backwards compatibility.
 
 
 def _avatar_color(seed):
-    return _AVATAR_COLORS[(seed or 0) % len(_AVATAR_COLORS)]
+    return chat_services.avatar_color(seed)
 
 
 def _thread_participant(thread, user):
-    participant = thread.participants.filter(user=user, is_deleted=False).first()
-    if participant is None:
-        raise Http404
-    return participant
+    return chat_services.get_participant(thread, user)
 
 
 def _message_can_be_changed_by_everyone(message, thread, now=None):
-    if message.is_system or message.sender_id is None or message.is_deleted_for_everyone:
-        return False
-
-    now = now or timezone.now()
-    first_read_at = min(
-        (
-            receipt.read_at
-            for receipt in message.read_receipts.all()
-            if receipt.user_id != message.sender_id
-        ),
-        default=None,
-    )
-
-    deadline = message.sent_at + EDIT_WINDOW
-    if first_read_at is not None:
-        deadline = min(deadline, first_read_at + READ_EDIT_WINDOW)
-    return now <= deadline
+    return chat_services.can_change_for_everyone(message, now)
 
 
 def _prepare_message_for_render(message, thread, user):
-    """Populate the derived attributes the message partial needs.
-
-    Used by both thread_detail (full render) and reply (AJAX fragment) so
-    the two paths produce identical markup.
-    """
-    message.can_change_for_everyone = (
-        message.sender_id == user.pk
-        and _message_can_be_changed_by_everyone(message, thread)
-    )
-    if message.reply_to_id:
-        quoted = message.reply_to
-        quoted_is_hidden = (
-            quoted.is_deleted_for_everyone
-            or quoted.hidden_for.filter(user=user).exists()
-        )
-        if quoted_is_hidden:
-            message.reply_preview = "Message unavailable"
-            message.reply_sender = "Unavailable"
-        else:
-            message.reply_preview = quoted.body
-            message.reply_sender = (
-                quoted.sender.get_full_name() or quoted.sender.email
-                if quoted.sender_id else "System"
-            )
-    message.seen_by_someone = any(
-        receipt.user_id != message.sender_id
-        for receipt in message.read_receipts.all()
-    )
-    # Stable avatar colour — same for page-load and AJAX renders.
-    message.msg_color = _avatar_color(message.sender_id or message.pk or 0)
-    return message
+    participants = chat_services.thread_participants(thread)
+    return chat_services.prepare_message(message, user, participants)
 
 
-def _render_message_fragment(message, thread, user, request):
+def _render_message_fragment(message, thread, user, request, participants=None):
     """Render one message article to an HTML string, for AJAX insertion."""
-    _prepare_message_for_render(message, thread, user)
+    if participants is None:
+        participants = chat_services.thread_participants(thread)
+    message = chat_services.get_visible_message(thread, user, message.pk) \
+        if not getattr(message, "_prepared_for", None) else message
+    chat_services.prepare_message(message, user, participants)
     return render_to_string(
         "messaging/partials/message.html",
         {"m": message, "thread": thread},
@@ -140,25 +97,24 @@ def _my_threads(user):
 # ---------------------------------------------------------------------------
 @login_required
 def inbox(request):
-    threads = list(_my_threads(request.user))
-    for t in threads:
-        t.unread = t.unread_count_for(request.user)
-        t.last_msg = t.last_message(request.user)
-        t.display_title = t.display_title_for(request.user)
-
-    threads.sort(
-        key=lambda t: (t.last_msg.sent_at if t.last_msg else t.updated_at),
-        reverse=True,
-    )
-
+    kind = request.GET.get("filter", "all")
+    if kind not in chat_services.INBOX_KINDS:
+        kind = "all"
+    threads = chat_services.inbox_threads(request.user)
+    pinned_threads = [t for t in threads if t.is_pinned]
+    other_threads = [t for t in threads if not t.is_pinned]
     unread_threads = [t for t in threads if t.unread > 0]
-    read_threads   = [t for t in threads if t.unread == 0]
+    read_threads = [t for t in threads if t.unread == 0]
 
     return render(request, "messaging/inbox.html", {
+        "pinned_threads": pinned_threads,
+        "other_threads": other_threads,
         "unread_threads": unread_threads,
-        "read_threads":   read_threads,
-        "total_unread":   sum(t.unread for t in threads),
-        "total_threads":  len(threads),
+        "read_threads": read_threads,
+        "total_unread": sum(t.unread for t in threads),
+        "total_threads": len(threads),
+        "inbox_kind": kind,
+        "max_pinned": ThreadParticipant.MAX_PINNED,
     })
 
 
@@ -182,54 +138,41 @@ def thread_detail(request, pk):
             return redirect("messaging:inbox")
         raise Http404
 
-    now = timezone.now()
-    visible_incoming = (
-        thread.messages.filter(is_deleted_for_everyone=False)
-        .exclude(sender=request.user)
-        .exclude(hidden_for__user=request.user)
-        .exclude(read_receipts__user=request.user)
-        .distinct()
-        .values_list("pk", flat=True)
-    )
-    MessageRead.objects.bulk_create(
-        [
-            MessageRead(message_id=message_id, user=request.user, read_at=now)
-            for message_id in visible_incoming
-        ],
-        ignore_conflicts=True,
-    )
-    participant.last_read_at = now
-    participant.save(update_fields=["last_read_at"])
-
-    thread_messages = (
-        thread.messages.exclude(hidden_for__user=request.user)
-        .distinct()
-        .select_related("sender", "reply_to__sender")
-        .prefetch_related("attachments", "read_receipts")
-        .order_by("sent_at", "id")
-    )
-
+    q = (request.GET.get("q") or "").strip()[:100]
+    snapshot = chat_services.open_thread(thread, request.user, q=q)
+    participant = snapshot["participant"]
     thread_is_archived = bool(getattr(participant, "is_archived", False))
     thread.display_title = thread.display_title_for(request.user)
-    participants = list(thread.participants.select_related("user"))
-
-    for message in thread_messages:
-        _prepare_message_for_render(message, thread, request.user)
 
     flash_messages = list(get_messages(request))
     thread_errors = [
         str(message) for message in flash_messages
         if message.level >= messages.ERROR
     ]
+    thread_notices = [
+        str(message) for message in flash_messages
+        if message.level < messages.ERROR
+    ]
 
     return render(request, "messaging/thread.html", {
         "thread": thread,
-        "thread_messages": thread_messages,
-        "participants": participants,
+        "thread_messages": snapshot["messages"],
+        "participants": snapshot["participants"],
+        "participant": participant,
+        "is_group": snapshot["is_group"],
+        "is_muted": chat_services.is_muted(participant),
         "thread_is_archived": thread_is_archived,
         "thread_errors": thread_errors,
+        "thread_notices": thread_notices,
         "suppress_global_toasts": True,
         "current_user_color": _avatar_color(request.user.pk),
+        "search_q": q,
+        "search_ids": snapshot["search_ids"],
+        "server_time": snapshot["server_time"].isoformat(),
+        "last_message_id": max([m.pk for m in snapshot["messages"]] or [0]),
+        "forward_threads": chat_services.forwardable_threads(request.user),
+        "reaction_emojis": REACTION_EMOJIS,
+        "voice_max_seconds": getattr(settings, "VOICE_MAX_SECONDS", 900),
     })
 
 
@@ -248,18 +191,9 @@ def compose(request):
         except (TypeError, ValueError):
             preselected = None
 
-    # Only active users who also have a Staff profile — messaging is
-    # staff-to-staff. If Staff uses a different FK name, adjust user_id.
-    from staff.models import Staff
-    staff_user_ids = Staff.objects.values_list("user_id", flat=True)
-
-    users = (
-        User.objects
-        .filter(pk__in=staff_user_ids, is_active=True)
-        .exclude(pk=request.user.pk)
-        .select_related("department")
-        .order_by("first_name", "last_name", "email")
-    )
+    # Only active users who also have a Staff profile - messaging is
+    # staff-to-staff (shared with the mobile API's contacts/ endpoint).
+    users = chat_services.messageable_users(request.user)
 
     return render(request, "messaging/compose.html", {
         "users": users,
@@ -270,35 +204,17 @@ def compose(request):
 @login_required
 @require_POST
 def compose_send(request):
-    recipient_ids = request.POST.getlist("recipients")
-    subject = (request.POST.get("subject") or "").strip()
-    body    = (request.POST.get("body") or "").strip()
     try:
-        uploads = _uploaded_attachments(request)
-    except ValueError as exc:
-        messages.error(request, str(exc))
+        thread = chat_services.start_conversation(
+            request.user,
+            request.POST.getlist("recipients"),
+            subject=request.POST.get("subject") or "",
+            body=request.POST.get("body") or "",
+            uploads=request.FILES.getlist("attachments"),
+        )
+    except ValidationError as exc:
+        messages.error(request, " ".join(exc.messages))
         return redirect("messaging:compose")
-
-    if not recipient_ids:
-        messages.error(request, "Choose at least one recipient.")
-        return redirect("messaging:compose")
-    if not body:
-        messages.error(request, "Message body cannot be empty.")
-        return redirect("messaging:compose")
-
-    recipients = list(User.objects.filter(pk__in=recipient_ids, is_active=True))
-    if not recipients:
-        messages.error(request, "No valid recipients.")
-        return redirect("messaging:compose")
-
-    thread = start_thread(
-        creator=request.user,
-        participants=recipients,
-        subject=subject,
-        initial_body=body,
-    )
-    initial_message = thread.messages.order_by("-sent_at", "-id").first()
-    _attach_files(initial_message, uploads)
     messages.success(request, "Message sent.")
     return redirect("messaging:thread", pk=thread.pk)
 
@@ -310,58 +226,32 @@ def compose_send(request):
 @require_POST
 def reply(request, pk):
     thread = get_object_or_404(Thread, pk=pk)
-    participant = _thread_participant(thread, request.user)
-
+    _thread_participant(thread, request.user)
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-
-    body = (request.POST.get("body") or "").strip()
     try:
-        uploads = _uploaded_attachments(request)
-    except ValueError as exc:
-        if is_ajax:
-            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
-        messages.error(request, str(exc))
-        return redirect("messaging:thread", pk=pk)
-
-    if not body and not uploads:
-        err = "Write a message or attach a file."
+        message = chat_services.send_message(
+            thread, request.user,
+            body=request.POST.get("body") or "",
+            reply_to_id=request.POST.get("reply_to"),
+            uploads=request.FILES.getlist("attachments"),
+        )
+    except ValidationError as exc:
+        err = " ".join(exc.messages)
         if is_ajax:
             return JsonResponse({"ok": False, "error": err}, status=400)
         messages.error(request, err)
         return redirect("messaging:thread", pk=pk)
 
-    reply_to_id = request.POST.get("reply_to")
-    reply_to = None
-    if reply_to_id:
-        try:
-            reply_to = Message.objects.filter(
-                thread=thread, is_deleted_for_everyone=False,
-            ).exclude(hidden_for__user=request.user).get(pk=reply_to_id)
-        except (Message.DoesNotExist, ValueError):
-            err = "The message you're replying to is no longer available."
-            if is_ajax:
-                return JsonResponse({"ok": False, "error": err}, status=400)
-            messages.error(request, err)
-            return redirect("messaging:thread", pk=pk)
-
-    now = timezone.now()
-    message = Message.objects.create(
-        thread=thread, sender=request.user, body=body, reply_to=reply_to,
-        sent_at=now,
-    )
-    _attach_files(message, uploads)
-    thread.last_message_at = now
-    thread.save(update_fields=["last_message_at"])
-    participant.last_read_at = now
-    participant.save(update_fields=["last_read_at"])
-
     if is_ajax:
-        html = _render_message_fragment(message, thread, request.user, request)
+        participants = chat_services.thread_participants(thread)
+        message = chat_services.get_visible_message(thread, request.user, message.pk)
+        html = _render_message_fragment(message, thread, request.user, request, participants)
         return JsonResponse({
             "ok": True,
             "message_id": message.pk,
             "html": html,
-            "sent_at_iso": now.isoformat(),
+            "sent_at_iso": message.sent_at.isoformat(),
+            "message": chat_services.message_payload(message, request.user, participants),
         })
 
     return redirect("messaging:thread", pk=pk)
@@ -373,18 +263,10 @@ def edit_message(request, pk, message_pk):
     thread = get_object_or_404(Thread, pk=pk)
     _thread_participant(thread, request.user)
     message = get_object_or_404(Message, pk=message_pk, thread=thread)
-    if message.sender_id != request.user.pk or not _message_can_be_changed_by_everyone(message, thread):
-        messages.error(request, "This message can no longer be edited for everyone.")
-        return redirect("messaging:thread", pk=pk)
-
-    body = (request.POST.get("body") or "").strip()
-    if not body:
-        messages.error(request, "A message cannot be empty.")
-        return redirect("messaging:thread", pk=pk)
-
-    message.body = body
-    message.edited_at = timezone.now()
-    message.save(update_fields=["body", "edited_at"])
+    try:
+        chat_services.edit_message(message, request.user, request.POST.get("body"))
+    except ValidationError as exc:
+        messages.error(request, " ".join(exc.messages))
     return redirect("messaging:thread", pk=pk)
 
 
@@ -394,41 +276,26 @@ def delete_message(request, pk, message_pk):
     thread = get_object_or_404(Thread, pk=pk)
     _thread_participant(thread, request.user)
     message = get_object_or_404(Message, pk=message_pk, thread=thread)
-    scope = request.POST.get("scope")
-
-    if scope == "everyone":
-        if (
-            message.sender_id != request.user.pk
-            or not _message_can_be_changed_by_everyone(message, thread)
-        ):
-            messages.error(request, "This message can no longer be deleted for everyone.")
-            return redirect("messaging:thread", pk=pk)
-        message.body = "This message was deleted."
-        message.is_deleted_for_everyone = True
-        message.edited_at = None
-        message.save(update_fields=["body", "is_deleted_for_everyone", "edited_at"])
-        _purge_message_attachments(message)
-    elif scope == "me":
-        MessageDeletion.objects.get_or_create(message=message, user=request.user)
-    else:
-        messages.error(request, "Choose where to delete this message.")
+    try:
+        chat_services.delete_message(message, request.user, request.POST.get("scope"))
+    except ValidationError as exc:
+        messages.error(request, " ".join(exc.messages))
     return redirect("messaging:thread", pk=pk)
 
 
 def _purge_message_attachments(message):
-    for attachment in message.attachments.all().iterator():
-        attachment.hard_delete()
+    chat_services.purge_message_files(message)
 
 
 @login_required
 @require_POST
 def delete_chat(request, pk):
+    from .bulk_views import delete_thread_for
+
     thread = get_object_or_404(Thread, pk=pk)
-    participant = _thread_participant(thread, request.user)
-    participant.is_deleted = True
-    participant.save(update_fields=["is_deleted"])
-    if not thread.participants.filter(is_deleted=False).exists():
-        _purge_thread_attachments(thread)
+    _thread_participant(thread, request.user)
+    # Hidden for this user; erased (attachments too) once everyone deleted it.
+    delete_thread_for(request.user, thread)
     return redirect("messaging:inbox")
 
 

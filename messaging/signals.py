@@ -9,6 +9,7 @@ from .models import (
     Message,
     MessageAttachment,
     ThreadParticipant,
+    VoiceNote,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,16 @@ def delete_message_attachment_file(sender, instance, **kwargs):
         instance.file.storage.delete(instance.file.name)
     except Exception:
         logger.exception("Could not delete message attachment %s", instance.pk)
+
+
+@receiver(post_delete, sender=VoiceNote)
+def delete_voice_note_file(sender, instance, **kwargs):  # Phase 9
+    if not instance.file:
+        return
+    try:
+        instance.file.storage.delete(instance.file.name)
+    except Exception:
+        logger.exception("Could not delete voice note %s", instance.pk)
 
 
 @receiver(post_delete, sender=MemoAttachment)

@@ -413,3 +413,113 @@ class UserPermissionOverride(TimeStampedModel):
 
     def __str__(self):
         return f"{self.effect} {self.permission.codename} -> {self.user_id}"
+
+# ===========================================================================
+# Phase 9: signed-in devices, account deletion requests and passkeys.
+# Business logic lives in accounts/sessions_service.py, accounts/deletion.py
+# and accounts/passkeys.py so the mobile-app API can call the same functions.
+# ===========================================================================
+class UserSession(models.Model):
+    """One signed-in browser (or, later, app install) for a user.
+
+    The Django session row is the real credential; this row is the record the
+    user sees under "Signed-in devices". Revoking deletes the Django session
+    from the session store and stamps `revoked_at`.
+    """
+
+    WEB, APP = "web", "app"
+    KIND_CHOICES = [(WEB, "Website"), (APP, "Mobile app")]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="device_sessions")
+    session_key = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True, unpack_ipv4=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    device_label = models.CharField(max_length=80, blank=True)
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=WEB)
+    door = models.CharField(max_length=10, blank=True,
+                            help_text="Which front door the sign-in happened on: internal or portal.")
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    # Phase 9 API: mobile-app sessions (kind "app"). session_key is then
+    # "app:<jti of the current refresh token>" and follows token rotation.
+    platform = models.CharField(max_length=20, blank=True, help_text="android / ios (app sessions).")
+    app_version = models.CharField(max_length=40, blank=True)
+    device_id = models.CharField(max_length=100, blank=True,
+                                 help_text="Install id the app generates on first launch.")
+    push_token = models.TextField(blank=True, help_text="Push-notification token of this install.")
+
+    class Meta:
+        ordering = ["-last_seen_at", "-created_at"]
+        indexes = [models.Index(fields=["user", "revoked_at"], name="acct_usersess_user_rev_idx")]
+        verbose_name = "signed-in device"
+        verbose_name_plural = "signed-in devices"
+
+    def __str__(self):
+        return f"{self.device_label or 'Device'} · {self.user_id}"
+
+    @property
+    def is_active(self):
+        return self.revoked_at is None
+
+
+class AccountDeletionRequest(models.Model):
+    """A user's request to delete their account (app-store requirement).
+
+    NBTE must keep statutory records, so this is a request an administrator
+    handles; "completed" deactivates the account and blanks personal fields,
+    it never deletes the user row.
+    """
+
+    AUDITED = True
+
+    PENDING, APPROVED, DECLINED, COMPLETED, WITHDRAWN = (
+        "pending", "approved", "declined", "completed", "withdrawn")
+    STATUS_CHOICES = [
+        (PENDING, "Pending"), (APPROVED, "Approved"), (DECLINED, "Declined"),
+        (COMPLETED, "Completed"), (WITHDRAWN, "Withdrawn by user"),
+    ]
+    OPEN_STATUSES = (PENDING, APPROVED)
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="deletion_requests")
+    reason = models.TextField(blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    handled_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    handled_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True, help_text="Administrator's note (shown to the user).")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "account deletion request"
+
+    def __str__(self):
+        return f"Deletion request #{self.pk} ({self.get_status_display()})"
+
+    @property
+    def is_open(self):
+        return self.status in self.OPEN_STATUSES
+
+
+class Passkey(models.Model):
+    """A WebAuthn credential (fingerprint / face / device PIN) for one user.
+    `credential_id` and `public_key` are stored base64url-encoded."""
+
+    AUDITED = True
+    AUDIT_EXCLUDE_FIELDS = ("public_key",)
+    AUDIT_IGNORE_FIELDS = ("sign_count", "last_used_at")
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="passkeys")
+    credential_id = models.CharField(max_length=1024, unique=True)
+    public_key = models.TextField()
+    sign_count = models.PositiveBigIntegerField(default=0)
+    transports = models.JSONField(default=list, blank=True)
+    name = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return self.name or f"Passkey #{self.pk}"

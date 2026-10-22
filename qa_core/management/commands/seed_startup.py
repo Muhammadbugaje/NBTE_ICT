@@ -44,6 +44,7 @@ from qa_core import seed_data_phase4 as p4
 from qa_core import seed_data_phase5 as p5
 from qa_core import seed_data_phase6 as p6
 from qa_core import seed_data_phase7 as p7
+from qa_core import seed_data_phase8 as p8
 from qa_core.departments import qa_department
 from qa_core.models import (
     ActionPolicy,
@@ -69,6 +70,9 @@ RESET_ORDER = [
     "inspection.ssqreviewassignment", "inspection.qamapping", "inspection.resourcepersonfile",
     "inspection.resourcepersondiscipline", "inspection.resourceperson", "inspection.qapersonnel",
     # Phase 4: SOP-03 records and the stage tasks of demo cases
+    # Phase 8: decisions, letters and capacity assessments of demo cases
+    "accreditation.outcomelettercopy", "accreditation.outcomeletter", "accreditation.decision",
+    "accreditation.capacityassessment",
     "tasks.task", "accreditation.fundrelease", "accreditation.costline", "accreditation.costsheet",
     "accreditation.personnelentry", "accreditation.personnellist", "accreditation.visitdetail",
     "accreditation.response", "accreditation.query", "accreditation.qacase", "accreditation.submission",
@@ -93,6 +97,9 @@ DEMO_DEPENDENTS = [
     ("inspection.PostVisitPersonnel", "inspection__case__institution"),
     ("inspection.InspectionTeamMember", "inspection__case__institution"),
     ("inspection.Inspection", "case__institution"), ("inspection.QAMapping", "case__institution"),
+    ("accreditation.OutcomeLetterCopy", "letter__case__institution"),
+    ("accreditation.OutcomeLetter", "case__institution"), ("accreditation.Decision", "case__institution"),
+    ("accreditation.CapacityAssessment", "qa_request_programme__qa_request__institution"),
     ("accreditation.FundRelease", "case__institution"), ("accreditation.CostLine", "sheet__case__institution"),
     ("accreditation.CostSheet", "case__institution"),
     ("accreditation.PersonnelEntry", "personnel_list__case__institution"),
@@ -184,6 +191,8 @@ class Command(BaseCommand):
             self._phase3(stats)
             self._phase4(stats)
             self._phase7(stats)
+            self._backups(stats)
+            self._phase8(stats)
             if opts["with_demo"]:
                 self._demo(stats)
                 self._demo_phase2(stats)
@@ -226,7 +235,8 @@ class Command(BaseCommand):
         merged = {code: list(labels) for code, labels in seed_data.ROLE_PERMISSIONS.items()}
         for code, labels in (list(p2.ROLE_PERMISSIONS.items()) + list(p3.ROLE_PERMISSIONS.items())
                              + list(p4.ROLE_PERMISSIONS.items()) + list(p5.ROLE_PERMISSIONS.items())
-                             + list(p6.ROLE_PERMISSIONS.items()) + list(p7.ROLE_PERMISSIONS.items())):
+                             + list(p6.ROLE_PERMISSIONS.items()) + list(p7.ROLE_PERMISSIONS.items())
+                             + list(p8.ROLE_PERMISSIONS.items())):
             merged.setdefault(code, [])
             merged[code] += [label for label in labels if label not in merged[code]]
         for code, labels in merged.items():
@@ -276,7 +286,8 @@ class Command(BaseCommand):
                 if role is not None:
                     role.groups.add(group)
         for name, labels in (list(p3.GROUP_PERMISSIONS.items()) + list(p4.GROUP_PERMISSIONS.items())
-                             + list(p6.GROUP_PERMISSIONS.items()) + list(p7.GROUP_PERMISSIONS.items())):
+                             + list(p6.GROUP_PERMISSIONS.items()) + list(p7.GROUP_PERMISSIONS.items())
+                             + list(p8.GROUP_PERMISSIONS.items())):
             group = Group.objects.filter(name=name).first()
             if group is None:
                 continue
@@ -335,7 +346,8 @@ class Command(BaseCommand):
     def _templates(self, stats):
         created = 0
         for code, channel, subject, body, description in (seed_data.TEMPLATES + p2.TEMPLATES + p3.TEMPLATES
-                                                          + p4.TEMPLATES + p5.TEMPLATES + p7.TEMPLATES):
+                                                          + p4.TEMPLATES + p5.TEMPLATES + p7.TEMPLATES
+                                                          + p8.TEMPLATES):
             _t, was_created = NotificationTemplate.objects.get_or_create(
                 code=code, channel=channel,
                 defaults={"subject": subject, "body": body, "description": description},
@@ -343,7 +355,7 @@ class Command(BaseCommand):
             created += was_created
         rules_created = 0
         for event, recipient_kind, template_code, channel in (seed_data.RULES + p2.RULES + p3.RULES + p4.RULES
-                                                              + p5.RULES + p7.RULES):
+                                                              + p5.RULES + p7.RULES + p8.RULES):
             template = NotificationTemplate.objects.get(code=template_code, channel=channel)
             if not NotificationRule.objects.filter(event_code=event, recipient_kind=recipient_kind,
                                                    template=template).exists():
@@ -355,7 +367,7 @@ class Command(BaseCommand):
 
     def _policies(self, stats):
         created = 0
-        for row in seed_data.ACTION_POLICIES + p2.ACTION_POLICIES:
+        for row in seed_data.ACTION_POLICIES + p2.ACTION_POLICIES + p8.ACTION_POLICIES:
             data = dict(row)
             code = data.pop("action_code")
             _p, was_created = ActionPolicy.objects.get_or_create(action_code=code, defaults=data)
@@ -409,6 +421,18 @@ class Command(BaseCommand):
         stats.add("Flows", created, FlowDefinition.objects.filter(published_at__isnull=False).count())
         stats.add("Stages", stages_created, FlowStage.objects.count())
         stats.add("Transitions", transitions_created, FlowTransition.objects.count())
+
+    def _backups(self, stats):
+        """Phase 8 (Master Plan §22): backup permissions, the Backup
+        administrators group and the placeholder destination (idempotent)."""
+        from backups import seed as backup_seed
+        from backups.models import BackupDestination
+
+        result = backup_seed.seed()
+        stats.grants_added += result["grants"]
+        stats.add("Backup destinations", result["destinations"], BackupDestination.objects.count())
+        if result["directors"]:
+            stats.notes.append(f"Backup administrators group given to {result['directors']} Director(s) of ICT.")
 
     # ------------------------------------------------------------------
     # Demo
@@ -587,12 +611,14 @@ class Command(BaseCommand):
         from payments.models import FeeSchedule
 
         fee = FeeSchedule.objects.filter(code="qa_request_processing").first()
+        p8_streams = ("resource_inspection", "increase_capacity")  # Phase 8: they ask for streams
         created = 0
         for order, (code, name, desc, statuses, window, new, admin_only) in enumerate(p3.QA_TYPES):
             _t, was_created = QAType.objects.get_or_create(code=code, defaults={
                 "name": name, "description": desc, "eligible_programme_statuses": statuses,
                 "uses_reassessment_window": window, "includes_new_programmes": new,
-                "admin_programme_only": admin_only, "fee_schedule": fee, "sort_order": (order + 1) * 10})
+                "admin_programme_only": admin_only, "fee_schedule": fee, "sort_order": (order + 1) * 10,
+                "asks_streams": code in p8_streams})
             created += was_created
         stats.add("QA types", created, QAType.objects.count())
         created = 0
@@ -682,6 +708,44 @@ class Command(BaseCommand):
                 "layer": layers.get(layer_code)})
             articles += was_created
         stats.add("Knowledge articles", articles, KnowledgeArticle.objects.count())
+
+    # ------------------------------------------------------------------
+    # Phase 8 (Master Plan Phase 6): approval types and the fee formula upgrade
+    # ------------------------------------------------------------------
+    def _phase8(self, stats):
+        from accreditation.models import ApprovalType
+        from qa_core.settings_catalogue import FEE_VARIABLE_NAMES, SETTINGS as CATALOGUE
+
+        created = 0
+        for order, (code, name, months, status, description) in enumerate(p8.APPROVAL_TYPES):
+            _a, was_created = ApprovalType.objects.get_or_create(code=code, defaults={
+                "name": name, "duration_months": months, "programme_status": status, "description": description,
+                "sort_order": (order + 1) * 10})
+            created += was_created
+        stats.add("Approval types", created, ApprovalType.objects.count())
+        # Fee formulas: every fee is evaluated with the documented fee variables
+        # (streams included). A formula still at its Phase 1 default takes the
+        # new default (same amounts: the per-stream settings start at 0); an
+        # edited formula keeps its expression and only gains the variables.
+        defaults = {row[0]: json.loads(row[1]) for row in CATALOGUE if row[0] in p8.OLD_FEE_EXPRESSIONS}
+        for key, old_expr in p8.OLD_FEE_EXPRESSIONS.items():
+            entry = ConfigEntry.objects.filter(key=key, scope="global").first()
+            if entry is None or entry.value_type != "formula":
+                continue
+            data = entry.parsed() or {}
+            changed = False
+            if data.get("expr", "").strip() == old_expr and data.get("expr") != defaults[key]["expr"]:
+                data = dict(defaults[key])
+                changed = True
+                stats.notes.append(f"{key}: upgraded to the streams-aware default (amounts unchanged).")
+            missing = [v for v in FEE_VARIABLE_NAMES if v not in data.get("vars", [])]
+            if missing:
+                data["vars"] = list(data.get("vars", [])) + missing
+                changed = True
+            if changed:
+                entry.value = json.dumps(data)
+                entry.save()
+                stats.add("Settings", 0)
 
     def _demo_phase7(self, stats):
         """Three open demo complaints (on track, near breach, breached and escalated)."""
@@ -894,6 +958,7 @@ class Command(BaseCommand):
             w(self.style.WARNING("  !! qa.fee.qa_request_processing is UNCONFIRMED — SOP-02 bills are blocked."))
         w(f"  {fmt('QA types')}  {fmt('SSQ templates')} (published v1 per type)  {fmt('Catalogue items')}")
         w(f"  {fmt('Rate table')} (placeholder amounts until Finance confirms)  {fmt('Task categories')}")
+        w(f"  {fmt('Approval types')} (expiry = commencement + duration)")
         w(f"  {fmt('Complaint layers')}  {fmt('Routing rules')}  {fmt('Escalation rules')}  "
           f"{fmt('Knowledge articles')}")
         w(f"  {fmt('Lookups')}  {fmt('Document kinds')}  {fmt('Document rules')}  {fmt('Fee schedules')}  "
@@ -916,7 +981,16 @@ class Command(BaseCommand):
                                      "(Settings → QA → Fees and bank accounts; needs a second officer)."))
         except Exception:  # never fail the summary
             pass
-        w("  (Backups are reported from Phase 8.)")
+        try:
+            from backups import seed as backup_seed
+            from backups.models import BackupDestination
+
+            active = BackupDestination.objects.filter(is_active=True).count()
+            w(f"  {fmt('Backup destinations')} ({active} active) — Settings → Backups")
+            if backup_seed.warning():
+                w(self.style.WARNING(f"  !! {backup_seed.warning()}"))
+        except Exception:  # never fail the summary
+            pass
         if with_demo:
             demo_users = DemoTag.objects.filter(content_type=ContentType.objects.get_for_model(User)).count()
             w(f"  Demo: {stats.totals.get('Demo institutions', 0)} institutions, "

@@ -30,6 +30,12 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute=0),              # hourly, at :00
         "kwargs": {"max_age_hours": 24},
     },
+    # Phase 8: files the orphan clean-up moved to .quarantine/<date>/ are
+    # removed for good after files.quarantine_retention_days (default 30).
+    "media-purge-quarantine": {
+        "task": "core.tasks.purge_media_quarantine",
+        "schedule": crontab(hour=2, minute=17),    # daily
+    },
     "tickets.sla_check": {
         "task": "tickets.tasks.sla_check",
         "schedule": timedelta(seconds=300),  # 5 minutes
@@ -90,6 +96,19 @@ app.conf.beat_schedule = {
     "qa.payments.sweep": {
         "task": "payments.sweep",
         "schedule": timedelta(minutes=15),
+    },
+
+    # Phase 8 (Master Plan §22): once a day, take a backup if
+    # qa.backup.interval_days (default 30, i.e. monthly) have passed.
+    "backups.scheduled_check": {
+        "task": "backups.scheduled_check",
+        "schedule": crontab(hour=1, minute=30),  # 01:30 (beat time zone), a quiet hour
+    },
+    # QA Phase 8 (Master Plan Phase 6): programmes past their expiry date
+    # become expired; renewal reminders at qa.programme.renewal_reminder_days.
+    "accreditation.programme_expiry": {
+        "task": "accreditation.programme_expiry",
+        "schedule": crontab(hour=1, minute=17),  # daily, 01:17
     },
 
     # Review M12: the duplicate "attendance-auto-mark-absent" (18:30 Mon-Fri)

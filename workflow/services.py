@@ -1477,3 +1477,38 @@ def delete_attachment(request, user, attachment):
         
         
         
+
+# ===========================================================================
+# Phase 9 API: the raise / resubmit sequences of workflow.views (annual-leave
+# validation + leave sync around the service call), shared with the mobile
+# API so both paths run the same checks.
+# ===========================================================================
+LEAVE_TYPE_CODE = "annual-leave"
+
+
+def raise_request_checked(*, requester, request_type, subject, body, priority, form_data):
+    if request_type.code == LEAVE_TYPE_CODE:
+        from leave.services import validate_application
+        validate_application(requester, form_data)
+    with transaction.atomic():
+        req = raise_request(requester=requester, request_type=request_type, subject=subject,
+                            body=body, priority=priority, form_data=form_data)
+        if request_type.code == LEAVE_TYPE_CODE:
+            from leave.services import sync_application
+            sync_application(req, form_data)
+    return req
+
+
+def resubmit_checked(req, user, *, subject, body, comment="", form_data=None, file=None,
+                     file_description=""):
+    if req.request_type.code == LEAVE_TYPE_CODE:
+        from leave.services import validate_application
+        validate_application(user, form_data, exclude_request_id=req.pk)
+    with transaction.atomic():
+        resubmit(req, user, subject=subject, body=body, comment=comment, form_data=form_data)
+        if req.request_type.code == LEAVE_TYPE_CODE:
+            from leave.services import sync_application
+            sync_application(req, form_data)
+        if file:
+            add_attachment(req, user, file=file, description=file_description or "")
+    return req

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Report: {{ a.title }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Announcements{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/announcements.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="ann-page">
+  <a href="{% url 'announcements:detail' a.pk %}" class="ann-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Back to the announcement
+  </a>
+
+  <header class="ann-hero ann-kind-{{ a.kind }}">
+    <div class="ann-hero-title">
+      <span class="ann-hero-mark" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </span>
+      <div>
+        <span class="ann-hero-eyebrow">Acknowledgement report</span>
+        <h1>{{ a.title }}</h1>
+        <p>{{ a.get_kind_display }} · {{ a.audience_label }}{% if a.published_at %} · published {{ a.published_at|date:"j M Y, H:i" }}{% else %} · draft{% endif %}</p>
+      </div>
+    </div>
+    <div class="ann-hero-actions">
+      <a href="?format=csv" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </a>
+      {% if can_edit %}<a href="{% url 'announcements:edit' a.pk %}" class="btn btn-ghost">Edit</a>{% endif %}
+    </div>
+  </header>
+
+  <div class="ann-stats">
+    <div class="card ann-stat"><small>Audience</small><strong>{{ r.audience_size }}</strong><em>staff members</em></div>
+    <div class="card ann-stat"><small>Read</small><strong>{{ r.read }}</strong><div class="ann-bar"><span style="width: {{ r.read_percent }}%"></span></div><em>{{ r.read_percent }}% of audience</em></div>
+    <div class="card ann-stat"><small>Acknowledged</small><strong>{% if a.requires_ack %}{{ r.acknowledged }}{% else %}—{% endif %}</strong>{% if a.requires_ack %}<div class="ann-bar"><span style="width: {{ r.acknowledged_percent }}%"></span></div><em>{{ r.acknowledged_percent }}% of audience</em>{% else %}<em>Not requested</em>{% endif %}</div>
+    <div class="card ann-stat"><small>{% if a.requires_ack %}Not acknowledged{% else %}Not read{% endif %}</small><strong>{{ r.pending|length }}</strong><em>still to respond</em></div>
+  </div>
+
+  <div class="ann-report-grid">
+    <section class="card">
+      <div class="ann-card-bar">
+        <h2>{% if a.requires_ack %}Who hasn't acknowledged{% else %}Who hasn't read it{% endif %}</h2>
+        <span class="muted">{{ r.pending|length }} of {{ r.audience_size }}</span>
+        {% if r.pending and a.is_published %}
+          <form method="post" action="{% url 'announcements:remind' a.pk %}" class="m-0"
+                data-confirm="Each of the {{ r.pending|length }} people listed gets an in-app reminder." data-confirm-title="Send reminders?" data-confirm-action="Send reminders" data-confirm-variant="neutral">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary btn-sm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              Remind those who haven't {% if a.requires_ack %}acknowledged{% else %}read it{% endif %}
+            </button>
+          </form>
+        {% endif %}
+      </div>
+      {% if r.pending %}
+        <div class="ann-table-wrap">
+          <table class="ann-table">
+            <thead><tr><th scope="col">Name</th><th scope="col">Department</th><th scope="col">Read</th></tr></thead>
+            <tbody>
+              {% for u in r.pending %}
+                <tr>
+                  <td>{{ u.get_full_name|default:u.email }}<small>{{ u.email }}</small></td>
+                  <td>{% if u.department %}{{ u.department.name }}{% else %}<span class="muted">—</span>{% endif %}{% if u.role %}<small>{{ u.role.name }}</small>{% endif %}</td>
+                  <td>{% if u.has_read %}<span class="badge badge-info">Opened</span>{% else %}<span class="badge badge--neutral">Not opened</span>{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="ann-empty">
+          <span class="ann-empty-icon" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <h3>{% if r.audience_size %}Everyone has responded{% else %}No one in the audience yet{% endif %}</h3>
+          <p>{% if r.audience_size %}All {{ r.audience_size }} staff in the audience are done.{% else %}Check the audience settings.{% endif %}</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <aside class="ann-side" style="position:static">
+      {% if r.poll %}
+        <section class="card">
+          <h2 style="margin-bottom:var(--space-3)">Poll results</h2>
+          <div class="ann-poll" style="background:transparent;border:0;padding:0">
+            <div class="ann-poll-head"><p class="ann-poll-q">{{ r.poll.question }}<span class="ann-poll-sub">{{ r.poll_results.voters }} voter{{ r.poll_results.voters|pluralize }}{% if not r.poll.is_open %} · closed{% endif %}</span></p></div>
+            <div class="ann-poll-options">
+              {% for row in r.poll_results.rows %}
+                <div class="ann-result">
+                  <div class="ann-result-top"><span class="ann-result-label">{{ row.option.text }}</span><strong>{{ row.percent }}%</strong><small>{{ row.votes }}</small></div>
+                  <div class="ann-bar" aria-hidden="true"><span style="width: {{ row.percent }}%"></span></div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+      <section class="card">
+        <h2>About this report</h2>
+        <dl>
+          <dt>Audience</dt><dd>{{ a.audience_label }}</dd>
+          <dt>Ack. requested</dt><dd>{{ a.requires_ack|yesno:"Yes,No" }}</dd>
+          <dt>Posted by</dt><dd>{% if a.created_by %}{{ a.created_by.get_full_name|default:a.created_by.email }}{% else %}—{% endif %}</dd>
+        </dl>
+      </section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

@@ -8,7 +8,9 @@ from django.contrib.contenttypes.models import ContentType
 
 
 def record(institution, event_code, *, public_text="", internal_text="", visibility="internal",
-           subject=None, actor=None):
+           subject=None, actor=None, at=None):
+    """``at`` (optional) dates an event in the past — used only when history
+    from another system is brought in; everything else is recorded now."""
     from .models import TimelineEvent
 
     if institution is None:
@@ -26,4 +28,5 @@ def record(institution, event_code, *, public_text="", internal_text="", visibil
         internal_text=internal_text,
         visibility=visibility,
         actor=actor if getattr(actor, "pk", None) else None,
+        **({"at": at} if at is not None else {}),
     )

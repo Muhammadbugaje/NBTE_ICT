@@ -1,4 +1,5 @@
 from django.contrib import admin
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
 
 from .models import (
     Announcement, AnnouncementCategory, AnnouncementLink,
@@ -10,21 +11,21 @@ from .models import (
 # ============================================================================
 # ANNOUNCEMENTS
 # ============================================================================
-class AnnouncementLinkInline(admin.TabularInline):
+class AnnouncementLinkInline(TabularInline):
     model = AnnouncementLink
     extra = 1
     fields = ("kind", "label", "url", "sort_order")
 
 
 @admin.register(AnnouncementCategory)
-class AnnouncementCategoryAdmin(admin.ModelAdmin):
+class AnnouncementCategoryAdmin(ModelAdmin):
     list_display = ("name", "slug", "color", "sort_order", "is_active")
     list_editable = ("sort_order", "is_active")
     prepopulated_fields = {"slug": ("name",)}
 
 
 @admin.register(Announcement)
-class AnnouncementAdmin(admin.ModelAdmin):
+class AnnouncementAdmin(ModelAdmin):
     list_display = ("title", "category", "visibility", "priority",
                     "is_pinned", "publish_at", "expires_at", "author")
     list_filter = ("visibility", "priority", "is_pinned", "is_draft",
@@ -44,21 +45,21 @@ class AnnouncementAdmin(admin.ModelAdmin):
 # ============================================================================
 # EVENTS
 # ============================================================================
-class EventAttendeeInline(admin.TabularInline):
+class EventAttendeeInline(TabularInline):
     model = EventAttendee
     extra = 0
     fields = ("user", "rsvp", "responded_at", "note")
 
 
 @admin.register(EventCategory)
-class EventCategoryAdmin(admin.ModelAdmin):
+class EventCategoryAdmin(ModelAdmin):
     list_display = ("name", "slug", "color", "sort_order", "is_active")
     list_editable = ("sort_order", "is_active")
     prepopulated_fields = {"slug": ("name",)}
 
 
 @admin.register(Event)
-class EventAdmin(admin.ModelAdmin):
+class EventAdmin(ModelAdmin):
     list_display = ("title", "category", "starts_at", "ends_at",
                     "location_name", "visibility", "is_cancelled", "is_draft")
     list_filter = ("visibility", "is_cancelled", "is_draft", "category", "department")
@@ -87,14 +88,14 @@ class EventAdmin(admin.ModelAdmin):
 # ============================================================================
 # REMINDERS
 # ============================================================================
-class ReminderRecipientInline(admin.TabularInline):
+class ReminderRecipientInline(TabularInline):
     model = ReminderRecipient
     extra = 0
     readonly_fields = ("user", "delivered_at", "is_read", "read_at")
 
 
 @admin.register(Reminder)
-class ReminderAdmin(admin.ModelAdmin):
+class ReminderAdmin(ModelAdmin):
     list_display = ("title", "creator", "kind", "remind_at",
                     "is_fired", "is_dismissed", "fired_at")
     list_filter = ("kind", "is_fired", "is_dismissed", "department")
@@ -110,7 +111,7 @@ from .models import (
 )
 
 
-class DocumentVersionInline(admin.TabularInline):
+class DocumentVersionInline(TabularInline):
     model = DocumentVersion
     extra = 0
     fields = ("version_number", "is_current", "file", "original_name",
@@ -120,14 +121,14 @@ class DocumentVersionInline(admin.TabularInline):
 
 
 @admin.register(DocumentCategory)
-class DocumentCategoryAdmin(admin.ModelAdmin):
+class DocumentCategoryAdmin(ModelAdmin):
     list_display = ("name", "slug", "color", "sort_order", "is_active")
     list_editable = ("sort_order", "is_active")
     prepopulated_fields = {"slug": ("name",)}
 
 
 @admin.register(Document)
-class DocumentAdmin(admin.ModelAdmin):
+class DocumentAdmin(ModelAdmin):
     list_display = ("title", "category", "visibility", "source_type",
                     "status", "is_featured", "owner", "published_at", "download_count")
     list_filter = ("status", "visibility", "source_type", "is_featured",
@@ -146,7 +147,7 @@ class DocumentAdmin(admin.ModelAdmin):
 
 
 @admin.register(DocumentDownloadLog)
-class DocumentDownloadLogAdmin(admin.ModelAdmin):
+class DocumentDownloadLogAdmin(ModelAdmin):
     list_display = ("document", "user", "is_external", "ip_address", "downloaded_at")
     list_filter = ("is_external", "downloaded_at")
     search_fields = ("document__title", "user__email", "ip_address")
@@ -159,14 +160,14 @@ class DocumentDownloadLogAdmin(admin.ModelAdmin):
 
 
 @admin.register(AwardCategory)
-class AwardCategoryAdmin(admin.ModelAdmin):
+class AwardCategoryAdmin(ModelAdmin):
     list_display = ("name", "slug", "color", "sort_order", "is_active")
     list_editable = ("sort_order", "is_active")
     prepopulated_fields = {"slug": ("name",)}
 
 
 @admin.register(Award)
-class AwardAdmin(admin.ModelAdmin):
+class AwardAdmin(ModelAdmin):
     list_display = ("title", "recipient", "kind", "category",
                     "awarded_on", "visibility", "is_featured")
     list_filter = ("kind", "visibility", "is_featured", "category")
@@ -185,7 +186,7 @@ class AwardAdmin(admin.ModelAdmin):
     )
 
 @admin.register(Holiday)
-class HolidayAdmin(admin.ModelAdmin):
+class HolidayAdmin(ModelAdmin):
     list_display = ("name", "kind", "date_start", "date_end",
                     "department", "visibility", "is_active")
     list_filter = ("kind", "visibility", "is_active", "department")
@@ -193,13 +194,13 @@ class HolidayAdmin(admin.ModelAdmin):
     date_hierarchy = "date_start"
 
 @admin.register(GalleryCategory)
-class GalleryCategoryAdmin(admin.ModelAdmin):
+class GalleryCategoryAdmin(ModelAdmin):
     list_display = ("name", "slug", "color", "sort_order", "is_active")
     list_editable = ("sort_order", "is_active")
     prepopulated_fields = {"slug": ("name",)}
 
 
-class GalleryItemInline(admin.TabularInline):
+class GalleryItemInline(TabularInline):
     model = GalleryItem
     extra = 0
     fields = ("file", "file_kind", "caption", "credit", "sort_order")
@@ -207,7 +208,7 @@ class GalleryItemInline(admin.TabularInline):
 
 
 @admin.register(GalleryAlbum)
-class GalleryAlbumAdmin(admin.ModelAdmin):
+class GalleryAlbumAdmin(ModelAdmin):
     list_display = ("title", "category", "event_date", "visibility",
                     "is_featured", "is_published", "item_count")
     list_filter = ("visibility", "is_featured", "is_published", "category")

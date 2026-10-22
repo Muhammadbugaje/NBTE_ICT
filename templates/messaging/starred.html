@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load static chat_tags %}
+
+{% block title %}Starred messages · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Starred messages{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=10">
+{% endblock %}
+
+{% block content %}
+<div class="msg-page msg-page-narrow">
+  <a href="{% url 'messaging:inbox' %}" class="msg-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Inbox
+  </a>
+  <header class="msg-hero">
+    <div>
+      <h1>Starred messages</h1>
+      <p class="muted">{{ stars|length }} starred message{{ stars|length|pluralize }}. Only you can see your stars.</p>
+    </div>
+  </header>
+
+  {% if stars %}
+    <div class="msg-thread-list msg-starred-list">
+      {% for s in stars %}
+        {% with m=s.message %}
+        <a class="msg-starred-row" href="{% url 'messaging:thread' m.thread_id %}#m{{ m.pk }}">
+          <span class="msg-avatar msg-avatar-md msg-avatar-{{ m.color }}" aria-hidden="true">{{ m.initials }}</span>
+          <span class="msg-starred-body">
+            <span class="msg-starred-head">
+              <strong>{{ m.sender_name }}</strong>
+              <span class="msg-starred-in">in {{ m.thread_title }}</span>
+              <time title="{{ m.sent_at|date:'M j, Y · H:i' }}">{{ m.sent_at|chat_time }}</time>
+            </span>
+            <span class="msg-starred-text">{{ m.preview|truncatechars:220 }}</span>
+          </span>
+          <svg class="msg-starred-star" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.5L12 17.3l-5.9 3.2 1.3-6.5-4.9-4.6 6.6-.8z"/></svg>
+        </a>
+        {% endwith %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="msg-empty">
+      <div class="msg-empty-icon">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.5L12 17.3l-5.9 3.2 1.3-6.5-4.9-4.6 6.6-.8z"/></svg>
+      </div>
+      <h3>No starred messages</h3>
+      <p>Open a message's menu and choose <strong>Star</strong> to keep it here for quick access.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -222,8 +222,65 @@ def can_manage_requests(user, inst):
             and not is_department_user(user))
 
 
+# ===========================================================================
+# Streams (Phase 8): how many streams the institution asks for per programme
+# ===========================================================================
+def max_streams():
+    return max(1, _int("qa.streams.max_per_programme", 10))
+
+
+def clean_streams(value, *, label="Number of streams"):
+    """An int between 1 and qa.streams.max_per_programme, or ValidationError."""
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValidationError(f"{label}: enter a whole number.") from None
+    top = max_streams()
+    if n < 1 or n > top:
+        raise ValidationError(f"{label}: enter a number from 1 to {top}.")
+    return n
+
+
+def default_streams(programme, qa_type=None):
+    """What the streams box starts at: a new programme its proposed streams,
+    an increase in carrying capacity one more than approved, otherwise the
+    approved streams (at least 1)."""
+    approved = programme.approved_streams or 0
+    if programme.status == "proposed":
+        return max(1, programme.requested_streams or 1)
+    if qa_type is not None and qa_type.code == "increase_capacity":
+        return min(max_streams(), approved + 1)
+    return max(1, approved)
+
+
+def _streams_for(programme, qa_type, given):
+    if not qa_type.asks_streams or given is None:
+        return default_streams(programme, qa_type)
+    n = clean_streams(given, label=str(programme))
+    if qa_type.code == "increase_capacity" and n <= (programme.approved_streams or 0):
+        raise ValidationError(f"{programme}: ask for more than the {programme.approved_streams} stream(s) already "
+                              "approved.")
+    return n
+
+
 @transaction.atomic
-def create_request(inst, qa_type, programmes, *, user):
+def set_streams(req, row, value, *, user):
+    """Change the streams asked for on a draft request."""
+    if req.status != "draft":
+        raise ValidationError("Streams can only be changed while the request is a draft.")
+    if not req.qa_type.asks_streams:
+        raise ValidationError(f"{req.qa_type.name} requests do not ask for streams.")
+    n = _streams_for(row.programme, req.qa_type, value)
+    if n != row.requested_streams:
+        row.requested_streams = n
+        row.save(update_fields=["requested_streams", "updated_at"])
+        timeline.record(req.institution, "qa_request.streams", subject=req, actor=user, visibility="public",
+                        public_text=f"{row.programme}: {n} stream(s) asked for on {req.reference}.")
+    return row
+
+
+@transaction.atomic
+def create_request(inst, qa_type, programmes, *, user, streams=None):
     if user is not None and getattr(user, "user_type", "") == "institution" and not can_manage_requests(user, inst):
         raise PermissionDenied("Your account cannot start QA requests.")
     ok, why = type_availability(inst, qa_type)
@@ -240,13 +297,16 @@ def create_request(inst, qa_type, programmes, *, user):
         eligible, reason = programme_eligibility(programme, qa_type)
         if not eligible:
             raise ValidationError(f"{programme}: {reason}")
+    streams = streams or {}
+    asked = {p.pk: _streams_for(p, qa_type, streams.get(p.pk)) for p in programmes}
     _accepting, cycle = cycle_for(qa_type)
     req = QARequest.unscoped.create(reference=references.issue("qa_request", inst=inst.code), institution=inst,
                                     qa_type=qa_type, cycle=cycle, status="draft",
                                     created_by=user if getattr(user, "pk", None) else None)
     for programme in programmes:
         QARequestProgramme.unscoped.create(qa_request=req, programme=programme,
-                                           is_new_programme=programme.status == "proposed")
+                                           is_new_programme=programme.status == "proposed",
+                                           requested_streams=asked[programme.pk])
     container_type = InstitutionRequestType.objects.filter(code="qa").first()
     if container_type is not None:
         container = InstitutionRequest.unscoped.create(
@@ -270,7 +330,7 @@ def _sync_container(req, status):
 
 
 @transaction.atomic
-def add_programme(req, programme, *, user, remark=""):
+def add_programme(req, programme, *, user, remark="", streams=None):
     req = QARequest.unscoped.select_for_update().get(pk=req.pk)
     instance = request_instance(req)
     if not flow.can(instance, "add_programme"):
@@ -285,7 +345,8 @@ def add_programme(req, programme, *, user, remark=""):
     if not eligible:
         raise ValidationError(f"{programme}: {reason}")
     row = QARequestProgramme.unscoped.create(qa_request=req, programme=programme,
-                                             is_new_programme=programme.status == "proposed")
+                                             is_new_programme=programme.status == "proposed",
+                                             requested_streams=_streams_for(programme, req.qa_type, streams))
     flow.transition(instance, "add_programme", user, remark=remark or f"Added {programme}",
                     metadata={"programme": programme.pk})
     timeline.record(req.institution, "qa_request.programme_added", subject=req, actor=user, visibility="public",
@@ -337,7 +398,8 @@ def replace_programme(req, row, new_programme, *, user, reason):
     flow.transition(instance, "replace_programme", user, remark=reason,
                     metadata={"from": row.programme_id, "to": new_programme.pk})
     new_row = QARequestProgramme.unscoped.create(qa_request=req, programme=new_programme,
-                                                 is_new_programme=new_programme.status == "proposed")
+                                                 is_new_programme=new_programme.status == "proposed",
+                                                 requested_streams=default_streams(new_programme, req.qa_type))
     row.status, row.replaced_by, row.dropped_reason = QARequestProgramme.REPLACED, new_row, reason.strip()
     row.dropped_at = timezone.now()
     row.save(update_fields=["status", "replaced_by", "dropped_reason", "dropped_at", "updated_at"])
@@ -473,8 +535,12 @@ def on_returned(ctx):
 
 
 def fee_variables(req):
-    return {"programmes": QARequestProgramme.unscoped.filter(qa_request=req,
-                                                             status=QARequestProgramme.ACTIVE).count()}
+    """Phase 8: the request's programmes with the streams asked for."""
+    from payments.services import stream_variables
+
+    rows = QARequestProgramme.unscoped.filter(qa_request=req, status=QARequestProgramme.ACTIVE) \
+        .select_related("programme")
+    return stream_variables([(r.programme, r.requested_streams) for r in rows])
 
 
 def issue_fee(req, actor=None):
@@ -1244,3 +1310,12 @@ def staff_work(user, *, limit=50):
         queries = list(Query.objects.for_user(user).filter(status=Query.ANSWERED, raised_by=user)
                        .select_related("institution")[:limit])
     return {"requests": items, "ssqs": ssqs, "queries": queries}
+
+
+def fee_estimate(inst, qa_type, pairs):
+    """Live fee estimate for a QA request being prepared (Phase 8):
+    ``pairs`` = [(programme, streams)]."""
+    from payments.services import fee_estimate as estimate
+
+    schedule = qa_type.fee_schedule if qa_type is not None else None
+    return estimate(inst, schedule.code if schedule is not None else "qa_request_processing", pairs)

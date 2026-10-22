@@ -5,64 +5,143 @@
 {% block page_title %}{{ thread.display_title|default:"Thread" }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=9">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=11">
 {% endblock %}
 
 {% block content %}
-<div class="msg-page msg-page-thread" data-messaging-thread
+<div class="msg-page msg-page-thread msg-chat" data-messaging-thread data-chat
+     data-thread-id="{{ thread.pk }}"
+     data-updates-url="{% url 'messaging:thread_updates' thread.pk %}"
+     data-typing-url="{% url 'messaging:typing' thread.pk %}"
+     data-voice-url="{% url 'messaging:voice_upload' thread.pk %}"
+     data-poll-url="{% url 'messaging:poll_create' thread.pk %}"
+     data-server-time="{{ server_time }}"
+     data-last-id="{{ last_message_id }}"
+     data-search-ids="{{ search_ids|join:',' }}"
+     data-voice-max="{{ voice_max_seconds }}"
+     data-is-group="{{ is_group|yesno:'1,0' }}"
      data-current-user-initials="{% if request.user.first_name or request.user.last_name %}{{ request.user.first_name|slice:':1'|upper }}{{ request.user.last_name|slice:':1'|upper }}{% else %}{{ request.user.username|slice:':1'|upper|default:'?' }}{% endif %}"
      data-current-user-name="{{ request.user.get_full_name|default:request.user.email }}"
      data-current-user-color="{{ current_user_color|default:'c5' }}">
   <a href="{% if thread_is_archived %}{% url 'messaging:archived' %}{% else %}{% url 'messaging:inbox' %}{% endif %}" class="msg-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
     {% if thread_is_archived %}Archived{% else %}Inbox{% endif %}
   </a>
 
+  {# Sticky opaque chat header (messaging.css .msg-chat-head): flush under the top bar. #}
+  <div class="msg-chat-head" data-chat-head>
   <header class="msg-thread-hero">
-    <div class="msg-thread-hero-body">
-      <h1>{{ thread.display_title|default:"Thread" }}</h1>
-      <div class="msg-thread-participants">
-        {% for p in participants %}
-          <span class="msg-participant-chip">
-            <span class="msg-avatar msg-avatar-xs msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}">
-              {{ p.user.first_name|slice:":1"|upper }}{{ p.user.last_name|slice:":1"|upper }}
+    <div class="msg-thread-hero-main">
+      <div class="msg-thread-hero-body">
+        <h1>
+          <span class="msg-thread-title">{{ thread.display_title|default:"Thread" }}</span>
+          {% if participant.is_pinned %}<span class="msg-flag" title="Pinned" aria-label="Pinned"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 3a1 1 0 0 1 .7 1.7L15 6.4v4.2l3.3 3.3a1 1 0 0 1-.7 1.7H13v5.4l-1 1-1-1v-5.4H6.4a1 1 0 0 1-.7-1.7L9 10.6V6.4L7.3 4.7A1 1 0 0 1 8 3z"/></svg></span>{% endif %}
+          {% if is_muted %}<span class="msg-flag" title="Muted" aria-label="Muted"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg></span>{% endif %}
+        </h1>
+        <p class="msg-typing-line" data-typing-line aria-live="polite" hidden></p>
+        <div class="msg-thread-participants" data-participants-line>
+          {% for p in participants %}
+            <span class="msg-participant-chip">
+              <span class="msg-avatar msg-avatar-xs msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}">
+                {{ p.user.first_name|slice:":1"|upper }}{{ p.user.last_name|slice:":1"|upper }}
+              </span>
+              {{ p.user.get_full_name|default:p.user.email }}
             </span>
-            {{ p.user.get_full_name|default:p.user.email }}
-          </span>
-        {% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="msg-thread-tools">
+        <button type="button" class="msg-icon-btn" data-search-toggle aria-label="Search in this chat" aria-expanded="{% if search_q %}true{% else %}false{% endif %}" title="Search in this chat">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <details class="msg-chat-menu" data-chat-menu>
+          <summary class="msg-icon-btn" aria-label="Chat options" title="Chat options">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+          </summary>
+          <div class="msg-chat-menu-panel" role="menu">
+            <form method="post" action="{% url 'messaging:pin' thread.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="pinned" value="{% if participant.is_pinned %}0{% else %}1{% endif %}">
+              <button type="submit" role="menuitem" data-pin-toggle>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.8V6.4L7.3 4.7A1 1 0 0 1 8 3h8a1 1 0 0 1 .7 1.7L15 6.4v4.4l3.3 3.3a1 1 0 0 1-.7 1.7H6.4a1 1 0 0 1-.7-1.7z"/></svg>
+                {% if participant.is_pinned %}Unpin chat{% else %}Pin chat{% endif %}
+              </button>
+            </form>
+            {% if is_muted %}
+              <form method="post" action="{% url 'messaging:mute' thread.pk %}">
+                {% csrf_token %}<input type="hidden" name="duration" value="off">
+                <button type="submit" role="menuitem">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>
+                  Unmute
+                </button>
+              </form>
+            {% else %}
+              <p class="msg-menu-label">Mute notifications</p>
+              <form method="post" action="{% url 'messaging:mute' thread.pk %}" class="msg-mute-row">
+                {% csrf_token %}
+                <button type="submit" name="duration" value="8h" role="menuitem">8 hours</button>
+                <button type="submit" name="duration" value="1w" role="menuitem">1 week</button>
+                <button type="submit" name="duration" value="always" role="menuitem">Always</button>
+              </form>
+            {% endif %}
+            <a href="{% url 'messaging:starred' %}" role="menuitem">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.5L12 17.3l-5.9 3.2 1.3-6.5-4.9-4.6 6.6-.8z"/></svg>
+              Starred messages
+            </a>
+            <div class="msg-menu-sep" role="separator"></div>
+            {% if thread_is_archived %}
+              <form method="post" action="{% url 'messaging:unarchive' thread.pk %}">
+                {% csrf_token %}
+                <button type="submit" role="menuitem" title="Restore to inbox">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 4 3 10 9 10"/><path d="M5.5 15a8 8 0 1 0 2.2-8.8L3 10"/></svg>
+                  Unarchive
+                </button>
+              </form>
+            {% else %}
+              <form method="post" action="{% url 'messaging:archive' thread.pk %}">
+                {% csrf_token %}
+                <button type="submit" role="menuitem" title="Archive this thread">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+                  Archive
+                </button>
+              </form>
+            {% endif %}
+            <form method="post" action="{% url 'messaging:delete_chat' thread.pk %}" data-confirm="Remove this chat from your inbox? Other participants will keep their copy." data-confirm-title="Remove this chat?" data-confirm-action="Remove chat">
+              {% csrf_token %}
+              <button type="submit" role="menuitem" class="is-danger" title="Delete this chat for you">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
+                Delete chat
+              </button>
+            </form>
+          </div>
+        </details>
       </div>
     </div>
 
-    <div class="msg-thread-tools">
-      {% if thread_is_archived %}
-        <form method="post" action="{% url 'messaging:unarchive' thread.pk %}">
-          {% csrf_token %}
-          <button class="btn btn-primary btn-sm" type="submit" title="Restore to inbox" aria-label="Restore to inbox">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4 3 10 9 10"/><path d="M5.5 15a8 8 0 1 0 2.2-8.8L3 10"/></svg>
-            <span class="msg-action-label">Unarchive</span>
-          </button>
-        </form>
+    <form method="get" class="msg-thread-search" data-thread-search role="search"{% if not search_q %} hidden{% endif %}>
+      <label class="msg-thread-search-field">
+        <span class="msg-visually-hidden">Search messages and voice-note transcripts</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" name="q" value="{{ search_q }}" placeholder="Search in this chat…" autocomplete="off" data-search-input>
+      </label>
+      {% if search_q %}
+        <span class="msg-search-count" data-search-count aria-live="polite">{% if search_ids %}<span data-search-pos>{{ search_ids|length }}</span> of {{ search_ids|length }}{% else %}No matches{% endif %}</span>
+        <button type="button" class="msg-icon-btn" data-search-prev aria-label="Previous match"{% if not search_ids %} disabled{% endif %}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+        <button type="button" class="msg-icon-btn" data-search-next aria-label="Next match"{% if not search_ids %} disabled{% endif %}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <a class="msg-icon-btn" href="{% url 'messaging:thread' thread.pk %}" aria-label="Clear search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></a>
       {% else %}
-        <form method="post" action="{% url 'messaging:archive' thread.pk %}">
-          {% csrf_token %}
-          <button class="btn btn-ghost btn-sm" type="submit" title="Archive this thread" aria-label="Archive this thread">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-            <span class="msg-action-label">Archive</span>
-          </button>
-        </form>
+        <button type="submit" class="btn btn-primary btn-sm">Search</button>
       {% endif %}
-      <form method="post" action="{% url 'messaging:delete_chat' thread.pk %}" data-confirm="Remove this chat from your inbox? Other participants will keep their copy." data-confirm-title="Remove this chat?" data-confirm-action="Remove chat">
-        {% csrf_token %}
-        <button class="btn btn-ghost btn-sm msg-delete-chat" type="submit" title="Delete this chat for you" aria-label="Delete this chat for you">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
-          <span class="msg-action-label">Delete chat</span>
-        </button>
-      </form>
-    </div>
+    </form>
   </header>
+  </div>
 
   {% for error in thread_errors %}
     <div class="msg-inline-error" role="alert">{{ error }}</div>
+  {% endfor %}
+  {% for notice in thread_notices %}
+    <div class="msg-inline-notice" role="status">{{ notice }}</div>
   {% endfor %}
 
   <div class="msg-thread" data-thread>
@@ -72,6 +151,17 @@
       <p class="msg-empty-thread">No messages in this conversation yet.</p>
     {% endfor %}
   </div>
+  <div class="msg-typing-bubble" data-typing-bubble hidden aria-hidden="true">
+    <span class="msg-typing-dots"><span></span><span></span><span></span></span>
+  </div>
+  <div class="msg-live-status" data-live-status role="status" hidden>
+    <span>Live updates paused.</span>
+    <button type="button" class="btn btn-ghost btn-sm" data-live-retry>Retry</button>
+  </div>
+  <button type="button" class="msg-new-pill" data-new-pill hidden>
+    New messages
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
 
   <form method="post" action="{% url 'messaging:reply' thread.pk %}" class="msg-reply" data-reply-form enctype="multipart/form-data">
     {% csrf_token %}
@@ -81,8 +171,57 @@
         <span data-reply-reference-text></span>
         <button type="button" data-clear-reply aria-label="Cancel reply">×</button>
       </div>
-      <textarea class="msg-reply-input" name="body" rows="1"
-                placeholder="Write a reply…" data-reply-body></textarea>
+
+      <div class="msg-composer" data-composer>
+        <div class="msg-plus">
+          <button type="button" class="msg-icon-btn msg-plus-btn" data-plus-toggle aria-label="Attach a file, record a voice note{% if is_group %} or create a poll{% endif %}" aria-haspopup="menu" aria-expanded="false" title="Attach">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <div class="msg-plus-menu" data-plus-menu role="menu" hidden>
+            <button type="button" role="menuitem" data-pick-files>
+              <span class="msg-plus-ico is-file" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
+              Photo or file
+            </button>
+            <button type="button" role="menuitem" data-voice-start>
+              <span class="msg-plus-ico is-voice" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="22"/></svg></span>
+              Voice note
+            </button>
+            {% if is_group %}
+            <button type="button" role="menuitem" data-poll-open>
+              <span class="msg-plus-ico is-poll" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+              Poll
+            </button>
+            {% endif %}
+          </div>
+        </div>
+        <textarea class="msg-reply-input" name="body" rows="1"
+                  placeholder="Write a message…" aria-label="Message" data-reply-body></textarea>
+        <button type="button" class="msg-icon-btn msg-mic-btn" data-voice-mic
+                aria-label="Record a voice note: hold to record, or click to start and stop" title="Voice note (hold or click)">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="22"/></svg>
+        </button>
+        <div class="msg-reply-foot">
+          <button class="btn btn-primary msg-send-btn" type="submit" data-send-button aria-label="Send message">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span class="msg-action-label" data-send-label>Send</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="msg-recorder" data-recorder role="group" aria-label="Recording a voice note" hidden>
+        <button type="button" class="msg-icon-btn msg-rec-cancel" data-rec-cancel aria-label="Cancel recording (Esc)" title="Cancel (Esc)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/></svg>
+        </button>
+        <span class="msg-rec-dot" aria-hidden="true"></span>
+        <span class="msg-rec-time" data-rec-time aria-live="off">0:00</span>
+        <span class="msg-rec-meter" data-rec-meter aria-hidden="true">{% for i in "012345678901234567890123" %}<span></span>{% endfor %}</span>
+        <span class="msg-rec-hint" data-rec-hint>Recording…</span>
+        <button type="button" class="btn btn-primary msg-send-btn" data-rec-send aria-label="Send voice note">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <span class="msg-action-label">Send</span>
+        </button>
+      </div>
+
       <div class="msg-attachment-picker">
         <label class="msg-attach-button">
           <input type="file" name="attachments" multiple data-message-files>
@@ -91,19 +230,93 @@
         </label>
         <span data-attachment-summary>Up to 5 MB total · files expire after 30 days</span>
       </div>
-      <div class="msg-reply-foot">
-        <span class="muted msg-reply-hint">Enter for a new line · Cmd/Ctrl + Enter to send</span>
-        <button class="btn btn-primary" type="submit" data-send-button aria-label="Send message">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          <span class="msg-action-label" data-send-label>Send</span>
-        </button>
-      </div>
+      <p class="msg-reply-hint muted">Enter for a new line · Cmd/Ctrl + Enter to send</p>
     </div>
   </form>
+
+  {# ---------------- Sheets (dialogs) ---------------- #}
+  <dialog class="msg-sheet" data-forward-dialog aria-labelledby="fwd-title">
+    <form method="post" data-forward-form>
+      {% csrf_token %}
+      <header class="msg-sheet-head">
+        <h2 id="fwd-title">Forward to…</h2>
+        <button type="button" class="msg-icon-btn" data-sheet-close aria-label="Close">×</button>
+      </header>
+      <label class="msg-sheet-search">
+        <span class="msg-visually-hidden">Filter chats</span>
+        <input type="search" placeholder="Search chats…" data-forward-filter autocomplete="off">
+      </label>
+      <div class="msg-sheet-list" data-forward-list>
+        {% for t in forward_threads %}
+          <label class="msg-sheet-option" data-forward-option>
+            <input type="checkbox" name="threads" value="{{ t.pk }}">
+            <span class="msg-avatar msg-avatar-sm msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}" aria-hidden="true">{{ t.display_title|slice:":1"|upper }}</span>
+            <span class="msg-sheet-option-text">{{ t.display_title }}{% if t.pk == thread.pk %} <small>(this chat)</small>{% endif %}</span>
+          </label>
+        {% empty %}
+          <p class="msg-info-empty">You have no chats to forward to.</p>
+        {% endfor %}
+      </div>
+      <footer class="msg-sheet-foot">
+        <span class="muted" data-forward-count>Choose chats</span>
+        <button type="submit" class="btn btn-primary" data-forward-submit disabled>Forward</button>
+      </footer>
+    </form>
+  </dialog>
+
+  {% if is_group %}
+  <dialog class="msg-sheet" data-poll-dialog aria-labelledby="poll-title">
+    <form method="post" action="{% url 'messaging:poll_create' thread.pk %}" data-poll-create-form>
+      {% csrf_token %}
+      <header class="msg-sheet-head">
+        <h2 id="poll-title">Create a poll</h2>
+        <button type="button" class="msg-icon-btn" data-sheet-close aria-label="Close">×</button>
+      </header>
+      <div class="msg-sheet-body">
+        <label class="msg-field-label" for="poll-q">Question</label>
+        <input id="poll-q" class="msg-input" name="question" maxlength="300" required placeholder="Ask something…">
+        <p class="msg-field-label">Options</p>
+        <div class="msg-poll-inputs" data-poll-inputs>
+          <input class="msg-input" name="options" maxlength="120" required placeholder="Option 1" aria-label="Option 1">
+          <input class="msg-input" name="options" maxlength="120" required placeholder="Option 2" aria-label="Option 2">
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" data-poll-add>+ Add option</button>
+        <label class="msg-switch">
+          <input type="checkbox" name="allow_multiple" value="1">
+          <span>Allow multiple answers</span>
+        </label>
+      </div>
+      <footer class="msg-sheet-foot">
+        <span class="muted">2–6 options</span>
+        <button type="submit" class="btn btn-primary">Send poll</button>
+      </footer>
+    </form>
+  </dialog>
+  {% endif %}
+
+  <dialog class="msg-sheet" data-info-dialog aria-labelledby="info-title">
+    <header class="msg-sheet-head">
+      <h2 id="info-title">Message info</h2>
+      <button type="button" class="msg-icon-btn" data-sheet-close aria-label="Close">×</button>
+    </header>
+    <div class="msg-sheet-body" data-info-body><p class="muted">Loading…</p></div>
+  </dialog>
+
+  <dialog class="msg-sheet msg-sheet-sm" data-reactors-dialog aria-labelledby="reactors-title">
+    <header class="msg-sheet-head">
+      <h2 id="reactors-title">Reactions</h2>
+      <button type="button" class="msg-icon-btn" data-sheet-close aria-label="Close">×</button>
+    </header>
+    <div class="msg-sheet-body" data-reactors-body></div>
+  </dialog>
+
+  <div class="msg-toast" data-chat-toast role="status" aria-live="polite" hidden></div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="{% static 'js/messaging.js' %}?v=4" defer></script>
-<script src="{% static 'js/thread-send.js' %}?v=1" defer></script>
+<script src="{% static 'js/thread-send.js' %}?v=2" defer></script>
+<script src="{% static 'js/chat-live.js' %}?v=2" defer></script>
+<script src="{% static 'js/voice-notes.js' %}?v=1" defer></script>
 {% endblock %}

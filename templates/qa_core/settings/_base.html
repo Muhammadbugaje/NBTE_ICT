@@ -12,17 +12,20 @@
   <link rel="stylesheet" href="{% static 'css/qa-p2.css' %}?v=1">
   <link rel="stylesheet" href="{% static 'css/qa-p3.css' %}?v=1">
   <link rel="stylesheet" href="{% static 'css/qa-p4.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/qa-records.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/qa-p8.css' %}?v=1">
 {% endblock %}
 {% block content %}
-<div class="qa-page">
-  <header class="qa-hero">
-    <div>
+<div class="qa-page qa-page--settings" data-qa-area="settings">
+  <header class="qa-hero qa-hero--settings">
+    <div class="qa-hero__main">
       <span class="qa-eyebrow">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-        Quality Assurance · Settings
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        {{ site_info.qa_name }}
       </span>
       <h1>QA settings</h1>
-      <p>Every rule the QA system runs on — fees, thresholds, reference numbers, workflows and messages — lives here, not in code. Changes marked <strong>dual control</strong> wait for a second officer; rules <strong>fixed by policy</strong> cannot be changed.</p>
+      <p>Fees, thresholds, reference numbers, workflows and messages the QA system runs on. Some changes wait for a second officer; a few are fixed by policy.</p>
+      {% include "qa_core/settings/_guide_note.html" with variant="hero" %}
     </div>
     <div class="qa-hero__stats" aria-label="Summary">
       <div class="qa-stat"><strong>{{ hero.settings }}</strong><span>Settings</span></div>
@@ -38,12 +41,14 @@
     </div>
   </header>
 
-  <div id="qa-panel" class="qa-region" data-qa-region>
+  <div id="qa-panel" class="qa-region qa-setlayout" data-qa-region>
     {% block panel %}{% endblock %}
   </div>
+  <div class="qa-setfoot">{% include "qa_core/settings/_guide_note.html" with variant="foot" %}</div>
 </div>
 {% endblock %}
 {% block extra_js %}
   <script>document.body.setAttribute("data-qa-timeout", "{{ qa_timeout_ms|default:15000 }}");</script>
   <script src="{% static 'js/qa.js' %}?v=3" defer></script>
+  <script src="{% static 'js/qa-redesign.js' %}?v=1" defer></script>
 {% endblock %}

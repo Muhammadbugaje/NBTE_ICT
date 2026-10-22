@@ -18,7 +18,16 @@
     </div>
     {% if inst.former_names %}<p class="qa-small qa-muted qa-mt-sm">Formerly: {% for n in inst.former_names %}{{ n.name }}{% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
   </div>
-  <div class="qa-inst-head__tools">{% include "institutions/_actions_menu.html" %}</div>
+  <div class="qa-inst-head__tools">
+    <details class="qa-export-menu">
+      <summary class="btn btn-subtle" aria-label="Download the institutional record">{% icon "download" 16 %} Download record</summary>
+      <ul class="qa-export-menu__list" role="list">
+        <li><a href="{% url 'qa_inst:record_pdf' inst.code %}" download>{% icon "file" 14 %} Institutional record (PDF)</a></li>
+        <li><a href="{% url 'qa_inst:record_zip' inst.code %}" download>{% icon "layers" 14 %} Record and all files (ZIP)</a></li>
+      </ul>
+    </details>
+    {% include "institutions/_actions_menu.html" %}
+  </div>
 </header>
 
 <nav class="qa-tabs" aria-label="Institution sections">

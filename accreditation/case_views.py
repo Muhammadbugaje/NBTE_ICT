@@ -29,7 +29,17 @@ from qa_core.ui import paginate, render_qa, toast
 from . import case_services as cs
 
 TABS = [("overview", "Overview"), ("cost", "Cost sheet"), ("personnel", "Personnel"), ("visit", "Visit"),
-        ("funds", "Fund release"), ("reports", "Reports"), ("timeline", "Timeline"), ("tasks", "Tasks")]
+        ("funds", "Fund release"), ("reports", "Reports"), ("capacity", "Capacity"), ("decisions", "Decisions"),
+        ("letters", "Letters"), ("timeline", "Timeline"), ("tasks", "Tasks")]
+
+
+def can_view_capacity(user):
+    return bool(user.is_superuser or user.has_perm("accreditation.view_capacity_assessment"))
+
+
+def can_run_capacity(user):
+    return bool((user.is_superuser or user.has_perm("accreditation.run_capacity_assessment"))
+                and not cs.is_monitor(user))
 
 
 def _msg(exc):
@@ -80,46 +90,17 @@ def _user(pk):
 def board(request):
     user = request.user
     f = request.GET
-    qs = cs.visible_cases(user).select_related("institution", "owning_department").order_by("-updated_at")
-    q = (f.get("q") or "").strip()
-    if q:
-        qs = qs.filter(Q(reference__icontains=q) | Q(institution__name__icontains=q) | Q(institution__code__iexact=q))
-    if f.get("department"):
-        qs = qs.filter(owning_department__code=f["department"])
-    if f.get("flag") == "reassign":
-        qs = qs.filter(needs_reassignment=True)
-    cases = list(qs[:600])
-    holders = {}
-    from django.contrib.contenttypes.models import ContentType
-
-    from qa_core.models import QATaskLink
-
-    from .models import QACase
-
-    links = (QATaskLink.objects.filter(content_type=ContentType.objects.get_for_model(QACase), closed_at__isnull=True,
-                                       object_id__in=[c.pk for c in cases])
-             .prefetch_related("task__assignee_rows__user"))
-    for link in links:
-        holders.setdefault(link.object_id, []).append(link)
+    qs = cs.filter_cases(cs.visible_cases(user), q=f.get("q"), department=f.get("department"),
+                         flag=f.get("flag"))
+    cases = cs.decorate_cases(list(qs[:600]))
     mine_only = f.get("mine") == "1"
-    labels = {s.code: s for s in cs.flow_stages()}
     columns = []
     for key, label, codes in cs.STAGE_GROUPS:
         columns.append({"key": key, "label": label, "codes": codes, "cards": []})
     not_started = {"key": "new", "label": "Not started", "codes": ("",), "cards": []}
-    now = datetime.datetime.now(datetime.timezone.utc)
     for case in cases:
-        case_links = holders.get(case.pk, [])
-        people = [r.user for link in case_links for r in link.task.assignee_rows.all() if r.state != "declined"]
-        if mine_only and user not in people:
+        if mine_only and user not in case.holders:
             continue
-        case.holders = people
-        case.due = min((link.due_at for link in case_links if link.due_at), default=None)
-        case.overdue = bool(case.due and case.due < now)
-        stage = labels.get(case.status)
-        case.stage_label = stage.label if stage else ("Not started" if case.status in ("", "awaiting_sop03")
-                                                     else case.status.replace("_", " ").capitalize())
-        case.stage_no = stage.sop_stage_no if stage else None
         for col in columns:
             if case.status in col["codes"]:
                 col["cards"].append(case)
@@ -133,7 +114,8 @@ def board(request):
     ctx = {"columns": columns, "filters": f, "total": sum(len(c["cards"]) for c in columns),
            "departments": Department.objects.filter(pk__in=cs.visible_cases(user).values("owning_department"))
            .order_by("name"),
-           "monitor": cs.is_monitor(user), "queue_count": len(cs.my_stage_links(user))}
+           "monitor": cs.is_monitor(user), "queue_count": len(cs.my_stage_links(user)),
+           "can_batch": can_batch(user) and not cs.is_monitor(user)}
     return render_qa(request, "accreditation/case/board.html", ctx,
                      {"qa-panel": "accreditation/case/_board_panel.html",
                       "case-board": "accreditation/case/_board_columns.html"})
@@ -150,14 +132,7 @@ QUEUE_KINDS = [("", "All my stages"), ("cost", "Cost & personnel (2–7)"), ("vi
 @require_GET
 def queue(request):
     kind = request.GET.get("kind", "")
-    links = cs.my_stage_links(request.user, kind=kind)
-    labels = {s.code: s for s in cs.flow_stages()}
-    now = datetime.datetime.now(datetime.timezone.utc)
-    for link in links:
-        stage = labels.get(link.stage_code)
-        link.stage_label = stage.label if stage else link.stage_code
-        link.stage_no = stage.sop_stage_no if stage else None
-        link.overdue = bool(link.due_at and link.due_at < now)
+    links = cs.decorate_stage_links(cs.my_stage_links(request.user, kind=kind))
     page = paginate(request, links)
     ctx = {"page": page, "kind": kind, "kinds": QUEUE_KINDS, "role": getattr(request.user.role, "name", "")}
     return render_qa(request, "accreditation/case/queue.html", ctx,
@@ -167,31 +142,7 @@ def queue(request):
 # ===========================================================================
 # Case detail
 # ===========================================================================
-def _stepper(case, current):
-    rows, seen_current = [], False
-    current_nos = [s.sop_stage_no for s in current if s.sop_stage_no is not None]
-    low = min(current_nos) if current_nos else None
-    closed = case.status == "closed"
-    for stage in cs.flow_stages(case):
-        if stage.kind in ("parallel_gate", "join", "start", "end") and stage.code != "case_opened":
-            continue
-        if stage.code in ("assign_finance_officer", "assign_ict_officer"):
-            continue
-        no = stage.sop_stage_no
-        label = "Assign supervising staff" if stage.code == "assign_audit_officer" else stage.label
-        if closed:
-            state = "done"
-        elif stage.code in [s.code for s in current] or (
-                stage.code == "assign_audit_officer" and any(s.code.startswith("assign_") for s in current)):
-            state, seen_current = "current", True
-        elif low is not None and no is not None and no < low:
-            state = "done"
-        elif not seen_current and low is None and current and current[0].code == "case_opened":
-            state = "todo"
-        else:
-            state = "todo" if (low is None or no is None or no > low) else "done"
-        rows.append({"no": no if no is not None else 0, "label": label, "state": state, "code": stage.code})
-    return rows
+_stepper = cs.stepper  # Phase 9: moved to case_services (shared with the API)
 
 
 def _detail_ctx(request, case, *, tab=None, focus="", **extra):
@@ -205,19 +156,12 @@ def _detail_ctx(request, case, *, tab=None, focus="", **extra):
     if tab not in dict(TABS):
         tab = "overview"
     actions = []
-    for stage in current:
-        if stage.kind in ("end", "join", "parallel_gate"):
-            continue
-        ok, why = cs.can_act(case, user, stage.code)
-        link = cs.open_link(case, stage.code)
-        actions.append({"stage": stage, "can": ok, "why": why, "holders": cs.holders(case, stage.code),
-                        "problems": cs.prerequisites(case, stage.code) if ok else [],
-                        "link": link, "tab": cs.DATA_STAGES.get(stage.code, "overview"),
+    for row in cs.stage_actions(case, user, current):
+        link = row["link"]
+        actions.append({**row, "tab": cs.DATA_STAGES.get(row["stage"].code, "overview"),
                         "pinned": list(link.task.comments.filter(is_pinned=True).select_related("author")
                                        .order_by("-pinned_at")[:3]) if link else [],
-                        "approve_label": APPROVE_LABELS.get(stage.code, "Approve"),
-                        "returns": stage.code not in ("case_opened", "programme_auto_update"),
-                        "focus": stage.code == focus})
+                        "focus": row["stage"].code == focus})
     bundle = cs.case_bundle(case)
     can = {a["stage"].code: a["can"] for a in actions}
     editor = cs.cost_editor(case, user)
@@ -272,22 +216,95 @@ def _detail_ctx(request, case, *, tab=None, focus="", **extra):
         ctx["can_recommend"] = bool(can.get("post_visit_recommendation"))
         ctx["recommendations"] = PostVisitReport.RECOMMENDATION_CHOICES
     ctx["min_visit_date"] = datetime.date.today().isoformat()
+    if tab == "capacity":  # Phase 8: the capacity engine (Spec §7)
+        ctx.update(_capacity_ctx(request, case))
+    if tab == "decisions":  # Phase 8: stages 14–16
+        ctx.update(_decisions_ctx(request, case, current))
+    if tab == "letters":  # Phase 8: outcome letters (B24)
+        from . import letters
+
+        ctx["letters"] = letters.letters_of_case(case)
+        ctx["can_regenerate"] = letters.can_regenerate(user) and not cs.is_monitor(user)
     ctx.update(extra)
     return ctx
 
 
-APPROVE_LABELS = {
-    "case_opened": "Send to supervising departments", "assign_audit_officer": "Assign Audit officer",
-    "assign_finance_officer": "Assign Finance officer", "assign_ict_officer": "Assign ICT officer(s)",
-    "generate_cost": "Submit cost sheet", "add_personnel": "Submit personnel list",
-    "confirm_personnel": "Confirm personnel", "audit_personnel_cost": "Submit audited cost",
-    "confirm_audit_cost": "Confirm audited cost", "es_approve_cost": "Approve cost (ES)",
-    "add_visit_details": "Submit visit details", "confirm_visit_details": "Confirm visit details",
-    "es_approve_visit": "Approve visit (ES)", "request_fund_release": "Confirm funds released",
-    "post_visit_report": "Submit post-visit report", "post_visit_recommendation": "Confirm recommendation",
-    "cqac_recommendation": "Send CQAC recommendation", "cqac_chair_approval": "Approve (CQAC Chairman)",
-    "es_final_approval": "Final approval (ES)",
+# ===========================================================================
+# Phase 8: capacity, decisions and letters tabs
+# ===========================================================================
+CAPACITY_FIELDS = {  # kind → [(input key, label, help)] besides the room table
+    "classroom": [("approved_streams", "Streams already approved", "0 for a new programme."),
+                  ("requested_streams", "Streams asked for", ""),
+                  ("contact_hours_week", "Weekly contact hours of one stream", "Classroom hours a week."),
+                  ("other_load_week", "Weekly hours other programmes use these rooms", "")],
+    "laboratory": [("approved_streams", "Streams already approved", "0 for a new programme."),
+                   ("requested_streams", "Streams asked for", ""),
+                   ("contact_hours_week", "Weekly practical hours of one stream", ""),
+                   ("other_load_week", "Weekly hours other programmes use these rooms", "")],
+    "library": [("requested_streams", "Streams asked for", ""), ("students_per_stream", "Students per stream", ""),
+                ("seats", "Library seats available to the programme", ""),
+                ("titles", "Programme-specific titles", "")],
+    "teaching_staff": [("requested_streams", "Streams asked for", ""),
+                       ("students_per_stream", "Students per stream", ""),
+                       ("full_time_lecturers", "Full-time lecturers", ""),
+                       ("admin_post_lecturers", "Of whom hold an administrative post", ""),
+                       ("contact_hours_week", "Weekly teaching hours of one stream", ""),
+                       ("counted_staff", "Lecturers counted for the ratio", "HND: Lecturer I and above.")],
+    "support_staff": [("requested_streams", "Streams asked for", ""),
+                      ("students_per_stream", "Students per stream", ""),
+                      ("support_staff", "Technologists and technicians", "")],
 }
+ROOM_KINDS = ("classroom", "laboratory")
+
+
+def _capacity_ctx(request, case):
+    from . import capacity
+    from . import decisions as dec
+
+    user = request.user
+    if not can_view_capacity(user):
+        return {"capacity_denied": True}
+    items = []
+    for row in dec.rows(case):
+        current = capacity.current(row)
+        prefill = capacity.prefill(row)
+        kinds = []
+        for kind in capacity.KINDS:
+            assessment = current[kind]
+            inputs = dict(assessment.inputs) if assessment is not None else prefill[kind]
+            fields = [{"key": k, "label": label, "help": help_, "value": inputs.get(k, "")}
+                      for k, label, help_ in CAPACITY_FIELDS[kind]]
+            rooms = list(inputs.get("rooms") or []) if kind in ROOM_KINDS else []
+            if kind in ROOM_KINDS:
+                rooms += [{"label": "", "seats": "", "count": ""}] * 2
+            kinds.append({"kind": kind, "label": capacity.KIND_LABELS[kind], "assessment": assessment,
+                          "fields": fields, "rooms": rooms, "rooms_kind": kind in ROOM_KINDS,
+                          "older": capacity.older_versions(row, kind)})
+        items.append({"row": row, "kinds": kinds, "overall": capacity.overall(row)})
+    return {"capacity_items": items, "can_run_capacity": can_run_capacity(user),
+            "capacity_params": capacity.parameters()}
+
+
+def _decisions_ctx(request, case, current):
+    from . import decisions as dec
+    from .models import Decision
+
+    user = request.user
+    codes = [s.code for s in current]
+    stage_code = next((c for c in codes if dec.is_decision_stage(c)), "")
+    ctx = {"decision_stage": stage_code, "approval_types": dec.active_types(),
+           "all_decisions": dec.all_decisions(case)}
+    if stage_code:
+        stage = dec.STAGE_OF_FLOW[stage_code]
+        ok, why = dec.can_decide(case, user, stage)
+        ctx.update({"decision_rows": dec.board(case, stage_code, user), "can_decide": ok and not cs.is_monitor(user),
+                    "decide_why": why, "decision_stage_label": dict(Decision.STAGE_CHOICES)[stage],
+                    "decision_problems": dec.problems(case, stage_code),
+                    "batch_enabled": dec.batch_enabled() and stage_code == "cqac_chair_approval"})
+    return ctx
+
+
+APPROVE_LABELS = cs.APPROVE_LABELS  # Phase 9: moved to case_services
 
 
 def _duties():
@@ -542,8 +559,20 @@ def drift(request):
     page = paginate(request, TaskLinkDriftReport.objects.order_by("-run_at"))
     return render_qa(request, "accreditation/case/drift.html",
                      {"page": page, "can_run": request.user.is_superuser or request.user.has_perm(
-                         "qa_core.reassign_qa_task"), "monitor": cs.is_monitor(request.user)},
+                         "qa_core.reassign_qa_task"), "monitor": cs.is_monitor(request.user),
+                      **_drift_summary()},
                      {"qa-panel": "accreditation/case/_drift_panel.html"})
+
+
+def _drift_summary():
+    """Phase 8 UI: the latest run, the latest real repair and totals for the hero."""
+    from qa_core.models import TaskLinkDriftReport
+
+    runs = TaskLinkDriftReport.objects.order_by("-run_at")
+    latest = runs.first()
+    last_repair = runs.filter(dry_run=False).first()
+    return {"latest": latest, "last_repair": last_repair, "runs_total": runs.count(),
+            "runs_with_drift": runs.filter(Q(opened__gt=0) | Q(closed__gt=0)).count()}
 
 
 @require(can_view_drift)
@@ -559,7 +588,109 @@ def drift_run(request):
     report = reconcile(dry_run=dry)
     page = paginate(request, TaskLinkDriftReport.objects.order_by("-run_at"))
     response = render(request, "accreditation/case/_drift_panel.html",
-                      {"page": page, "can_run": True, "monitor": False})
+                      {"page": page, "can_run": True, "monitor": False, **_drift_summary()})
     return toast(response, "success", "Reconciliation " + ("checked (dry run)" if dry else "run"),
                  f"{report.checked} link(s) checked · {report.opened} opened · {report.closed} closed.")
 
+
+
+# ===========================================================================
+# Phase 8: capacity runs, decisions, letters and the Chairman's batch page
+# ===========================================================================
+def _capacity_inputs(post, kind):
+    inputs = {key: (post.get(key) or "").strip() for key, _l, _h in CAPACITY_FIELDS[kind]}
+    if kind in ROOM_KINDS:
+        rooms = []
+        for i in range(60):
+            seats, count = post.get(f"rooms-{i}-seats"), post.get(f"rooms-{i}-count")
+            if seats is None and count is None:
+                continue
+            if (seats or "").strip() or (count or "").strip():
+                rooms.append({"label": (post.get(f"rooms-{i}-label") or "").strip()[:120],
+                              "seats": (seats or "0").strip(), "count": (count or "1").strip()})
+        inputs["rooms"] = rooms
+    return inputs
+
+
+@require_or_404(cs.can_view_cases)
+@require_POST
+@writer
+@_guarded
+def capacity_run(request, case, row_id, kind):
+    from . import capacity
+    from . import decisions as dec
+
+    if not can_run_capacity(request.user):
+        raise PermissionDenied("Running a capacity assessment needs accreditation.run_capacity_assessment.")
+    row = next((r for r in dec.rows(case) if r.pk == row_id), None)
+    if row is None or kind not in capacity.KINDS:
+        raise Http404
+    assessment = capacity.run(row, kind, _capacity_inputs(request.POST, kind), user=request.user)
+    res = assessment.result
+    return _respond(request, case, tab="capacity",
+                    ok=(f"{capacity.KIND_LABELS[kind]}: {res['adequacy']}",
+                        f"{row.programme}: {res['supportable_streams']} stream(s) supportable, "
+                        f"{res['requested_streams']} asked for (version {assessment.version})."))
+
+
+@require_or_404(cs.can_view_cases)
+@require_POST
+@writer
+@_guarded
+def decisions_save(request, case):
+    from . import decisions as dec
+
+    stage_code = request.POST.get("stage", "")
+    saved = dec.record_from_post(case, stage_code, request.POST, user=request.user)
+    return _respond(request, case, tab="decisions",
+                    ok=("Decisions saved", f"{len(saved)} programme(s). Approve the stage when every programme "
+                                           "is decided."))
+
+
+@require_or_404(cs.can_view_cases)
+@require_POST
+@writer
+@_guarded
+def letter_regenerate(request, case, letter_id):
+    from . import letters
+
+    letter = next((l for l in letters.letters_of_case(case) if l.pk == letter_id), None)
+    if letter is None:
+        raise Http404
+    new = letters.regenerate(letter, user=request.user, reason=request.POST.get("reason", ""))
+    return _respond(request, case, tab="letters", ok=("Letter regenerated", f"{letter.reference} → {new.reference}"))
+
+
+def can_batch(user):
+    return cs.can_view_cases(user) and (user.is_superuser or user.has_perm("accreditation.batch_decide"))
+
+
+@require(can_batch)
+def batch(request):
+    """B23: the CQAC Chairman approves CQAC recommendations in a batch, one
+    programme category at a time."""
+    from . import decisions as dec
+
+    error, result = "", None
+    if request.method == "POST":
+        if cs.is_monitor(request.user):
+            raise PermissionDenied
+        raw = request.POST.get("category", "")
+        category_id = int(raw) if raw.isdigit() and raw != "0" else None
+        try:
+            key, decided, moved = dec.batch_approve(request.user, request.POST.getlist("rows"),
+                                                    category_id=category_id)
+            result = {"key": key, "decided": decided, "moved": moved}
+        except (ValidationError, PermissionDenied) as exc:
+            error = _msg(exc)
+    groups = dec.batch_candidates(request.user)
+    ctx = {"groups": groups, "enabled": dec.batch_enabled(), "error": error, "result": result}
+    response = render_qa(request, "accreditation/case/batch.html", ctx,
+                         {"qa-panel": "accreditation/case/_batch_panel.html"})
+    if request.method == "POST":
+        if error:
+            response.status_code = 422
+            return toast(response, "error", "Not approved", error)
+        return toast(response, "success", f"Batch {result['key']} approved",
+                     f"{len(result['decided'])} programme(s); {len(result['moved'])} case(s) sent to the ES.")
+    return response

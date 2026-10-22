@@ -8,6 +8,7 @@
     <div class="qa-hero__actions">
       <a class="btn btn-subtle" href="{% url 'qa_inst:import_template' 'institutions' %}">{% icon "download" 16 %} Institutions template</a>
       <a class="btn btn-subtle" href="{% url 'qa_inst:import_template' 'programmes' %}">{% icon "download" 16 %} Programmes template</a>
+      <a class="btn btn-subtle" href="{% url 'qa_inst:import_template' 'legacy' %}">{% icon "download" 16 %} Migration template</a>
       {% if can_export %}<a class="btn btn-subtle" href="{% url 'qa_inst:export' %}?kind=institutions">{% icon "sheet" 16 %} Export institutions</a>
       <a class="btn btn-subtle" href="{% url 'qa_inst:export' %}?kind=programmes">{% icon "sheet" 16 %} Export programmes</a>{% endif %}
     </div>
@@ -22,6 +23,14 @@
         <li><strong>Status</strong> cannot be changed by import — use the actions (approve, delist …).</li>
         <li><strong>Matching</strong>: code first, then exact name; a category change on an approved institution moves it to the category's department.</li>
         <li><strong>Re-importing</strong> an unchanged export changes nothing.</li>
+      </ol></div></section>
+    <section class="qa-card"><header class="qa-card__head"><h2>Migrate from the previous system</h2></header>
+      <div class="qa-card__body"><p class="qa-small">For institutions that already exist in the previous system. Choose <em>Migrate from the previous system</em> and upload the migration template (institutions, programmes and, optionally, past accreditation decisions).</p>
+      <ol class="qa-twostep">
+        <li>Institutions are created <strong>approved</strong> in their handling department — no onboarding application.</li>
+        <li>Programmes keep their status, approval type, streams and dates; a blank expiry is worked out from the approval type.</li>
+        <li>Portal administrators are created <strong>inactive</strong>; they get a set-password link when you choose.</li>
+        <li>Running the same workbook again changes nothing.</li>
       </ol></div></section>
     {% if recent %}<section class="qa-card"><header class="qa-card__head"><h2>Your recent imports</h2></header>
       <ul class="qa-rowlist" role="list">{% for b in recent %}<li><a class="qa-rowlink" href="{% url 'qa_inst:import_batch' b.pk %}" hx-get="{% url 'qa_inst:import_batch' b.pk %}" hx-target="#qa-panel" hx-push-url="true"><span class="qa-rowlink__badge">#{{ b.pk }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ b.get_kind_display }}</span><span class="qa-rowlink__meta">{{ b.created_at|date:"j M Y, H:i" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {% if b.status == 'applied' %}qa-tone-success{% elif b.status == 'invalid' or b.status == 'rejected' or b.status == 'failed' %}qa-tone-danger{% else %}qa-tone-pending{% endif %}">{{ b.get_status_display }}</span></span></a></li>{% endfor %}</ul></section>{% endif %}

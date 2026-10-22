@@ -396,7 +396,9 @@ class SendCredentialsForm(InstitutionActionForm):
 # Import / export
 # ---------------------------------------------------------------------------
 class ImportUploadForm(QAForm):
-    kind = forms.ChoiceField(choices=[("institutions", "Institutions"), ("programmes", "Programmes")])
+    kind = forms.ChoiceField(choices=[("institutions", "Institutions"), ("programmes", "Programmes"),
+                                      ("legacy", "Migrate from the previous system (institutions, programmes, "
+                                                 "history)")])
     file = forms.FileField(label="Excel file (.xlsx)")
 
     def clean_file(self):

@@ -1,38 +1,48 @@
-<tbody id="tpl-{{ t.pk }}" class="qa-rule">
-  <tr class="is-editing">
-    <td colspan="4">
-      <div class="qa-formula-grid">
-        <form class="qa-edit" hx-post="{% url 'qa:template_edit' t.pk %}" hx-target="#tpl-{{ t.pk }}" hx-swap="outerHTML"
-              method="post" action="{% url 'qa:template_edit' t.pk %}" id="tpl-form-{{ t.pk }}">
-          {% csrf_token %}
-          <div class="qa-split">
-            <div><span class="qa-key">{{ t.code }}</span> <span class="qa-chip">{{ t.get_channel_display }}</span></div>
-          </div>
-          {% if errors %}<ul class="qa-errors" role="alert">{% for m in errors %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
-          <label class="field">
-            <span>Subject</span>
-            <input class="input" name="subject" value="{{ subject }}" maxlength="255" {% if not can_manage %}readonly{% endif %} data-qa-focus>
-          </label>
-          <label class="field">
-            <span>Body</span>
-            <textarea class="input qa-mono" name="body" rows="6" spellcheck="false" {% if not can_manage %}readonly{% endif %}>{{ body }}</textarea>
-          </label>
-          <p class="qa-small qa-muted">Available: {% for k in sample.keys %}<code>{% templatetag openvariable %} {{ k }} {% templatetag closevariable %}</code>{% if not forloop.last %} {% endif %}{% endfor %}</p>
-          <div class="qa-edit__row">
-            {% if can_manage %}<button type="submit" class="btn btn-primary btn-sm">Save template</button>{% endif %}
-            <button type="button" class="btn btn-subtle btn-sm" hx-post="{% url 'qa:template_preview' t.pk %}"
-                    hx-include="#tpl-form-{{ t.pk }}" hx-target="#tpl-preview-{{ t.pk }}" data-qa-no-overlay>Preview</button>
-            <button type="button" class="btn btn-ghost btn-sm" data-qa-no-busy
-                    hx-get="{% url 'qa:template_edit' t.pk %}?cancel=1" hx-target="#tpl-{{ t.pk }}" hx-swap="outerHTML">{% if can_manage %}Cancel{% else %}Close{% endif %}</button>
-          </div>
-        </form>
-        <div>
-          <span class="qa-label">Preview with sample values</span>
-          <div id="tpl-preview-{{ t.pk }}" class="qa-region" aria-live="polite">
-            <p class="qa-small qa-muted">Press Preview to render this template with sample values.</p>
+<article id="tpl-{{ t.pk }}" class="qa-rule is-editing" data-scroll-into-view>
+  <div class="tpl-editor">
+    <header class="tpl-editor__head">
+      <span class="tpl-channel tpl-channel--{{ t.channel }}"><span>{% if t.channel == "email" %}E-mail{% else %}{{ t.get_channel_display }}{% endif %}</span></span>
+      <div>
+        <strong>{{ t.event_name|capfirst }}</strong>
+        <code>{{ t.code }}</code>
+      </div>
+    </header>
+    <div class="tpl-editor__grid">
+      <form class="tpl-editor__form" hx-post="{% url 'qa:template_edit' t.pk %}" hx-target="#tpl-{{ t.pk }}" hx-swap="outerHTML"
+            method="post" action="{% url 'qa:template_edit' t.pk %}" id="tpl-form-{{ t.pk }}" data-tpl-form>
+        {% csrf_token %}
+        {% if errors %}<ul class="qa-errors" role="alert">{% for m in errors %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+        {% if t.description %}<p class="tpl-editor__purpose">{{ t.description }}</p>{% endif %}
+        <label class="field">
+          <span>Subject</span>
+          <input class="input" name="subject" value="{{ subject }}" maxlength="255" {% if not can_manage %}readonly{% endif %} data-qa-focus>
+        </label>
+        <label class="field">
+          <span>Message</span>
+          <textarea class="input qa-mono" name="body" rows="8" spellcheck="false" {% if not can_manage %}readonly{% endif %}>{{ body }}</textarea>
+        </label>
+        <div class="tpl-chips">
+          <span class="tpl-chips__label" id="tpl-chips-{{ t.pk }}">{% if can_manage %}Insert a value — it goes where your cursor is{% else %}Values this template can use{% endif %}</span>
+          <div class="tpl-chips__list" role="group" aria-labelledby="tpl-chips-{{ t.pk }}">
+            {% for k in placeholders %}<button type="button" class="tpl-chip" data-tpl-insert="{% templatetag openvariable %} {{ k }} {% templatetag closevariable %}"{% if not can_manage %} disabled{% endif %}>{{ k }}</button>{% endfor %}
           </div>
         </div>
-      </div>
-    </td>
-  </tr>
-</tbody>
+        {% if t.events %}<p class="tpl-editor__events">Sent when: {% for e in t.events %}<code>{{ e }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+        <div class="tpl-editor__actions">
+          {% if can_manage %}<button type="submit" class="btn btn-primary btn-sm">Save template</button>{% endif %}
+          <button type="button" class="btn btn-ghost btn-sm" data-qa-no-busy
+                  hx-get="{% url 'qa:template_edit' t.pk %}?cancel=1" hx-target="#tpl-{{ t.pk }}" hx-swap="outerHTML">{% if can_manage %}Cancel{% else %}Close{% endif %}</button>
+        </div>
+      </form>
+      <aside class="tpl-editor__preview" aria-label="Live preview">
+        <span class="tpl-editor__preview-label">Live preview <small>with sample values</small></span>
+        <div id="tpl-preview-{{ t.pk }}" class="qa-region" aria-live="polite"
+             hx-post="{% url 'qa:template_preview' t.pk %}" hx-include="#tpl-form-{{ t.pk }}"
+             hx-trigger="load, input changed delay:450ms from:#tpl-form-{{ t.pk }}, tpl:insert from:#tpl-form-{{ t.pk }}"
+             data-qa-no-overlay data-qa-no-busy>
+          <p class="qa-small qa-muted">Loading the preview…</p>
+        </div>
+      </aside>
+    </div>
+  </div>
+</article>

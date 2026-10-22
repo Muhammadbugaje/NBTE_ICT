@@ -1,0 +1,79 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa_inst:list' %}" hx-get="{% url 'qa_inst:list' %}" hx-target="#qa-panel" hx-push-url="true">Institutions</a><span aria-hidden="true">/</span>
+  <a href="{% url 'qa_inst:detail' inst.code %}" hx-get="{% url 'qa_inst:detail' inst.code %}" hx-target="#qa-panel" hx-push-url="true">{{ inst.code }}</a><span aria-hidden="true">/</span>
+  <a href="{% url 'qa_inst:detail' inst.code %}?tab=programmes" hx-get="{% url 'qa_inst:detail' inst.code %}?tab=programmes" hx-target="#qa-panel" hx-push-url="true">Programmes</a><span aria-hidden="true">/</span>
+  <span aria-current="page">{{ p }}</span>
+</nav>
+<header class="qa-inst-head qa-prog-head">
+  <div>
+    <span class="qa-eyebrow">{% icon "layers" 14 "2.2" %} {{ inst.name }}</span>
+    <h1 data-qa-focus>{{ p.name }} <span class="qa-muted">{{ p.level.code|upper }}</span></h1>
+    <div class="qa-inst-head__meta">
+      <span class="qa-chip {{ p.status|tone }}">{{ p.get_status_display }}</span>
+      {% if approval_type %}<span class="qa-chip">{{ approval_type }}</span>{% endif %}
+      {% if expiry_info.label %}<span class="qa-countdown {{ expiry_info.tone }}">{{ expiry_info.label }}</span>{% endif %}
+      {% for b in bodies %}<a class="qa-chip qa-tone-info" href="{% url 'qa_pb:body_detail' b.pk %}" hx-get="{% url 'qa_pb:body_detail' b.pk %}" hx-target="#qa-panel" hx-push-url="true">{{ b.name }}</a>{% endfor %}
+    </div>
+  </div>
+  {% if jumps %}<div class="qa-jump" role="group" aria-label="Go to the active step">{% for j in jumps %}<a class="btn {% if j.primary %}btn-primary{% else %}btn-subtle{% endif %}" href="{{ j.url }}">{% icon "arrow" 16 %} {{ j.label }}</a>{% endfor %}</div>{% endif %}
+</header>
+
+<dl class="qa-prog-facts">
+  <div><dt>Status</dt><dd>{{ p.get_status_display }}</dd></div>
+  <div><dt>Approval type</dt><dd>{{ approval_type|default:"—" }}</dd></div>
+  <div><dt>Commenced</dt><dd>{{ p.commencement_date|date:"j M Y"|default:"—" }}</dd></div>
+  <div><dt>Expires</dt><dd>{{ p.expiry_date|date:"j M Y"|default:"—" }}{% if expiry_info.label %} <span class="qa-countdown {{ expiry_info.tone }}">({{ expiry_info.label }})</span>{% endif %}</dd></div>
+  <div><dt>Eligible for reassessment</dt><dd>{{ p.eligible_for_reassessment_at|date:"j M Y"|default:"—" }}</dd></div>
+  <div><dt>Approved streams</dt><dd>{{ p.approved_streams }}</dd></div>
+  <div><dt>Category · discipline</dt><dd>{{ p.category.name|default:"—" }}{% if p.category.discipline %} · {{ p.category.discipline.name }}{% endif %}</dd></div>
+  <div><dt>Professional body</dt><dd>{% for b in bodies %}<a href="{% url 'qa_pb:body_detail' b.pk %}">{{ b.acronym|default:b.name }}</a>{% if not forloop.last %}, {% endif %}{% empty %}None{% endfor %}</dd></div>
+  <div><dt>Open work</dt><dd>{% if work %}<a href="{{ work.url }}">{{ work.reference }}</a> · {% if work.stage_no %}stage {{ work.stage_no }}: {% endif %}{{ work.stage }}{% else %}None{% endif %}</dd></div>
+</dl>
+
+<div class="qa-cols qa-mt">
+  <div class="qa-stack">
+    <section class="qa-card" aria-labelledby="pg-hist"><header class="qa-card__head"><h2 id="pg-hist">Status and accreditation history</h2></header>
+      {% if info.history %}<ol class="qa-tl qa-card__body">{% for e in info.history %}<li class="{% if e.visibility == 'internal' %}is-internal{% endif %}"><span class="qa-tl__text">{{ e.public_text|default:e.internal_text }}</span><small>{{ e.at|date:"j M Y" }}</small></li>{% endfor %}</ol>
+      {% else %}<p class="qa-card__body qa-muted qa-small">No status changes recorded yet.</p>{% endif %}
+    </section>
+
+    <section class="qa-card" aria-labelledby="pg-req"><header class="qa-card__head"><h2 id="pg-req">QA requests</h2></header>
+      {% if info.rows %}<div class="qa-table-wrap"><table class="qa-table"><thead><tr><th scope="col">Request</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">In the request</th><th scope="col">Created</th></tr></thead><tbody>
+        {% for r in info.rows %}<tr><td data-label="Request"><a href="{% url 'qa_req:detail' r.qa_request.pk %}">{{ r.qa_request.reference }}</a></td><td data-label="Type">{{ r.qa_request.qa_type.name }}</td><td data-label="Status"><span class="qa-chip {{ r.qa_request.status|tone }}">{{ r.qa_request.status|humanize_code }}</span></td><td data-label="In the request">{{ r.get_status_display }}{% if r.is_new_programme %} · new{% endif %}</td><td data-label="Created">{{ r.qa_request.created_at|date:"j M Y" }}</td></tr>{% endfor %}
+      </tbody></table></div>{% else %}<p class="qa-card__body qa-muted qa-small">Not in any QA request.</p>{% endif %}
+    </section>
+
+    <section class="qa-card" aria-labelledby="pg-ssq"><header class="qa-card__head"><h2 id="pg-ssq">SSQs</h2></header>
+      {% if info.ssqs %}<div class="qa-table-wrap"><table class="qa-table"><thead><tr><th scope="col">Request</th><th scope="col" class="num">Version</th><th scope="col">Status</th><th scope="col">Submitted</th><th scope="col">Reviewed</th></tr></thead><tbody>
+        {% for s in info.ssqs %}<tr><td data-label="Request">{{ s.qa_request_programme.qa_request.reference }}</td><td class="num" data-label="Version">{{ s.version }}{% if s.is_current %} <span class="qa-chip">current</span>{% endif %}</td><td data-label="Status"><a href="{% url 'qa_req:ssq' s.pk %}"><span class="qa-chip {{ s.status|tone }}">{{ s.status|humanize_code }}</span></a></td><td data-label="Submitted">{{ s.submitted_at|date:"j M Y"|default:"—" }}</td><td data-label="Reviewed">{{ s.reviewed_at|date:"j M Y"|default:"—" }}</td></tr>{% endfor %}
+      </tbody></table></div>{% else %}<p class="qa-card__body qa-muted qa-small">No SSQs.</p>{% endif %}
+    </section>
+
+    <section class="qa-card" aria-labelledby="pg-case"><header class="qa-card__head"><h2 id="pg-case">QA cases, visits and reports</h2></header>
+      <div class="qa-card__body qa-stack">
+        {% for c in info.cases %}<p><a href="{% url 'qa_case:detail' c.pk %}"><strong>{{ c.reference }}</strong></a> · {% if c.stage_no %}stage {{ c.stage_no }}: {% endif %}{{ c.stage_label|default:c.status }}{% if c.completed_at %} · completed {{ c.completed_at|date:"j M Y" }}{% endif %}</p>{% empty %}<p class="qa-muted qa-small">No QA case yet.</p>{% endfor %}
+        {% for i in info.inspections %}<p><a href="{% url 'qa_insp:inspection' i.pk %}">{{ i.reference }}</a> · {{ i.get_kind_display }} · {{ i.scheduled_start|date:"j M" }}–{{ i.scheduled_end|date:"j M Y" }} · <span class="qa-chip {{ i.status|tone }}">{{ i.status|humanize_code }}</span></p>{% endfor %}
+        {% for r in info.reports %}<p><a href="{% url 'qa_insp:report' r.pk %}">Post-visit report</a> · {{ r.status|humanize_code|default:"draft" }}{% if r.recommendation %} · recommends {{ r.get_recommendation_display|lower }}{% endif %}</p>{% endfor %}
+      </div>
+    </section>
+
+    {% if info.decisions %}<section class="qa-card" aria-labelledby="pg-dec"><header class="qa-card__head"><h2 id="pg-dec">Decisions and letters</h2></header>
+      <ul class="qa-card__body">{% for d in info.decisions %}<li>{{ d.kind }} · {{ d.obj }}{% if d.date %} · {{ d.date|date:"j M Y" }}{% endif %}</li>{% endfor %}</ul></section>{% endif %}
+  </div>
+
+  <aside class="qa-stack">
+    <section class="qa-card" aria-labelledby="pg-q"><header class="qa-card__head"><h2 id="pg-q">Queries</h2></header>
+      {% if info.queries %}<ul class="qa-rowlist" role="list">{% for q in info.queries %}<li><a class="qa-rowlink" href="{% url 'qa_req:query' q.pk %}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ q.title }}</span><span class="qa-rowlink__meta">{{ q.reference }} · {{ q.created_at|date:"j M Y" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ q.status|tone }}">{{ q.get_status_display }}</span></span></a></li>{% endfor %}</ul>
+      {% else %}<p class="qa-card__body qa-muted qa-small">No queries.</p>{% endif %}</section>
+    <section class="qa-card" aria-labelledby="pg-c"><header class="qa-card__head"><h2 id="pg-c">Complaints</h2></header>
+      {% if info.complaints %}<ul class="qa-rowlist" role="list">{% for c in info.complaints %}<li><a class="qa-rowlink" href="{% url 'qa_complaints:detail' c.pk %}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ c.subject }}</span><span class="qa-rowlink__meta">{{ c.reference }} · {{ c.created_at|date:"j M Y" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip">{{ c.status|humanize_code }}</span></span></a></li>{% endfor %}</ul>
+      {% else %}<p class="qa-card__body qa-muted qa-small">No complaints involve this programme.</p>{% endif %}</section>
+    <section class="qa-card" aria-labelledby="pg-tl"><header class="qa-card__head"><h2 id="pg-tl">Timeline</h2></header>
+      <form class="qa-toolbar" role="search" hx-get="{% url 'qa_inst:programme' inst.code p.pk %}" hx-target="#qa-prog-tl" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search]" data-qa-no-overlay>
+        <label class="qa-search"><span class="sr-only">Search this programme's timeline</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="tq" value="{{ tq }}" placeholder="Search events"></label>
+      </form>
+      <div id="qa-prog-tl" class="qa-region" data-qa-region aria-live="polite">{% include "institutions/_programme_timeline.html" %}</div>
+    </section>
+  </aside>
+</div>

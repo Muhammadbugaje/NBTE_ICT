@@ -1,0 +1,140 @@
+{% comment %}
+  Phase 9: notification preferences (both doors). Context: `form`
+  (notifications.forms.NotificationPreferenceForm), `action` (POST URL),
+  `disabled` (true while impersonating).
+{% endcomment %}
+<form method="post" action="{{ action }}" class="p9-prefs" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="p9-callout p9-callout--error" role="alert">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+
+  <section class="sh-section p9-section" aria-labelledby="p9-kinds-title">
+    <header class="sh-section__head">
+      <div>
+        <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10 21h4"/></svg></span>
+        <h2 id="p9-kinds-title">What to send you</h2>
+        <p>Turn off a kind to stop phone alerts and e-mails for it. Everything still appears under the bell.</p>
+      </div>
+    </header>
+    <div class="sh-section__body">
+      {% for field in form.kind_fields %}
+        <div class="sh-row">
+          <div>
+            <label class="sh-row__title" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            <span class="sh-row__desc" id="{{ field.id_for_label }}_help">{{ field.help_text }}</span>
+          </div>
+          <div class="sh-row__control">
+            <label class="sh-switch">
+              <input type="checkbox" name="{{ field.html_name }}" id="{{ field.id_for_label }}" role="switch"
+                     aria-describedby="{{ field.id_for_label }}_help"{% if field.value %} checked{% endif %}{% if disabled %} disabled{% endif %}>
+              <span class="sh-switch__track" aria-hidden="true"></span>
+            </label>
+          </div>
+        </div>
+      {% endfor %}
+      <div class="sh-row">
+        <div>
+          <label class="sh-row__title" for="{{ form.email_digest.id_for_label }}">E-mail me as well</label>
+          <span class="sh-row__desc" id="p9-email-help">Send the kinds switched on above to {{ request.user.email }}. Password and security e-mails are always sent.</span>
+        </div>
+        <div class="sh-row__control">
+          <label class="sh-switch">
+            <input type="checkbox" name="email_digest" id="{{ form.email_digest.id_for_label }}" role="switch" aria-describedby="p9-email-help"{% if form.email_digest.value %} checked{% endif %}{% if disabled %} disabled{% endif %}>
+            <span class="sh-switch__track" aria-hidden="true"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sh-section p9-section" aria-labelledby="p9-quiet-title">
+    <header class="sh-section__head">
+      <div>
+        <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
+        <h2 id="p9-quiet-title">Quiet hours</h2>
+        <p>Hold phone alerts overnight. They are delivered silently to the bell and you see them in the morning.</p>
+      </div>
+    </header>
+    <div class="sh-section__body">
+      <div class="sh-row">
+        <div>
+          <label class="sh-row__title" for="{{ form.quiet_hours_enabled.id_for_label }}">Use quiet hours</label>
+          <span class="sh-row__desc" id="p9-quiet-help">No phone alerts between the times below.</span>
+        </div>
+        <div class="sh-row__control">
+          <label class="sh-switch">
+            <input type="checkbox" name="quiet_hours_enabled" id="{{ form.quiet_hours_enabled.id_for_label }}" role="switch" aria-describedby="p9-quiet-help"{% if form.quiet_hours_enabled.value %} checked{% endif %}{% if disabled %} disabled{% endif %}>
+            <span class="sh-switch__track" aria-hidden="true"></span>
+          </label>
+        </div>
+      </div>
+      <div class="sh-row">
+        <div>
+          <span class="sh-row__title" id="p9-window-label">From – to</span>
+          <span class="sh-row__desc">Times in your time zone. A window that passes midnight (22:00 – 06:30) is fine.</span>
+        </div>
+        <div class="sh-row__control p9-times" role="group" aria-labelledby="p9-window-label">
+          <label class="sr-only" for="{{ form.quiet_from.id_for_label }}">From</label>
+          {{ form.quiet_from }}
+          <span aria-hidden="true">–</span>
+          <label class="sr-only" for="{{ form.quiet_to.id_for_label }}">To</label>
+          {{ form.quiet_to }}
+        </div>
+        {% if form.quiet_from.errors or form.quiet_to.errors %}<span class="error" role="alert">{{ form.quiet_from.errors|join:" " }} {{ form.quiet_to.errors|join:" " }}</span>{% endif %}
+      </div>
+      <div class="sh-row">
+        <div>
+          <label class="sh-row__title" for="{{ form.allow_urgent_during_quiet.id_for_label }}">Let urgent alerts through</label>
+          <span class="sh-row__desc" id="p9-urgent-help">Urgent items (for example an approval that is about to expire) still reach your phone.</span>
+        </div>
+        <div class="sh-row__control">
+          <label class="sh-switch">
+            <input type="checkbox" name="allow_urgent_during_quiet" id="{{ form.allow_urgent_during_quiet.id_for_label }}" role="switch" aria-describedby="p9-urgent-help"{% if form.allow_urgent_during_quiet.value %} checked{% endif %}{% if disabled %} disabled{% endif %}>
+            <span class="sh-switch__track" aria-hidden="true"></span>
+          </label>
+        </div>
+      </div>
+      <div class="sh-row">
+        <div>
+          <label class="sh-row__title" for="{{ form.timezone.id_for_label }}">Time zone</label>
+          <span class="sh-row__desc">Used for quiet hours.</span>
+        </div>
+        <div class="sh-row__control">{{ form.timezone }}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sh-section p9-section" aria-labelledby="p9-app-title">
+    <header class="sh-section__head">
+      <div>
+        <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg></span>
+        <h2 id="p9-app-title">On your phone</h2>
+        <p>Used by the NBTE mobile app.</p>
+      </div>
+    </header>
+    <div class="sh-section__body">
+      <div class="sh-row">
+        <div>
+          <label class="sh-row__title" for="{{ form.show_previews.id_for_label }}">Show message previews</label>
+          <span class="sh-row__desc">Whether alerts on the lock screen show what the message says.</span>
+        </div>
+        <div class="sh-row__control">{{ form.show_previews }}</div>
+      </div>
+      <div class="sh-row">
+        <div>
+          <label class="sh-row__title" for="{{ form.transcribe_voice_notes.id_for_label }}">Transcribe voice notes</label>
+          <span class="sh-row__desc" id="p9-transcribe-help">Show a text version of voice notes you receive in chat.</span>
+        </div>
+        <div class="sh-row__control">
+          <label class="sh-switch">
+            <input type="checkbox" name="transcribe_voice_notes" id="{{ form.transcribe_voice_notes.id_for_label }}" role="switch" aria-describedby="p9-transcribe-help"{% if form.transcribe_voice_notes.value %} checked{% endif %}{% if disabled %} disabled{% endif %}>
+            <span class="sh-switch__track" aria-hidden="true"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="sh-section__foot">
+      <span>Changes apply straight away.</span>
+      <button type="submit" class="btn btn-primary"{% if disabled %} disabled{% endif %}>Save notification settings</button>
+    </div>
+  </section>
+</form>

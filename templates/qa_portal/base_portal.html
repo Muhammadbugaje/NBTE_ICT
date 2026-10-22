@@ -18,10 +18,13 @@
   <link rel="stylesheet" href="{% static 'css/qa-p2.css' %}?v=1">
   <link rel="stylesheet" href="{% static 'css/qa-p3.css' %}?v=1">
   <link rel="stylesheet" href="{% static 'css/qa-p5.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/qa-records.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/qa-p8.css' %}?v=1">
   <link rel="stylesheet" href="{% static 'css/complaints.css' %}?v=4">
   {% block extra_css %}{% endblock %}
   <link rel="stylesheet" href="{% static 'css/apple.css' %}?v=1">
   <link rel="stylesheet" href="{% static 'css/polish.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/qa-redesign.css' %}?v=1">
 </head>
 <body class="qa-portal{% if request.is_impersonating %} qa-portal--impersonating{% endif %}"
       hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' data-qa-timeout="{{ qa_timeout_ms|default:15000 }}">
@@ -50,8 +53,8 @@
       <a class="qa-brand" href="{% url 'qa_portal:dashboard' %}" hx-boost="true" hx-target="#qa-main" hx-push-url="true" data-qa-nav-home>
         <img src="{% static 'img/NBTE_logo.png' %}" alt="" width="36" height="36">
         <span class="qa-brand__text">
-          <strong>Quality Assurance Portal</strong>
-          <span>{% if institution %}{{ institution.name }}{% else %}National Board for Technical Education{% endif %}</span>
+          <strong>{{ site_info.portal_short_name }}</strong>
+          <span>{% if institution %}{{ institution.name }}{% else %}{{ site_info.organisation_name }}{% endif %}</span>
         </span>
       </a>
 
@@ -183,6 +186,7 @@
   <script src="{% static 'js/qa-ssq.js' %}?v=1" defer></script>
   <script src="{% static 'js/complaints.js' %}?v=1" defer></script>
   {% block extra_js %}{% endblock %}
+  {% include "partials/ux_scripts.html" %}
   <script src="{% static 'js/polish.js' %}?v=1" defer></script>
 </body>
 </html>

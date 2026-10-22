@@ -298,17 +298,17 @@ def nominal_roll_report(request, pk):
     session = get_object_or_404(ImportSession, pk=pk)
     if not session.report_file:
         raise Http404
-    audit.log("other", session, actor=request.user, note="import report downloaded")
+    from core import file_preview
+
+    inline = file_preview.wants_inline(request, "text/plain")
+    audit.log("other", session, actor=request.user, note=file_preview.audit_note(inline, "import report"))
     filename = f"import-report-{session.created_at:%Y%m%d-%H%M}.txt"
     if getattr(settings, "USE_X_ACCEL_REDIRECT", False):
         resp = HttpResponse(content_type="text/plain; charset=utf-8")
         resp["X-Accel-Redirect"] = settings.PROTECTED_MEDIA_URL + quote(session.report_file.name)
     else:
         resp = FileResponse(session.report_file.open("rb"), content_type="text/plain; charset=utf-8")
-    resp["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
-    resp["Cache-Control"] = "private, no-store"
-    resp["X-Content-Type-Options"] = "nosniff"
-    return resp
+    return file_preview.finish(resp, filename, inline)
 
 
 def _password_schemes():

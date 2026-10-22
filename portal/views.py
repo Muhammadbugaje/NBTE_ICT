@@ -757,8 +757,11 @@ def document_download(request, pk, version_pk=None):
         or getattr(doc, "original_name", "")
         or file_field.name.rsplit("/", 1)[-1]
     )
+    from core import file_preview
+
     ctype = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
-    disposition = f"attachment; filename*=UTF-8''{quote(original_name)}"
+    inline = file_preview.wants_inline(request, ctype)
+    ctype = file_preview.text_charset(ctype)
 
     if getattr(settings, "USE_X_ACCEL_REDIRECT", False):
         resp = HttpResponse(content_type=ctype)
@@ -767,9 +770,7 @@ def document_download(request, pk, version_pk=None):
     else:
         resp = FileResponse(file_field.open("rb"), content_type=ctype)
 
-    resp["Content-Disposition"] = disposition
-    resp["Cache-Control"] = "private, no-store"
-    return resp
+    return file_preview.finish(resp, original_name, inline)
 
 
 def _log_download(doc, version, request, is_external):

@@ -13,6 +13,7 @@ urlpatterns = [
     path("queue/<int:pk>/second-check/", views.item_second_pass, name="item_second_pass"),
     path("queue/<int:pk>/decide/", views.item_final, name="item_final"),
     path("obligations/", views.obligations, name="obligations"),
+    path("obligations/issue/", views.issue_bill, name="issue_bill"),  # Phase 8
     path("obligations/<int:pk>/", views.obligation_detail, name="obligation"),
     path("obligations/<int:pk>/<str:verb>/", views.obligation_action, name="obligation_action"),
     path("statements/", views.statements, name="statements"),

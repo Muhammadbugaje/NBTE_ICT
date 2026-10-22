@@ -136,6 +136,15 @@ class ResourcePersonFile(QAFileMixin, TimeStampedModel):
 
     AUDITED = True
     MEDIA_SUBDIR = "qa/resource_persons"
+
+    def media_owner_folder(self):
+        """CVs and promotion proofs live under ``resource-persons/<name>/``."""
+        from qa_core.files import RESOURCE_PERSONS_ROOT, safe_folder_name
+
+        person = self.resource_person if self.resource_person_id else None
+        if person is None:
+            return None
+        return f"{RESOURCE_PERSONS_ROOT}/{safe_folder_name(person.full_name or f'person {person.pk}')}"
     KIND_CHOICES = [("cv", "CV"), ("promotion_proof", "Promotion proof"), ("other", "Other")]
 
     resource_person = models.ForeignKey(ResourcePerson, on_delete=models.CASCADE, related_name="files")

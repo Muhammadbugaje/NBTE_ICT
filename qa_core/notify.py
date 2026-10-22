@@ -113,8 +113,13 @@ def dispatch(event_code, context, recipients, *, url="", actor=None, level="info
 
 def _email(subject, body, users):
     from . import mail
+    from notifications.preferences import should_deliver  # Phase 9: per-user e-mail preference
 
-    recipients = sorted({u.email for u in users if getattr(u, "email", "")})
+    # Institutions and resource persons always get QA rule e-mails: they are
+    # official notices. Only NBTE staff may switch them off in preferences.
+    recipients = sorted({u.email for u in users if getattr(u, "email", "")
+                         and (getattr(u, "user_type", "staff") != "staff"
+                              or should_deliver(u, "qa_cases", channel="email"))})
     if not recipients:
         return
     mail.send(subject or "NBTE Quality Assurance", recipients, "emails/qa_notification.html",

@@ -54,13 +54,19 @@ def message_posted(sender, instance, created, **kwargs):
     try:
         thread = instance.thread
         sender_user = instance.sender
+        # Phase 9: participants who muted the chat get no notification
+        # (their unread badge in Messages still counts the message).
+        from django.utils import timezone as _tz
+        _now = _tz.now()
         recipients = [
             p.user for p in thread.participants.select_related("user")
             if p.user_id != (sender_user.pk if sender_user else None)
+            and not (p.muted_until and p.muted_until > _now)
         ]
         if not recipients:
             return
         preview = (instance.body or "").strip().replace("\n", " ")
+        preview = preview or "Sent a voice note, poll or attachment"  # Phase 9
         if len(preview) > 90:
             preview = preview[:87] + "…"
         title = f"New message from {sender_user.get_full_name() or sender_user.email}" \

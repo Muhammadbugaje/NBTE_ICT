@@ -172,13 +172,25 @@ def _module_cards(user):
     today = _tz.localdate()
     cards = []
 
+    # Phase 8 card audit: counters come from dashboards.counts, scoped to
+    # what this user may see (the tickets card used to show every ticket in
+    # the system, open or closed, to everyone; tasks, requests and assets
+    # showed no number at all).
+    from dashboards import counts as _counts
+
+    def _n(fn):
+        try:
+            return fn()
+        except Exception:
+            return None
+
     # ---- Tickets ----
     cards.append(_make_card(
         user, key="tickets", label="Helpdesk tickets",
         hint="Report, track, resolve IT issues",
         url_name="tickets:list",
-        counter=_safe_count("tickets", "Ticket"),
-        count_label="total",
+        counter=_n(lambda: _counts.my_visible_open_tickets(user).count()),
+        count_label="open",
     ))
 
     # ---- Requests & approvals ----
@@ -186,7 +198,7 @@ def _module_cards(user):
         user, key="requests", label="Requests & approvals",
         hint="Leave, proposals, sign-off chains",
         url_name="workflow:my_requests",
-        counter=None, count_label="",
+        counter=_n(lambda: _counts.my_active_requests(user).count()), count_label="active",
     ))
 
     # ---- Tasks ----
@@ -194,7 +206,7 @@ def _module_cards(user):
         user, key="tasks", label="My tasks",
         hint="Assigned work and progress",
         url_name="tasks:assigned_to_me",
-        counter=None, count_label="",
+        counter=_n(lambda: _counts.my_open_tasks(user).count()), count_label="open",
     ))
 
     # ---- Assets ----
@@ -202,7 +214,7 @@ def _module_cards(user):
         user, key="assets", label="My assets",
         hint="Devices and equipment in your custody",
         url_name="assets:my_assets",
-        counter=None, count_label="",
+        counter=_n(lambda: _counts.my_assets(user).count()), count_label="in your custody",
     ))
 
     # ---- Attendance ----
@@ -611,20 +623,26 @@ def protected_download(request, label, pk):
         raise Http404
     if not obj.can_download(request.user):
         raise PermissionDenied
-    audit.log("other", obj, actor=request.user, note="file downloaded")
+    return restricted_file_response(request, obj)
+
+
+def restricted_file_response(request, obj):
+    """The file of a restricted-storage row whose access the caller already
+    checked (website download above and the mobile API's download endpoints)."""
+    from . import file_preview
 
     filename = obj.original_name or obj.file.name.rsplit("/", 1)[-1]
     ctype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-    disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
+    # ?inline=1 → quick preview (PDF, images, text); same checks as a download.
+    inline = file_preview.wants_inline(request, ctype)
+    ctype = file_preview.text_charset(ctype)
+    audit.log("other", obj, actor=request.user, note=file_preview.audit_note(inline))
     if settings.USE_X_ACCEL_REDIRECT:
         response = HttpResponse(content_type=ctype)
         response["X-Accel-Redirect"] = settings.PROTECTED_MEDIA_URL + quote(obj.file.name)
     else:
         response = FileResponse(obj.file.open("rb"), content_type=ctype)
-    response["Content-Disposition"] = disposition
-    response["Cache-Control"] = "private, no-store"
-    response["X-Content-Type-Options"] = "nosniff"
-    return response
+    return file_preview.finish(response, filename, inline)
 
 
 # ---------------------------------------------------------------------------
@@ -891,3 +909,55 @@ def contact_add_note(request, pk):
     )
     messages.success(request, "Internal note added.")
     return redirect("core:contact_detail", pk=contact_message.pk)
+
+
+# ---------------------------------------------------------------------------
+# Contact inbox — bulk actions (Phase 8)
+# ---------------------------------------------------------------------------
+@login_required
+@permission_required("core.can_handle_contact_messages", raise_exception=True)
+@require_POST
+def contact_bulk(request):
+    """Mark read / mark handled / delete several contact messages. Only rows
+    in the handler's own scope are touched; delete needs
+    ``core.delete_contactmessage`` (it removes the message for every handler)."""
+    from django.urls import reverse
+
+    from . import bulk as bulk_util
+
+    action = request.POST.get("action", "")
+    fallback = reverse("core:contact_inbox")
+    if action not in ("mark_read", "mark_handled", "delete"):
+        return bulk_util.bad_request(request, "Choose what to do with the selected messages.", fallback)
+    if action == "delete" and not request.user.has_perm("core.delete_contactmessage"):
+        return bulk_util.respond(request, action=action, done=[], status=403, fallback=fallback,
+                                 message="Only administrators can delete contact messages.")
+    ids = bulk_util.parse_ids(request)
+    if not ids:
+        return bulk_util.bad_request(request, "Select at least one message.", fallback)
+    scoped = _contact_messages_for(request.user).filter(pk__in=ids)
+    rows = {m.pk: m for m in scoped}
+    done = [i for i in ids if i in rows]
+    skipped = [{"id": i, "reason": "Some messages are outside your inbox and were left alone."}
+               for i in ids if i not in rows]
+    now = timezone.now()
+    with transaction.atomic():
+        for pk in done:
+            m = rows[pk]
+            if action == "mark_read" and not m.is_read:
+                m.is_read = True
+                m.save(update_fields=["is_read", "updated_at"])
+                ContactMessageActivity.objects.create(contact_message=m, actor=request.user,
+                                                      action=ContactMessageActivity.ACTION_READ)
+            elif action == "mark_handled" and not m.is_handled:
+                m.is_handled, m.handled_by, m.handled_at = True, request.user, now
+                m.save(update_fields=["is_handled", "handled_by", "handled_at", "updated_at"])
+                ContactMessageActivity.objects.create(contact_message=m, actor=request.user,
+                                                      action=ContactMessageActivity.ACTION_HANDLED,
+                                                      details="Marked as handled (bulk).")
+            elif action == "delete":
+                audit.log("delete", m, actor=request.user, note="contact message deleted (bulk)")
+                m.delete()
+    verb = {"mark_read": "marked as read", "mark_handled": "marked as handled", "delete": "deleted"}[action]
+    return bulk_util.respond(request, action=action, done=done, skipped=skipped, fallback=fallback,
+                             message=f"{bulk_util.plural(len(done), 'message')} {verb}.")

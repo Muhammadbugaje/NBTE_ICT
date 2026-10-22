@@ -72,3 +72,15 @@ def cleanup_import_tmp(max_age_hours=24):
     logger.info("cleanup_import_tmp: removed=%d failed=%d (older than %dh)",
                 removed, failed, max_age_hours)
     return {"removed": removed, "failed": failed}
+
+@shared_task
+def purge_media_quarantine():
+    """Remove quarantine day folders older than files.quarantine_retention_days.
+
+    Only touches MEDIA_ROOT/.quarantine and PROTECTED_MEDIA_ROOT/.quarantine;
+    the orphan scanner never deletes anything directly (Phase 8)."""
+    from . import media_scanner
+
+    result = media_scanner.purge_quarantine()
+    logger.info("purge_media_quarantine: removed %s (%d files)", result.days_removed, result.files_removed)
+    return {"days": result.days_removed, "files": result.files_removed, "errors": result.errors}

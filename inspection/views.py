@@ -103,8 +103,12 @@ def _rp_rows(request, base):
     elif f.get("eligibility") == "ok":
         rows = [r for r in rows if not r.lapsed]
     page = paginate(request, rows)
+    from . import workload
+
+    limits_table = workload.table()
     for rp in page["rows"]:
         rp.totals = services.person_totals("resource_person", rp.pk)
+        rp.load = workload.load(rp, rows=limits_table)
     return page
 
 
@@ -299,8 +303,12 @@ def _personnel_ctx(request, form):
     for qp in rows:
         qp.lapsed = rules.no_longer_eligible(qp)
     page = paginate(request, rows)
+    from . import workload
+
+    limits_table = workload.table()
     for qp in page["rows"]:
         qp.totals = services.person_totals("qa_personnel", qp.pk)
+        qp.load = workload.load(qp, rows=limits_table)
     return {"page": page, "filters": f, "form": form, "disciplines": _discipline_list(),
             "can_edit": not services.is_monitor(request.user) and (
                 request.user.is_superuser or request.user.has_perm("inspection.initiate_edit_qa_personnel"))}
@@ -762,3 +770,38 @@ def service_export(request):
     response = HttpResponse(data, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response["Content-Disposition"] = 'attachment; filename="service-history.xlsx"'
     return response
+
+
+@require(services.can_view_service)
+@require_GET
+def service_export_pdf(request):
+    """Phase 8: the service history as a PDF (same filters as the screen), with
+    each person's totals first."""
+    from core import audit
+    from qa_core.pdf_report import Report, pdf_response
+
+    if not (request.user.is_superuser or request.user.has_perm("inspection.export_service_history")):
+        raise PermissionDenied("Exporting needs inspection.export_service_history.")
+    qs = _service_qs(request)
+    totals = list(qs.values("person_type", "person_name").annotate(
+        visits=Sum("visit_count"), ssqs=Sum("ssq_count"), last=Max("served_to")).order_by("-visits", "person_name"))
+    f = request.GET
+    filters = ", ".join(f"{k} {v}" for k, v in f.items() if v and k not in ("page", "all"))
+    rep = Report("Service history", subject="Resource persons and QA personnel", generated_by=request.user,
+                 cover=False, landscape=True)
+    rep.h1("Service history")
+    if filters:
+        rep.para(f"Filters: {filters}", "small")
+    rep.h2("Totals per person")
+    rep.table(["Person", "Type", "Visits", "SSQs reviewed", "Last served"],
+              [[t["person_name"], dict(ServiceRecord.PERSON_TYPES).get(t["person_type"], t["person_type"]),
+                t["visits"] or 0, t["ssqs"] or 0, t["last"]] for t in totals],
+              widths=[0.35, 0.2, 0.12, 0.15, 0.18], empty="No service recorded.")
+    rep.h2("Records")
+    rep.table(["Person", "Duty", "Institution", "Programme", "From", "To", "Visits", "SSQs", "Note"],
+              [[r.person_name, r.get_duty_display(), getattr(r.institution, "name", ""),
+                getattr(r.programme, "name", ""), r.served_from, r.served_to, r.visit_count, r.ssq_count,
+                r.reason] for r in qs[:5000]],
+              widths=[0.15, 0.11, 0.17, 0.14, 0.08, 0.08, 0.06, 0.06, 0.15])
+    audit.log("other", request.user, actor=request.user, note="exported the service history (PDF)")
+    return pdf_response(f"service-history-{timezone.localdate().isoformat()}.pdf", rep.build())

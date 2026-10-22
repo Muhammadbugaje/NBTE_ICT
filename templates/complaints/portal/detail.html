@@ -1,4 +1,5 @@
 {% extends base_template %}
+{% load ux_tags %}
 {% load qa_tags %}
 {% block title %}{{ c.reference }} · {{ portal_name }}{% endblock %}
 {% block content %}
@@ -30,7 +31,7 @@
                 <div class="cx-msg__bubble">
                   <div class="cx-msg__head"><strong>{% if m.is_system or not m.author %}NBTE{% elif m.author.user_type == "staff" %}NBTE{% if officer and m.author == officer %} · {{ m.author|who }}{% endif %}{% else %}{{ m.author|who }}{% endif %}</strong><time datetime="{{ m.created_at|date:'c' }}">{{ m.created_at|date:"j M, H:i" }}</time></div>
                   <div class="cx-msg__body">{{ m.body }}</div>
-                  {% if m.attachments.all %}<div class="cx-msg__files">{% for f in m.attachments.all %}<a class="qa-chip" href="{% url 'qa_portal:complaint_file' c.pk f.pk %}">{% icon "download" 12 %} {{ f.display_name }}</a>{% endfor %}</div>{% endif %}
+                  {% if m.attachments.all %}<div class="cx-msg__files">{% for f in m.attachments.all %}{% url 'qa_portal:complaint_file' c.pk f.pk as cf_url %}<span class="fpv-pair"><a class="qa-chip" href="{{ cf_url }}">{% icon "download" 12 %} {{ f.display_name }}</a>{% preview_button cf_url f.display_name f.size_bytes compact=True %}</span>{% endfor %}</div>{% endif %}
                 </div>
               </li>
             {% endfor %}

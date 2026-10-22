@@ -144,23 +144,22 @@
           escapeHtml(text).replace(/\n/g, '<br>') + '</div>'
       : '';
     var attachHtml = attachmentCount > 0
-      ? '<div class="msg-bubble-meta"><small class="muted">Uploading ' +
+      ? '<div class="msg-pending-files">Uploading ' +
           attachmentCount + ' attachment' + (attachmentCount > 1 ? 's' : '') +
-          '…</small></div>'
+          '…</div>'
       : '';
 
+    // Phase 9 bubble layout: no avatar on my own messages, time + clock below.
     art.innerHTML =
-      '<span class="msg-avatar msg-avatar-sm msg-avatar-' + escapeHtml(color) + '">' +
-        escapeHtml(initials) + '</span>' +
-      '<div class="msg-bubble-body">' +
-        '<div class="msg-bubble-head">' +
-          '<strong>You</strong>' +
-          '<time>sending…</time>' +
-        '</div>' +
+      '<div class="msg-bubble-col"><div class="msg-bubble-body">' +
         replyHtml +
         textHtml +
         attachHtml +
-      '</div>';
+        '<div class="msg-bubble-meta"><time>sending…</time>' +
+        '<span class="msg-ticks is-pending" aria-label="Sending">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>' +
+        '</span></div>' +
+      '</div></div>';
     return art;
   }
 
@@ -277,6 +276,16 @@
         var wrap = document.createElement('div');
         wrap.innerHTML = (payload.html || '').trim();
         var real = wrap.firstElementChild;
+        // Phase 9: the live poller may already have inserted this message.
+        if (real && payload.message_id &&
+            thread.querySelector('[data-message-id="' + payload.message_id + '"]')) {
+          pending.remove();
+          real = null;
+          clearComposer();
+          scrollAfterLayout(false);
+          document.dispatchEvent(new CustomEvent('chat:sent', { detail: payload }));
+          return;
+        }
         if (real) {
           real.classList.add('msg-new', 'msg-replace');
           pending.replaceWith(real);
@@ -288,6 +297,7 @@
         }
 
         clearComposer();
+        document.dispatchEvent(new CustomEvent('chat:sent', { detail: payload }));
 
         // Re-assert the bottom AFTER the composer has shrunk back. If we're
         // already there, leave it alone so we don't fight an in-flight smooth

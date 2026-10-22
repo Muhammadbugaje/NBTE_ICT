@@ -100,12 +100,15 @@ def profile_view(request):
 
     completeness = user.profile_completeness()
 
+    from .security_views import security_context  # Phase 9: devices, passkeys, deletion
+
     return render(request, "accounts/profile.html", {
         "form": form,
         "completeness": completeness,
         "threshold": user.profile_threshold,
         "is_complete": user.profile_complete,
         "missing": user.missing_profile_items(),
+        **security_context(request),
     })
 
 
@@ -137,3 +140,26 @@ def _maybe_notify_profile_complete(request, user):
         category=Notification.SYSTEM,
         level=Notification.SUCCESS,
     )
+
+# ---------------------------------------------------------------------------
+# Profile nudge: "Continue anyway" (Phase 8, accounts/profile_nudges.py)
+# ---------------------------------------------------------------------------
+@login_required
+def profile_nudge_continue(request):
+    """Log that the user chose to start a request with an incomplete
+    profile. POST only; answers 204 (the browser then follows the link)."""
+    from django.http import HttpResponse, HttpResponseNotAllowed
+
+    from core import audit
+
+    from . import profile_nudges
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    target = (request.POST.get("target") or "")[:200]
+    if profile_nudges.applies_to(request.user):
+        st = profile_nudges.status(request.user)
+        audit.log("other", request.user, actor=request.user,
+                  note=f"continued with an incomplete profile ({st['percent']}%) to {target}"[:255],
+                  changes={"percent": st["percent"], "threshold": st["threshold"], "target": target})
+    return HttpResponse(status=204)

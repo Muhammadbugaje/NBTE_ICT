@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load ux_tags %}
 {% load static %}
 
 {% block title %}Memos · {{ SITE_NAME }}{% endblock %}
@@ -83,10 +84,19 @@
   </form>
 
   {% if memos %}
+    {% if tab != 'awaiting' %}
+      <div class="bulk-toolbar">
+        {% bulk_all "bulk-memos" %}
+        <span class="qa-small muted bulk-toolbar__hint">{% if tab == 'sent' %}Only drafts and cancelled memos can be deleted. Memos that went out are official records.{% else %}Removing a memo only takes it off your list — it stays on record.{% endif %}</span>
+      </div>
+    {% endif %}
     <div class="memo-list">
       {% for memo in memos %}
-        <div class="memo-row-wrap {% if memo.priority == 'urgent' %}is-urgent{% elif memo.priority == 'high' %}is-high{% endif %}{% if memo.status == 'draft' %} is-draft{% endif %}">
+        <div class="memo-row-wrap {% if memo.priority == 'urgent' %}is-urgent{% elif memo.priority == 'high' %}is-high{% endif %}{% if memo.status == 'draft' %} is-draft{% endif %}" data-uxb-row>
           <span class="memo-priority-bar"></span>
+          {% if tab == 'inbox' or tab == 'archived' %}{% bulk_check "bulk-memos" memo.pk memo.subject %}
+          {% elif tab == 'sent' and memo.status == 'draft' or tab == 'sent' and memo.status == 'cancelled' %}{% bulk_check "bulk-memos" memo.pk memo.subject %}
+          {% elif tab == 'sent' %}<span class="bulk-check bulk-check--placeholder" aria-hidden="true"></span>{% endif %}
 
           <a href="{% url 'messaging:memo_detail' memo.pk %}" class="memo-row">
             <div class="memo-row-body">
@@ -159,6 +169,14 @@
         </div>
       {% endfor %}
     </div>
+    {% url 'messaging:memo_bulk' as memo_bulk_url %}
+    {% if tab == 'inbox' %}
+      {% bulk_bar "bulk-memos" memo_bulk_url actions="archive:Archive::remove,hide:Remove from my list:danger" noun="memo" confirm_title="Remove {n} {noun} from your list?" confirm_body="They leave your inbox and archive. The memos themselves stay on record and nothing changes for anyone else." %}
+    {% elif tab == 'archived' %}
+      {% bulk_bar "bulk-memos" memo_bulk_url actions="unarchive:Move to inbox::remove,hide:Remove from my list:danger" noun="memo" confirm_title="Remove {n} {noun} from your list?" confirm_body="They leave your archive. The memos themselves stay on record and nothing changes for anyone else." %}
+    {% elif tab == 'sent' %}
+      {% bulk_bar "bulk-memos" memo_bulk_url actions="delete:Delete drafts:danger" noun="draft" confirm_title="Delete {n} {noun}?" confirm_body="Drafts and cancelled memos are deleted for good, with their attachments. Memos that went out are official records and are never deleted." %}
+    {% endif %}
   {% else %}
     <div class="memo-empty">
       <div class="memo-empty-icon">

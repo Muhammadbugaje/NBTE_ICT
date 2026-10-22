@@ -10,12 +10,16 @@ from django.conf import settings
 from django.urls import include, path, re_path
 
 from accreditation import portal_views as application_views
+from accreditation import programme_portal_views as programme_board_views
 from accreditation import qa_portal_views as qa_views
+from notifications import views as notification_views
 from complaints import portal_views as complaint_views
 from inspection import portal_views as inspection_views
 from institutions import portal_views as institution_views
+from institutions import programme_views
 from payments import portal_views as payment_views
 
+from . import portal_account_views as account_views  # Phase 9
 from . import portal_public
 from . import portal_views as views
 
@@ -33,19 +37,27 @@ portal_patterns = ([
     path("documents/summary/", institution_views.documents_summary, name="documents_summary"),
     path("documents/upload/<int:kind_id>/", institution_views.document_upload, name="document_upload"),
     path("timeline/", institution_views.timeline, name="timeline"),
+    # Phase 8: the institution's own programmes (public information only)
+    path("programmes/list/", programme_views.portal_programmes, name="programme_list"),
+    path("programmes/<int:pk>/", programme_views.portal_programme, name="programme"),
     path("application/", application_views.application, name="application"),
     path("application/start/", application_views.application_start, name="application_start"),
     path("application/submit/", application_views.application_submit, name="application_submit"),
     path("application/programmes/", application_views.programmes, name="programmes"),
     path("application/programmes/<int:pk>/remove/", application_views.programme_remove, name="programme_remove"),
+    path("application/programmes/<int:pk>/streams/", application_views.programme_streams, name="programme_streams"),
+    path("application/programmes/estimate/", application_views.programme_estimate, name="programme_estimate"),
     # Phase 3: QA requests (SOP-02), the SSQ workspace and queries
     path("qa-requests/", qa_views.requests_list, name="qa_requests"),
     path("qa-requests/new/", qa_views.request_new, name="qa_request_new"),
+    path("qa-requests/estimate/", qa_views.request_estimate, name="qa_request_estimate"),  # Phase 8
     path("qa-requests/<int:pk>/", qa_views.request_detail, name="qa_request"),
     path("qa-requests/<int:pk>/submit/", qa_views.request_submit, name="qa_request_submit"),
     path("qa-requests/<int:pk>/cancel/", qa_views.request_cancel, name="qa_request_cancel"),
     path("qa-requests/<int:pk>/add/", qa_views.request_add, name="qa_request_add"),
     path("qa-requests/<int:pk>/programmes/<int:row>/drop/", qa_views.request_drop, name="qa_request_drop"),
+    path("qa-requests/<int:pk>/programmes/<int:row>/streams/", qa_views.request_streams,
+         name="qa_request_streams"),
     path("qa-requests/<int:pk>/programmes/<int:row>/replace/", qa_views.request_replace, name="qa_request_replace"),
     path("qa-requests/<int:pk>/ssq/<int:ssq_pk>/", qa_views.ssq_workspace, name="ssq"),
     path("qa-requests/<int:pk>/ssq/<int:ssq_pk>/save/", qa_views.ssq_save, name="ssq_save"),
@@ -59,6 +71,9 @@ portal_patterns = ([
          name="ssq_department_submit"),
     path("qa-requests/<int:pk>/ssq/<int:ssq_pk>/submit/", qa_views.ssq_submit, name="ssq_submit"),
     path("qa-requests/<int:pk>/ssq/<int:ssq_pk>/revise/", qa_views.ssq_revise, name="ssq_revise"),
+    # Phase 8: programme status board (expiry countdown, re-accreditation) and outcome letters
+    path("programmes/", programme_board_views.programmes, name="programme_board"),
+    path("letters/", programme_board_views.letters, name="letters"),
     path("queries/", qa_views.queries, name="queries"),
     path("queries/<int:pk>/", qa_views.query_detail, name="query"),
     # Phase 5: resource persons (engagements, findings, service history, CV) and
@@ -88,7 +103,23 @@ portal_patterns = ([
     path("password/set/<uidb64>/<token>/", views.PortalSetPasswordView.as_view(), name="password_set"),
     path("password/change/", views.password_change, name="password_change"),
     path("account/", views.account, name="account"),
-    path("alerts/", views.notifications, name="notifications"),  # Phase 7: the bell's "View all"
+    # Phase 9: signed-in devices, notification settings, deletion requests, passkeys
+    path("account/devices/<int:pk>/sign-out/", account_views.device_revoke, name="account_device_revoke"),
+    path("account/devices/sign-out-others/", account_views.devices_revoke_others,
+         name="account_devices_revoke_others"),
+    path("account/notifications/", account_views.notification_settings, name="account_notifications"),
+    path("account/delete/", account_views.deletion_request, name="account_deletion_request"),
+    path("account/delete/withdraw/", account_views.deletion_withdraw, name="account_deletion_withdraw"),
+    path("account/passkeys/register/begin/", account_views.passkey_register_begin,
+         name="account_passkey_register_begin"),
+    path("account/passkeys/register/finish/", account_views.passkey_register_finish,
+         name="account_passkey_register_finish"),
+    path("account/passkeys/<int:pk>/rename/", account_views.passkey_rename, name="account_passkey_rename"),
+    path("account/passkeys/<int:pk>/remove/", account_views.passkey_remove, name="account_passkey_remove"),
+    path("passkeys/sign-in/begin/", account_views.passkey_sign_in_begin, name="passkey_sign_in_begin"),
+    path("passkeys/sign-in/finish/", account_views.passkey_sign_in_finish, name="passkey_sign_in_finish"),
+    path("alerts/", views.notifications, name="notifications"),
+    path("alerts/bulk/", notification_views.portal_bulk, name="notifications_bulk"),  # Phase 7: the bell's "View all"
     # Phase 7: complaints and the knowledge base
     path("complaints/", complaint_views.complaints, name="complaints"),
     path("complaints/new/", complaint_views.raise_complaint, name="complaint_new"),
@@ -103,6 +134,7 @@ portal_patterns = ([
 ], "qa_portal")
 
 urlpatterns = [
+    path("api/v1/", include("api.urls_portal", namespace="api")),  # Phase 9: mobile API (portal door)
     path("", include(portal_patterns)),
 ]
 

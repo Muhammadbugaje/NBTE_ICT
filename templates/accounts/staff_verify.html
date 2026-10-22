@@ -1,0 +1,64 @@
+{% extends "base_public.html" %}
+{% load static %}
+
+{% block title %}Verify NBTE staff ID{% endblock %}
+{% block meta_description %}Check an NBTE digital staff identity card.{% endblock %}
+{% block extra_css %}
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="{% static 'css/account-security.css' %}?v=1">
+{% endblock %}
+
+{% block body %}
+<main class="p9-verify">
+  <div class="p9-verify__brand">
+    <img src="{% static 'img/NBTE_logo.png' %}" alt="NBTE logo">
+    <span>National Board for Technical Education</span>
+  </div>
+
+  {% if limited %}
+    <section class="p9-verify__card is-invalid" aria-live="polite">
+      <div class="p9-verify__status">
+        <span class="p9-verify__icon" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 7v6M12 16h.01"/></svg></span>
+        <h1>Too many checks</h1>
+        <p>Please wait a minute and scan again.</p>
+      </div>
+    </section>
+  {% elif result.is_valid %}
+    <section class="p9-verify__card is-valid" aria-live="polite">
+      <div class="p9-verify__status">
+        <span class="p9-verify__icon" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <h1>Valid NBTE staff</h1>
+        <p>Verified {{ result.verified_at|date:"j M Y, H:i:s" }}</p>
+      </div>
+      <div class="p9-verify__person">
+        <div class="p9-idcard__photo">
+          {% if result.photo_url %}<img src="{{ result.photo_url }}" alt="Photo of {{ result.name }}">
+          {% else %}<span aria-hidden="true">{{ result.initials }}</span>{% endif %}
+        </div>
+        <h2>{{ result.name }}</h2>
+        <dl>
+          <div><dt>Designation</dt><dd>{{ result.designation|default:"NBTE staff" }}</dd></div>
+          <div><dt>Department</dt><dd>{{ result.department|default:"—" }}</dd></div>
+        </dl>
+      </div>
+      <p class="p9-verify__foot">Check that the photo matches the person in front of you.</p>
+    </section>
+  {% elif result.status == "expired" %}
+    <section class="p9-verify__card is-expired" aria-live="polite">
+      <div class="p9-verify__status">
+        <span class="p9-verify__icon" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+        <h1>Code expired</h1>
+        <p>Ask the person to refresh their staff ID and scan the new code.</p>
+      </div>
+    </section>
+  {% else %}
+    <section class="p9-verify__card is-invalid" aria-live="polite">
+      <div class="p9-verify__status">
+        <span class="p9-verify__icon" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+        <h1>Not a valid NBTE ID</h1>
+        <p>This code was not issued by NBTE, or the account is no longer active.</p>
+      </div>
+    </section>
+  {% endif %}
+</main>
+{% endblock %}

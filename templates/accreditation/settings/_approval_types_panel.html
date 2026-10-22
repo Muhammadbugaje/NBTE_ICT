@@ -1,0 +1,37 @@
+{% load qa_tags %}
+{% include "qa_core/settings/_tabs.html" %}
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not saved" message=error %}{% endif %}
+<section class="qa-card" aria-labelledby="at-h">
+  <header class="qa-card__head"><div><h2 id="at-h" data-qa-focus>Approval types</h2>
+    <p>What an approval gives a programme and for how long (B18). A programme's expiry date is always the commencement date plus the duration — never typed. Changing a duration affects decisions recorded from now on; programmes already decided keep their dates.</p></div></header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Programme status</th><th scope="col" class="num">Duration (months)</th>{% if editable %}<th scope="col"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+    <tbody>{% for t in types %}
+      <tr class="{% if not t.is_active %}is-muted{% endif %}">
+        <td class="qa-mono">{{ t.code }}</td>
+        <td>{% if editable %}<label class="sr-only" for="at-n-{{ t.pk }}">Name</label><input class="input" form="at-{{ t.pk }}" id="at-n-{{ t.pk }}" name="name" value="{{ t.name }}" maxlength="120">{% else %}{{ t.name }}{% endif %}{% if t.description %}<br><span class="qa-small qa-muted">{{ t.description }}</span>{% endif %}</td>
+        <td>{% if editable %}<label class="sr-only" for="at-s-{{ t.pk }}">Programme status</label><select class="input" form="at-{{ t.pk }}" id="at-s-{{ t.pk }}" name="programme_status">{% for v, l in statuses %}<option value="{{ v }}"{% if t.programme_status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>{% else %}{{ t.get_programme_status_display }}{% endif %}</td>
+        <td class="num">{% if editable %}<label class="sr-only" for="at-d-{{ t.pk }}">Duration in months</label><input class="input qa-num-input" form="at-{{ t.pk }}" id="at-d-{{ t.pk }}" name="duration_months" value="{{ t.duration_months }}" inputmode="numeric">{% else %}{{ t.duration_months }}{% endif %}</td>
+        {% if editable %}<td><form id="at-{{ t.pk }}" class="qa-line-actions" method="post" action="{% url 'qa_set:approval_type_edit' t.pk %}" hx-post="{% url 'qa_set:approval_type_edit' t.pk %}" hx-target="#qa-panel">{% csrf_token %}
+          <button class="btn btn-xs btn-subtle" type="submit" name="op" value="save">Save</button>
+          <button class="btn btn-xs btn-subtle" type="submit" name="op" value="toggle">{% if t.is_active %}Switch off{% else %}Switch on{% endif %}</button></form></td>{% endif %}
+      </tr>{% empty %}<tr><td colspan="5" class="qa-muted">No approval types. Run <span class="qa-mono">manage.py seed_startup</span>.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% if editable %}
+<section class="qa-card" aria-labelledby="at-add">
+  <header class="qa-card__head"><h2 id="at-add">Add an approval type</h2></header>
+  <div class="qa-card__body">
+    <form class="qa-form" method="post" action="{% url 'qa_set:approval_types' %}" hx-post="{% url 'qa_set:approval_types' %}" hx-target="#qa-panel">{% csrf_token %}
+      <div class="qa-fields">
+        <div class="qa-field"><label for="at-code">Code</label><input class="input" id="at-code" name="code" required value="{{ values.code|default:'' }}" placeholder="e.g. provisional"></div>
+        <div class="qa-field"><label for="at-name">Name</label><input class="input" id="at-name" name="name" required value="{{ values.name|default:'' }}"></div>
+        <div class="qa-field"><label for="at-months">Duration (months)</label><input class="input" id="at-months" name="duration_months" required inputmode="numeric" value="{{ values.duration_months|default:'' }}"></div>
+        <div class="qa-field"><label for="at-status">Programme status</label><select class="input" id="at-status" name="programme_status">{% for v, l in statuses %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+        <div class="qa-field"><label for="at-desc">Description <span class="qa-muted">(optional)</span></label><input class="input" id="at-desc" name="description" maxlength="255" value="{{ values.description|default:'' }}"></div>
+      </div>
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add approval type</button></div>
+    </form>
+  </div>
+</section>
+{% endif %}

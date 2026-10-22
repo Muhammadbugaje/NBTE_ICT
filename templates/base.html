@@ -19,6 +19,7 @@
   {# Phase 6 design layer: loaded last so it restyles the shared primitives. #}
   <link rel="stylesheet" href="{% static 'css/apple.css' %}?v=1">
   <link rel="stylesheet" href="{% static 'css/polish.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/qa-redesign.css' %}?v=2">
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' class="{% if request.is_impersonating %}impersonating{% endif %}">
   <a class="skip-link" href="#app-content">Skip to main content</a>
@@ -73,6 +74,7 @@
     <div class="app-main">
       {% include "partials/topbar.html" %}
       <main class="app-content" id="app-content" tabindex="-1">
+        {% if request.user.is_authenticated %}{% include "partials/profile_nudge.html" %}{% endif %}
         {% block content %}{% endblock %}
       </main>
       <footer class="app-footer">
@@ -104,6 +106,7 @@
   <script src="{% static 'js/tickets.js' %}?v=3" defer></script>
   <script src="{% static 'js/memo.js' %}?v=2" defer></script>
   <script src="{% static 'js/apple.js' %}?v=1" defer></script>
+  {% include "partials/ux_scripts.html" %}
   {% block extra_js %}{% endblock %}
   <script src="{% static 'js/polish.js' %}?v=1" defer></script>
 </body>

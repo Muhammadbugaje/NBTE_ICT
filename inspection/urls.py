@@ -26,4 +26,5 @@ urlpatterns = [
     path("endorsements/", views.endorsements, name="endorsements"),
     path("service-history/", views.service_history, name="service"),
     path("service-history/export/", views.service_export, name="service_export"),
+    path("service-history/export.pdf", views.service_export_pdf, name="service_export_pdf"),  # Phase 8
 ]

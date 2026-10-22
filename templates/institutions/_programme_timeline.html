@@ -1,0 +1,6 @@
+{% load qa_tags %}
+<ol class="qa-tl qa-card__body">
+  {% for e in page.rows %}<li class="{% if e.visibility == 'internal' %}is-internal{% endif %}"><span class="qa-tl__text">{{ e.public_text|default:e.internal_text }}</span>{% if e.public_text and e.internal_text %}<small>NBTE note: {{ e.internal_text }}</small>{% endif %}<small>{{ e.at|date:"j M Y, H:i" }} · {% if e.actor %}{{ e.actor|who:"System" }}{% else %}System{% endif %}{% if e.visibility == "internal" %} · internal{% endif %}</small></li>
+  {% empty %}<li><span class="qa-tl__text qa-muted">No events.</span></li>{% endfor %}
+</ol>
+{% include "qa_core/partials/_pagination.html" with target="#qa-prog-tl" %}

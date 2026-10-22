@@ -2,7 +2,7 @@ from django.contrib.auth import views as auth_views
 from django.contrib.auth.views import LogoutView
 from django.urls import include, path, reverse_lazy
 
-from . import user_views, views
+from . import security_views, user_views, views
 from .forms import PortalPasswordResetForm, PortalSetPasswordForm
 
 app_name = "accounts"
@@ -41,6 +41,21 @@ urlpatterns = [
     # Profile
     # ---------------------------------------------------------------------
     path("profile/", views.profile_view, name="profile"),
+    path("profile/nudge/continue/", views.profile_nudge_continue, name="profile_nudge_continue"),
+
+    # Phase 9: signed-in devices, account deletion requests, passkeys, staff ID
+    path("profile/devices/<int:pk>/sign-out/", security_views.device_revoke, name="device_revoke"),
+    path("profile/devices/sign-out-others/", security_views.devices_revoke_others, name="devices_revoke_others"),
+    path("profile/delete-account/", security_views.deletion_request, name="deletion_request"),
+    path("profile/delete-account/withdraw/", security_views.deletion_withdraw, name="deletion_withdraw"),
+    path("passkeys/register/begin/", security_views.passkey_register_begin, name="passkey_register_begin"),
+    path("passkeys/register/finish/", security_views.passkey_register_finish, name="passkey_register_finish"),
+    path("passkeys/<int:pk>/rename/", security_views.passkey_rename, name="passkey_rename"),
+    path("passkeys/<int:pk>/remove/", security_views.passkey_remove, name="passkey_remove"),
+    path("passkeys/sign-in/begin/", security_views.passkey_auth_begin, name="passkey_auth_begin"),
+    path("passkeys/sign-in/finish/", security_views.passkey_auth_finish, name="passkey_auth_finish"),
+    path("staff-id/", security_views.my_staff_id, name="staff_id"),
+    path("staff-id/qr/", security_views.my_staff_id_qr, name="staff_id_qr"),
 
     # ---------------------------------------------------------------------
     # Password reset (forgotten password, via email link)

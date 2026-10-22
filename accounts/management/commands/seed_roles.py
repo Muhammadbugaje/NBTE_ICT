@@ -115,6 +115,13 @@ ROLES = [
 ]
 
 
+# Phase 9: announcements — the Executive Secretary's office and super admins
+# post announcements and see acknowledgement reports. Others get it per user.
+_ANNOUNCE = ["announcements.post_announcement", "announcements.view_announcement_report"]
+ROLES = [(c, n, t, r, m, p + _ANNOUNCE if c in ("executive-secretary", "super-admin") else p)
+         for (c, n, t, r, m, p) in ROLES]
+
+
 # Granted by data migrations, not by an admin. See the fresh-install check below.
 _MIGRATION_GRANTED = (
     "view_all_assets", "view_department_assets",

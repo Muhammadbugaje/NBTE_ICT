@@ -4,13 +4,17 @@ from django.contrib import admin
 from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 
+from accounts.security_views import staff_verify  # Phase 9
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
+    path("settings/backups/", include("backups.urls")),  # Phase 8 (§22): Settings → Backups
     path("settings/", include("config.urls")),
     path("messages/", include("messaging.urls")),
     path("manage/messages/", include("messaging.management_urls")),
     path("notifications/", include("notifications.urls")),
+    path("announcements/", include("announcements.urls")),  # Phase 9: announcements (internal only)
     path("workflow/", include("workflow.urls")),
     path("manage/workflow/", include("workflow.management_urls")),
     path("assets/", include("assets.urls")), 
@@ -40,6 +44,9 @@ urlpatterns = [
     # the fix point at a URL that never existed — send them to /messages/.
     re_path(r"^messaging/(?P<rest>.*)$",
             RedirectView.as_view(url="/messages/%(rest)s", query_string=True, permanent=False)),
+    # Phase 9: public check of a scanned digital staff ID (internal host only, no login)
+    path("verify/staff/<str:token>/", staff_verify, name="staff_verify"),
+    path("api/v1/", include("api.urls_staff", namespace="api")),  # Phase 9: mobile API (staff door)
     path("", include("core.urls")),
 ]
 

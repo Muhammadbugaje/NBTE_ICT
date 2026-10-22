@@ -1,0 +1,16 @@
+{% load qa_tags %}
+{% with fin_tab="bills" fin_title="Issue a bill" fin_lead="Bill an institution from a fee schedule. The formula computes the amount; nobody types it. A Finance officer proposes, the Director of Finance confirms, and only then is the bill issued." %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_fin:obligations' %}" hx-get="{% url 'qa_fin:obligations' %}" hx-target="#qa-panel" hx-push-url="true">Bills</a><span aria-hidden="true">/</span><span aria-current="page">Issue a bill</span></nav>
+{% if sent %}{% include "qa_core/partials/_callout.html" with kind="success" title="Sent for confirmation" message="The Director of Finance confirms it in Pending confirmations; the bill is issued then." %}{% endif %}
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not sent" message=error %}{% endif %}
+<section class="qa-card" aria-labelledby="ib-h">
+  <header class="qa-card__head"><div><h2 id="ib-h">New bill</h2><p>Use this for a fee that no workflow issues by itself (for example a new fee added in Settings → Fees). Blank programme and stream numbers use the institution's record.</p></div></header>
+  <div class="qa-card__body">
+    <form class="qa-form qa-stack" method="post" action="{% url 'qa_fin:issue_bill' %}" hx-post="{% url 'qa_fin:issue_bill' %}" hx-target="#qa-panel">{% csrf_token %}
+      <div class="qa-fields">{% for field in form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
+      {% if estimate %}<div class="qa-fee-test" role="status">{% if estimate.error %}<p class="qa-fee-test__error">{{ estimate.error }}</p>{% else %}<p>{{ inst.name }} would be billed <strong>{{ estimate.amount|naira }}</strong> <span class="qa-small qa-muted">({{ estimate.expr }}; {% for k, v in estimate.inputs.items %}{{ k }} = {{ v }}{% if not forloop.last %}, {% endif %}{% endfor %})</span>.</p>{% endif %}</div>{% endif %}
+      <div class="qa-form-actions"><button class="btn btn-subtle" type="submit" name="op" value="preview">Work out the amount</button><button class="btn btn-primary" type="submit" name="op" value="send">{% icon "shield" 16 %} Send for confirmation</button></div>
+    </form>
+  </div>
+</section>

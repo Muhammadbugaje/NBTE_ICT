@@ -1,0 +1,14 @@
+{% load qa_tags %}
+{% if programmes.rows %}
+<div class="qa-table-wrap"><table class="qa-table">
+  <caption class="sr-only">Programmes regulated by {{ body.name }}</caption>
+  <thead><tr><th scope="col">Institution</th><th scope="col">Programme</th><th scope="col">Status</th><th scope="col">Expires</th></tr></thead>
+  <tbody>{% for p in programmes.rows %}<tr>
+    <td data-label="Institution"><a href="{% url 'qa_inst:detail' p.institution.code %}">{{ p.institution.name }}</a> <span class="qa-mono qa-muted">{{ p.institution.code }}</span></td>
+    <td data-label="Programme"><a href="{% url 'qa_inst:programme' p.institution.code p.pk %}">{{ p }}</a></td>
+    <td data-label="Status"><span class="qa-chip {{ p.status|tone }}">{{ p.get_status_display }}</span></td>
+    <td data-label="Expires">{{ p.expiry_date|date:"j M Y"|default:"—" }}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% include "qa_core/partials/_pagination.html" with page=programmes target="#pb-prog-rows" %}
+{% else %}<p class="qa-card__body qa-muted">No institution offers a mapped programme yet.</p>{% endif %}

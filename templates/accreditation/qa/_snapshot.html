@@ -1,4 +1,4 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load ux_tags %}
 {% comment %}
   A rendered SSQ (the immutable submission snapshot, or a live preview).
   Context: sections (render_snapshot output), evidence_by_field, portal (bool).
@@ -29,8 +29,8 @@
               {% elif f.type == "file" %}
                 {% with evs=evidence_by_field|get_item:f.key %}
                   {% if evs %}<ul class="qa-snap__files" role="list">{% for ev in evs %}<li>{% icon "file" 14 %}
-                    {% if ev.reused_from_id %}<a href="{% if portal %}{{ ev.reused_from.portal_download_url }}{% else %}{{ ev.reused_from.download_url }}{% endif %}">{{ ev.label }}</a> <span class="qa-chip qa-tone-info">From the record</span>
-                    {% else %}<a href="{% if portal %}{{ ev.portal_download_url }}{% else %}{{ ev.download_url }}{% endif %}">{{ ev.display_name }}</a> <span class="qa-muted qa-small">{{ ev.size_label }}</span>{% endif %}
+                    {% if ev.reused_from_id %}<a href="{% if portal %}{{ ev.reused_from.portal_download_url }}{% else %}{{ ev.reused_from.download_url }}{% endif %}">{{ ev.label }}</a> {% if portal %}{% preview_button ev.reused_from.portal_download_url ev.reused_from.display_name ev.reused_from.size_bytes compact=True %}{% else %}{% preview_button ev.reused_from.download_url ev.reused_from.display_name ev.reused_from.size_bytes compact=True %}{% endif %} <span class="qa-chip qa-tone-info">From the record</span>
+                    {% else %}<a href="{% if portal %}{{ ev.portal_download_url }}{% else %}{{ ev.download_url }}{% endif %}">{{ ev.display_name }}</a> {% if portal %}{% preview_button ev.portal_download_url ev.display_name ev.size_bytes compact=True %}{% else %}{% preview_button ev.download_url ev.display_name ev.size_bytes compact=True %}{% endif %} <span class="qa-muted qa-small">{{ ev.size_label }}</span>{% endif %}
                     {% if not portal and can_query %}<button type="button" class="btn btn-xs btn-subtle" hx-get="{% url 'qa_req:query_raise' 'evidence' ev.pk %}" hx-target="#qa-query-slot" hx-swap="innerHTML">Query this file</button>{% endif %}
                   </li>{% endfor %}</ul>
                   {% else %}<span class="qa-muted">No file.</span>{% endif %}

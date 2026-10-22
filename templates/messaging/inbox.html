@@ -1,22 +1,24 @@
 {% extends "base.html" %}
 {% load static %}
+{% load ux_tags %}
 
 {% block title %}Messages · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Messages{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=8">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=10">
 {% endblock %}
 
 {% block content %}
-<div class="msg-page" data-message-list="inbox">
+<div class="msg-page" data-message-list="inbox" data-inbox-live
+     data-inbox-updates-url="{% url 'messaging:inbox_updates' %}" data-inbox-kind="{{ inbox_kind }}">
 
   <header class="msg-hero">
     <div>
       <h1>Messages</h1>
       <p class="muted">
         {% if total_unread %}
-          <strong class="msg-unread-count">{{ total_unread }}</strong> unread ·
+          <strong class="msg-unread-count" data-total-unread>{{ total_unread }}</strong> unread ·
         {% endif %}
         {{ total_threads }} thread{{ total_threads|pluralize }} in total
       </p>
@@ -52,76 +54,51 @@
       </select>
     </label>
     <span class="msg-list-result-count" data-filter-count aria-live="polite"></span>
+    {% if unread_threads or read_threads %}{% bulk_all "bulk-threads" "Select all" %}{% endif %}
   </div>
 
-  {% if unread_threads %}
-    <section class="msg-section" data-message-section>
+  {# Phase 9: quick filters (All / Unread / Groups / Direct) #}
+  <div class="msg-filter-chips" role="group" aria-label="Show" data-kind-filter>
+    <button type="button" class="msg-filter-chip{% if inbox_kind == 'all' %} is-active{% endif %}" data-kind="all" aria-pressed="{% if inbox_kind == 'all' %}true{% else %}false{% endif %}">All</button>
+    <button type="button" class="msg-filter-chip{% if inbox_kind == 'unread' %} is-active{% endif %}" data-kind="unread" aria-pressed="{% if inbox_kind == 'unread' %}true{% else %}false{% endif %}">Unread{% if total_unread %} <span class="msg-chip-count" data-unread-chip>{{ total_unread }}</span>{% endif %}</button>
+    <button type="button" class="msg-filter-chip{% if inbox_kind == 'groups' %} is-active{% endif %}" data-kind="groups" aria-pressed="{% if inbox_kind == 'groups' %}true{% else %}false{% endif %}">Groups</button>
+    <button type="button" class="msg-filter-chip{% if inbox_kind == 'direct' %} is-active{% endif %}" data-kind="direct" aria-pressed="{% if inbox_kind == 'direct' %}true{% else %}false{% endif %}">Direct</button>
+    <a class="msg-filter-chip is-link" href="{% url 'messaging:starred' %}">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.5L12 17.3l-5.9 3.2 1.3-6.5-4.9-4.6 6.6-.8z"/></svg>
+      Starred
+    </a>
+  </div>
+
+  {% if pinned_threads %}
+    <section class="msg-section" data-message-section data-section="pinned">
       <h2 class="msg-section-label">
-        <span class="msg-section-dot"></span>
-        Unread
-        <span class="msg-section-count" data-section-count>{{ unread_threads|length }}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 3a1 1 0 0 1 .7 1.7L15 6.4v4.2l3.3 3.3a1 1 0 0 1-.7 1.7H13v5.4l-1 1-1-1v-5.4H6.4a1 1 0 0 1-.7-1.7L9 10.6V6.4L7.3 4.7A1 1 0 0 1 8 3z"/></svg>
+        Pinned
+        <span class="msg-section-count" data-section-count>{{ pinned_threads|length }}</span>
       </h2>
-      <div class="msg-thread-list">
-        {% for t in unread_threads %}
-          <a href="{% url 'messaging:thread' t.pk %}" class="msg-thread-row is-unread" data-message-thread data-message-unread="true">
-            <span class="msg-avatar msg-avatar-md msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}">
-              {{ t.display_title|slice:":1"|upper }}
-            </span>
-            <div class="msg-thread-body">
-              <div class="msg-thread-head">
-                <strong>{{ t.display_title|default:"(no subject)" }}</strong>
-                <time>{% if t.last_msg %}{{ t.last_msg.sent_at|timesince }} ago{% endif %}</time>
-              </div>
-              <div class="msg-thread-preview">
-                {% if t.last_msg %}
-                  <span class="msg-thread-sender">{% if t.last_msg.sender %}{{ t.last_msg.sender.get_full_name|default:t.last_msg.sender.email }}{% else %}System{% endif %}:</span>
-                  {{ t.last_msg.body|truncatechars:90 }}
-                {% else %}
-                  <em class="muted">No messages yet</em>
-                {% endif %}
-              </div>
-            </div>
-            <span class="msg-unread-badge">{{ t.unread }}</span>
-          </a>
-        {% endfor %}
+      <div class="msg-thread-list" data-thread-list="pinned">
+        {% for t in pinned_threads %}{% include "messaging/_inbox_row.html" %}{% endfor %}
       </div>
     </section>
   {% endif %}
 
-  {% if read_threads %}
-    <section class="msg-section" data-message-section>
+  {% if other_threads %}
+    <section class="msg-section" data-message-section data-section="all">
       <h2 class="msg-section-label">
-        Earlier
-        <span class="msg-section-count" data-section-count>{{ read_threads|length }}</span>
+        {% if total_unread %}<span class="msg-section-dot"></span>{% endif %}
+        {% if pinned_threads %}Other chats{% else %}Chats{% endif %}
+        <span class="msg-section-count" data-section-count>{{ other_threads|length }}</span>
       </h2>
-      <div class="msg-thread-list">
-        {% for t in read_threads %}
-          <a href="{% url 'messaging:thread' t.pk %}" class="msg-thread-row" data-message-thread data-message-unread="false">
-            <span class="msg-avatar msg-avatar-md msg-avatar-{% cycle 'c3' 'c4' 'c5' 'c6' 'c7' 'c0' 'c1' 'c2' %}">
-              {{ t.display_title|slice:":1"|upper }}
-            </span>
-            <div class="msg-thread-body">
-              <div class="msg-thread-head">
-                <strong>{{ t.display_title|default:"(no subject)" }}</strong>
-                <time>{% if t.last_msg %}{{ t.last_msg.sent_at|timesince }} ago{% endif %}</time>
-              </div>
-              <div class="msg-thread-preview">
-                {% if t.last_msg %}
-                  <span class="msg-thread-sender">{{ t.last_msg.sender.get_full_name|default:t.last_msg.sender.email|default:"System" }}:</span>
-                  {{ t.last_msg.body|truncatechars:90 }}
-                {% else %}
-                  <em class="muted">No messages yet</em>
-                {% endif %}
-              </div>
-            </div>
-          </a>
-        {% endfor %}
+      <div class="msg-thread-list" data-thread-list="all">
+        {% for t in other_threads %}{% include "messaging/_inbox_row.html" %}{% endfor %}
       </div>
     </section>
   {% endif %}
 
   {% if unread_threads or read_threads %}
     <p class="msg-filter-empty" data-filter-empty hidden>No conversations match these filters.</p>
+    {% url 'messaging:bulk_threads' as thread_bulk_url %}
+    {% bulk_bar "bulk-threads" thread_bulk_url actions="archive:Archive::remove,delete:Delete for me:danger" noun="conversation" confirm_title="Delete {n} {noun} for you?" confirm_body="They disappear from your messages; the other people still have their copy. A conversation and its attachments are erased for good only once everyone in it has deleted it." %}
   {% endif %}
 
   {% if not unread_threads and not read_threads %}
@@ -138,5 +115,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/messaging.js' %}?v=4" defer></script>
+<script src="{% static 'js/messaging.js' %}?v=5" defer></script>
+<script src="{% static 'js/chat-live.js' %}?v=1" defer></script>
 {% endblock %}

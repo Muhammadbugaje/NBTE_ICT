@@ -149,3 +149,18 @@ _bind("tasks.Task", "dashboards")
 # from config registry.
 # ---------------------------------------------------------------------------
 _bind("config.ConfigEntry", "public")
+
+# ---------------------------------------------------------------------------
+# Phase 8 card audit: the signed-in home page caches its whole context (KPI
+# tiles, module cards, work board) for TTL_MEDIUM under the "home" namespace,
+# but nothing ever invalidated that namespace, so a tile could lag the data
+# it counts. Every model a home number is built from now drops it.
+# ---------------------------------------------------------------------------
+for _label in (
+    "notifications.Notification", "messaging.Message", "messaging.ThreadParticipant",
+    "tasks.Task", "tasks.TaskAssignee", "tickets.Ticket", "staff.Staff",
+    "workflow.Request", "assets.AssetAssignment", "attendance.AttendanceRecord",
+    "qa_core.PendingAction", "qa_core.TimelineEvent", "complaints.ComplaintStage",
+    "payments.PaymentVerification",
+):
+    _bind(_label, "home")

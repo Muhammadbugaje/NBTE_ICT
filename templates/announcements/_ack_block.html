@@ -1,0 +1,18 @@
+{# Detail-page acknowledgement panel (HTMX target). #}
+{% if a.requires_ack and a.in_audience %}
+<section class="card ann-ack-panel{% if a.is_acked %} is-done{% endif %}" id="ack-{{ a.pk }}" aria-live="polite">
+  <h2>Acknowledgement</h2>
+  {% if a.is_acked %}
+    <span class="ann-acked">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+      You acknowledged this
+    </span>
+    {% if a.my_ack_at %}<p>{{ a.my_ack_at|date:"j M Y, H:i" }}</p>{% endif %}
+  {% elif a.is_expired %}
+    <p>This announcement has expired.</p>
+  {% else %}
+    <p>The sender has asked everyone to confirm they have read this.</p>
+    {% include "announcements/_ack_button.html" with target="closest .ann-ack-panel" view="detail" %}
+  {% endif %}
+</section>
+{% endif %}

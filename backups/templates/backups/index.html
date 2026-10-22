@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+{% load static backups_tags %}
+{% block title %}Backups · Settings{% endblock %}
+{% block page_title %}Backups{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/settings.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/backups.css' %}?v=1">
+{% endblock %}
+{% block content %}
+<div class="settings-page sh bk-page">
+  <header class="settings-hero" data-reveal>
+    <a class="bk-crumb" href="{% url 'config:settings' %}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Settings</a>
+    <h1>Backups</h1>
+    <p>Copies of the whole NBTE system — the database, uploaded files, restricted files and the rules it runs on — written to the places you choose. Keys and passwords stay in the server's environment.</p>
+  </header>
+
+  {% if no_destination_warning %}
+    <div class="bk-banner" role="alert">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+      <div><strong>{{ no_destination_warning }}</strong><span>Nothing is being backed up. Add a destination below and turn it on.</span></div>
+    </div>
+  {% endif %}
+
+  <div class="sh-layout">
+    <nav aria-label="Backup sections">
+      <ul class="sh-nav" data-sh-nav>
+        <li><a href="#bk-overview" class="is-active">Overview</a></li>
+        <li><a href="#bk-run">Back up now</a></li>
+        <li><a href="#bk-destinations">Destinations <span class="sh-nav__count">{{ active_count }}/{{ destinations|length }}</span></a></li>
+        {% if can_manage %}<li><a href="#bk-add">Add a destination</a></li>
+        <li><a href="#bk-schedule">Schedule</a></li>{% endif %}
+        <li><a href="#bk-runs">History</a></li>
+        <li><a href="#bk-drills">Restore drills</a></li>
+        <li><a href="#bk-help">Help and restore</a></li>
+        <li><a href="{% url 'config:settings' %}">← All settings</a></li>
+      </ul>
+    </nav>
+
+    <div class="sh">
+      {# ------------------------------------------------------------ overview #}
+      <section class="bk-tiles" id="bk-overview" aria-label="Backup overview" data-reveal>
+        <article class="bk-tile">
+          <span class="bk-tile__label">Last backup</span>
+          {% if last_any %}
+            <strong>{{ last_any.started_at|timesince }} ago</strong>
+            <span class="bk-tile__sub">{% include "backups/_status_chip.html" with status=last_any.status %} {{ last_any.size_bytes|filesize_h }}</span>
+          {% else %}<strong>Never</strong><span class="bk-tile__sub">No backup has been taken yet.</span>{% endif %}
+        </article>
+        <article class="bk-tile">
+          <span class="bk-tile__label">Next scheduled</span>
+          {% if not active_count %}<strong>Not scheduled</strong><span class="bk-tile__sub">No destination is in use.</span>
+          {% elif next_due %}<strong>{% if next_due <= now %}Tonight{% else %}{{ next_due|date:"j M Y" }}{% endif %}</strong><span class="bk-tile__sub">Every {{ interval_days }} day{{ interval_days|pluralize }}</span>
+          {% else %}<strong>Tonight</strong><span class="bk-tile__sub">The first scheduled backup is due.</span>{% endif %}
+        </article>
+        <article class="bk-tile">
+          <span class="bk-tile__label">Destinations in use</span>
+          <strong>{{ active_count }}</strong>
+          <span class="bk-tile__sub">{% if active_count < 2 %}One local and one off-site is safest.{% else %}Kept: {{ keep_count }} each{% endif %}</span>
+        </article>
+        <article class="bk-tile {% if will_encrypt %}is-ok{% elif encrypt_setting %}is-warn{% endif %}">
+          <span class="bk-tile__label">Encryption</span>
+          <strong>{% if will_encrypt %}On{% else %}Off{% endif %}</strong>
+          <span class="bk-tile__sub">{% if will_encrypt %}AES-256-GCM{% elif not encrypt_setting %}Turned off in the schedule{% elif not crypto_available %}Library missing{% else %}Key not set{% endif %}</span>
+        </article>
+      </section>
+
+      {# ------------------------------------------------------------ run now #}
+      <section class="sh-section" id="bk-run" aria-labelledby="bk-run-title" data-reveal>
+        <header class="sh-section__head">
+          <div>
+            <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg></span>
+            <h2 id="bk-run-title">Back up now</h2>
+            <p>Takes a full backup straight away and writes it to every destination in use. It can take several minutes; you can leave this page and come back.</p>
+          </div>
+          {% if can_run %}
+          <form method="post" action="{% url 'backups:run_now' %}" hx-post="{% url 'backups:run_now' %}" hx-target="#bk-progress-slot" hx-swap="innerHTML" hx-disabled-elt="find button">
+            {% csrf_token %}
+            <button class="btn btn-primary" type="submit" {% if current or not active_count %}disabled{% endif %}{% if not active_count %} data-no-destination{% endif %}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+              Back up now
+            </button>
+          </form>
+          {% endif %}
+        </header>
+        <div class="bk-run-body">
+          <div id="bk-progress-slot">{% if current %}{% include "backups/_progress.html" with run=current %}{% endif %}</div>
+          <dl class="bk-captures">
+            <div><dt>Database</dt><dd>{% if db_engine == "sqlite" %}SQLite, full SQL dump{% elif db_engine == "postgresql" %}PostgreSQL, <code>pg_dump --format=custom</code>{% if pg_dump == "" %} <span class="sh-chip is-bad">pg_dump is not installed</span>{% endif %}{% else %}{{ db_engine }} (not supported){% endif %}</dd></div>
+            {% for stem, setting_name, root in media_roots %}<div><dt>{% if stem == "media" %}Uploaded files{% else %}Restricted files{% endif %}</dt><dd><code>{{ root }}</code> as a .tar.gz</dd></div>{% endfor %}
+            <div><dt>Settings snapshot</dt><dd>All settings, workflows, stages, transitions, two-step rules and reference formats (JSON)</dd></div>
+            <div><dt>Manifest</dt><dd>Every file with its size and SHA-256</dd></div>
+          </dl>
+          {% if not can_run %}<p class="bk-muted">You can see backups but not start one.</p>{% endif %}
+        </div>
+      </section>
+
+      {# ------------------------------------------------------------ destinations #}
+      <section class="sh-section" id="bk-destinations" aria-labelledby="bk-dest-title" data-reveal>
+        <header class="sh-section__head">
+          <div>
+            <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg></span>
+            <h2 id="bk-dest-title">Destinations</h2>
+            <p>Each backup is written to every destination that is in use. It counts as succeeded only when all of them worked.</p>
+          </div>
+          <span class="sh-chip">{{ active_count }} in use</span>
+        </header>
+        <div class="bk-dests">
+          {% for row in destinations %}{% with dest=row.dest %}
+          <article class="bk-dest {% if dest.is_active %}is-active{% endif %}" id="bk-dest-{{ dest.pk }}">
+            <header class="bk-dest__head">
+              <span class="bk-dest__icon bk-dest__icon--{{ dest.kind }}" aria-hidden="true">
+                {% if dest.kind == "local" %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                {% elif dest.kind == "mounted" %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 12h.01M10 12h.01"/></svg>
+                {% else %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>{% endif %}
+              </span>
+              <div class="bk-dest__title">
+                <h3>{{ dest.name }}</h3>
+                <span class="bk-dest__kind">{{ dest.get_kind_display }}</span>
+              </div>
+              <span class="sh-chip {% if dest.is_active %}is-ok{% endif %}">{% if dest.is_active %}In use{% else %}Off{% endif %}</span>
+            </header>
+            <div class="bk-dest__target"><code>{{ dest.target_display }}</code></div>
+            <dl class="bk-dest__facts">
+              <div><dt>Last success</dt><dd>{% if dest.last_success_at %}{{ dest.last_success_at|date:"j M Y, H:i" }}{% else %}Never{% endif %}</dd></div>
+              <div><dt>Backups held</dt><dd>{{ row.copies }} of {{ keep_count }}</dd></div>
+            </dl>
+            {% if dest.last_error %}<p class="bk-note bk-note--bad"><strong>Last error:</strong> {{ dest.last_error|truncatechars:400 }}</p>{% endif %}
+            {% if dest.is_placeholder %}<p class="bk-note">This is a placeholder. Edit the folder (or pick another kind), then turn it on.</p>{% endif %}
+
+            {% if row.env %}
+              <div class="bk-env">
+                <div class="bk-env__head"><strong>Server environment (.env)</strong><span>Values are never shown here.</span></div>
+                <ul>
+                  {% for v in row.env %}
+                    <li><code>{{ v.name }}</code><span class="bk-env__what">{{ v.label }}{% if not v.required %} · optional{% endif %}</span>
+                      <span class="sh-chip {% if v.is_set %}is-ok{% elif v.required %}is-bad{% endif %}">{% if v.is_set %}Set{% elif v.required %}Missing{% else %}Not set{% endif %}</span></li>
+                  {% endfor %}
+                </ul>
+                <div class="bk-code">
+                  <pre id="bk-env-{{ dest.pk }}">{{ row.env_lines }}</pre>
+                  <button type="button" class="btn btn-sm btn-ghost" data-bk-copy="#bk-env-{{ dest.pk }}">Copy</button>
+                </div>
+                <small class="bk-muted">Add these lines to the server's <code>.env</code> with the real values, then restart the web server and the Celery worker.</small>
+              </div>
+            {% elif dest.kind != "s3" %}
+              <p class="bk-muted bk-dest__noenv">No keys needed: the server writes straight to this folder.</p>
+            {% endif %}
+
+            {% include "backups/_test_result.html" %}
+            <footer class="bk-dest__actions">
+              {% if can_manage or can_run %}
+              <form method="post" action="{% url 'backups:destination_test' dest.pk %}" hx-post="{% url 'backups:destination_test' dest.pk %}" hx-target="#bk-test-{{ dest.pk }}" hx-swap="outerHTML" hx-disabled-elt="find button">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-subtle" type="submit"><span class="bk-btn-spin" aria-hidden="true"></span>Test connection</button>
+              </form>
+              {% endif %}
+              {% if can_manage %}
+              <form method="post" action="{% url 'backups:destination_toggle' dest.pk %}">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-ghost" type="submit">{% if dest.is_active %}Turn off{% else %}Turn on{% endif %}</button>
+              </form>
+              {% if not row.copies and not dest.copies.exists %}
+              <form method="post" action="{% url 'backups:destination_delete' dest.pk %}" onsubmit="return confirm('Delete this destination?');">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-ghost bk-danger" type="submit">Delete</button>
+              </form>
+              {% endif %}
+              {% endif %}
+            </footer>
+            {% if can_manage and row.form %}
+              <details class="bk-edit"{% if dest.is_placeholder %} open{% endif %}>
+                <summary>Edit destination</summary>
+                {% url 'backups:destination_save' dest.pk as save_url %}
+                {% include "backups/_destination_form.html" with form=row.form action=save_url submit_label="Save changes" show_mounts=False %}
+              </details>
+            {% endif %}
+          </article>
+          {% endwith %}{% empty %}
+            <div class="bk-empty"><strong>No destinations yet</strong><span>Add one below.</span></div>
+          {% endfor %}
+        </div>
+      </section>
+
+      {% if can_manage %}
+      {# ------------------------------------------------------------ add #}
+      <section class="sh-section" id="bk-add" aria-labelledby="bk-add-title" data-reveal>
+        <header class="sh-section__head">
+          <div>
+            <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            <h2 id="bk-add-title">Add a destination</h2>
+            <p>A folder on this server, a USB or external drive, or S3-compatible cloud storage (AWS S3, Cloudflare R2, Supabase Storage, Backblaze B2). Not sure? See the guides under Help.</p>
+          </div>
+        </header>
+        <div class="bk-add-body">
+          {% url 'backups:destination_add' as add_url %}
+          {% include "backups/_destination_form.html" with form=new_form action=add_url submit_label="Add destination" show_mounts=True %}
+          <p class="bk-muted bk-sftp">SFTP is not available on this server: it needs the paramiko package or the sftp program, and neither is installed. Use a mounted network share or S3-compatible storage instead.</p>
+        </div>
+      </section>
+
+      {# ------------------------------------------------------------ schedule #}
+      <section class="sh-section" id="bk-schedule" aria-labelledby="bk-schedule-title" data-reveal>
+        <header class="sh-section__head">
+          <div>
+            <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+            <h2 id="bk-schedule-title">Schedule and retention</h2>
+            <p>A check runs every night and starts a backup when the interval has passed since the last good one. Monthly (30 days) by default; shorter is safer before going live.</p>
+          </div>
+        </header>
+        <form method="post" action="{% url 'backups:schedule' %}" class="sh-section__body">
+          {% csrf_token %}
+          {% for e in schedule_rows %}
+            <div class="sh-row">
+              <div>
+                <label class="sh-row__title" for="bk-set-{{ forloop.counter }}">{% if e.key == "qa.backup.interval_days" %}Days between backups{% elif e.key == "qa.backup.keep_count" %}Backups kept per destination{% elif e.key == "qa.backup.drill_every_n_runs" %}Restore drill after every{% else %}Encrypt backups{% endif %}</label>
+                <span class="sh-row__desc">{{ e.description }}</span>
+                {% if e.key == "qa.backup.encrypt_at_rest" %}<span class="sh-row__desc bk-enc-state {% if will_encrypt %}is-ok{% else %}is-warn{% endif %}">{{ enc_reason }}</span>{% endif %}
+                <span class="sh-row__key">{{ e.key }}</span>
+              </div>
+              <div class="sh-row__control">
+                {% if e.value_type == "bool" %}
+                  <label class="sh-switch">
+                    <input type="checkbox" id="bk-set-{{ forloop.counter }}" name="{{ e.key|bk_field }}" value="true"{% if e.value == "true" %} checked{% endif %}>
+                    <span class="sh-switch__track" aria-hidden="true"></span>
+                    <span class="sh-switch__label">{% if e.value == "true" %}On{% else %}Off{% endif %}</span>
+                  </label>
+                {% else %}
+                  <input class="input bk-num-input" id="bk-set-{{ forloop.counter }}" type="number" min="1" step="1" name="{{ e.key|bk_field }}" value="{{ e.value }}">
+                  <span class="bk-unit">{% if e.key == "qa.backup.interval_days" %}days{% elif e.key == "qa.backup.keep_count" %}backups{% else %}backups{% endif %}</span>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+          <div class="sh-section__foot">
+            <span>Old backups are removed from a destination only after a newer backup has succeeded there.</span>
+            <button class="btn btn-primary" type="submit">Save schedule</button>
+          </div>
+        </form>
+      </section>
+      {% endif %}
+
+      {# ------------------------------------------------------------ history + drills #}
+      {% include "backups/_history.html" %}
+
+      {# ------------------------------------------------------------ help #}
+      <section class="sh-section" id="bk-help" aria-labelledby="bk-help-title" data-reveal>
+        <header class="sh-section__head">
+          <div>
+            <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg></span>
+            <h2 id="bk-help-title">Help and restore</h2>
+            <p>Short guides for each kind of destination, and how to restore. The full guide is <code>BACKUPS.md</code> in the project folder.</p>
+          </div>
+        </header>
+        <div class="bk-guides">
+          <details class="bk-guide">
+            <summary><span class="bk-guide__badge">R2</span>Cloudflare R2</summary>
+            <ol>
+              <li>In the Cloudflare dashboard open <strong>R2 → Create bucket</strong> (e.g. <code>nbte-backups</code>).</li>
+              <li><strong>R2 → Manage API tokens → Create API token</strong> with <em>Object Read &amp; Write</em> on that bucket. Copy the Access Key ID and Secret Access Key.</li>
+              <li>Add a destination: kind <em>S3-compatible</em>, bucket <code>nbte-backups</code>, region <code>auto</code>, endpoint <code>https://&lt;account-id&gt;.r2.cloudflarestorage.com</code>.</li>
+              <li>Add to <code>.env</code>, restart, then press Test connection:</li>
+            </ol>
+            <div class="bk-code"><pre id="bk-g-r2">BACKUP_S3_R2_ACCESS_KEY_ID=your-access-key-id
+BACKUP_S3_R2_SECRET_ACCESS_KEY=your-secret-access-key
+BACKUP_S3_R2_ENDPOINT_URL=https://&lt;account-id&gt;.r2.cloudflarestorage.com
+BACKUP_S3_R2_REGION=auto</pre><button type="button" class="btn btn-sm btn-ghost" data-bk-copy="#bk-g-r2">Copy</button></div>
+          </details>
+          <details class="bk-guide">
+            <summary><span class="bk-guide__badge">SB</span>Supabase Storage</summary>
+            <ol>
+              <li>In Supabase open <strong>Storage → New bucket</strong> (private), e.g. <code>nbte-backups</code>.</li>
+              <li><strong>Project Settings → Storage → S3 Connection</strong>: copy the endpoint and region, then <strong>New access key</strong>.</li>
+              <li>Add a destination: kind <em>S3-compatible</em>, bucket <code>nbte-backups</code>, endpoint <code>https://&lt;project-ref&gt;.supabase.co/storage/v1/s3</code>, your project's region, addressing style <em>Path</em>.</li>
+            </ol>
+            <div class="bk-code"><pre id="bk-g-sb">BACKUP_S3_SUPABASE_ACCESS_KEY_ID=your-access-key-id
+BACKUP_S3_SUPABASE_SECRET_ACCESS_KEY=your-secret-access-key
+BACKUP_S3_SUPABASE_ENDPOINT_URL=https://&lt;project-ref&gt;.supabase.co/storage/v1/s3
+BACKUP_S3_SUPABASE_REGION=eu-west-2</pre><button type="button" class="btn btn-sm btn-ghost" data-bk-copy="#bk-g-sb">Copy</button></div>
+          </details>
+          <details class="bk-guide">
+            <summary><span class="bk-guide__badge">S3</span>AWS S3</summary>
+            <ol>
+              <li>Create a private bucket (block all public access; turn on versioning if you like).</li>
+              <li>Create an IAM user with a policy allowing <code>s3:PutObject</code>, <code>s3:GetObject</code>, <code>s3:DeleteObject</code> and <code>s3:ListBucket</code> on that bucket only. Create an access key for it.</li>
+              <li>Add a destination: kind <em>S3-compatible</em>, the bucket, its region; leave the endpoint blank.</li>
+            </ol>
+            <div class="bk-code"><pre id="bk-g-aws">BACKUP_S3_AWS_ACCESS_KEY_ID=AKIA...
+BACKUP_S3_AWS_SECRET_ACCESS_KEY=your-secret-access-key
+BACKUP_S3_AWS_REGION=eu-west-2</pre><button type="button" class="btn btn-sm btn-ghost" data-bk-copy="#bk-g-aws">Copy</button></div>
+          </details>
+          <details class="bk-guide">
+            <summary><span class="bk-guide__badge">B2</span>Backblaze B2</summary>
+            <ol>
+              <li>Create a private bucket, then an <strong>Application Key</strong> limited to it.</li>
+              <li>Endpoint: <code>https://s3.&lt;region&gt;.backblazeb2.com</code> (shown on the bucket page); region e.g. <code>us-west-004</code>.</li>
+            </ol>
+            <div class="bk-code"><pre id="bk-g-b2">BACKUP_S3_B2_ACCESS_KEY_ID=your-key-id
+BACKUP_S3_B2_SECRET_ACCESS_KEY=your-application-key
+BACKUP_S3_B2_ENDPOINT_URL=https://s3.us-west-004.backblazeb2.com</pre><button type="button" class="btn btn-sm btn-ghost" data-bk-copy="#bk-g-b2">Copy</button></div>
+          </details>
+          <details class="bk-guide">
+            <summary><span class="bk-guide__badge">USB</span>A USB or external drive</summary>
+            <ol>
+              <li>Plug the drive into the server. Desktops mount it automatically under <code>/media/&lt;user&gt;/&lt;label&gt;</code>; on a server run <code>sudo mkdir -p /mnt/backup &amp;&amp; sudo mount /dev/sdb1 /mnt/backup</code> (add it to <code>/etc/fstab</code> to keep it after a restart).</li>
+              <li>Make it writable by the user the system runs as, e.g. <code>sudo chown www-data /mnt/backup</code>.</li>
+              <li>Add a destination: kind <em>USB or external drive</em>, then pick it from the list (press Look again if you just plugged it in).</li>
+              <li>If the drive is unplugged, backups to it fail clearly — they never fill the server's own disk.</li>
+            </ol>
+          </details>
+          <details class="bk-guide">
+            <summary><span class="bk-guide__badge">DIR</span>A folder on this server</summary>
+            <ol>
+              <li>Pick a folder outside the project, ideally on another disk: <code>sudo mkdir -p /var/backups/nbte &amp;&amp; sudo chown www-data /var/backups/nbte</code>.</li>
+              <li>Add a destination: kind <em>Folder on this server</em>, path <code>/var/backups/nbte</code>. No keys are needed.</li>
+              <li>A local copy alone does not survive a lost server: add an off-site destination too.</li>
+            </ol>
+          </details>
+          <details class="bk-guide">
+            <summary><span class="bk-guide__badge">KEY</span>Encryption key</summary>
+            <p>When encryption is on and <code>BACKUP_ENCRYPTION_KEY</code> is set, every file is encrypted (AES-256-GCM) before it leaves the server. Generate a key once and <strong>keep a copy somewhere safe off the server</strong> — without it, encrypted backups cannot be restored.</p>
+            <div class="bk-code"><pre id="bk-g-key">python -c "import os,base64;print('BACKUP_ENCRYPTION_KEY='+base64.urlsafe_b64encode(os.urandom(32)).decode())"</pre><button type="button" class="btn btn-sm btn-ghost" data-bk-copy="#bk-g-key">Copy</button></div>
+            <p class="bk-muted">Status: {{ enc_reason }}{% if enc_key_set %} The key is set.{% endif %}</p>
+          </details>
+          <details class="bk-guide bk-guide--restore">
+            <summary><span class="bk-guide__badge">↺</span>Restoring (superusers only)</summary>
+            <p>A real restore overwrites live data, so it is never a button. A superuser runs it on the server:</p>
+            <ol>
+              <li>Run a restore drill of the backup first and read its report.</li>
+              <li>Tell users, then stop the web server and the Celery worker.</li>
+              <li>Run the restore. The current database file and file folders are kept aside as <code>*.before-restore-&lt;time&gt;</code>.</li>
+              <li>Run <code>migrate</code> and <code>check</code>, start the services and sign in to confirm.</li>
+            </ol>
+            <div class="bk-code"><pre id="bk-g-restore"># check a backup without touching anything
+python manage.py restore_backup --drill &lt;run id&gt;
+
+# real restore of a run listed above
+python manage.py restore_backup &lt;run id&gt; --as &lt;superuser e-mail&gt; --confirm &lt;backup label&gt;
+
+# the database is gone: restore from a downloaded backup folder
+python manage.py restore_backup --from-dir /path/to/nbte-backup-... --confirm &lt;backup label&gt;
+
+# add --db-only or --media-only to restore one part</pre><button type="button" class="btn btn-sm btn-ghost" data-bk-copy="#bk-g-restore">Copy</button></div>
+          </details>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+  function toast(kind, title, body) {
+    if (window.NBTE && NBTE.Toast && NBTE.Toast.push) NBTE.Toast.push(kind, title, body || "");
+  }
+  /* copy buttons */
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("[data-bk-copy]");
+    if (btn) {
+      var el = document.querySelector(btn.getAttribute("data-bk-copy"));
+      if (el && navigator.clipboard) {
+        navigator.clipboard.writeText(el.textContent.trim()).then(function () {
+          btn.textContent = "Copied"; setTimeout(function () { btn.textContent = "Copy"; }, 1600);
+          toast("success", "Copied to the clipboard");
+        });
+      }
+      return;
+    }
+    var mount = e.target.closest && e.target.closest("[data-bk-mount]");
+    if (mount) {
+      var form = mount.closest("form");
+      var input = form && form.querySelector("[data-bk-mount-input]");
+      if (input) { input.value = mount.getAttribute("data-bk-mount"); input.focus(); }
+      form.querySelectorAll("[data-bk-mount]").forEach(function (b) { b.classList.toggle("is-picked", b === mount); });
+    }
+  });
+  /* show only the fields for the chosen kind */
+  function syncKind(form) {
+    var picked = form.querySelector("[data-bk-kind]:checked");
+    var kind = picked ? picked.value : "local";
+    form.querySelectorAll(".bk-kindfields").forEach(function (box) {
+      var on = box.getAttribute("data-kind") === kind;
+      box.hidden = !on;
+      box.querySelectorAll("input, select").forEach(function (i) { i.disabled = !on; });
+    });
+  }
+  document.querySelectorAll("[data-bk-dest-form]").forEach(function (form) {
+    syncKind(form);
+    form.addEventListener("change", function (e) { if (e.target.matches("[data-bk-kind]")) syncKind(form); });
+  });
+  /* section highlight, as on the main settings page */
+  var links = document.querySelectorAll("[data-sh-nav] a[href^='#']");
+  if ("IntersectionObserver" in window && links.length) {
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute("href").slice(1)] = a; });
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        links.forEach(function (a) { a.classList.remove("is-active"); });
+        if (byId[en.target.id]) byId[en.target.id].classList.add("is-active");
+      });
+    }, { rootMargin: "-30% 0px -60% 0px" });
+    Object.keys(byId).forEach(function (id) { var el = document.getElementById(id); if (el) io.observe(el); });
+  }
+  /* while a run is in progress the button is off; when it finishes, it comes back */
+  var runBtn = document.querySelector("#bk-run form button[type=submit]");
+  if (runBtn && !runBtn.hasAttribute("data-no-destination")) {
+    setInterval(function () {
+      var p = document.getElementById("bk-progress");
+      var busy = !!(p && p.hasAttribute("hx-get"));
+      if (!runBtn.closest("form").classList.contains("htmx-request")) runBtn.disabled = busy;
+    }, 1000);
+  }
+})();
+</script>
+{% endblock %}

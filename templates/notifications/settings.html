@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Notification settings · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Notification settings{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/notifications.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/account-security.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="p9-page">
+  <header class="p9-page-head">
+    <div>
+      <a href="{% url 'notifications:list' %}" class="p9-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        Notifications
+      </a>
+      <h1>Notification settings</h1>
+      <p>Choose what reaches your phone and inbox, and when to keep quiet.</p>
+    </div>
+  </header>
+  {% if impersonating %}<div class="p9-callout" role="status">You are viewing as another user; settings are read-only.</div>{% endif %}
+  {% url 'notifications:settings' as action %}
+  {% include "notifications/_p9_preferences_form.html" with form=form action=action disabled=impersonating %}
+</div>
+{% endblock %}

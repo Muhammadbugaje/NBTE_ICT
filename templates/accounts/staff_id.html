@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}My staff ID · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}My staff ID{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/account-security.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="p9-page p9-idpage">
+  <header class="p9-page-head">
+    <div>
+      <a href="{% url 'accounts:profile' %}" class="p9-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        Profile
+      </a>
+      <h1>My staff ID</h1>
+      <p>Show this card when asked to prove you work for NBTE. The QR code changes every minute, so a screenshot stops working.</p>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="window.print()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Print
+    </button>
+  </header>
+
+  <div class="p9-idwrap">
+    <article class="p9-idcard" aria-label="NBTE staff identity card">
+      <header class="p9-idcard__band">
+        <img src="{% static 'img/NBTE_logo.png' %}" alt="NBTE logo" class="p9-idcard__logo">
+        <div>
+          <strong>National Board for Technical Education</strong>
+          <span>Staff identity card</span>
+        </div>
+      </header>
+      <div class="p9-idcard__body">
+        <div class="p9-idcard__photo">
+          {% if card.photo_url %}<img src="{{ card.photo_url }}" alt="Photo of {{ card.name }}">
+          {% else %}<span aria-hidden="true">{{ card.initials }}</span>{% endif %}
+        </div>
+        <h2 class="p9-idcard__name">{{ card.name }}</h2>
+        <p class="p9-idcard__role">{{ card.designation|default:"NBTE staff" }}</p>
+        <dl class="p9-idcard__facts">
+          <div><dt>Department</dt><dd>{{ card.department|default:"—" }}</dd></div>
+          <div><dt>Staff no.</dt><dd class="p9-mono">{{ card.staff_number|default:"—" }}</dd></div>
+        </dl>
+      </div>
+      <footer class="p9-idcard__qr">
+        <div class="p9-qr" data-staff-qr data-qr-url="{% url 'accounts:staff_id_qr' %}"
+             data-refresh="{{ qr.refresh_seconds }}" role="img"
+             aria-label="Verification QR code. It changes every minute.">{{ qr.svg|safe }}</div>
+        <p class="p9-idcard__hint">
+          Scan to verify · <span data-qr-countdown aria-live="off">refreshes in {{ qr.refresh_seconds }} s</span>
+        </p>
+      </footer>
+    </article>
+  </div>
+  <p class="p9-idnote">Anyone can scan the code to see that you are current NBTE staff. It shows your name, photo,
+    designation and department only — never your e-mail or phone number.</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* Phase 9: fetch a fresh QR every 60 s and show a countdown. */
+(function () {
+  "use strict";
+  var box = document.querySelector("[data-staff-qr]");
+  if (!box) return;
+  var label = document.querySelector("[data-qr-countdown]");
+  var period = parseInt(box.getAttribute("data-refresh"), 10) || 60;
+  var left = period;
+  function refresh() {
+    fetch(box.getAttribute("data-qr-url"), { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (data) { box.innerHTML = data.svg; left = data.refresh_seconds || period; box.classList.remove("is-stale"); })
+      .catch(function () { box.classList.add("is-stale"); left = 10; });
+  }
+  window.setInterval(function () {
+    left -= 1;
+    if (left <= 0) { refresh(); left = period; }
+    if (label) label.textContent = "refreshes in " + Math.max(left, 0) + " s";
+  }, 1000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) refresh(); });
+})();
+</script>
+{% endblock %}

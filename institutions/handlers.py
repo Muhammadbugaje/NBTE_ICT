@@ -878,10 +878,23 @@ class BulkImportHandler(ActionHandler):
             rows.append(DiffRow("…", "", f"{len(target.rows) - 60} more row(s)"))
         return rows
 
+    def confirm_options(self, target, payload):
+        """Phase 8: a migration batch asks the confirming officer whether to
+        e-mail the portal administrators their set-password links now."""
+        if target is None or target.kind != "legacy":
+            return []
+        admins = sum(1 for r in (target.rows or []) if r.get("_sheet") == "institution" and r.get("admin_email"))
+        return [{"name": "send_invites", "label": "E-mail the portal administrators a set-password link now",
+                 "help": f"{admins} administrator account(s) in this workbook. Leave unticked to send later with "
+                         "Send Login Credentials (one by one, or all at once from the import page).",
+                 "checked": bool(payload.get("send_invites"))}]
+
     def apply(self, target, payload, actor):
         from .importexport import apply_batch
 
-        apply_batch(target, actor=actor)
+        chosen = (payload or {}).get("confirm_options") or {}
+        send = chosen.get("send_invites", (payload or {}).get("send_invites", False))
+        apply_batch(target, actor=actor, options={"send_invites": bool(send)})
 
     def on_closed(self, pa, target, actor):
         if target is not None and target.status == "pending":

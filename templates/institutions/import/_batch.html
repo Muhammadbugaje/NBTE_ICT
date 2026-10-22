@@ -11,12 +11,18 @@
       {% if batch.status != "invalid" %}<span class="qa-chip qa-tone-info">{{ batch.summary.create|default:0 }} new</span><span class="qa-chip qa-tone-pending">{{ batch.summary.update|default:0 }} updated</span><span class="qa-chip">{{ batch.summary.unchanged|default:0 }} unchanged</span>{% endif %}
       {% if batch.summary.errors %}<span class="qa-chip qa-tone-danger">{{ batch.summary.errors }} row(s) with errors</span>{% endif %}
     </div>
+    {% if sheet_counts %}<div class="qa-table-wrap"><table class="qa-table qa-table--compact">
+      <caption class="sr-only">What each sheet will do</caption>
+      <thead><tr><th scope="col">Sheet</th><th scope="col" class="num">New</th><th scope="col" class="num">Updated</th><th scope="col" class="num">Unchanged</th></tr></thead>
+      <tbody>{% for sheet, c in sheet_counts.items %}<tr><td data-label="Sheet">{{ sheet }}</td><td class="num" data-label="New">{{ c.create }}</td><td class="num" data-label="Updated">{{ c.update }}</td><td class="num" data-label="Unchanged">{{ c.unchanged }}</td></tr>{% endfor %}</tbody>
+    </table></div>{% endif %}
     {% if batch.status == "invalid" %}
       {% include "qa_core/partials/_callout.html" with kind="danger" title="Nothing was imported" message="Fix every row below and upload the sheet again. A batch is applied only when all of it is valid." %}
     {% elif batch.status == "validated" %}
       <form method="post" action="{% url 'qa_inst:import_batch' batch.pk %}" hx-post="{% url 'qa_inst:import_batch' batch.pk %}" hx-target="#qa-batch" hx-swap="outerHTML" class="qa-form">
         {% csrf_token %}
-        <div class="qa-field"><label for="imp-reason">Reason for this import</label><textarea class="input" id="imp-reason" name="reason" rows="2" minlength="5" required placeholder="e.g. Annual update of the NTIRD register"></textarea></div>
+        <div class="qa-field"><label for="imp-reason">Reason for this import</label><textarea class="input" id="imp-reason" name="reason" rows="2" minlength="5" required placeholder="{% if batch.kind == 'legacy' %}e.g. Migration of the DPAP register from the previous system{% else %}e.g. Annual update of the NTIRD register{% endif %}"></textarea></div>
+        {% if batch.kind == "legacy" %}<ul class="qa-checks" role="list"><li><label><input type="checkbox" name="send_invites" value="1"><span><strong>Suggest e-mailing set-password links when applied</strong><br><span class="qa-small qa-muted">The confirming officer makes the final choice. Accounts stay inactive until the administrator sets a password.</span></span></label></li></ul>{% endif %}
         <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "shield" 16 %} Send for confirmation</button></div>
       </form>
     {% elif batch.status == "pending" and pa %}
@@ -25,6 +31,14 @@
     {% elif batch.status == "applied" %}
       {% include "qa_core/partials/_callout.html" with kind="success" title="Applied" message="Every row was applied in one transaction." %}
       {% if batch.result.created_codes %}<p class="qa-small">New codes: {% for c in batch.result.created_codes %}<a href="{% url 'qa_inst:detail' c %}">{{ c }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+      {% if batch.kind == "legacy" %}
+        {% if invites %}<details class="qa-small"><summary>Set-password links: {{ invites|length }} institution(s)</summary><ul>{% for code, outcome in invites.items %}<li><span class="qa-mono">{{ code }}</span> — {{ outcome }}</li>{% endfor %}</ul></details>{% endif %}
+        {% if awaiting_invite %}
+          <div class="qa-callout qa-callout--info" role="status"><div><strong>{{ awaiting_invite|length }} portal administrator{{ awaiting_invite|length|pluralize }} not invited yet</strong><p>Their accounts are inactive until they set a password from the link.</p></div></div>
+          {% if can_send_credentials %}<form method="post" action="{% url 'qa_inst:import_invites' batch.pk %}" hx-post="{% url 'qa_inst:import_invites' batch.pk %}" hx-target="#qa-batch" hx-swap="outerHTML" hx-trigger="qa:confirmed" data-qa-confirm="Each administrator gets a one-time link to set a password ({{ awaiting_invite|length }} e-mail{{ awaiting_invite|length|pluralize }})." data-qa-confirm-title="Send login credentials?" data-qa-confirm-label="Send">{% csrf_token %}
+            <button class="btn btn-primary" type="submit">{% icon "mail" 16 %} Send login credentials to all {{ awaiting_invite|length }}</button></form>{% endif %}
+        {% endif %}
+      {% endif %}
     {% endif %}
   </div>
   {% if errors %}

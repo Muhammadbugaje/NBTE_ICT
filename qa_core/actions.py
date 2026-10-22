@@ -230,6 +230,64 @@ def can_decide(pa, user, *, impersonating=False):
 
 
 # ---------------------------------------------------------------------------
+# Review data (the confirm page and the mobile API read the same thing)
+# ---------------------------------------------------------------------------
+def snapshot_before(pa, row):
+    """The value a decided item replaced (from its before-snapshot)."""
+    if row.label == "Value" and "value" in pa.before_snapshot:
+        from . import settings_service
+
+        return settings_service.display_value(pa.before_snapshot.get("value_type", "str"),
+                                              pa.before_snapshot["value"])
+    key = row.label.lower().replace(" ", "_")
+    return str(pa.before_snapshot.get(key, row.before))
+
+
+def review(pa):
+    """{"target", "diff" (DiffRow list), "stale", "confirm_options"} for one
+    pending action, exactly as the Pending confirmations page shows it."""
+    handler = get_handler(pa.policy_id)
+    target = _load_target(pa)
+    try:
+        # Create-type actions (Add TVET, bulk import) have no target yet; their
+        # handlers preview from the payload alone.
+        diff = handler.preview(target, pa.payload) if (target is not None or not pa.object_id) else []
+    except Exception:
+        diff = []
+    if pa.status != pa.PENDING and pa.before_snapshot:
+        # Show what was proposed against what it replaced, not today's value.
+        diff = [DiffRow(row.label, snapshot_before(pa, row), row.after) for row in diff]
+    stale = bool(target is not None and pa.target_version and pa.is_open
+                 and _version_of(target) != pa.target_version)
+    confirm_options = []
+    if pa.is_open and hasattr(handler, "confirm_options"):
+        try:
+            confirm_options = handler.confirm_options(target, pa.payload) or []
+        except Exception:
+            confirm_options = []
+    return {"target": target, "diff": diff, "stale": stale, "confirm_options": confirm_options}
+
+
+def store_confirm_options(pa, user, chosen, *, impersonating=False):
+    """Choices the confirming officer makes (a handler may offer checkboxes,
+    e.g. "e-mail set-password links now"). ``chosen`` maps option name →
+    bool; unknown names are ignored. Stored on the payload under
+    ``confirm_options`` before applying."""
+    from .models import PendingAction
+
+    handler = get_handler(pa.policy_id)
+    if not hasattr(handler, "confirm_options") or not pa.is_open:
+        return
+    names = [o["name"] for o in (handler.confirm_options(_load_target(pa), pa.payload) or [])]
+    if not names or not can_decide(pa, user, impersonating=impersonating)[0]:
+        return
+    payload = dict(pa.payload or {})
+    payload["confirm_options"] = {name: bool(chosen.get(name)) for name in names}
+    PendingAction.objects.filter(pk=pa.pk, status=PendingAction.PENDING).update(payload=payload)
+    pa.payload = payload
+
+
+# ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
 def initiate(code, *, actor, target=None, payload=None, reason="", impersonating=False):

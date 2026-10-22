@@ -190,6 +190,7 @@ class PaymentSlip(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
     AUDITED = True
     INSTITUTION_PATH = "obligation__institution"
     MEDIA_SUBDIR = "qa/slips"
+    INSTITUTION_MEDIA_KIND = "payments/slips"
 
     obligation = models.ForeignKey(PaymentObligation, on_delete=models.CASCADE, related_name="slips")
     version = models.PositiveIntegerField(default=1)
@@ -268,6 +269,7 @@ class ProofOfPayment(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel)
     AUDITED = True
     INSTITUTION_PATH = "obligation__institution"
     MEDIA_SUBDIR = "qa/proofs"
+    INSTITUTION_MEDIA_KIND = "payments/proofs"
     KIND_CHOICES = [("teller", "Bank teller / transfer receipt"), ("provider_receipt", "Online payment receipt")]
 
     obligation = models.ForeignKey(PaymentObligation, on_delete=models.CASCADE, related_name="proofs")
@@ -452,6 +454,7 @@ class PaymentAdvice(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
     AUDITED = True
     INSTITUTION_PATH = "obligation__institution"
     MEDIA_SUBDIR = "qa/advices"
+    INSTITUTION_MEDIA_KIND = "payments/advices"
 
     obligation = models.ForeignKey(PaymentObligation, on_delete=models.PROTECT, related_name="advices")
     verification = models.ForeignKey(PaymentVerification, null=True, blank=True, on_delete=models.SET_NULL,

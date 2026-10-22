@@ -1,0 +1,28 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}{{ p }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:programme_board' %}">Programmes</a><span aria-hidden="true">/</span><span aria-current="page">{{ p }}</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "layers" 14 "2.2" %} Programme</span>
+    <h1 data-qa-focus>{{ p.name }} <span class="qa-muted">{{ p.level.code|upper }}</span></h1>
+    <p><span class="qa-chip {{ p.status|tone }}">{{ p.get_status_display }}</span>{% if expiry_info.label %} <span class="qa-countdown {{ expiry_info.tone }}">{{ expiry_info.label }}</span>{% endif %}</p>
+  </header>
+  <dl class="qa-prog-facts">
+    <div><dt>Status</dt><dd>{{ p.get_status_display }}</dd></div>
+    <div><dt>Approval type</dt><dd>{{ approval_type|default:"—" }}</dd></div>
+    <div><dt>Commenced</dt><dd>{{ p.commencement_date|date:"j M Y"|default:"—" }}</dd></div>
+    <div><dt>Expires</dt><dd>{{ p.expiry_date|date:"j M Y"|default:"—" }}</dd></div>
+    <div><dt>Approved streams</dt><dd>{{ p.approved_streams }}</dd></div>
+    <div><dt>Professional body</dt><dd>{% for b in bodies %}{{ b.name }}{% if not forloop.last %}, {% endif %}{% empty %}None{% endfor %}</dd></div>
+  </dl>
+  <section class="qa-card qa-mt" aria-labelledby="pp-req"><header class="qa-card__head"><h2 id="pp-req">QA requests</h2></header>
+    {% if rows %}<ul class="qa-rowlist" role="list">{% for r in rows %}<li><a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_portal:qa_request' r.qa_request.pk %}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.qa_request.qa_type.name }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ r.qa_request.reference }}</span><span>· {{ r.qa_request.created_at|date:"j M Y" }}</span></span></span><span class="qa-rowlink__side"><span class="qa-chip">{{ r.public_status|humanize_code }}</span></span></a></li>{% endfor %}</ul>
+    {% else %}<p class="qa-card__body qa-muted qa-small">This programme has not been in a QA request yet.</p>{% endif %}
+  </section>
+  <section class="qa-card" aria-labelledby="pp-tl"><header class="qa-card__head"><h2 id="pp-tl">History</h2></header>
+    <ol class="qa-tl qa-card__body">{% for e in events %}<li><span class="qa-tl__text">{{ e.public_text }}</span><small>{{ e.at|date:"j M Y" }}</small></li>{% empty %}<li><span class="qa-tl__text qa-muted">Nothing recorded yet.</span></li>{% endfor %}</ol>
+  </section>
+</div>
+{% endblock %}

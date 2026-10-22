@@ -73,28 +73,24 @@ def _age_bucket(days):
 # Cross-module counts
 # ---------------------------------------------------------------------------
 def _staff_total():
-    def _q():
-        from staff.models import Staff
-        return Staff.objects.filter(is_active=True).count()
-    return _safe(_q, 0)
+    # Phase 8: Staff has no `is_active` field; the old filter raised a
+    # FieldError that _safe() turned into a permanent 0.
+    from . import counts
+    return _safe(lambda: counts.active_staff().count(), 0)
 
 
 def _users_total():
-    def _q():
-        from accounts.models import User
-        return User.objects.filter(is_active=True).count()
-    return _safe(_q, 0)
+    from . import counts
+    return _safe(lambda: counts.active_users().count(), 0)
 
 
 def _staff_by_department():
     def _q():
-        from staff.models import Department, Staff
-        return [
-            {"department": d, "count": n}
-            for d in Department.objects.filter(is_active=True).order_by("name")
-            for n in [Staff.objects.filter(is_active=True, department=d).count()]
-            if n
-        ]
+        from django.db.models import Count, Q as _Q
+        from staff.models import Department
+        rows = (Department.objects.filter(is_active=True)
+                .annotate(n=Count("staff", filter=_Q(staff__is_deleted=False))).order_by("name"))
+        return [{"department": d, "count": d.n} for d in rows if d.n]
     return _safe(_q, []) or []
 
 
@@ -138,17 +134,18 @@ def _requests(user=None):
 def _workflow_kpis(user=None):
     from workflow.models import Request
 
-    pending_statuses = [Request.AWAITING, Request.AWAITING_RECEIVING]
-    open_statuses = [
-        Request.DRAFT, Request.AWAITING, Request.AWAITING_RECEIVING,
-        Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT,
-        Request.RETURNED, Request.READY,
-    ]
+    from . import counts
+
+    # Phase 8: "In flight" used to count drafts and everything still pending
+    # approval too, so it never matched the "In flight" bars or the office
+    # table. It now means approved and being worked on, like they do.
+    pending_statuses = counts.pending_statuses()
+    in_flight_statuses = counts.in_flight_statuses()
 
     def _q():
         return {
             "pending":   _requests(user).filter(status__in=pending_statuses).count(),
-            "in_flight": _requests(user).filter(status__in=open_statuses).count(),
+            "in_flight": _requests(user).filter(status__in=in_flight_statuses).count(),
             "completed_30d": _requests(user).filter(
                 status=Request.COMPLETED,
                 completed_at__gte=timezone.now() - timedelta(days=30),
@@ -644,23 +641,36 @@ def _queue_at_step_kind(kind, cap=20):
 
 
 def _queue_es_signoff(cap=20):
-    from workflow.models import ApprovalStep, Request
+    # Phase 8: a direct query on the current step (was: scan the oldest 300
+    # waiting requests in Python, so anything past them was never counted).
+    from . import counts
 
-    rows = (
-        Request.objects
-        .filter(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING])
-        .select_related("requester", "request_type", "receiving_department")
-        .order_by("current_step_started_at")[:300]
-    )
+    rows = (counts.es_signoff()
+            .select_related("requester", "request_type", "receiving_department")
+            .order_by("current_step_started_at")[:cap])
     result = []
     for r in rows:
         step = _current_step_of(r)
-        if step and step.approver_kind == ApprovalStep.APPROVER_ES:
-            age = _age_days(r.current_step_started_at)
-            result.append({"request": r, "step": step, "age_days": age,
-                           "age_bucket": _age_bucket(age)})
-            if len(result) >= cap:
-                break
+        age = _age_days(r.current_step_started_at)
+        result.append({"request": r, "step": step, "age_days": age, "age_bucket": _age_bucket(age)})
+    return result
+
+
+def _queue_filing(cap=20):
+    # Phase 8: the "Awaiting filing" queue. It used to look for requests at a
+    # *closure* step among those awaiting approval, but a closure step always
+    # carries the "ready for handover" status, so it was always empty. Filing
+    # is the "Records filing" gate a request type adds.
+    from . import counts
+
+    rows = (counts.awaiting_filing()
+            .select_related("requester", "request_type", "receiving_department")
+            .order_by("current_step_started_at")[:cap])
+    result = []
+    for r in rows:
+        step = _current_step_of(r)
+        age = _age_days(r.current_step_started_at)
+        result.append({"request": r, "step": step, "age_days": age, "age_bucket": _age_bucket(age)})
     return result
 
 
@@ -963,14 +973,13 @@ def deputy_context(user):
 
 def es_context(user):
     att = _attendance_block(user)
-    from workflow.models import ApprovalStep
+    from . import counts
     kpis = _workflow_kpis(user)
     return {
         "kpis": {
             **kpis,
-            "es_pending":   len(_safe(lambda: _queue_es_signoff(cap=100), []) or []),
-            "filing_queue": len(_safe(lambda: _queue_at_step_kind(
-                ApprovalStep.KIND_CLOSURE, cap=100), []) or []),
+            "es_pending":   _safe(lambda: counts.es_signoff().count(), 0),
+            "filing_queue": _safe(lambda: counts.awaiting_filing().count(), 0),
             "unread":       _unread_notifications(user),
         },
         "charts": {
@@ -979,8 +988,7 @@ def es_context(user):
             "approvals":  _safe(lambda: _approvals_series(user=user), _chart_empty()) or _chart_empty(),
         },
         "queue":         _safe(lambda: _queue_es_signoff(cap=20), []) or [],
-        "queue_filing":  _safe(lambda: _queue_at_step_kind(
-            ApprovalStep.KIND_CLOSURE, cap=20), []) or [],
+        "queue_filing":  _safe(lambda: _queue_filing(cap=20), []) or [],
         "aged_approvals": _safe(lambda: _aged_approvals(5, 10, user), []) or [],
         "leadership":    _leadership_current(),
         **att,
@@ -1132,7 +1140,7 @@ def self_service_context(user):
             "key": "tickets",
             "title": "My tickets",
             "url": tickets_url,
-            "count": tickets.filter(state__in=Ticket.OPEN_STATES).count(),
+            "count": tickets.filter(state__in=Ticket.OPEN_STATES).count(),  # same rule as counts.open_tickets
             "count_label": "open",
             "items": list(
                 tickets.select_related("category")
@@ -1142,15 +1150,11 @@ def self_service_context(user):
 
     tasks_url = module_url("tasks", "tasks:assigned_to_me")
     if tasks_url:
-        from tasks.models import Task
+        from . import counts
 
-        tasks = (
-            Task.objects
-            .filter(assignee_rows__user=user)
-            .exclude(state__in=Task.CLOSED_STATES)
-            .select_related("category")
-            .distinct()
-        )
+        # Phase 8: same rule as the home work board — drafts and tasks where
+        # this user's own part is done or declined are not "open" for them.
+        tasks = counts.my_open_tasks(user).select_related("category")
         widgets.append({
             "key": "tasks",
             "title": "My tasks",

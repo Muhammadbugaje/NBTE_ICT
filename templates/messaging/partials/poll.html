@@ -1,0 +1,23 @@
+<div class="msg-poll" data-poll data-poll-multiple="{{ pd.allow_multiple|yesno:'1,0' }}">
+  <div class="msg-poll-kicker">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Poll · {% if pd.allow_multiple %}choose one or more{% else %}choose one{% endif %}{% if pd.closed %} · closed{% endif %}
+  </div>
+  <p class="msg-poll-question" data-message-text>{{ pd.question }}</p>
+  <form method="post" action="{% url 'messaging:poll_vote' thread.pk pd.id %}" class="msg-poll-options" data-poll-form>
+    {% csrf_token %}
+    {% for o in pd.options %}
+      <button type="submit" name="option" value="{{ o.id }}"
+              class="msg-poll-option{% if o.mine %} is-mine{% endif %}{% if o.leading %} is-leading{% endif %}"
+              data-poll-option data-option-id="{{ o.id }}" aria-pressed="{{ o.mine|yesno:'true,false' }}"
+              {% if pd.closed %}disabled{% endif %}
+              title="{% if o.voters %}{{ o.voters|join:', ' }}{% else %}No votes yet{% endif %}">
+        <span class="msg-poll-fill" style="width: {{ o.percent }}%"></span>
+        <span class="msg-poll-check{% if pd.allow_multiple %} is-square{% endif %}" aria-hidden="true"></span>
+        <span class="msg-poll-text">{{ o.text }}</span>
+        <span class="msg-poll-count">{% if pd.voter_count %}{{ o.percent }}% · {% endif %}{{ o.votes }}</span>
+      </button>
+    {% endfor %}
+  </form>
+  <div class="msg-poll-foot">{{ pd.voter_count }} voter{{ pd.voter_count|pluralize }}{% if pd.voted %} · you voted{% endif %}</div>
+</div>

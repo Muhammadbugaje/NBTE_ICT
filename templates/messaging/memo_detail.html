@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load ux_tags %}
 {% load static %}
 
 {% block title %}{{ memo.reference }} · {{ SITE_NAME }}{% endblock %}
@@ -94,6 +95,10 @@
   {# ---- Action bar: top (downloads + draft/sender actions) ---- #}
   <div class="memo-actions memo-actions-top">
 
+    {% url 'messaging:memo_download_pdf' memo.pk as memo_pdf_url %}
+    {% if memo.status == "published" or can_manage %}
+      {% with memo.reference|add:".pdf" as memo_pdf_name %}{% preview_button memo_pdf_url memo_pdf_name label="Preview" %}{% endwith %}
+    {% endif %}
     {% if memo.status == "published" %}
       <a href="{% url 'messaging:memo_download_pdf' memo.pk %}"
          class="btn btn-primary" target="_blank" rel="noopener">
@@ -211,6 +216,7 @@
                 {% if att.description %}<small>{{ att.description }}</small>{% endif %}
               </span>
             </a>
+            {% url 'messaging:memo_attachment_download' att.pk as att_url %}{% preview_button att_url att.original_name compact=True %}
             {% if can_manage %}
               <form method="post" action="{% url 'messaging:memo_remove_attachment' memo.pk att.pk %}"
                     data-confirm="Remove this attachment? This cannot be undone."

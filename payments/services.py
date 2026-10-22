@@ -176,16 +176,75 @@ def bank_for(schedule):
     return default_bank_account()
 
 
+def stream_variables(rows):
+    """Fee variables for a list of (programme, streams) pairs (Phase 8):
+    programmes, new_programmes, streams (each programme counts at least 1)
+    and max_streams."""
+    streams = [max(1, int(n or 1)) for _p, n in rows]
+    return {"programmes": len(rows),
+            "new_programmes": sum(1 for p, _n in rows if getattr(p, "status", "") == "proposed"),
+            "streams": sum(streams), "max_streams": max(streams, default=0)}
+
+
 def fee_variables(institution, **extra):
+    """Every fee formula gets the documented variables
+    (``qa_core.settings_catalogue.FEE_VARIABLES``). Without ``extra`` the
+    programme figures cover every programme on the institution's record that
+    is not dropped (SOP-01: the programmes it selected, with their streams)."""
     from institutions.models import Programme
 
+    programmes = list(Programme.unscoped.filter(institution=institution).exclude(status="dropped"))
     variables = {
         "ownership": institution.ownership.code if institution.ownership_id else "public",
         "institution_type": institution.institution_type.code if institution.institution_type_id else "",
-        "programmes": Programme.unscoped.filter(institution=institution).exclude(status="dropped").count(),
+        **stream_variables([(p, p.requested_streams) for p in programmes]),
     }
     variables.update(extra)
     return variables
+
+
+def fee_estimate(institution, schedule_code, rows):
+    """A live estimate for the institution (HTMX on the portal): the bill the
+    formula would give for ``rows`` = [(programme, streams)], with one line per
+    programme. Lines are the formula for that programme alone minus the
+    formula for none; a fixed part and any non-linear adjustment are shown as
+    their own lines so the lines always add up to the total.
+
+    Returns {"total", "lines": [(label, amount)], "error", "blocked"}."""
+    from decimal import Decimal
+
+    schedule = FeeSchedule.objects.filter(code=schedule_code, is_active=True).first()
+    out = {"total": None, "lines": [], "error": "", "blocked": False, "schedule": schedule}
+    if schedule is None:
+        out["error"] = "This fee is not set up yet."
+        return out
+    if schedule.confirmed_setting and not _bool(schedule.confirmed_setting, False):
+        out["blocked"] = True
+        out["error"] = "NBTE has not confirmed this fee yet; it is issued once the amount is confirmed."
+        return out
+
+    def amount(pairs):
+        return to_money(evaluate_setting(schedule.formula, fee_variables(institution,
+                                                                         **stream_variables(pairs)))["result"])
+    try:
+        total = amount(rows)
+    except FormulaError as exc:
+        out["error"] = f"The fee could not be worked out ({exc})."
+        return out
+    out["total"] = total
+    try:
+        fixed = amount([])
+        lines = [(f"{p} — {max(1, int(n or 1))} stream{'s' if max(1, int(n or 1)) != 1 else ''}",
+                  amount([(p, n)]) - fixed) for p, n in rows]
+    except FormulaError:
+        return out
+    if fixed:
+        lines.insert(0, ("Fixed amount", fixed))
+    rest = total - sum((a for _l, a in lines), Decimal("0"))
+    if rest:
+        lines.append(("Adjustment for the combination", rest))
+    out["lines"] = lines
+    return out
 
 
 @transaction.atomic
@@ -597,6 +656,30 @@ def handle_webhook(provider_code, request):
         log.outcome = "error (see server log)"
         log.save()
         return 200, "logged"
+
+
+def verify_on_return(obligation, params):
+    """The institution came back from the provider's checkout page
+    (Paystack adds ?reference=/trxref=, Remita ?RRR=/orderID=). Check that
+    attempt with the provider at once, exactly as a webhook would, so the
+    page shows the result without waiting for the webhook or the sweep.
+    Returns the attempt, or None when nothing matched."""
+    refs = [str(params.get(k) or "").strip() for k in ("reference", "trxref", "RRR", "rrr", "orderID")]
+    refs = [r for r in refs if r]
+    if not refs:
+        return None
+    attempt = (PaymentAttempt.unscoped.filter(obligation=obligation, provider_reference__in=refs)
+               .order_by("-created_at").first())
+    if attempt is None or attempt.status not in ("initiated", "pending", "provider_processing"):
+        return attempt
+    provider = providers.get(attempt.provider)
+    try:
+        result = provider.verify(attempt)
+    except providers.ProviderError:
+        return attempt  # the webhook or the sweep will catch up
+    record_provider_result(attempt, result, via="return")
+    attempt.refresh_from_db()
+    return attempt
 
 
 def poll_pending_attempts(now=None):
@@ -1363,3 +1446,69 @@ def simulate_provider_callback(provider_code, ref, outcome="success"):
         if attempt is not None:
             record_provider_result(attempt, providers.get(provider_code).verify(attempt), via="poll")
     return result
+
+
+# ===========================================================================
+# Verification queue rows and per-item rights (Phase 9: shared by the
+# Finance screens and the mobile API)
+# ===========================================================================
+QUEUE_STAGES = ("first", "second", "final", "info", "overdue")
+QUEUE_AGES = {"24h": 1, "3d": 3, "7d": 7}
+
+
+def queue_items(user, *, source="", age="", q="", stage=""):
+    """Open verification items ``user`` may see, oldest first, each with
+    ``ready``/``ready_why``, ``needs_second``, ``overdue`` and ``sla_pct``,
+    filtered like the queue page (source, age, search, stage tab)."""
+    from django.db.models import Q
+
+    qs = (PaymentVerification.objects.for_user(user).filter(is_open=True)
+          .select_related("obligation", "obligation__institution", "verified_by", "attempt", "proof", "statement_line"))
+    if source:
+        qs = qs.filter(source=source)
+    if age in QUEUE_AGES:
+        qs = qs.filter(opened_at__lte=timezone.now() - datetime.timedelta(days=QUEUE_AGES[age]))
+    q = (q or "").strip()
+    if q:
+        qs = qs.filter(Q(obligation__reference__icontains=q.replace(" ", "")) | Q(obligation__institution__name__icontains=q)
+                       | Q(obligation__institution__code__iexact=q) | Q(proof__teller_number__icontains=q)
+                       | Q(attempt__provider_reference__icontains=q))
+    out = []
+    now = timezone.now()
+    for item in qs.order_by("opened_at"):
+        item.ready, item.ready_why = ready_for_final(item)
+        item.needs_second = needs_second_check(item) and item.decision == "approved" and not item.second_decision
+        item.overdue = item.obligation.status == "finance_confirmation_overdue" or bool(
+            item.sla_due_at and item.sla_due_at <= now)
+        if item.sla_due_at:
+            total = max(1, (item.sla_due_at - item.opened_at).total_seconds())
+            item.sla_pct = min(100, int(100 * (now - item.opened_at).total_seconds() / total))
+        else:
+            item.sla_pct = 0
+        if stage == "first" and item.decision:
+            continue
+        if stage == "second" and not item.needs_second:
+            continue
+        if stage == "final" and not item.ready:
+            continue
+        if stage == "info" and item.decision != "needs_info":
+            continue
+        if stage == "overdue" and not item.overdue:
+            continue
+        out.append(item)
+    return out
+
+
+def item_rights(item, user, *, impersonating=False):
+    """What ``user`` may do on one verification item (the decision panel)."""
+    is_director = is_final_approver(user)
+    did_first_pass = user.pk in (item.verified_by_id, item.second_verifier_id)
+    return {
+        "can_first": bool(user.has_perm("payments.verify_payment") and item.is_open and not item.final_decision
+                          and not impersonating),
+        "can_second": bool(user.has_perm("payments.second_verify_payment") and item.is_open
+                           and item.decision in ("approved", "rejected") and user.pk != item.verified_by_id
+                           and needs_second_check(item) and not item.second_decision),
+        "is_director": is_director, "did_first_pass": did_first_pass,
+        "can_final": bool(is_director and item.is_open and not did_first_pass and not impersonating),
+    }

@@ -261,7 +261,8 @@ def stage_no(case):
 
 def advance(case, people, target):
     """Drive ``case`` forward with the demo officers until its stage number
-    is ``target`` (0 = case opened … 11 = fund release … 18 = closed)."""
+    is ``target`` (0 = case opened … 11 = fund release … 14–16 decisions …
+    18 = closed: stage 17 has updated the programmes and issued the letters)."""
     for _ in range(40):
         case.refresh_from_db()
         if stage_no(case) >= target:
@@ -318,9 +319,61 @@ def advance(case, people, target):
         elif code == "request_fund_release":
             cs.record_release(case, user=people.pay_officer, reference="PV/QA/2026/0001")
             cs.act(case, user=people.pay_officer, stage_code=code, action="approve")
+        elif code in ("cqac_recommendation", "cqac_chair_approval", "es_final_approval"):  # Phase 8
+            holder = (cs.holders(case, code) or [None])[0]
+            if holder is None:
+                raise RuntimeError(f"Nobody holds {code}")
+            if code == "cqac_recommendation":
+                run_demo_capacity(case, people.director)
+            record_demo_decisions(case, code, holder)
+            cs.act(case, user=holder, stage_code=code, action="approve", remark="Demo")
         else:
             holder = (cs.holders(case, code) or [None])[0]
             if holder is None:
                 raise RuntimeError(f"Nobody holds {code}")
             cs.act(case, user=holder, stage_code=code, action="approve", remark="Demo")
     return case
+
+
+def record_demo_decisions(case, stage_code, user, *, commencement=None):
+    """Phase 8: the demo decides every programme as the stage suggests
+    (stage 14 from the Directorate's recommendation, then each stage adopts
+    the previous one), starting today unless ``commencement`` is given."""
+    from . import decisions as dec
+
+    stage = dec.STAGE_OF_FLOW[stage_code]
+    saved = dec.decisions_at(case, stage)
+    for row in dec.rows(case):
+        if row.pk in saved:
+            continue
+        start = dec.suggestion(case, row, stage)
+        outcome = start["outcome"] if start["outcome"] != "return" else "approve"
+        approval = start["approval_type"]
+        if outcome == "approve" and approval is None:
+            from .models import ApprovalType
+
+            approval = ApprovalType.objects.filter(code="full").first()
+        dec.record(case, row, stage, user=user, outcome=outcome, approval_type=approval,
+                   approved_streams=start["approved_streams"] or 1,
+                   commencement_date=commencement or start["commencement_date"],
+                   weaknesses=start["weaknesses"] or ([] if outcome == "approve" else ["Demo weakness"]),
+                   note="Demo decision")
+
+
+def run_demo_capacity(case, user):
+    """Phase 8: run every capacity assessment once from the SSQ prefill, so the
+    CQAC sees results (a kind whose prefill is incomplete is skipped)."""
+    from django.core.exceptions import ValidationError
+
+    from . import capacity
+    from . import decisions as dec
+
+    for row in dec.rows(case):
+        current = capacity.current(row)
+        for kind, inputs in capacity.prefill(row).items():
+            if current[kind] is not None:
+                continue
+            try:
+                capacity.run(row, kind, inputs, user=user)
+            except ValidationError:
+                continue

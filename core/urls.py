@@ -10,6 +10,7 @@ urlpatterns = [
     path("health/", health.health, name="health"),
     path("contact/", views.contact_submit, name="contact_submit"),
     path("contact-inbox/", views.contact_inbox, name="contact_inbox"),
+    path("contact-inbox/bulk/", views.contact_bulk, name="contact_bulk"),
     path("contact-inbox/<int:pk>/", views.contact_detail, name="contact_detail"),
     path("contact-inbox/<int:pk>/assign/", views.contact_assign, name="contact_assign"),
     path("contact-inbox/<int:pk>/read/", views.contact_mark_read, name="contact_mark_read"),

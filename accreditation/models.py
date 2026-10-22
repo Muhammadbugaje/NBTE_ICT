@@ -40,8 +40,8 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import TimeStampedModel
-from core.storage import restricted_storage, uuid_upload_to
-from qa_core.files import QAFileMixin
+from core.storage import restricted_storage
+from qa_core.files import QAFileMixin, qa_upload_to
 from qa_core.scoping import (
     InstitutionScopedManager,
     InstitutionScopedModelMixin,
@@ -205,6 +205,9 @@ class QAType(TimeStampedModel):
     admin_programme_only = models.BooleanField(default=False,
                                                help_text="Only the Institutional Administration programme.")
     max_programmes = models.PositiveSmallIntegerField(null=True, blank=True)
+    asks_streams = models.BooleanField(
+        default=False, help_text="The institution says how many streams it wants for each programme "
+                                 "(new programmes, increase in carrying capacity).")
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
 
@@ -367,6 +370,8 @@ class QARequestProgramme(InstitutionScopedModelMixin, TimeStampedModel):
     clearance_remark = models.TextField(blank=True)
     cleared_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     cleared_at = models.DateTimeField(null=True, blank=True)
+    requested_streams = models.PositiveSmallIntegerField(
+        default=1, help_text="Number of streams the institution asks for (fees and the capacity engine).")
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()
@@ -495,10 +500,11 @@ class Evidence(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
     AUDITED = True
     INSTITUTION_PATH = "ssq__qa_request_programme__qa_request__institution"
     MEDIA_SUBDIR = "qa/evidence"
+    INSTITUTION_MEDIA_KIND = "ssq-evidence"
     STATUS_CHOICES = [("attached", "Attached"), ("accepted", "Accepted"), ("returned", "Returned"),
                       ("removed", "Removed")]
 
-    file = models.FileField(upload_to=uuid_upload_to, storage=restricted_storage, max_length=255, blank=True)
+    file = models.FileField(upload_to=qa_upload_to, storage=restricted_storage, max_length=255, blank=True)
     ssq = models.ForeignKey(SSQ, on_delete=models.CASCADE, related_name="evidence")
     field_key = models.CharField(max_length=80)
     document_kind = models.ForeignKey("institutions.DocumentKind", null=True, blank=True,
@@ -591,8 +597,9 @@ class Response(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
     AUDITED = True
     INSTITUTION_PATH = "query__institution"
     MEDIA_SUBDIR = "qa/query_responses"
+    INSTITUTION_MEDIA_KIND = "queries"
 
-    file = models.FileField(upload_to=uuid_upload_to, storage=restricted_storage, max_length=255, blank=True)
+    file = models.FileField(upload_to=qa_upload_to, storage=restricted_storage, max_length=255, blank=True)
     query = models.ForeignKey(Query, on_delete=models.CASCADE, related_name="responses")
     body = models.TextField()
     responded_by = models.ForeignKey(USER, on_delete=models.PROTECT, related_name="+")
@@ -917,3 +924,231 @@ class ProfessionalBodyNotice(InstitutionScopedModelMixin, TimeStampedModel):
 
     def __str__(self):
         return f"{self.case.reference} → {self.body}"
+
+
+# ===========================================================================
+# Phase 8 (Master Plan Phase 6) — decisions, letters and capacity assessment
+# (Master Plan §5.4: ApprovalType, Decision, OutcomeLetter, CapacityAssessment)
+# ===========================================================================
+class ApprovalType(TimeStampedModel):
+    """B18 / R-05: what an approval grants and for how long. The expiry date
+    of a programme is always derived from ``duration_months`` — never typed.
+    Edited in Settings → Approval types (``manage_approval_types``)."""
+
+    AUDITED = True
+    PROGRAMME_STATUS_CHOICES = [("accredited", "Accredited"), ("interim", "Interim"),
+                                ("approval_to_commence", "Approval to commence")]
+
+    code = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=120)
+    duration_months = models.PositiveSmallIntegerField(help_text="Expiry = commencement + this many months.")
+    programme_status = models.CharField(
+        max_length=30, choices=PROGRAMME_STATUS_CHOICES, default="accredited",
+        help_text="The programme status an approval of this type gives (stage 17).")
+    description = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        permissions = [("manage_approval_types", "QA: can edit the approval types (durations)")]
+
+    def __str__(self):
+        return self.name
+
+    def expiry_for(self, commencement):
+        return add_months(commencement, self.duration_months) if commencement else None
+
+
+def add_months(day, months):
+    """``day`` + ``months`` calendar months (the 31st becomes the month's last day)."""
+    import calendar
+    import datetime as _dt
+
+    if day is None:
+        return None
+    month0 = day.month - 1 + int(months)
+    year, month = day.year + month0 // 12, month0 % 12 + 1
+    last = calendar.monthrange(year, month)[1]
+    return _dt.date(year, month, min(day.day, last))
+
+
+class Decision(InstitutionScopedModelMixin, TimeStampedModel):
+    """One programme's decision at a decision stage of the SOP-03 case:
+    14 CQAC recommendation, 15 the CQAC Chairman, 16 the ES (final).
+    Stage 17 applies the ES decision to the programme record."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "case__institution"
+    CQAC, CHAIR, ES = "cqac_recommendation", "cqac_chair", "es_final"
+    STAGE_CHOICES = [(CQAC, "CQAC recommendation"), (CHAIR, "CQAC Chairman"), (ES, "ES final approval")]
+    FLOW_STAGE = {CQAC: "cqac_recommendation", CHAIR: "cqac_chair_approval", ES: "es_final_approval"}
+    APPROVE, DENY, RETURN = "approve", "deny", "return"
+    OUTCOME_CHOICES = [(APPROVE, "Approve"), (DENY, "Deny"), (RETURN, "Return for more work")]
+
+    case = models.ForeignKey(QACase, on_delete=models.CASCADE, related_name="decisions")
+    qa_request_programme = models.ForeignKey(QARequestProgramme, on_delete=models.PROTECT, related_name="decisions")
+    programme = models.ForeignKey("institutions.Programme", on_delete=models.PROTECT, related_name="decisions")
+    stage = models.CharField(max_length=24, choices=STAGE_CHOICES, db_index=True)
+    outcome = models.CharField(max_length=10, choices=OUTCOME_CHOICES)
+    approval_type = models.ForeignKey(ApprovalType, null=True, blank=True, on_delete=models.PROTECT,
+                                      related_name="decisions")
+    approved_streams = models.PositiveSmallIntegerField(default=0)
+    commencement_date = models.DateField(null=True, blank=True)
+    expiry_date = models.DateField(null=True, blank=True, help_text="Derived: commencement + duration (B18).")
+    weaknesses = models.JSONField(default=list, blank=True)
+    note = models.TextField(blank=True)
+    batch_key = models.CharField(max_length=40, blank=True, db_index=True,
+                                 help_text="Set when the Chairman approved a batch (B23).")
+    decided_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    decided_at = models.DateTimeField(default=timezone.now)
+    applied_at = models.DateTimeField(null=True, blank=True, help_text="Stage 17 applied it to the programme.")
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["case", "programme__name", "stage"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [models.UniqueConstraint(fields=["case", "qa_request_programme", "stage"],
+                                               name="decision_once_per_stage")]
+        permissions = [
+            ("cqac_review", "QA: can record the CQAC recommendation (stage 14)"),
+            ("cqac_chair_decide", "QA: can record the CQAC Chairman's decision (stage 15)"),
+            ("es_final_decide", "QA: can record the ES final decision (stage 16)"),
+            ("batch_decide", "QA: can approve CQAC recommendations in a batch (B23)"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_stage_display()} · {self.programme} · {self.get_outcome_display()}"
+
+    def save(self, *args, **kwargs):
+        # B18: the expiry is always derived, never typed.
+        if self.outcome == self.APPROVE and self.approval_type_id and self.commencement_date:
+            self.expiry_date = self.approval_type.expiry_for(self.commencement_date)
+        else:
+            self.expiry_date = None
+        super().save(*args, **kwargs)
+
+
+class OutcomeLetter(InstitutionScopedModelMixin, TimeStampedModel):
+    """B24: the letter that tells the institution the final decision on a
+    programme. An original and a duplicate (with a visible watermark) are
+    generated together as two restricted files (``OutcomeLetterCopy``)."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "case__institution"
+
+    case = models.ForeignKey(QACase, on_delete=models.PROTECT, related_name="letters")
+    decision = models.ForeignKey(Decision, on_delete=models.PROTECT, related_name="letters")
+    programme = models.ForeignKey("institutions.Programme", on_delete=models.PROTECT, related_name="letters")
+    reference = models.CharField(max_length=60, unique=True)
+    version = models.PositiveSmallIntegerField(default=1)
+    is_current = models.BooleanField(default=True, db_index=True)
+    template_version = models.CharField(max_length=16, blank=True,
+                                        help_text="Short hash of the qa.letters.* settings used.")
+    template_snapshot = models.JSONField(default=dict, blank=True)
+    generated_at = models.DateTimeField(default=timezone.now)
+    generated_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    regenerated_reason = models.CharField(max_length=255, blank=True)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["-generated_at", "-id"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        permissions = [("regenerate_letter", "QA: can regenerate an outcome letter")]
+
+    def __str__(self):
+        return f"{self.reference} — {self.programme}"
+
+    @property
+    def institution(self):
+        return self.case.institution
+
+    def copy(self, kind):
+        return OutcomeLetterCopy.unscoped.filter(letter=self, kind=kind).first()
+
+    @property
+    def pdf_original(self):
+        return self.copy(OutcomeLetterCopy.ORIGINAL)
+
+    @property
+    def pdf_duplicate(self):
+        return self.copy(OutcomeLetterCopy.DUPLICATE)
+
+
+class OutcomeLetterCopy(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
+    """One PDF of an outcome letter: the original or the watermarked duplicate."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "letter__case__institution"
+    MEDIA_SUBDIR = "qa/letters"
+    INSTITUTION_MEDIA_KIND = "letters"  # institutions/<CODE - Name>/letters/
+    ORIGINAL, DUPLICATE = "original", "duplicate"
+    KIND_CHOICES = [(ORIGINAL, "Original"), (DUPLICATE, "Duplicate (watermarked)")]
+
+    letter = models.ForeignKey(OutcomeLetter, on_delete=models.CASCADE, related_name="copies")
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["letter", "kind"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [models.UniqueConstraint(fields=["letter", "kind"], name="letter_copy_kind_unique")]
+
+    def __str__(self):
+        return f"{self.letter.reference} ({self.get_kind_display()})"
+
+    def can_download(self, user):
+        inst = self.letter.case.institution
+        if user is None or not user.is_authenticated:
+            return False
+        if getattr(user, "user_type", "staff") == "institution":
+            return user.institution_id == inst.pk
+        return _staff_can_see(user, inst) or user.has_perm("accreditation.view_qa_case")
+
+
+class CapacityAssessment(InstitutionScopedModelMixin, TimeStampedModel):
+    """Requirements 5–10 / Spec §7: one run of the capacity engine for a
+    request programme and a resource kind. ``parameters_snapshot`` keeps every
+    constant and formula in effect at the time, so a later settings change
+    never alters a stored assessment. Re-running adds a new version."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "qa_request_programme__qa_request__institution"
+    KIND_CHOICES = [("classroom", "Classrooms"), ("laboratory", "Laboratories and workshops"),
+                    ("library", "Library"), ("teaching_staff", "Teaching staff"),
+                    ("support_staff", "Support staff")]
+
+    qa_request_programme = models.ForeignKey(QARequestProgramme, on_delete=models.CASCADE,
+                                             related_name="capacity_assessments")
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    version = models.PositiveSmallIntegerField(default=1)
+    is_current = models.BooleanField(default=True, db_index=True)
+    inputs = models.JSONField(default=dict)
+    parameters_snapshot = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    computed_at = models.DateTimeField(default=timezone.now)
+    computed_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["qa_request_programme", "kind", "-version"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [models.UniqueConstraint(fields=["qa_request_programme", "kind", "version"],
+                                               name="capacity_version_unique")]
+        permissions = [("view_capacity_assessment", "QA: can see capacity assessments"),
+                       ("run_capacity_assessment", "QA: can run or re-run a capacity assessment")]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} v{self.version} · {self.qa_request_programme}"

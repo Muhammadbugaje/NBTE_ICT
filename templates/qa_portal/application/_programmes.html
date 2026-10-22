@@ -1,18 +1,24 @@
 {% load qa_tags %}
 <section class="qa-card" aria-labelledby="qa-prog-h" id="qa-prog-card">
-  <header class="qa-card__head"><div><h2 id="qa-prog-h">Programmes you plan to offer</h2><p>List each programme now. NBTE opens programme clearance and programme fees in the next stage.</p></div><span class="qa-chip">{{ programmes|length }}</span></header>
+  <header class="qa-card__head"><div><h2 id="qa-prog-h">Programmes you plan to offer</h2><p>List each programme and how many streams you plan to admit. NBTE opens programme clearance and the programme fee in the next stage.</p></div><span class="qa-chip">{{ programmes|length }}</span></header>
+  {% if stream_error %}<div class="qa-card__body">{% include "qa_core/partials/_callout.html" with kind="danger" title="Not saved" message=stream_error %}</div>{% endif %}
   {% if programmes %}
-    <ul class="qa-rowlist" role="list">{% for p in programmes %}<li><div class="qa-rowlink"><span class="qa-rowlink__badge">{{ p.level.code|upper }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ p.name }}</span><span class="qa-rowlink__meta">{{ p.level.name }}{% if p.category %} · {{ p.category.name }}{% endif %}</span></span>
+    <ul class="qa-rowlist" role="list">{% for p in programmes %}<li><div class="qa-rowlink"><span class="qa-rowlink__badge">{{ p.level.code|upper }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ p.name }}</span><span class="qa-rowlink__meta">{{ p.level.name }}{% if p.category %} · {{ p.category.name }}{% endif %} · {{ p.requested_streams }} stream{{ p.requested_streams|pluralize }}</span></span>
       <span class="qa-rowlink__side"><span class="qa-chip {{ p.status|tone }}">{{ p.status|humanize_code }}</span>{% include "complaints/portal/_raise_link.html" with kind="programme" pk=p.pk short=True %}
-      {% if selecting and p.status == "proposed" %}<form method="post" hx-post="{% url 'qa_portal:programme_remove' p.pk %}" hx-target="#qa-prog-card" hx-swap="outerHTML">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit" aria-label="Remove {{ p.name }}">Remove</button></form>{% endif %}</span></div></li>{% endfor %}</ul>
+      {% if selecting and p.status == "proposed" %}
+        <form class="qa-streams" method="post" action="{% url 'qa_portal:programme_streams' p.pk %}" hx-post="{% url 'qa_portal:programme_streams' p.pk %}" hx-target="#qa-prog-card" hx-swap="outerHTML" hx-trigger="change">{% csrf_token %}<label for="ps-{{ p.pk }}">Streams</label><input class="input qa-streams__input" type="number" inputmode="numeric" id="ps-{{ p.pk }}" name="streams" value="{{ p.requested_streams }}" min="1" max="{{ form.fields.streams.max_value }}" step="1"><noscript><button class="btn btn-sm btn-subtle" type="submit">Save</button></noscript></form>
+        <form method="post" hx-post="{% url 'qa_portal:programme_remove' p.pk %}" hx-target="#qa-prog-card" hx-swap="outerHTML">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit" aria-label="Remove {{ p.name }}">Remove</button></form>{% endif %}</span></div></li>{% endfor %}</ul>
   {% else %}<div class="qa-card__body"><p class="qa-small qa-muted">No programmes listed yet.</p></div>{% endif %}
   {% if selecting %}
-    <div class="qa-card__body">
+    <div class="qa-card__body qa-stack">
       <form method="post" action="{% url 'qa_portal:programmes' %}" hx-post="{% url 'qa_portal:programmes' %}" hx-target="#qa-prog-card" hx-swap="outerHTML" novalidate>{% csrf_token %}
         {% include "qa_core/partials/_form_errors.html" %}
-        <div class="qa-fields">{% for n in "name level category"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div>
+        <div class="qa-fields">{% for n in "name level category streams"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div>
         <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add programme</button></div>
+        <div id="qa-prog-estimate" class="qa-region" hx-target="this" hx-swap="innerHTML" hx-get="{% url 'qa_portal:programme_estimate' %}" hx-trigger="input delay:400ms from:closest form, change from:closest form" hx-include="closest form" hx-sync="this:replace">{% include "qa_portal/qa_requests/_fee_estimate.html" with qa_type=True %}</div>
       </form>
     </div>
+  {% elif estimate and programmes %}
+    <div class="qa-card__body">{% include "qa_portal/qa_requests/_fee_estimate.html" with qa_type=True %}</div>
   {% endif %}
 </section>

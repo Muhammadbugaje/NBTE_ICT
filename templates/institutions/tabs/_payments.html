@@ -1,6 +1,9 @@
 {% load qa_tags %}
 <section class="qa-card" aria-labelledby="tab-pay">
-  <header class="qa-card__head"><div><h2 id="tab-pay" data-qa-focus-heading>Bills</h2><p>Institution payment slips are not shown to staff; Finance verifies from the evidence in the Finance queue.</p></div></header>
+  <header class="qa-card__head"><div><h2 id="tab-pay" data-qa-focus-heading>Bills</h2><p>Institution payment slips are not shown to staff; Finance verifies from the evidence in the Finance queue.</p></div>
+    {% if can_see_payments %}<details class="qa-export-menu"><summary class="btn btn-sm btn-subtle">{% icon "download" 14 %} Statement</summary>
+      <ul class="qa-export-menu__list" role="list"><li><a href="{% url 'qa_inst:payment_statement' inst.code %}?format=pdf" download>Payment statement (PDF)</a></li><li><a href="{% url 'qa_inst:payment_statement' inst.code %}?format=csv" download>Payment statement (CSV)</a></li></ul></details>{% endif %}
+    {% if can_see_payments %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_fin:issue_bill' %}?institution={{ inst.code }}">{% icon "plus" 14 %} Issue a bill</a>{% endif %}</header>
   {% if can_see_payments %}
     <ul class="qa-rowlist" role="list">
       {% for ob in obligations %}

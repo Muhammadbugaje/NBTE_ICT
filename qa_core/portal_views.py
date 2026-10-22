@@ -38,7 +38,25 @@ from .portal_forms import (
 from .portal_tokens import link_valid_hours, portal_token_generator
 from .ui import is_htmx, timeout_ms
 
-PORTAL_NAME = "NBTE Quality Assurance Portal"
+class _PortalName:
+    """The portal's name from Settings → Site (site.portal_name), read on every
+    use so a change shows at once. Renders as a string in templates."""
+
+    DEFAULT = "NBTE Quality Assurance Portal"
+
+    def __str__(self):
+        try:
+            value = str(config.get("site.portal_name", self.DEFAULT) or "").strip()
+        except Exception:
+            value = ""
+        return value or self.DEFAULT
+
+    def __html__(self):
+        from django.utils.html import escape
+        return escape(str(self))
+
+
+PORTAL_NAME = _PortalName()
 FULL_BASE = "qa_portal/base_portal.html"
 PARTIAL_BASE = "qa_portal/base_partial.html"
 
@@ -90,15 +108,32 @@ NAV_ICONS = {
     "payments": '<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>',
     "institution": '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/>',
     "timeline": '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>',
+    "programmes": '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/>'
+                  '<polyline points="2 12 12 17 22 12"/>',
     "qa_requests": '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     "queries": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
     "engagements": '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
     "service": '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>',
     "profile": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
     "inspections": '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+    "programmes": '<path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+    "letters": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
     "account": '<circle cx="12" cy="8" r="4"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
     "complaints": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'
                   '<line x1="12" y1="7" x2="12" y2="11"/><line x1="12" y1="14" x2="12.01" y2="14"/>',
+}
+
+
+# Phase 8 UI: tile colour and a one-line purpose for each section (dashboard shortcuts).
+NAV_HUES = {
+    "application": ("green", "Your registration, step by step"), "qa_requests": ("indigo", "Ask for accreditation and fill the SSQ"),
+    "queries": ("blue", "Questions from NBTE, answered online"), "inspections": ("teal", "Visit dates and teams"),
+    "programmes": ("purple", "Every programme and its status"), "letters": ("pink", "Decision letters to download"),
+    "documents": ("blue", "Statutory documents and returns"), "payments": ("green", "Bills, receipts and proof of payment"),
+    "institution": ("slate", "Your institution's details"), "timeline": ("slate", "Everything that happened, in order"),
+    "complaints": ("orange", "Raise an issue and follow it"), "engagements": ("teal", "Visits and reviews you are mapped to"),
+    "service": ("slate", "QA exercises you served on"), "profile": ("slate", "Your resource-person profile"),
+    "account": ("slate", "Password and sign-in"), "dashboard": ("green", ""),
 }
 
 
@@ -113,6 +148,9 @@ def portal_nav(user, institution, section):
             items.append(("qa_requests", "QA requests", reverse("qa_portal:qa_requests")))
             items.append(("queries", "Queries", reverse("qa_portal:queries")))
             items.append(("inspections", "Inspections", reverse("qa_portal:inspections")))  # Phase 5
+            # Phase 8: programme status board and outcome letters
+            items.append(("programmes", "Programmes", reverse("qa_portal:programme_board")))
+            items.append(("letters", "Outcome letters", reverse("qa_portal:letters")))
         items += [
             ("documents", "Documents", reverse("qa_portal:documents")),
             ("payments", "Payments", reverse("qa_portal:payments")),
@@ -130,7 +168,7 @@ def portal_nav(user, institution, section):
     many = len(items) > 3
     secondary = {"timeline", "account"}
     if any(k == "qa_requests" for k, _l, _u in items):
-        secondary |= {"institution", "queries", "inspections"}  # Phase 3: keep the top bar to five links
+        secondary |= {"institution", "queries", "inspections", "letters"}  # Phase 3: keep the top bar to five links
     if sum(1 for k, _l, _u in items if k not in secondary) > 5:
         secondary.add("complaints")  # Phase 7: still five links; Complaints moves to the user menu
     # Phase 7: the phone tab bar shows the four most-used sections the user has.
@@ -139,7 +177,7 @@ def portal_nav(user, institution, section):
     present = [k for k, _l, _u in items]
     tabs = [k for k in order if k in present][:4]
     return [{"key": k, "label": label, "url": url, "active": k == section, "icon": NAV_ICONS.get(k, ""),
-             "tab": k in tabs,
+             "tab": k in tabs, "hue": NAV_HUES.get(k, ("slate", ""))[0], "blurb": NAV_HUES.get(k, ("slate", ""))[1],
              # Timeline and Account live in the user menu when the bar is full.
              "primary": not (many and k in secondary)}
             for k, label, url in items]
@@ -383,21 +421,16 @@ def dashboard(request):
 # ---------------------------------------------------------------------------
 PORTAL_FILE_MODELS = ("institutions.institutiondocument", "accreditation.evidence", "accreditation.response",
                       "payments.paymentslip", "payments.paymentadvice",
-                      "payments.proofofpayment")
+                      "payments.proofofpayment",
+                      "accreditation.outcomelettercopy")  # Phase 8: outcome letters
 
 
 @portal_login_required
 def portal_file(request, label, pk):
     """The portal's protected download: the row is found through
     ``for_user`` (scoped) and ``can_download`` decides (§10.4)."""
-    import mimetypes
-    from urllib.parse import quote
-
     from django.apps import apps
-    from django.conf import settings as dj_settings
-    from django.http import FileResponse, Http404, HttpResponse
-
-    from core import audit
+    from django.http import Http404
 
     if label not in PORTAL_FILE_MODELS:
         raise Http404
@@ -405,21 +438,35 @@ def portal_file(request, label, pk):
     obj = model.objects.for_user(request.user).filter(pk=pk).first()
     if obj is None or not obj.file or not obj.can_download(request.user):
         raise Http404
-    audit.log("other", obj, actor=getattr(request, "impersonator", None) or request.user,
-              note="file downloaded (portal" + (", impersonation" if getattr(request, "is_impersonating", False)
-                                               else "") + ")")
+    return portal_file_response(request, obj)
+
+
+def portal_file_response(request, obj, *, channel="portal"):
+    """Serve one protected file already found through ``for_user`` and
+    checked with ``can_download`` (the portal download above and the mobile
+    API's download endpoints, Phase 9). Audited like every download."""
+    import mimetypes
+    from urllib.parse import quote
+
+    from django.conf import settings as dj_settings
+    from django.http import FileResponse, HttpResponse
+
+    from core import audit
+    from core import file_preview
+
     filename = obj.original_name or obj.file.name.rsplit("/", 1)[-1]
     ctype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    inline = file_preview.wants_inline(request, ctype)
+    ctype = file_preview.text_charset(ctype)
+    audit.log("other", obj, actor=getattr(request, "impersonator", None) or request.user,
+              note=file_preview.audit_note(inline) + f" ({channel}" + (
+                  ", impersonation" if getattr(request, "is_impersonating", False) else "") + ")")
     if getattr(dj_settings, "USE_X_ACCEL_REDIRECT", False):
         response = HttpResponse(content_type=ctype)
         response["X-Accel-Redirect"] = dj_settings.PROTECTED_MEDIA_URL + quote(obj.file.name)
     else:
         response = FileResponse(obj.file.open("rb"), content_type=ctype)
-    inline = request.GET.get("inline") == "1" and ctype == "application/pdf"
-    response["Content-Disposition"] = f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(filename)}"
-    response["Cache-Control"] = "private, no-store"
-    response["X-Content-Type-Options"] = "nosniff"
-    return response
+    return file_preview.finish(response, filename, inline)
 
 
 # ---------------------------------------------------------------------------
@@ -466,6 +513,12 @@ def account(request):
         return response
     ctx = _shell_context(request, "account", profile_form=profile_form,
                          password_form=PortalPasswordChangeForm(request.user))
+    # Phase 9: devices, passkeys, deletion request and notification settings
+    from accounts.security_views import security_context
+    from notifications.settings_views import preference_form
+
+    ctx.update(security_context(request))
+    ctx["notification_form"] = preference_form(request.user, "portal")
     return render(request, "qa_portal/account.html", ctx)
 
 

@@ -42,7 +42,8 @@ class RemitaProvider(PaymentProvider):
     def _call(self, method, path, payload=None, headers=None):
         if self.is_simulated():
             return simulator.remita(method, path, payload)
-        return http_json(method, f"{settings.REMITA_BASE_URL}{path}", payload=payload, headers=headers)
+        api_path = getattr(settings, "REMITA_API_PATH", "/exapp/api/v1/send/api")
+        return http_json(method, f"{settings.REMITA_BASE_URL}{api_path}{path}", payload=payload, headers=headers)
 
     # -- RRR ----------------------------------------------------------------
     def generate_rrr(self, obligation, payer, amount, order_id):

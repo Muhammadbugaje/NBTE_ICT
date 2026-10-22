@@ -1,13 +1,36 @@
 from django.contrib import admin, messages
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
+from core.admin_base import RangeDateTimeFilter, RelatedDropdownFilter, ReadOnlyModelAdmin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.db import transaction
+from django.utils.html import format_html
+from unfold.decorators import display
+from unfold.forms import AdminPasswordChangeForm, UnfoldReadOnlyPasswordHashWidget
+from unfold.widgets import UnfoldAdminPasswordWidget
 
 from .forms import AdminUserChangeForm, AdminUserCreationForm
+
+
+class ThemedUserChangeForm(AdminUserChangeForm):
+    """The project's change form with unfold's read-only password widget."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "password" in self.fields:
+            self.fields["password"].widget = UnfoldReadOnlyPasswordHashWidget()
+            self.fields["password"].widget.template_name = "auth/widgets/read_only_password_hash_new.html"
+
+
+class ThemedUserCreationForm(AdminUserCreationForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["temporary_password"].widget = UnfoldAdminPasswordWidget(
+            attrs={"autocomplete": "new-password"})
 from .models import Role, User, UserPermissionOverride
 from .services import generate_temporary_password, send_credentials_email
 
 
-class OverrideInline(admin.TabularInline):
+class OverrideInline(TabularInline):
     model = UserPermissionOverride
     fk_name = "user"
     extra = 0
@@ -15,7 +38,7 @@ class OverrideInline(admin.TabularInline):
     readonly_fields = ("granted_by",)
 
 
-class EmailLogInline(admin.TabularInline):
+class EmailLogInline(TabularInline):
     """Read-only history of emails sent to this user."""
     from notifications.models import EmailLog as _EmailLog
     model = _EmailLog
@@ -33,20 +56,42 @@ class EmailLogInline(admin.TabularInline):
 
 
 @admin.register(User)
-class UserAdmin(DjangoUserAdmin):
-    form = AdminUserChangeForm
-    add_form = AdminUserCreationForm
+class UserAdmin(DjangoUserAdmin, ModelAdmin):
+    form = ThemedUserChangeForm
+    add_form = ThemedUserCreationForm
+    change_password_form = AdminPasswordChangeForm
     ordering = ("email",)
-    list_display = ("email", "first_name", "last_name", "role", "department", "is_active", "must_change_password")
-    list_filter = ("role", "department", "is_active", "is_staff", "must_change_password")
+    list_display = ("person", "role", "department", "account_type", "active_badge", "must_change_password",
+                    "last_login")
+    list_filter = (("role", RelatedDropdownFilter), ("department", RelatedDropdownFilter), "user_type", "is_active",
+                   "is_staff", "is_superuser", "must_change_password", ("last_login", RangeDateTimeFilter),
+                   ("date_joined", RangeDateTimeFilter))
     search_fields = ("email", "first_name", "last_name")
+    list_select_related = ("role", "department")
+    date_hierarchy = "date_joined"
+
+    @display(description="User", header=True, ordering="email")
+    def person(self, obj):
+        name = obj.get_full_name() or obj.email
+        initials = ((obj.first_name[:1] + obj.last_name[:1]) or obj.email[:2]).upper()
+        return [name, obj.email, initials]
+
+    @display(description="Type", label={"staff": "info", "institution": "warning",
+                                        "resource_person": "success"})
+    def account_type(self, obj):
+        value = getattr(obj, "user_type", "staff") or "staff"
+        return value, value.replace("_", " ").capitalize()
+
+    @display(description="Active", ordering="is_active", label={"Active": "success", "Off": "danger"})
+    def active_badge(self, obj):
+        return "Active" if obj.is_active else "Off"
     inlines = [OverrideInline, EmailLogInline]
 
     def get_inlines(self, request, obj=None):
         # Email history only makes sense for an existing user.
         return [OverrideInline, EmailLogInline] if obj else [OverrideInline]
 
-    actions = ["reset_and_email_password"]
+    actions = ["reset_and_email_password", "activate_users", "deactivate_users"]
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         ("Personal", {"fields": ("first_name", "last_name")}),
@@ -95,6 +140,29 @@ class UserAdmin(DjangoUserAdmin):
             send_credentials_email(user, pw)
         self.message_user(request, f"Reset and emailed {queryset.count()} user(s).")
 
+    @admin.action(description="Activate selected users", permissions=["change"])
+    def activate_users(self, request, queryset):
+        n = 0
+        for user in queryset.filter(is_active=False):
+            user.is_active = True
+            user.save(update_fields=["is_active"])  # save() so audit signals fire
+            n += 1
+        self.message_user(request, f"Activated {n} user(s).", messages.SUCCESS)
+
+    @admin.action(description="Deactivate selected users", permissions=["change"])
+    def deactivate_users(self, request, queryset):
+        # Never lock yourself out from here.
+        n = 0
+        for user in queryset.filter(is_active=True).exclude(pk=request.user.pk):
+            user.is_active = False
+            user.save(update_fields=["is_active"])
+            n += 1
+        skipped = queryset.filter(pk=request.user.pk, is_active=True).exists()
+        msg = f"Deactivated {n} user(s)."
+        if skipped:
+            msg += " Your own account was left active."
+        self.message_user(request, msg, messages.SUCCESS if n else messages.WARNING)
+
 
 def _email_credentials(user_id, email, temporary_password):
     """Deferred credentials email - re-fetches the user so the callback isn't
@@ -108,9 +176,14 @@ def _email_credentials(user_id, email, temporary_password):
 
 
 @admin.register(Role)
-class RoleAdmin(admin.ModelAdmin):
-    list_display = ("name", "code", "requires_2fa", "is_system")
+class RoleAdmin(ModelAdmin):
+    list_display = ("name", "code", "rank", "user_count", "requires_2fa", "is_system")
+    list_filter = ("requires_2fa", "is_system")
     search_fields = ("name", "code")
+
+    @admin.display(description="Active users")
+    def user_count(self, obj):
+        return obj.users.filter(is_active=True).count()
     # Stage 3: `groups` uses Django's own filter_horizontal widget, same as
     # `permissions`, so the admin and the groups UI edit the same data.
     filter_horizontal = ("permissions", "groups")
@@ -124,10 +197,11 @@ from django.contrib.auth.models import Permission  # noqa: E402
 
 
 @admin.register(Permission)
-class PermissionAdmin(admin.ModelAdmin):
+class PermissionAdmin(ModelAdmin):
     """Needed for autocomplete in overrides; read-only (permissions come from models)."""
     search_fields = ("codename", "name", "content_type__app_label")
     list_display = ("__str__", "codename")
+    list_filter = (("content_type", RelatedDropdownFilter),)
 
     def has_add_permission(self, request):
         return False
@@ -147,7 +221,7 @@ from django.contrib.auth.models import Group  # noqa: E402
 from .models import GroupProfile  # noqa: E402
 
 
-class GroupProfileInline(admin.StackedInline):
+class GroupProfileInline(StackedInline):
     model = GroupProfile
     can_delete = False
     extra = 0
@@ -155,7 +229,7 @@ class GroupProfileInline(admin.StackedInline):
     fields = ("description",)
 
 
-class RoleInline(admin.TabularInline):
+class RoleInline(TabularInline):
     """Read-only list of roles carrying this group (edit on the Role page)."""
     model = Role.groups.through
     extra = 0
@@ -177,7 +251,7 @@ except admin.sites.NotRegistered:
 
 
 @admin.register(Group)
-class GroupAdmin(DjangoGroupAdmin):
+class GroupAdmin(DjangoGroupAdmin, ModelAdmin):
     """Django's GroupAdmin keeps its permission picker (filter_horizontal);
     this only adds the description inline and the roles that carry it."""
     inlines = [GroupProfileInline, RoleInline]
@@ -190,3 +264,73 @@ class GroupAdmin(DjangoGroupAdmin):
     @admin.display(description="Direct members")
     def member_count(self, obj):
         return obj.user_set.count()
+
+
+# ===========================================================================
+# Phase 9: account deletion requests, signed-in devices, passkeys
+# ===========================================================================
+from core.admin_base import ChoicesDropdownFilter, badge  # noqa: E402
+
+from . import deletion as _deletion  # noqa: E402
+from .models import AccountDeletionRequest, Passkey, UserSession  # noqa: E402
+
+
+@admin.register(AccountDeletionRequest)
+class AccountDeletionRequestAdmin(ModelAdmin):
+    """Users ask from inside the website/app; an administrator decides.
+    "Mark completed" deactivates the account and blanks personal fields —
+    the user row and statutory records are kept."""
+
+    list_display = ("id", "user", "user_type", "status_badge", "created_at", "handled_by", "handled_at")
+    list_filter = (("status", ChoicesDropdownFilter), "user__user_type", ("created_at", RangeDateTimeFilter))
+    search_fields = ("user__email", "user__first_name", "user__last_name", "reason", "note")
+    readonly_fields = ("user", "reason", "status", "created_at", "handled_by", "handled_at")
+    fields = ("user", "reason", "status", "created_at", "handled_by", "handled_at", "note")
+    actions = ["approve_requests", "decline_requests", "complete_requests"]
+    date_hierarchy = "created_at"
+    status_badge = badge("status", "Status", {"pending": "warning", "approved": "info", "declined": "danger",
+                                              "completed": "success", "withdrawn": "neutral"})
+
+    def has_add_permission(self, request):
+        return False  # requests are made by the users themselves
+
+    @admin.display(description="Account type", ordering="user__user_type")
+    def user_type(self, obj):
+        return obj.user.get_user_type_display()
+
+    def _run(self, request, queryset, fn, verb):
+        done = sum(1 for req in queryset.select_related("user") if fn(req, request.user))
+        skipped = queryset.count() - done
+        self.message_user(request, f"{done} request(s) {verb}." + (f" {skipped} skipped (wrong status)." if skipped
+                                                                  else ""),
+                          messages.SUCCESS if done else messages.WARNING)
+
+    @admin.action(description="Approve selected requests", permissions=["change"])
+    def approve_requests(self, request, queryset):
+        self._run(request, queryset, _deletion.approve, "approved")
+
+    @admin.action(description="Decline selected requests", permissions=["change"])
+    def decline_requests(self, request, queryset):
+        self._run(request, queryset, _deletion.decline, "declined")
+
+    @admin.action(description="Mark completed (deactivate account, blank personal fields)", permissions=["change"])
+    def complete_requests(self, request, queryset):
+        self._run(request, queryset, _deletion.complete, "completed")
+
+
+@admin.register(UserSession)
+class UserSessionAdmin(ReadOnlyModelAdmin):
+    list_display = ("user", "device_label", "kind", "door", "ip", "created_at", "last_seen_at", "revoked_at")
+    list_filter = ("kind", "door", ("last_seen_at", RangeDateTimeFilter))
+    search_fields = ("user__email", "device_label", "ip")
+    exclude = ("session_key",)
+
+
+@admin.register(Passkey)
+class PasskeyAdmin(ReadOnlyModelAdmin):
+    list_display = ("user", "name", "created_at", "last_used_at", "sign_count")
+    search_fields = ("user__email", "name")
+    exclude = ("public_key", "credential_id")
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.has_perm("accounts.delete_passkey")  # remove a lost device's passkey

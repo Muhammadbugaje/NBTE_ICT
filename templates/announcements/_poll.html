@@ -1,0 +1,40 @@
+{# Poll block. Swapped in place (outerHTML) after a vote. Needs `a` and `poll`. #}
+<div class="ann-poll" id="poll-{{ a.pk }}">
+  <div class="ann-poll-head">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    <p class="ann-poll-q">{{ poll.question }}
+      <span class="ann-poll-sub">
+        {% if not poll.is_open %}Poll closed{% elif poll.allow_multiple %}Choose all that apply{% else %}Choose one{% endif %}{% if poll.closes_at and poll.is_open %} · closes {{ poll.closes_at|date:"j M, H:i" }}{% endif %}
+      </span>
+    </p>
+  </div>
+
+  {% if poll.show_results %}
+    <div class="ann-poll-options" role="list" aria-label="Poll results">
+      {% for r in poll.rows %}
+        <div class="ann-result {% if r.chosen %}is-chosen{% endif %}" role="listitem">
+          <div class="ann-result-top">
+            <span class="ann-result-label">{% if r.chosen %}<span class="ann-result-check" title="Your choice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> {% endif %}{{ r.option.text }}</span>
+            <strong>{{ r.percent }}%</strong>
+            <small>{{ r.votes }} vote{{ r.votes|pluralize }}</small>
+          </div>
+          <div class="ann-bar" aria-hidden="true"><span style="width: {{ r.percent }}%"></span></div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="ann-poll-foot">
+      <span>{{ poll.voters }} voter{{ poll.voters|pluralize }}{% if poll.has_voted %} · you voted{% endif %}</span>
+      {% if poll.is_open and a.in_audience %}
+        <details class="ann-poll-change">
+          <summary>Change my vote</summary>
+          {% include "announcements/_poll_form.html" %}
+        </details>
+      {% endif %}
+    </div>
+  {% elif a.in_audience %}
+    {% include "announcements/_poll_form.html" %}
+  {% else %}
+    <div class="ann-poll-foot"><span>Voting opens when the announcement is published.</span></div>
+  {% endif %}
+  {% if poll_error %}<p class="ann-poll-error" role="alert">{{ poll_error }}</p>{% endif %}
+</div>

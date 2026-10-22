@@ -1,3 +1,5 @@
+import datetime
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -154,3 +156,45 @@ class Notification(models.Model):
             self.read_at = None
             if save:
                 self.save(update_fields=["is_read", "read_at"])
+
+# ============================================================================
+# Phase 9: notification preferences and quiet hours (one row per user)
+# ============================================================================
+class NotificationPreference(models.Model):
+    """What a user wants pushed / e-mailed. In-app (bell) records are ALWAYS
+    stored; `notifications.preferences.should_deliver` reads this row to
+    decide about push (mobile app) and e-mail."""
+
+    ALWAYS, UNLOCKED, NEVER = "always", "unlocked", "never"
+    PREVIEW_CHOICES = [
+        (ALWAYS, "Always"),
+        (UNLOCKED, "When the phone is unlocked"),
+        (NEVER, "Never"),
+    ]
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="notification_preference")
+    # Per-kind switches (see notifications.preferences.KINDS)
+    chats = models.BooleanField(default=True)
+    tasks_tickets = models.BooleanField(default=True)
+    approvals_memos = models.BooleanField(default=True)
+    payments = models.BooleanField(default=True)
+    qa_cases = models.BooleanField(default=True)
+    announcements = models.BooleanField(default=True)
+    general = models.BooleanField(default=True)
+
+    email_digest = models.BooleanField(default=True, help_text="Also send notifications by e-mail.")
+    quiet_hours_enabled = models.BooleanField(default=False)
+    quiet_from = models.TimeField(default=datetime.time(22, 0))
+    quiet_to = models.TimeField(default=datetime.time(6, 30))
+    allow_urgent_during_quiet = models.BooleanField(default=True)
+    show_previews = models.CharField(max_length=10, choices=PREVIEW_CHOICES, default=ALWAYS)
+    transcribe_voice_notes = models.BooleanField(default=True)
+    timezone = models.CharField(max_length=64, default="Africa/Lagos")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "notification preference"
+
+    def __str__(self):
+        return f"Notification preferences of {self.user_id}"

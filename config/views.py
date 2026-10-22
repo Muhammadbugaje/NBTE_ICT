@@ -74,7 +74,26 @@ def settings_index(request):
         "leave_role_entitlement_rows": role_entitlement_rows,
         "leave_role_entitlement_error": role_entitlement_error,
         "qa_settings_count": qa_settings_count,
+        "backup_status": _backup_status(request.user),
     })
+
+
+def _backup_status(user):
+    """One line for the Backups card on this page (Phase 8, §22)."""
+    if not user.has_perm("backups.view_backups"):
+        return None
+    try:
+        from backups.models import BackupDestination, BackupRun
+
+        if not BackupDestination.objects.filter(is_active=True).exists():
+            return {"ok": False, "text": "No backup destination configured"}
+        last = BackupRun.objects.exclude(status=BackupRun.RUNNING).first()
+        if last is None:
+            return {"ok": False, "text": "No backup taken yet"}
+        when = timezone.localtime(last.started_at).strftime("%d %b %Y")
+        return {"ok": last.status == BackupRun.SUCCEEDED, "text": f"Last backup {when}: {last.get_status_display().lower()}"}
+    except Exception:
+        return None
 
 
 @login_required

@@ -96,18 +96,13 @@ def _detail_context(request, ob, **extra):
                 .order_by("-final_decided_at").first())
     needs_info = open_item if open_item and open_item.decision == "needs_info" else None
     readonly = getattr(request, "is_impersonating", False)
-    payable = ob.status in ("awaiting_payment", "rejected", "partially_paid") and not readonly
-    online = [p for p in providers.enabled_methods() if p.online] if payable else []
-    receipt_needed = (ob.status in ("provider_reported_paid", "awaiting_finance_confirmation",
-                                    "finance_confirmation_overdue")
-                      and any(a.status == "provider_reported_paid" for a in attempts)
-                      and not any(p.kind == "provider_receipt" for p in proofs)
-                      and str(config.get("qa.payment.receipt_required_for_provider_payments", True)).lower()
-                      in ("true", "1") and not readonly)
+    options = pay_options(ob, attempts, proofs, readonly=readonly)
+    payable, online = options["payable"], options["online_methods"]
+    receipt_needed = options["receipt_needed"]
     ctx = {
         "ob": ob, "public_label": services.stage_label(ob, public=True), "slip": slip, "attempts": attempts,
         "proofs": proofs, "advices": advices, "payable": payable, "online_methods": online,
-        "bank_transfer": payable and providers.get("bank_transfer").is_enabled() or (payable and not online),
+        "bank_transfer": options["bank_transfer"],
         "proof_form": extra.pop("proof_form", None) or ProofForm(initial={"amount_claimed": ob.balance,
                                                                             "paid_on": timezone.localdate()}),
         "receipt_form": ReceiptForm(), "receipt_needed": receipt_needed, "rejected": rejected,
@@ -121,6 +116,22 @@ def _detail_context(request, ob, **extra):
     }
     ctx.update(extra)
     return _shell_context(request, "payments", **ctx)
+
+
+def pay_options(ob, attempts, proofs, *, readonly=False):
+    """What the institution can do on a bill now (the payment page and the
+    mobile API, Phase 9): pay at all, which online providers, bank transfer,
+    and whether the provider's receipt is still needed."""
+    payable = ob.status in ("awaiting_payment", "rejected", "partially_paid") and not readonly
+    online = [p for p in providers.enabled_methods() if p.online] if payable else []
+    receipt_needed = (ob.status in ("provider_reported_paid", "awaiting_finance_confirmation",
+                                    "finance_confirmation_overdue")
+                      and any(a.status == "provider_reported_paid" for a in attempts)
+                      and not any(p.kind == "provider_receipt" for p in proofs)
+                      and str(config.get("qa.payment.receipt_required_for_provider_payments", True)).lower()
+                      in ("true", "1") and not readonly)
+    return {"payable": payable, "online_methods": online, "receipt_needed": receipt_needed,
+            "bank_transfer": payable and providers.get("bank_transfer").is_enabled() or (payable and not online)}
 
 
 def _steps(ob):
@@ -150,6 +161,18 @@ def _obligation(request, pk):
 @institution_required
 def payment(request, pk):
     ob = _obligation(request, pk)
+    if request.method == "GET" and any(k in request.GET for k in ("reference", "trxref", "RRR", "rrr", "orderID")):
+        attempt = services.verify_on_return(ob, request.GET)
+        if attempt is not None:
+            ob.refresh_from_db()
+            response = render(request, "qa_portal/payments/detail.html", _detail_context(request, ob))
+            if attempt.status == "provider_reported_paid":
+                return toast(response, "success", "Payment received by the provider",
+                             "NBTE Finance will now confirm it. You will be notified.")
+            if attempt.status == "failed":
+                return toast(response, "error", "The payment did not go through",
+                             attempt.failure_reason or "Try again or choose another way to pay.")
+            return response
     return render(request, "qa_portal/payments/detail.html", _detail_context(request, ob))
 
 

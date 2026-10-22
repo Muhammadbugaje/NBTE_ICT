@@ -24,8 +24,8 @@
       </div>
       <div>
         <h1>
-          {% now "G" as hour %}
-          {% if hour < 12 %}Good morning{% elif hour < 17 %}Good afternoon{% else %}Good evening{% endif %},
+          {% now "H" as hour %}
+          {% if hour < "12" %}Good morning{% elif hour < "17" %}Good afternoon{% else %}Good evening{% endif %},
           {{ request.user.first_name|default:request.user.email }}.
         </h1>
         <p class="home-hero-sub">
@@ -46,6 +46,9 @@
       </a>
     </div>
   </header>
+
+  {# Phase 9: announcements — newest unacknowledged action-needed notice #}
+  {% load announcement_tags %}{% announcement_banner %}
 
   {# ============================= ROLE DASHBOARD CTA ============================= #}
   {% if dashboard %}

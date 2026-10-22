@@ -226,6 +226,11 @@ class ComplaintMessage(models.Model):
 class ComplaintAttachment(QAFileMixin, TimeStampedModel):
     AUDITED = True
     MEDIA_SUBDIR = "qa/complaints"
+    INSTITUTION_MEDIA_KIND = "complaints"
+
+    def media_institution(self):
+        """Files land under the complained-about institution's folder."""
+        return self.complaint.institution if self.complaint_id else None
 
     complaint = models.ForeignKey(Complaint, on_delete=models.CASCADE, related_name="attachments")
     message = models.ForeignKey(ComplaintMessage, null=True, blank=True, on_delete=models.CASCADE,

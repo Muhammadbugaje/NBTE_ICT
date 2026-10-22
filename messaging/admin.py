@@ -1,16 +1,17 @@
 from django.contrib import admin
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
 
 from .models import Message, Thread, ThreadParticipant
 
 
-class ThreadParticipantInline(admin.TabularInline):
+class ThreadParticipantInline(TabularInline):
     model = ThreadParticipant
     extra = 0
     autocomplete_fields = ("user",)
     readonly_fields = ("joined_at", "last_read_at")
 
 
-class MessageInline(admin.TabularInline):
+class MessageInline(TabularInline):
     model = Message
     extra = 0
     fields = ("sender", "body", "sent_at", "is_system")
@@ -22,7 +23,7 @@ class MessageInline(admin.TabularInline):
 
 
 @admin.register(Thread)
-class ThreadAdmin(admin.ModelAdmin):
+class ThreadAdmin(ModelAdmin):
     list_display = ("id", "display_title", "thread_type", "created_by", "last_message_at")
     list_filter = ("thread_type",)
     search_fields = ("subject", "participants__user__email", "messages__body")
@@ -35,7 +36,7 @@ class ThreadAdmin(admin.ModelAdmin):
 
 
 @admin.register(Message)
-class MessageAdmin(admin.ModelAdmin):
+class MessageAdmin(ModelAdmin):
     list_display = ("id", "thread", "sender", "sent_at", "is_system", "short_body")
     list_filter = ("is_system",)
     search_fields = ("body", "sender__email")

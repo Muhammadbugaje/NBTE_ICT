@@ -39,7 +39,25 @@ def request_hostname(request):
 
 def is_portal_request(request):
     portal = portal_hostname()
-    return bool(portal) and request_hostname(request) == portal
+    if bool(portal) and request_hostname(request) == portal:
+        return True
+    return _api_dev_door_header(request)  # Phase 9
+
+
+def _api_dev_door_header(request):
+    """Phase 9 (mobile API), development only: a phone on the LAN reaches the
+    dev server by IP, not by qa.localhost, so `X-NBTE-Door: portal` on an
+    /api/ request selects the portal door. Needs DEBUG *and*
+    API_DEV_DOOR_HEADER; never affects website pages."""
+    if not (settings.DEBUG and getattr(settings, "API_DEV_DOOR_HEADER", settings.DEBUG)):
+        return False
+    if not (getattr(request, "path_info", "") or "").startswith("/api/"):
+        return False
+    try:
+        value = request.headers.get("X-NBTE-Door", "")
+    except Exception:
+        return False
+    return (value or "").strip().lower() == "portal"
 
 
 def _with_port(target_host, request):

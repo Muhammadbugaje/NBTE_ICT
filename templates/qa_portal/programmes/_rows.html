@@ -1,0 +1,11 @@
+{% load qa_tags %}
+{% if page.rows %}
+<ul class="qa-rowlist" role="list">{% for p in page.rows %}
+  <li><a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_portal:programme' p.pk %}">
+    <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ p.name }} <span class="qa-muted">{{ p.level.code|upper }}</span></span>
+      <span class="qa-rowlink__meta">{% if p.expiry_date %}<span>Expires {{ p.expiry_date|date:"j M Y" }}</span> <span class="qa-countdown {{ p.expiry_info.tone }}">({{ p.expiry_info.label }})</span>{% else %}<span>No expiry date</span>{% endif %}{% for b in p.bodies %}<span>· {{ b.acronym|default:b.name }}</span>{% endfor %}</span></span>
+    <span class="qa-rowlink__side"><span class="qa-chip {{ p.status|tone }}">{{ p.get_status_display }}</span></span>
+  </a></li>
+{% endfor %}</ul>
+{% include "qa_core/partials/_pagination.html" with target="#qa-prog-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "layers" 28 %}</span><h3 class="nbte-empty-state__title">No programmes</h3><p class="nbte-empty-state__body">Programmes appear here once NBTE records them.</p></div>{% endif %}

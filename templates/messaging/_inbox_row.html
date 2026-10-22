@@ -1,0 +1,58 @@
+{% load ux_tags chat_tags %}<div class="msg-thread-select{% if t.is_pinned %} is-pinned{% endif %}" data-uxb-row data-message-thread
+     data-thread-id="{{ t.pk }}" data-message-unread="{% if t.unread %}true{% else %}false{% endif %}"
+     data-thread-kind="{% if t.is_group %}group{% else %}direct{% endif %}" data-pinned="{{ t.is_pinned|yesno:'1,0' }}"
+     data-sort-at="{{ t.sort_at|date:'c' }}">
+  {% bulk_check "bulk-threads" t.pk t.display_title %}
+  <a href="{% url 'messaging:thread' t.pk %}" class="msg-thread-row{% if t.unread %} is-unread{% endif %}" data-row-link>
+    <span class="msg-avatar msg-avatar-md msg-avatar-{{ t.avatar_color }}{% if t.is_group %} is-group{% endif %}" aria-hidden="true">
+      {% if t.is_group %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>{% else %}{{ t.display_title|slice:":1"|upper }}{% endif %}
+    </span>
+    <div class="msg-thread-body">
+      <div class="msg-thread-head">
+        <strong>{{ t.display_title|default:"(no subject)" }}</strong>
+        <span class="msg-row-flags">
+          {% if t.is_muted %}<span class="msg-row-flag" title="Muted" aria-label="Muted"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg></span>{% endif %}
+          {% if t.is_pinned %}<span class="msg-row-flag is-pin" title="Pinned" aria-label="Pinned"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 3a1 1 0 0 1 .7 1.7L15 6.4v4.2l3.3 3.3a1 1 0 0 1-.7 1.7H13v5.4l-1 1-1-1v-5.4H6.4a1 1 0 0 1-.7-1.7L9 10.6V6.4L7.3 4.7A1 1 0 0 1 8 3z"/></svg></span>{% endif %}
+          <time data-row-time datetime="{{ t.sort_at|date:'c' }}" title="{{ t.sort_at|date:'M j, Y · H:i' }}">{% if t.last_msg %}{{ t.last_msg.sent_at|chat_time }}{% endif %}</time>
+        </span>
+      </div>
+      <div class="msg-thread-preview-line">
+        <div class="msg-thread-preview" data-row-preview>
+          {% if t.last_msg %}
+            <span class="msg-thread-sender">{% if t.last_msg.sender_id == request.user.pk %}You{% elif t.last_msg.sender %}{{ t.last_msg.sender.get_full_name|default:t.last_msg.sender.email }}{% else %}System{% endif %}:</span>
+            {{ t.last_preview|truncatechars:90 }}
+          {% else %}
+            <em class="muted">No messages yet</em>
+          {% endif %}
+        </div>
+        <span class="msg-unread-badge{% if t.is_muted %} is-muted{% endif %}" data-row-badge{% if not t.unread %} hidden{% endif %}>{{ t.unread }}</span>
+      </div>
+    </div>
+  </a>
+  <details class="msg-row-menu" data-row-menu>
+    <summary class="msg-icon-btn" aria-label="Options for {{ t.display_title }}" title="Pin or mute">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+    </summary>
+    <div class="msg-chat-menu-panel" role="menu">
+      <form method="post" action="{% url 'messaging:pin' t.pk %}">
+        {% csrf_token %}<input type="hidden" name="next" value="/messages/">
+        <input type="hidden" name="pinned" value="{% if t.is_pinned %}0{% else %}1{% endif %}">
+        <button type="submit" role="menuitem" data-row-pin>{% if t.is_pinned %}Unpin chat{% else %}Pin chat{% endif %}</button>
+      </form>
+      {% if t.is_muted %}
+        <form method="post" action="{% url 'messaging:mute' t.pk %}">
+          {% csrf_token %}<input type="hidden" name="next" value="/messages/">
+          <button type="submit" name="duration" value="off" role="menuitem">Unmute</button>
+        </form>
+      {% else %}
+        <p class="msg-menu-label">Mute notifications</p>
+        <form method="post" action="{% url 'messaging:mute' t.pk %}" class="msg-mute-row">
+          {% csrf_token %}<input type="hidden" name="next" value="/messages/">
+          <button type="submit" name="duration" value="8h" role="menuitem">8 hours</button>
+          <button type="submit" name="duration" value="1w" role="menuitem">1 week</button>
+          <button type="submit" name="duration" value="always" role="menuitem">Always</button>
+        </form>
+      {% endif %}
+    </div>
+  </details>
+</div>

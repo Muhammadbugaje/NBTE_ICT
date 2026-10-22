@@ -7,6 +7,7 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/profile.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/account-security.css' %}?v=1">{# Phase 9 #}
 {% endblock %}
 
 {% block content %}
@@ -17,10 +18,22 @@
       <h1>Profile</h1>
       <p>Manage your account, position, and contact details.</p>
     </div>
-    <a href="{% url 'accounts:force_password_change' %}" class="btn btn-ghost btn-sm">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      Change password
-    </a>
+    <div class="p9-head-actions">{# Phase 9: staff ID and notification settings #}
+      {% if request.user.user_type == "staff" %}
+        <a href="{% url 'accounts:staff_id' %}" class="btn btn-ghost btn-sm">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.6-1.7 2-2.6 3.5-2.6s2.9.9 3.5 2.6M15 9h3M15 13h3"/></svg>
+          My staff ID
+        </a>
+      {% endif %}
+      <a href="{% url 'notifications:settings' %}" class="btn btn-ghost btn-sm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10 21h4"/></svg>
+        Notification settings
+      </a>
+      <a href="{% url 'accounts:force_password_change' %}" class="btn btn-ghost btn-sm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Change password
+      </a>
+    </div>
   </header>
 
   {# ============================ HERO ============================ #}
@@ -318,9 +331,33 @@
             <span>My notifications</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
+          {# Phase 9 #}
+          <a href="{% url 'notifications:settings' %}" class="side-link">
+            <span>Notification settings</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+          {% if request.user.user_type == "staff" %}
+          <a href="{% url 'accounts:staff_id' %}" class="side-link">
+            <span>My staff ID</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+          {% endif %}
+          <a href="#p9-security" class="side-link">
+            <span>Devices, passkeys &amp; account</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
         </div>
       </div>
     </aside>
+  </div>
+
+  {# ===================== SECURITY & PRIVACY (Phase 9) ===================== #}
+  <div class="p9-profile-security">
+    <header class="p9-band-head">
+      <h2>Security &amp; privacy</h2>
+      <p>Where you are signed in, passkeys for quick sign-in, and closing your account.</p>
+    </header>
+    {% include "accounts/_p9_security.html" %}
   </div>
 
   {# ============================ SAVE BAR ============================ #}
@@ -345,4 +382,5 @@
 
 {% block extra_js %}
   <script src="{% static 'js/profile.js' %}?v=4" defer></script>
+  <script src="{% static 'js/passkeys.js' %}?v=1" defer></script>{# Phase 9 #}
 {% endblock %}

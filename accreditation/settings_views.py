@@ -448,3 +448,97 @@ def rate_edit(request, pk):
         return toast(response, "error", "Not saved", _msg(exc))
     response = render(request, "accreditation/settings/_rates_panel.html", _rates_ctx(request))
     return toast(response, "success", title, "Cost lines already priced keep their amounts.")
+
+
+# ===========================================================================
+# Phase 8: Settings → Approval types (B18; manage_approval_types)
+# ===========================================================================
+def _can_manage_types(user):
+    return user.is_superuser or user.has_perm("accreditation.manage_approval_types")
+
+
+def _types_ctx(request, **extra):
+    from .models import ApprovalType
+
+    ctx = {"types": list(ApprovalType.objects.order_by("sort_order", "name")),
+           "editable": _can_manage_types(request.user), "statuses": ApprovalType.PROGRAMME_STATUS_CHOICES}
+    ctx.update(extra)
+    return _ctx(request, "approval_types", **ctx)
+
+
+def _months(raw):
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        raise ValidationError("Enter the duration in whole months.") from None
+    if not 1 <= value <= 240:
+        raise ValidationError("The duration must be 1 to 240 months.")
+    return value
+
+
+@require(can_view_qa_settings)
+@require_http_methods(["GET", "POST"])
+def approval_types(request):
+    """List and add approval types. Changing a duration affects decisions
+    recorded from now on; a programme's expiry date, once applied, is kept."""
+    from django.utils.text import slugify
+
+    from .models import ApprovalType
+
+    if request.method == "POST":
+        p = request.POST
+        try:
+            if not _can_manage_types(request.user):
+                raise PermissionDenied("Only holders of accreditation.manage_approval_types can change approval types.")
+            code = slugify(p.get("code", "")).replace("-", "_")[:40]
+            name = (p.get("name") or "").strip()[:120]
+            if not code or not name:
+                raise ValidationError("Enter a code and a name.")
+            if ApprovalType.objects.filter(code=code).exists():
+                raise ValidationError(f"An approval type with code {code} already exists; edit it instead.")
+            status = p.get("programme_status") if p.get("programme_status") in dict(
+                ApprovalType.PROGRAMME_STATUS_CHOICES) else "accredited"
+            item = ApprovalType.objects.create(code=code, name=name, duration_months=_months(p.get("duration_months")),
+                                               programme_status=status,
+                                               description=(p.get("description") or "").strip()[:255],
+                                               sort_order=(ApprovalType.objects.count() + 1) * 10)
+        except (ValidationError, PermissionDenied) as exc:
+            response = render(request, "accreditation/settings/_approval_types_panel.html",
+                              _types_ctx(request, error=_msg(exc), values=p), status=422)
+            return toast(response, "error", "Not added", _msg(exc))
+        response = render(request, "accreditation/settings/_approval_types_panel.html", _types_ctx(request))
+        return toast(response, "success", f"{item.name} added")
+    return render_qa(request, "accreditation/settings/approval_types.html", _types_ctx(request),
+                     {"qa-panel": "accreditation/settings/_approval_types_panel.html"})
+
+
+@require(can_view_qa_settings)
+@require_POST
+def approval_type_edit(request, pk):
+    from .models import ApprovalType
+
+    item = ApprovalType.objects.filter(pk=pk).first()
+    if item is None:
+        raise Http404
+    p = request.POST
+    try:
+        if not _can_manage_types(request.user):
+            raise PermissionDenied("Only holders of accreditation.manage_approval_types can change approval types.")
+        if p.get("op") == "toggle":
+            item.is_active = not item.is_active
+            item.save(update_fields=["is_active", "updated_at"])
+            title = f"{item.name} {'switched on' if item.is_active else 'switched off'}"
+        else:
+            item.duration_months = _months(p.get("duration_months", item.duration_months))
+            if (p.get("name") or "").strip():
+                item.name = p["name"].strip()[:120]
+            if p.get("programme_status") in dict(ApprovalType.PROGRAMME_STATUS_CHOICES):
+                item.programme_status = p["programme_status"]
+            item.save()
+            title = f"{item.name}: {item.duration_months} months"
+    except (ValidationError, PermissionDenied) as exc:
+        response = render(request, "accreditation/settings/_approval_types_panel.html",
+                          _types_ctx(request, error=_msg(exc)), status=422)
+        return toast(response, "error", "Not saved", _msg(exc))
+    response = render(request, "accreditation/settings/_approval_types_panel.html", _types_ctx(request))
+    return toast(response, "success", title, "Programmes already decided keep their expiry dates.")

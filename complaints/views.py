@@ -23,7 +23,7 @@ from qa_core.permissions import require, require_or_404
 from qa_core.ui import is_htmx, paginate, render_qa, toast
 
 from . import services, sla
-from .models import ComplaintLayer, ComplaintMessage, ComplaintStage, Escalation
+from .models import ComplaintLayer, ComplaintStage, Escalation
 
 TABS = [("mine", "Assigned to me"), ("department", "My department"), ("escalated", "Escalated to me"),
         ("all", "All I can see")]
@@ -54,86 +54,27 @@ def _msg(exc):
 # ===========================================================================
 # Queue
 # ===========================================================================
+# Phase 9: the queue logic lives in services (shared with the mobile API).
 def _base(request, tab):
-    user = request.user
-    qs = services.visible_to(user)
-    if tab == "mine":
-        mine = ComplaintStage.objects.filter(assigned_to=user, left_at__isnull=True).values("complaint_id")
-        qs = qs.filter(Q(current_assignee=user) | Q(pk__in=mine) | Q(referred_user=user))
-    elif tab == "department":
-        qs = qs.filter(current_department_id=user.department_id) if user.department_id else qs.none()
-    elif tab == "escalated":
-        qs = qs.filter(watchers=user)
-    return qs
+    return services.queue_base(request.user, tab)
 
 
-def _status_filter(qs, status):
-    if status == "open":
-        return qs.filter(closed_at__isnull=True).exclude(status__in=services.RESOLVED_CODES)
-    if status == "resolved":
-        return qs.filter(closed_at__isnull=True, status__in=services.RESOLVED_CODES)
-    if status == "closed":
-        return qs.filter(closed_at__isnull=False)
-    return qs
-
-
-def decorate(rows, now=None):
-    """Attach ``open_stage`` and ``sla`` to each complaint (one query)."""
-    now = now or timezone.now()
-    ids = [c.pk for c in rows]
-    stages = {}
-    for cs in (ComplaintStage.objects.filter(complaint_id__in=ids, left_at__isnull=True)
-               .select_related("assigned_to", "assigned_department").order_by("entered_at", "id")):
-        stages[cs.complaint_id] = cs
-    cal = sla.Calendar()
-    for c in rows:
-        c.stage_row = stages.get(c.pk)
-        c.sla = services.sla_state(c.stage_row, now, cal) if c.closed_at is None else {"state": "none"}
-    return rows
+_status_filter = services.status_filter
+decorate = services.decorate
 
 
 def _queue_rows(request, tab):
     f = request.GET
-    qs = _status_filter(_base(request, tab), f.get("status") or "open")
-    if f.get("layer"):
-        qs = qs.filter(Q(layer__code=f["layer"]) | Q(layer__parent__code=f["layer"]))
-    if f.get("priority"):
-        qs = qs.filter(priority=f["priority"])
-    q = (f.get("q") or "").strip()
-    if q:
-        qs = qs.filter(Q(reference__icontains=q) | Q(subject__icontains=q) | Q(institution__name__icontains=q)
-                       | Q(institution__code__iexact=q) | Q(raised_by__email__icontains=q))
-    rows = list(qs.select_related("layer", "institution", "current_department", "current_assignee", "raised_by")
-                .order_by("-created_at", "-id")[:2000])
-    decorate(rows)
-    if f.get("sla"):
-        rows = [c for c in rows if c.sla.get("state") == f["sla"]]
-    # Most urgent first: overdue, then by deadline.
-    order = {"breached": 0, "near": 1, "on_track": 2, "paused": 3, "none": 4}
-    far = timezone.now() + datetime.timedelta(days=3650)
-    rows.sort(key=lambda c: (order.get(c.sla.get("state"), 5), c.sla.get("due") or far))
-    return rows
+    return services.queue_rows(request.user, tab, status=f.get("status") or "open", layer=f.get("layer", ""),
+                               priority=f.get("priority", ""), q=f.get("q", ""), sla_filter=f.get("sla", ""))
 
 
 def _counts(request):
-    user = request.user
-    out = {}
-    for key, _label in TABS:
-        out[key] = _status_filter(_base(request, key), "open").count()
-    breached_ids = ComplaintStage.objects.filter(left_at__isnull=True, breached_at__isnull=False).values(
-        "complaint_id")
-    out["breached"] = _status_filter(services.visible_to(user), "open").filter(pk__in=breached_ids).count()
-    return out
+    return services.queue_counts(request.user)
 
 
 def _default_tab(request, counts):
-    if counts.get("mine"):
-        return "mine"
-    if request.user.department_id and counts.get("department"):
-        return "department"
-    if counts.get("escalated"):
-        return "escalated"
-    return "all"
+    return services.default_tab(request.user, counts)
 
 
 @require(can_open)
@@ -168,15 +109,14 @@ def _detail_ctx(request, complaint, **extra):
     from staff.models import Department
 
     user = request.user
-    internal = services.can_handle_view(user, complaint)
-    messages = complaint.messages.select_related("author").prefetch_related("attachments")
-    if not internal:
-        messages = messages.filter(visibility=ComplaintMessage.PUBLIC)
+    rights = services.detail_rights(user, complaint)  # Phase 9: shared with the API
+    internal = rights["internal"]
+    messages = services.messages_for(user, complaint, internal=internal)
     stages = list(complaint.stages.select_related("assigned_department", "assigned_to", "routed_by")
                   .prefetch_related("escalations__escalated_to").order_by("entered_at", "id"))
     current = next((s for s in reversed(stages) if s.left_at is None), None)
-    can_act, why = services.can_act(user, complaint)
-    actions = services.handler_actions(user, complaint)
+    can_act, why = rights["can_act"], rights["act_why"]
+    actions = rights["actions"]
     refer_targets = []
     if any(t.action_code == "refer" for t in actions):
         refer_targets = list(Department.objects.order_by("name"))
@@ -187,9 +127,7 @@ def _detail_ctx(request, complaint, **extra):
         "refer_people": list(User.objects.filter(is_active=True, user_type="staff",
                                                  department_id=user.department_id).order_by("first_name")[:200])
         if refer_targets and user.department_id else [],
-        "can_escalate": complaint.is_open and (user.is_superuser or user.has_perm("complaints.escalate_complaint")),
-        "can_hold": complaint.is_open and services.hold_allowed(complaint) and (
-            user.is_superuser or user.has_perm("qa_core.place_suspension")),
+        "can_escalate": rights["can_escalate"], "can_hold": rights["can_hold"],
         "watchers": list(complaint.watchers.all()),
         "escalations": list(Escalation.objects.filter(complaint_stage__complaint=complaint)
                             .select_related("escalated_to", "by", "complaint_stage").order_by("at")),

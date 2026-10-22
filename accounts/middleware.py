@@ -204,6 +204,11 @@ class ExternalUserGuardMiddleware:
         "dashboard", "login", "logout", "account", "password_change", "password_set", "password_set_done",
         "password_forgot", "password_forgot_done", "impersonation_start", "impersonation_stop",
         "impersonation_ended", "verify", "webhook_paystack", "webhook_remita", "pay_simulator",
+        # Phase 9: their own account-security actions on the account page
+        "account_device_revoke", "account_devices_revoke_others", "account_notifications",
+        "account_deletion_request", "account_deletion_withdraw", "account_passkey_register_begin",
+        "account_passkey_register_finish", "account_passkey_rename", "account_passkey_remove",
+        "passkey_sign_in_begin", "passkey_sign_in_finish",
     })
 
     @classmethod
@@ -262,3 +267,24 @@ class ExternalUserGuardMiddleware:
             "impersonating": impersonating,
         }, request=request)
         return HttpResponseForbidden(html)
+
+
+# ---------------------------------------------------------------------------
+# Phase 9: "last seen" for the signed-in devices list
+# ---------------------------------------------------------------------------
+class LastSeenMiddleware:
+    """Cheap: compares a timestamp kept in the session and writes
+    UserSession.last_seen_at at most every 5 minutes. Placed right after
+    AuthenticationMiddleware so request.user is the real (not impersonated) user."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        try:
+            from .sessions_service import touch
+
+            touch(request)
+        except Exception:  # never break a request over a timestamp
+            pass
+        return self.get_response(request)

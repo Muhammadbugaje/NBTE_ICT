@@ -11,12 +11,15 @@
     document.querySelectorAll("[data-message-list]").forEach(function (list) {
       var search = list.querySelector("[data-message-search]");
       var state = list.querySelector("[data-message-state]");
-      var rows = Array.prototype.slice.call(list.querySelectorAll("[data-message-thread]"));
+      var kindGroup = list.querySelector("[data-kind-filter]");
       var count = list.querySelector("[data-filter-count]");
       var empty = list.querySelector("[data-filter-empty]");
-      if (!rows.length) return;
+      var kind = list.getAttribute("data-inbox-kind") || "all";
+      if (!list.querySelector("[data-message-thread]")) return;
 
       function applyFilters() {
+        // Phase 9: rows are re-read every time (live updates add/move rows).
+        var rows = Array.prototype.slice.call(list.querySelectorAll("[data-message-thread]"));
         var query = search ? search.value.trim().toLocaleLowerCase() : "";
         var selectedState = state ? state.value : "all";
         var visibleCount = 0;
@@ -24,12 +27,17 @@
 
         rows.forEach(function (row) {
           var isUnread = row.getAttribute("data-message-unread") === "true";
+          var rowKind = row.getAttribute("data-thread-kind") || "";
           var matchesState = selectedState === "all"
             || (selectedState === "unread" && isUnread)
             || (selectedState === "read" && !isUnread);
+          var matchesKind = kind === "all"
+            || (kind === "unread" && isUnread)
+            || (kind === "groups" && rowKind === "group")
+            || (kind === "direct" && rowKind === "direct");
           var matchesSearch = !query
             || row.textContent.toLocaleLowerCase().indexOf(query) !== -1;
-          var isVisible = matchesState && matchesSearch;
+          var isVisible = matchesState && matchesKind && matchesSearch;
           row.hidden = !isVisible;
           if (isVisible) visibleCount += 1;
 
@@ -55,6 +63,27 @@
 
       if (search) search.addEventListener("input", applyFilters);
       if (state) state.addEventListener("change", applyFilters);
+      if (kindGroup) {
+        kindGroup.addEventListener("click", function (event) {
+          var chip = event.target.closest("[data-kind]");
+          if (!chip) return;
+          kind = chip.getAttribute("data-kind");
+          list.setAttribute("data-inbox-kind", kind);
+          kindGroup.querySelectorAll("[data-kind]").forEach(function (c) {
+            var on = c === chip;
+            c.classList.toggle("is-active", on);
+            c.setAttribute("aria-pressed", on ? "true" : "false");
+          });
+          try {
+            var url = new URL(window.location.href);
+            if (kind === "all") url.searchParams.delete("filter");
+            else url.searchParams.set("filter", kind);
+            window.history.replaceState(null, "", url.toString());
+          } catch (e) { /* old browsers: filter still applies */ }
+          applyFilters();
+        });
+      }
+      list.addEventListener("messages:refilter", applyFilters);
       applyFilters();
     });
   }

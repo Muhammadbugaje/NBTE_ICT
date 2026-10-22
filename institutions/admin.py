@@ -6,6 +6,9 @@ second officer — admin is for support, not for routine edits.
 """
 from django.contrib import admin
 
+from core.admin_base import RangeDateTimeFilter, UnscopedModelAdmin as _ThemedUnscoped, badge
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
+
 from .models import (
     Discipline, DocumentKind, DocumentRequirement, ImpersonationSession, Institution, InstitutionAddress,
     InstitutionCategory, InstitutionContact, InstitutionDocument, InstitutionImportBatch, InstitutionOwnership,
@@ -14,12 +17,11 @@ from .models import (
 )
 
 
-class UnscopedAdmin(admin.ModelAdmin):
-    def get_queryset(self, request):
-        return self.model.unscoped.all()
+class UnscopedAdmin(_ThemedUnscoped):
+    pass
 
 
-class ContactInline(admin.TabularInline):
+class ContactInline(TabularInline):
     model = InstitutionContact
     extra = 0
     fields = ("kind", "name", "value", "is_current")
@@ -28,7 +30,7 @@ class ContactInline(admin.TabularInline):
         return InstitutionContact.unscoped.all()
 
 
-class AddressInline(admin.TabularInline):
+class AddressInline(TabularInline):
     model = InstitutionAddress
     extra = 0
     fields = ("kind", "line1", "town", "lga", "state", "is_current")
@@ -39,9 +41,11 @@ class AddressInline(admin.TabularInline):
 
 @admin.register(Institution)
 class InstitutionAdmin(UnscopedAdmin):
-    list_display = ("code", "name", "status", "ownership", "category", "handling_department", "portal_enabled",
+    list_display = ("code", "name", "status_badge", "ownership", "category", "handling_department", "portal_enabled",
                     "updated_at")
-    list_filter = ("status", "ownership", "institution_type", "handling_department", "portal_enabled", "zone")
+    list_filter = ("status", "ownership", "institution_type", "handling_department", "portal_enabled", "zone",
+                   ("updated_at", RangeDateTimeFilter))
+    status_badge = badge("status", "Status", {"under_review": "info", "proposed": "neutral"})
     search_fields = ("code", "name", "lga")
     inlines = [ContactInline, AddressInline]
 
@@ -51,14 +55,17 @@ class InstitutionAdmin(UnscopedAdmin):
 
 @admin.register(Programme)
 class ProgrammeAdmin(UnscopedAdmin):
-    list_display = ("name", "level", "institution", "status", "approved_streams", "expiry_date")
+    list_display = ("name", "level", "institution", "status_badge", "approved_streams", "expiry_date")
+    status_badge = badge("status", "Status", {"approved": "success", "accredited": "success",
+                                              "interim": "warning", "denied": "danger"})
     list_filter = ("status", "level")
     search_fields = ("name", "institution__code", "institution__name")
 
 
 @admin.register(InstitutionDocument)
 class InstitutionDocumentAdmin(UnscopedAdmin):
-    list_display = ("institution", "kind", "version", "status", "uploaded_by", "created_at")
+    list_display = ("institution", "kind", "version", "status_badge", "uploaded_by", "created_at")
+    status_badge = badge("status", "Status", {"submitted": "info", "accepted": "success"})
     list_filter = ("status", "kind")
     search_fields = ("institution__code", "institution__name")
     readonly_fields = ("file", "sha256", "size_bytes", "original_name")
@@ -72,8 +79,10 @@ class InstitutionUserAdmin(UnscopedAdmin):
 
 @admin.register(InstitutionRequest)
 class InstitutionRequestAdmin(UnscopedAdmin):
-    list_display = ("institution", "request_type", "reference", "status", "created_at")
-    list_filter = ("status", "request_type")
+    list_display = ("institution", "request_type", "reference", "status_badge", "created_at")
+    list_filter = ("status", "request_type", ("created_at", RangeDateTimeFilter))
+    search_fields = ("reference", "institution__code", "institution__name")
+    status_badge = badge("status", "Status")
 
 
 @admin.register(ImpersonationSession)
@@ -103,4 +112,9 @@ for model, cols in ((InstitutionOwnership, ("code", "name", "is_public", "is_act
                     (InstitutionRequestType, ("code", "name", "is_enabled")),
                     (ZonalAssignment, ("zone_code", "staff", "from_date", "to_date")),
                     (InstitutionImportBatch, ("pk", "kind", "status", "created_by", "created_at"))):
-    admin.site.register(model, type(f"{model.__name__}Admin", (admin.ModelAdmin,), {"list_display": cols}))
+    admin.site.register(model, type(f"{model.__name__}Admin", (ModelAdmin,), {"list_display": cols}))
+
+from .models import ProfessionalBody, ProgrammeBodyMapping  # noqa: E402
+
+for model, cols in ((ProfessionalBody, ("__str__",)), (ProgrammeBodyMapping, ("__str__",))):
+    admin.site.register(model, type(f"{model.__name__}Admin", (ModelAdmin,), {"list_display": cols}))

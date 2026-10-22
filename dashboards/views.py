@@ -41,6 +41,10 @@ def _render(request, template, key, title, ctx):
 @login_required
 def self_service(request):
     ctx = services.self_service_context(request.user)
+    # Phase 9: personal insights (?period=week|month|quarter); data in dashboards/insights.py
+    from . import insights
+
+    ctx["insights"] = insights.chart_context(request.user, request.GET.get("period"))
     return render(request, "dashboards/self_service.html", ctx)
 
 

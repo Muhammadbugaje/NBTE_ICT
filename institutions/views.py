@@ -105,24 +105,10 @@ STATUS_CHOICES = list(Institution.STATUS_LABELS.items())
 @require(can_view_institutions)
 @require_GET
 def institution_list(request):
-    qs = _scoped(request)
-    q = (request.GET.get("q") or "").strip()
-    if q:
-        qs = qs.filter(Q(name__icontains=q) | Q(code__icontains=q) | Q(lga__icontains=q)
-                       | Q(former_names__icontains=q))
     f = request.GET
-    if f.get("status"):
-        qs = qs.filter(status=f["status"])
-    if f.get("ownership"):
-        qs = qs.filter(ownership__code=f["ownership"])
-    if f.get("type"):
-        qs = qs.filter(institution_type__code=f["type"])
-    if f.get("dept"):
-        qs = qs.filter(handling_department__code=f["dept"])
-    if f.get("zone"):
-        qs = qs.filter(zone=f["zone"])
-    sort = f.get("sort", "name")
-    qs = qs.order_by({"name": "name", "code": "code", "recent": "-created_at", "status": "status"}.get(sort, "name"))
+    qs = services.filter_institutions(_scoped(request), q=f.get("q", ""), status=f.get("status", ""),
+                                      ownership=f.get("ownership", ""), type_code=f.get("type", ""),
+                                      dept=f.get("dept", ""), zone=f.get("zone", ""), sort=f.get("sort", "name"))
     page = paginate(request, qs)
     base = _scoped(request)
     from staff.models import Department, StateOfOrigin
@@ -164,7 +150,8 @@ def institution_detail(request, code):
     ctx = {"inst": inst, "tab": tab, "tabs": TABS, "menu": action_menu(request.user, inst)}
     ctx.update(_tab_context(request, inst, tab))
     return render_qa(request, "institutions/detail.html", ctx, {"qa-panel": "institutions/_detail_panel.html",
-                                                                 "qa-tab": f"institutions/tabs/_{tab}.html"})
+                                                                 "qa-tab": f"institutions/tabs/_{tab}.html",
+                                                                 "qa-prog-rows": "institutions/tabs/_programme_rows.html"})
 
 
 def _tab_context(request, inst, tab):
@@ -183,12 +170,7 @@ def _tab_context(request, inst, tab):
             "impersonation": latest_impersonation(user, inst),
         })
     elif tab == "programmes":
-        qs = Programme.objects.for_user(user).filter(institution=inst).select_related("level", "category")
-        status = request.GET.get("pstatus", "")
-        if status:
-            qs = qs.filter(status=status)
-        ctx.update({"programmes": list(qs.order_by("name")), "pstatus": status,
-                    "programme_statuses": Programme.STATUS_CHOICES})
+        ctx.update(_programme_tab(request, inst))
     elif tab == "documents":
         ctx.update({"rows": services.checklist(inst),
                     "history": list(InstitutionDocument.objects.for_user(user).filter(institution=inst)
@@ -208,7 +190,7 @@ def _tab_context(request, inst, tab):
         from payments.models import PaymentObligation
         from payments.services import stage_label
 
-        can_see = user.is_superuser or user.has_perm("payments.view_obligation")
+        can_see = services.can_see_payments(user)
         rows = list(PaymentObligation.objects.for_user(user).filter(institution=inst).order_by("-created_at")) \
             if can_see else []
         for ob in rows:
@@ -217,18 +199,65 @@ def _tab_context(request, inst, tab):
     elif tab == "changes":
         ctx["pending"] = _pending_for(request, inst, all_statuses=True)
     elif tab == "timeline":
-        qs = TimelineEvent.objects.for_user(user).filter(institution=inst).select_related("actor")
         vis = request.GET.get("vis", "")
-        if vis in ("public", "internal"):
-            qs = qs.filter(visibility=vis)
-        if not (user.is_superuser or user.has_perm("qa_core.view_timeline_internal")
-                or user.department_id == inst.handling_department_id):
-            qs = qs.filter(visibility="public")
+        if vis not in ("public", "internal"):
+            vis = ""
         tq = (request.GET.get("tq") or "").strip()
-        if tq:
-            qs = qs.filter(Q(public_text__icontains=tq) | Q(internal_text__icontains=tq) | Q(event_code__icontains=tq))
-        ctx.update({"page": paginate(request, qs.order_by("-at", "-id")), "vis": vis, "tq": tq})
+        qs = services.timeline_for(user, inst, vis=vis, text=tq)
+        ctx.update({"page": paginate(request, qs), "vis": request.GET.get("vis", ""), "tq": tq})
     return ctx
+
+
+def _programme_tab(request, inst):
+    """Phase 8: every programme of the institution — search, filters (status,
+    level, category, professional body, expiring within N days, in an open
+    request), 25 a page with "Show all", and the request / case each one is
+    in now."""
+    from . import programme_info
+    from .models import ProfessionalBody, ProgrammeCategory, ProgrammeLevel
+
+    f = request.GET
+    base = Programme.objects.for_user(request.user).filter(institution=inst).select_related(
+        "level", "category", "category__discipline")
+    qs = base
+    q = (f.get("pq") or "").strip()
+    if q:
+        qs = qs.filter(Q(name__icontains=q) | Q(category__name__icontains=q))
+    if f.get("pstatus"):
+        qs = qs.filter(status=f["pstatus"])
+    if f.get("level"):
+        qs = qs.filter(level__code=f["level"])
+    if f.get("category"):
+        qs = qs.filter(category_id=f["category"]) if f["category"].isdigit() else qs.none()
+    expiring = (f.get("expiring") or "").strip()
+    if expiring.isdigit():
+        today = timezone.localdate()
+        qs = qs.filter(expiry_date__gte=today, expiry_date__lte=today + datetime.timedelta(days=int(expiring)))
+    programmes = list(qs.order_by("name", "level__sort_order"))
+    bodies = programme_info.bodies_map(programmes)
+    work = programme_info.open_work(programmes, request.user)
+    if f.get("body"):
+        wanted = f["body"]
+        programmes = [p for p in programmes if any(str(b.pk) == wanted for b in bodies.get(p.pk, []))] \
+            if wanted != "none" else [p for p in programmes if not bodies.get(p.pk)]
+    if f.get("open") == "1":
+        programmes = [p for p in programmes if p.pk in work]
+    elif f.get("open") == "0":
+        programmes = [p for p in programmes if p.pk not in work]
+    page = paginate(request, programmes)
+    for p in page["rows"]:
+        p.bodies = bodies.get(p.pk, [])
+        p.work = work.get(p.pk)
+        p.expiry_info = programme_info.expiry(p)
+        p.approval_type_name = programme_info.approval_type_name(p)
+    all_ids = list(base.values_list("pk", flat=True))
+    return {"page": page, "filters": f, "pstatus": f.get("pstatus", ""),
+            "programme_statuses": Programme.STATUS_CHOICES,
+            "levels": ProgrammeLevel.objects.filter(is_active=True),
+            "categories": ProgrammeCategory.objects.filter(programmes__in=all_ids).distinct().order_by("name"),
+            "bodies": ProfessionalBody.objects.filter(is_active=True).order_by("name"),
+            "programme_total": len(all_ids), "any_filter": any(f.get(k) for k in (
+                "pq", "pstatus", "level", "category", "body", "expiring", "open"))}
 
 
 def _pending_for(request, inst, all_statuses=False):
@@ -449,7 +478,68 @@ def import_page(request):
 def _batch_context(request, batch):
     pa = (PendingAction.objects.filter(policy_id="institutions.bulk_import", object_id=str(batch.pk))
           .order_by("-initiated_at").first())
-    return {"batch": batch, "pa": pa, "rows": batch.rows[:500], "errors": batch.errors[:500]}
+    ctx = {"batch": batch, "pa": pa, "rows": batch.rows[:500], "errors": batch.errors[:500]}
+    if batch.kind == "legacy":
+        ctx["sheet_counts"] = _sheet_counts(batch)
+        if batch.status == "applied":
+            from .migration import pending_invites
+
+            codes = (batch.result or {}).get("institution_codes") or []
+            ctx["awaiting_invite"] = pending_invites(list(_scoped(request).filter(code__in=codes)))
+            ctx["invites"] = (batch.result or {}).get("invites") or {}
+            ctx["can_send_credentials"] = (request.user.is_superuser
+                                           or request.user.has_perm("institutions.send_login_credentials"))
+    return ctx
+
+
+def _sheet_counts(batch):
+    out = {}
+    for row in batch.rows or []:
+        sheet = {"institution": "Institutions", "programme": "Programmes", "history": "History"}.get(
+            row.get("_sheet"), "Rows")
+        item = out.setdefault(sheet, {"create": 0, "update": 0, "unchanged": 0})
+        item[row.get("_action", "unchanged")] = item.get(row.get("_action", "unchanged"), 0) + 1
+    return out
+
+
+@require_or_404(lambda u: can_view_institutions(u) and (u.is_superuser
+                                                         or u.has_perm("institutions.send_login_credentials")))
+@require_POST
+def import_invites(request, pk):
+    """Send Login Credentials, in bulk, to every institution of an applied
+    migration whose portal administrator has not had a link yet."""
+    from .migration import pending_invites
+
+    batch = InstitutionImportBatch.objects.filter(pk=pk, kind="legacy", status="applied").first()
+    if batch is None or not (batch.created_by_id == request.user.pk or request.user.is_superuser
+                             or request.user.has_perm("institutions.confirm_bulk_import")
+                             or request.user.has_perm("institutions.send_login_credentials")):
+        raise Http404
+    codes = (batch.result or {}).get("institution_codes") or []
+    sent, failed = 0, []
+    for inst in pending_invites(list(_scoped(request).filter(code__in=codes))):
+        try:
+            pa = actions.initiate("institutions.send_login_credentials", actor=request.user, target=inst,
+                                  payload={"reason": f"Migration batch #{batch.pk}"},
+                                  reason=f"Migration batch #{batch.pk}", impersonating=_impersonating(request))
+        except (ValidationError, PermissionDenied) as exc:
+            failed.append(f"{inst.code}: {' '.join(getattr(exc, 'messages', [str(exc)]))}")
+            continue
+        if pa.status == PendingAction.APPLIED:
+            sent += 1
+        else:
+            failed.append(f"{inst.code}: {pa.failure_detail or pa.get_status_display()}")
+    result = dict(batch.result or {})
+    invites = dict(result.get("invites") or {})
+    invites.update({line.split(":", 1)[0]: line.split(":", 1)[1].strip() for line in failed})
+    result["invites"] = invites
+    InstitutionImportBatch.objects.filter(pk=batch.pk).update(result=result)
+    batch.refresh_from_db()
+    response = render_qa(request, "institutions/import/batch.html", _batch_context(request, batch),
+                         {"qa-panel": "institutions/import/_batch.html", "qa-batch": "institutions/import/_batch.html"})
+    if failed and not sent:
+        return toast(response, "error", "No links sent", "; ".join(failed)[:300])
+    return toast(response, "success", f"{sent} set-password link(s) sent", "; ".join(failed)[:300])
 
 
 @require_or_404(lambda u: can_view_institutions(u) and _can_import(u))
@@ -472,8 +562,11 @@ def import_batch(request, pk):
             with transaction.atomic():
                 batch.status = "pending"
                 batch.save(update_fields=["status", "updated_at"])
+                payload = {"reason": reason}
+                if batch.kind == "legacy":
+                    payload["send_invites"] = request.POST.get("send_invites") == "1"
                 pa = actions.initiate("institutions.bulk_import", actor=request.user, target=batch,
-                                      payload={"reason": reason}, reason=reason,
+                                      payload=payload, reason=reason,
                                       impersonating=_impersonating(request))
                 if pa.status != PendingAction.PENDING:
                     batch.refresh_from_db()
@@ -494,9 +587,16 @@ def import_batch(request, pk):
 def import_template(request, kind):
     from .importexport import template_xlsx
 
-    if kind not in ("institutions", "programmes"):
+    if kind not in ("institutions", "programmes", "legacy"):
         raise Http404
-    response = HttpResponse(template_xlsx(kind),
+    if kind == "legacy":
+        from .migration import template_xlsx as migration_template
+
+        data = migration_template()
+        kind = "migration"
+    else:
+        data = template_xlsx(kind)
+    response = HttpResponse(data,
                             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response["Content-Disposition"] = f'attachment; filename="nbte-qa-{kind}-template.xlsx"'
     return response

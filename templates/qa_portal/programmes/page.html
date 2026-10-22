@@ -1,0 +1,45 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Programmes · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "layers" 14 "2.2" %} Programme status board</span>
+    <h1 data-qa-focus>Programmes</h1>
+    <p>Every programme on NBTE's record, with its approval, streams and when it expires. Re-accreditation opens {{ window }} months before a programme expires.</p>
+    <p><a class="btn btn-subtle btn-sm" href="{% url 'qa_portal:programme_list' %}">{% icon "search" 14 %} Search and filter all programmes</a></p>
+  </header>
+  {% if cards %}
+  <ul class="qa-prog-board" role="list">
+    {% for c in cards %}{% with p=c.programme %}
+    <li class="qa-prog-card qa-prog-card--{{ c.urgency|default:'none' }}">
+      <div class="qa-prog-card__head">
+        <span class="qa-rowlink__badge">{{ p.level.code|upper|default:"—" }}</span>
+        <div><h2 class="qa-prog-card__title"><a href="{% url 'qa_portal:programme' p.pk %}">{{ p.name }}</a></h2>
+          <p class="qa-prog-card__status"><span class="qa-chip {{ p.status|tone }}">{{ p.get_status_display }}{% if p.expiry_date and p.status != "expired" and p.status != "denied" %} — expires {{ p.expiry_date|date:"j M Y" }}{% endif %}</span></p></div>
+      </div>
+      <dl class="qa-prog-card__facts">
+        <div><dt>Approval</dt><dd>{{ p.approval_type.name|default:"—" }}</dd></div>
+        <div><dt>Streams</dt><dd>{{ p.approved_streams|default:"—" }}</dd></div>
+        <div><dt>From</dt><dd>{{ p.commencement_date|date:"j M Y"|default:"—" }}</dd></div>
+        <div><dt>Expires</dt><dd>{{ p.expiry_date|date:"j M Y"|default:"—" }}</dd></div>
+      </dl>
+      {% if c.days_left is not None and p.status != "denied" %}
+        <p class="qa-countdown qa-countdown--{{ c.urgency }}" role="status">{% icon "clock" 14 %}
+          {% if c.days_left < 0 or p.status == "expired" %}Expired {{ p.expiry_date|timesince }} ago{% elif c.days_left == 0 %}Expires today{% else %}<strong>{{ c.days_left }}</strong> day{{ c.days_left|pluralize }} left{% endif %}
+          {% if not c.window_open and c.opens %}<span class="qa-muted"> · re-accreditation opens {{ c.opens|date:"j M Y" }}</span>{% endif %}</p>
+      {% endif %}
+      <div class="qa-prog-card__actions">
+        {% if c.can_renew %}<a class="btn btn-primary btn-sm" href="{% url 'qa_portal:qa_request_new' %}?type={{ renewal.code }}" hx-get="{% url 'qa_portal:qa_request_new' %}?type={{ renewal.code }}" hx-target="#qa-main" hx-push-url="true">{% icon "arrow" 14 %} Request re-accreditation</a>
+        {% elif c.window_open and p.status != "denied" %}<span class="qa-small qa-muted">The re-accreditation window is open{% if p.status != "expired" %}; it may already be in an open request{% endif %}.</span>{% endif %}
+        <a class="btn btn-subtle btn-sm" href="{% url 'qa_portal:programme' p.pk %}">Details</a>
+        {% if c.letter %}{% for copy in c.letter.copies.all %}<a class="btn btn-subtle btn-sm" href="{{ copy.portal_download_url }}">{% icon "download" 14 %} {% if copy.kind == "original" %}Letter{% else %}Duplicate{% endif %}</a>{% endfor %}{% endif %}
+      </div>
+    </li>
+    {% endwith %}{% endfor %}
+  </ul>
+  {% else %}
+  <section class="qa-card"><div class="qa-card__body"><p class="qa-muted">No programmes on NBTE's record yet.</p></div></section>
+  {% endif %}
+</div>
+{% endblock %}

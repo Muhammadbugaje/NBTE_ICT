@@ -7,6 +7,7 @@ from django.urls import path
 
 from accreditation import settings_views as ssq_views
 from complaints import settings_views as complaint_views
+from inspection import settings_views as workload_views
 from institutions import views as institution_views
 from payments import views as payment_views
 
@@ -16,6 +17,8 @@ urlpatterns = [
     path("fees/", payment_views.settings_fees, name="fees"),
     path("fees/bank/", payment_views.settings_bank_form, name="bank_form"),
     path("fees/schedule/<int:pk>/", payment_views.settings_fee_form, name="fee_form"),
+    path("fees/new/", payment_views.settings_fee_new, name="fee_new"),  # Phase 8
+    path("fees/test/", payment_views.settings_fee_test, name="fee_test"),
     path("payment-methods/", payment_views.settings_methods, name="methods"),
     path("documents/", institution_views.settings_documents, name="documents"),
     path("lookups/", institution_views.settings_lookups, name="lookups"),
@@ -35,7 +38,12 @@ urlpatterns = [
     # Phase 4: the SOP-03 rate table (cost sheet amounts)
     path("rates/", ssq_views.rates, name="rates"),
     path("rates/<int:pk>/", ssq_views.rate_edit, name="rate_edit"),
+    # Phase 8: approval types (B18)
+    path("approval-types/", ssq_views.approval_types, name="approval_types"),
+    path("approval-types/<int:pk>/", ssq_views.approval_type_edit, name="approval_type_edit"),
     # Phase 7: complaint layers, routing, escalation and the knowledge base
     path("complaints/", complaint_views.complaints_settings, name="complaints"),
     path("complaints/<str:section>/<int:pk>/", complaint_views.complaints_settings_edit, name="complaints_edit"),
+    # Phase 8: fair workload limits per rank (qa.workload.limits)
+    path("workload/", workload_views.workload_limits, name="workload"),
 ]

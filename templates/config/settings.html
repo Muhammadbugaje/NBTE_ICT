@@ -3,7 +3,7 @@
 {% block title %}Settings{% endblock %}
 {% block page_title %}Settings{% endblock %}
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/settings.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/settings.css' %}?v=4">
 {% endblock %}
 {% block content %}
 {% comment %}
@@ -19,10 +19,12 @@
   </header>
 
   <div class="sh-layout">
-    <nav aria-label="Settings sections">
+    <nav class="sh-sidenav" aria-label="Settings sections" data-sh-sidenav>
+      <span class="sh-sidenav__title" aria-hidden="true">On this page</span>
       <ul class="sh-nav" data-sh-nav>
         <li><a href="#sh-email" class="is-active">E-mail delivery</a></li>
         <li><a href="#sh-leave">Leave policy</a></li>
+        {% if perms.backups.view_backups %}<li><a href="#sh-backups">Backups</a></li>{% endif %}
         {% if qa_settings_count %}<li><a href="#sh-qa">Quality assurance <span class="sh-nav__count">{{ qa_settings_count }}</span></a></li>{% endif %}
         {% for group, items in grouped %}<li><a href="#sh-g-{{ group|slugify }}">{{ group }} <span class="sh-nav__count">{{ items|length }}</span></a></li>{% endfor %}
       </ul>
@@ -109,6 +111,18 @@
         </form>
       </section>
 
+      {% if perms.backups.view_backups %}
+      <section class="sh-feature" id="sh-backups" aria-labelledby="settings-backups-link-title" data-reveal>
+        <div>
+          <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg></span>
+          <h2 id="settings-backups-link-title">Backups</h2>
+          <p>Back up the whole system — database, uploaded and restricted files, settings — to a server folder, a USB drive or cloud storage. Schedule, destinations, history and restore drills.</p>
+          {% if backup_status %}<span class="sh-feature__state{% if backup_status.ok %} is-on{% endif %}">{{ backup_status.text }}</span>{% endif %}
+        </div>
+        <div><a class="btn btn-primary" href="{% url 'backups:index' %}">Open backups</a></div>
+      </section>
+      {% endif %}
+
       {% if qa_settings_count %}
       <section class="sh-feature" id="sh-qa" aria-labelledby="settings-qa-link-title" data-reveal>
         <div>
@@ -166,21 +180,83 @@
   </div>
 </div>
 <script>
-  /* Highlight the section in view in the navigator. */
+  /* Section navigator (Phase 8): highlight the section in view, smooth-scroll
+     on click, keep the active chip visible in the phone chip bar, and show a
+     hairline under the bar once it is pinned. */
   (function () {
-    var links = document.querySelectorAll("[data-sh-nav] a");
-    if (!("IntersectionObserver" in window) || !links.length) return;
-    var byId = {};
-    links.forEach(function (a) { byId[a.getAttribute("href").slice(1)] = a; });
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (!en.isIntersecting) return;
-        links.forEach(function (a) { a.classList.remove("is-active"); });
-        var a = byId[en.target.id];
-        if (a) { a.classList.add("is-active"); if (a.scrollIntoView && window.innerWidth < 1100) a.parentNode.parentNode.scrollLeft = a.offsetLeft - 16; }
+    var nav = document.querySelector("[data-sh-sidenav]");
+    var list = document.querySelector("[data-sh-nav]");
+    var links = Array.prototype.slice.call(document.querySelectorAll("[data-sh-nav] a"));
+    if (!nav || !links.length) return;
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var byId = {}, sections = [];
+    links.forEach(function (a) {
+      var id = a.getAttribute("href").slice(1);
+      var el = document.getElementById(id);
+      if (el) { byId[id] = a; sections.push(el); }
+    });
+    var lockUntil = 0;
+    function setActive(a) {
+      links.forEach(function (l) { l.classList.toggle("is-active", l === a); if (l === a) l.setAttribute("aria-current", "true"); else l.removeAttribute("aria-current"); });
+      if (!a) return;
+      if (list.scrollWidth > list.clientWidth) {           // phone chip bar
+        var left = a.offsetLeft - (list.clientWidth - a.offsetWidth) / 2;
+        list.scrollTo({ left: Math.max(0, left), behavior: reduce ? "auto" : "smooth" });
+      } else if (nav.scrollHeight > nav.clientHeight) {    // long desktop list
+        var r = a.getBoundingClientRect(), n = nav.getBoundingClientRect();
+        if (r.top < n.top || r.bottom > n.bottom) nav.scrollTop += r.top - n.top - n.height / 3;
+      }
+    }
+    function offset() {
+      var top = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--topbar-offset-bottom"), 10) || 64;
+      return window.innerWidth < 1100 ? top + nav.offsetHeight + 8 : top + 16;
+    }
+    function current() {
+      var line = offset() + Math.min(160, window.innerHeight * 0.25);
+      var found = sections[0];
+      sections.forEach(function (s) { if (s.getBoundingClientRect().top <= line) found = s; });
+      // at the very bottom, the last section wins
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) found = sections[sections.length - 1];
+      return found;
+    }
+    var ticking = false;
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        ticking = false;
+        nav.classList.toggle("is-stuck", nav.getBoundingClientRect().top <= offset() - 8 + 1 && window.scrollY > 0);
+        if (Date.now() < lockUntil) return;
+        var s = current();
+        if (s) setActive(byId[s.id]);
       });
-    }, { rootMargin: "-30% 0px -60% 0px" });
-    Object.keys(byId).forEach(function (id) { var el = document.getElementById(id); if (el) io.observe(el); });
+    }
+    // IntersectionObserver wakes the check when a section crosses the reading line.
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(onScroll, { rootMargin: "-25% 0px -65% 0px" });
+      sections.forEach(function (s) { io.observe(s); });
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    links.forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        var id = a.getAttribute("href").slice(1), el = document.getElementById(id);
+        if (!el) return;
+        e.preventDefault();
+        e.stopPropagation();   // app.js's generic #anchor scroller uses a fixed offset
+        setActive(a);
+        lockUntil = Date.now() + (reduce ? 50 : 900);
+        // layout position (offsetTop): ignores the scroll-reveal translate on sections not yet shown
+        var y = 0, n = el;
+        while (n) { y += n.offsetTop; n = n.offsetParent; }
+        var top = y - offset();
+        window.scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
+        if (history.replaceState) history.replaceState(history.state, "", "#" + id);
+        var h = el.querySelector("h2");
+        if (h) { if (!h.hasAttribute("tabindex")) h.setAttribute("tabindex", "-1"); window.setTimeout(function () { h.focus({ preventScroll: true }); }, reduce ? 0 : 500); }
+      });
+    });
+    onScroll();
   })();
 </script>
 {% endblock %}

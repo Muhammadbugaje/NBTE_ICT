@@ -1659,3 +1659,95 @@ def schedule_recurrence(task):
         task.recurrence_next_at = timezone.now() + timedelta(days=days)
         task.save(update_fields=["recurrence_next_at", "updated_at"])
 
+
+
+# ===========================================================================
+# What can this user do on the detail page? (Phase 9: shared by the website's
+# task_detail view and the mobile API, so the two can never drift apart.)
+# ===========================================================================
+def available_actions(task, user, my_row=None, running_timer=None):
+    """Return the ``can_*`` flags the task detail page uses.
+
+    ``my_row`` / ``running_timer`` may be passed when the caller already
+    fetched them; otherwise they are looked up.
+    """
+    if my_row is None:
+        my_row = task.assignee_rows.filter(user=user).first()
+    if running_timer is None:
+        running_timer = TaskTimeEntry.objects.filter(
+            task=task, user=user, ended_at__isnull=True,
+        ).first()
+
+    is_creator = task.created_by_id == user.pk
+    is_assignee = my_row is not None
+    closed = task.state in Task.CLOSED_STATES
+
+    can_edit = can_edit_task(task, user)
+    flags = {
+        "is_creator": is_creator,
+        "is_assignee": is_assignee,
+        "can_edit": can_edit,
+        "can_cancel": can_cancel_task(task, user),
+        "can_delete": can_delete_task(task, user),
+        "can_review": can_review(task, user) and task.state == Task.AWAITING_REVIEW,
+        "can_assign": can_edit and task.state in (Task.DRAFT, Task.OPEN, Task.RETURNED),
+        # Accept is only for someone who hasn't accepted yet.
+        "can_accept": bool(is_assignee and my_row.state == TaskAssignee.ASSIGNED and not closed),
+        # Start work only until the row is IN_PROGRESS.
+        "can_start": bool(
+            is_assignee
+            and my_row.state in (TaskAssignee.ASSIGNED, TaskAssignee.ACCEPTED)
+            and task.state in Task.ACTIVE_STATES
+        ),
+        "can_reopen": bool(
+            task.state == Task.COMPLETED
+            and (
+                user.is_superuser
+                or is_creator
+                or (task.reviewer_id and task.reviewer_id == user.pk)
+                or (task.owner_department_id
+                    and is_department_head(user, task.owner_department_id))
+            )
+        ),
+        # Timer controls — visible only while this user's row is IN_PROGRESS.
+        "can_start_timer": bool(
+            is_assignee and my_row.state == TaskAssignee.IN_PROGRESS
+            and running_timer is None and not closed
+        ),
+        "can_stop_timer": bool(is_assignee and running_timer is not None and not closed),
+        "can_ask": bool(
+            is_assignee and task.state in (Task.OPEN, Task.IN_PROGRESS)
+            and my_row.state != TaskAssignee.DONE
+        ),
+        "can_resume": bool(is_assignee and task.state in (Task.AWAITING_RESPONSE, Task.RETURNED)),
+        "can_return": bool(
+            is_assignee
+            and task.state in (Task.OPEN, Task.IN_PROGRESS, Task.AWAITING_RESPONSE)
+            and my_row.state != TaskAssignee.DONE
+        ),
+        "can_mark_done": bool(
+            is_assignee
+            and my_row.state in (TaskAssignee.ACCEPTED, TaskAssignee.IN_PROGRESS, TaskAssignee.BLOCKED)
+            and task.state in Task.ACTIVE_STATES
+        ),
+        "can_resend": can_edit and task.state == Task.RETURNED,
+        "can_split": can_edit and not task.subtasks.exists() and task.state != Task.CANCELLED,
+        "can_comment": not task.is_closed,
+        "can_attach": not task.is_closed,
+        "qa_link_url": "",
+        "qa_link_open": False,
+    }
+    # Phase 4: a task linked to a QA stage is driven from the QA screens —
+    # it closes when the stage is approved or returned there, never here.
+    try:
+        from qa_core.task_bridge import is_linked, open_link_for, qa_url
+
+        if is_linked(task):
+            link = open_link_for(task) or task.qa_link
+            flags["qa_link_url"], flags["qa_link_open"] = qa_url(link), link.closed_at is None
+            for key in ("can_mark_done", "can_cancel", "can_delete", "can_review", "can_assign",
+                        "can_reopen", "can_split", "can_resend"):
+                flags[key] = False
+    except ImportError:  # the QA apps are not installed
+        pass
+    return flags

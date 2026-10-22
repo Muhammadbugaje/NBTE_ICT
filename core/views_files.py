@@ -5,9 +5,10 @@ Routes:
     files_dashboard          GET    The page itself (stats + cached scan).
     files_scan               POST   Synchronous scan (no-JS fallback).
     files_scan_stream        GET    SSE streaming scan with progress.
-    files_purge              POST   Auto-delete orphans older than
-                                    the configured threshold.
-    files_delete_selected    POST   Delete specific orphans by kind+rel.
+    files_purge              POST   Move orphans older than the configured
+                                    threshold to the quarantine.
+    files_delete_selected    POST   Quarantine specific orphans by kind+rel
+                                    (same age threshold, re-checked).
 """
 from __future__ import annotations
 
@@ -158,6 +159,7 @@ def files_scan_stream(request):
                         "mtime": event["orphan"]["mtime"],
                         "age_days": event["orphan"]["age_days"],
                         "is_variant": event["orphan"]["is_variant"],
+                        "reason": event["orphan"].get("reason", ""),
                     })
                 elif etype == "done":
                     final_summary = event["summary"]
@@ -215,13 +217,15 @@ def files_purge(request):
         return redirect("config:files_dashboard")
 
     min_age = scanner.purge_min_age_days()
-    result = scanner.delete_paths(paths, min_age_days=min_age, actor=request.user)
+    result = scanner.quarantine_paths(paths, min_age_days=min_age, actor=request.user)
 
     parts = []
     if result.deleted:
-        parts.append(f"{result.deleted} deleted ({scanner.human_size(result.freed)})")
+        parts.append(f"{result.deleted} moved to quarantine ({scanner.human_size(result.freed)})")
+    if result.skipped_in_use:
+        parts.append(f"{result.skipped_in_use} kept (now in use)")
     if result.skipped_young:
-        parts.append(f"{result.skipped_young} kept (younger than {min_age}d)")
+        parts.append(f"{result.skipped_young} kept (younger than {min_age} days)")
     if result.skipped_missing:
         parts.append(f"{result.skipped_missing} already gone")
     if result.errors:
@@ -264,21 +268,19 @@ def files_delete_selected(request):
         messages.info(request, "No valid selections.")
         return redirect("config:files_dashboard")
 
-    # Manual selection bypasses the age guard.
-    #
-    # `purge_min_age_days()` exists to protect the AUTO-purge from
-    # deleting recently-uploaded files. When the operator explicitly
-    # ticks a row and clicks Delete, that's an intentional choice and
-    # should go through regardless of the file's age.
-    result = scanner.delete_paths(
-        paths,
-        min_age_days=0,
-        actor=request.user,
-    )
+    # Phase 8: a manual selection no longer bypasses the age guard, and every
+    # file is re-checked against a fresh reference index (the cached scan may
+    # be stale). Files are moved to the quarantine, never deleted outright.
+    min_age = scanner.purge_min_age_days()
+    result = scanner.quarantine_paths(paths, min_age_days=min_age, actor=request.user)
 
     parts = []
     if result.deleted:
-        parts.append(f"{result.deleted} deleted ({scanner.human_size(result.freed)})")
+        parts.append(f"{result.deleted} moved to quarantine ({scanner.human_size(result.freed)})")
+    if result.skipped_in_use:
+        parts.append(f"{result.skipped_in_use} kept (now in use)")
+    if result.skipped_young:
+        parts.append(f"{result.skipped_young} kept (younger than {min_age} days)")
     if result.skipped_missing:
         parts.append(f"{result.skipped_missing} already gone")
     if result.errors:

@@ -1,4 +1,5 @@
 from django.contrib import admin
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
 
 from django.utils.html import format_html
 
@@ -15,7 +16,7 @@ from .models import Department, Office, Staff, StaffAttachment, StaffCategory, S
 from .models import Designation, ImportSession, Promotion, SavedQuery, StaffTransfer, StateOfOrigin
 
 
-class LookupAdmin(admin.ModelAdmin):
+class LookupAdmin(ModelAdmin):
     list_display = ("name", "is_active", "sort_order")
     list_editable = ("is_active", "sort_order")
     search_fields = ("name",)
@@ -36,7 +37,7 @@ class OfficeAdmin(LookupAdmin):
     autocomplete_fields = ("head",)
 
 
-class StatusHistoryInline(admin.TabularInline):
+class StatusHistoryInline(TabularInline):
     model = StaffStatusHistory
     extra = 0
     can_delete = False
@@ -46,7 +47,7 @@ class StatusHistoryInline(admin.TabularInline):
         return False
 
 
-class AttachmentInline(admin.TabularInline):
+class AttachmentInline(TabularInline):
     model = StaffAttachment
     extra = 0
     fields = ("file", "description", "original_name", "download")
@@ -59,7 +60,7 @@ class AttachmentInline(admin.TabularInline):
 
 
 @admin.register(Staff)
-class StaffAdmin(admin.ModelAdmin):
+class StaffAdmin(ModelAdmin):
     list_display = ("employee_no", "last_name", "first_name", "department", "designation",
                     "grade_level", "state_of_origin", "state")
     list_filter = ("department", "designation", "state_of_origin", "gender", "state", "office", "category")
@@ -132,7 +133,7 @@ class StaffAdmin(admin.ModelAdmin):
 
 
 @admin.register(ExecutivePosition)
-class ExecutivePositionAdmin(admin.ModelAdmin):
+class ExecutivePositionAdmin(ModelAdmin):
     list_display = ("name", "scope", "department", "order", "is_active")
     list_filter = ("scope", "is_active", "department")
     list_editable = ("order", "is_active")
@@ -141,7 +142,7 @@ class ExecutivePositionAdmin(admin.ModelAdmin):
 
 
 @admin.register(ExecutiveTenure)
-class ExecutiveTenureAdmin(admin.ModelAdmin):
+class ExecutiveTenureAdmin(ModelAdmin):
     list_display = ("staff", "position", "started_on", "ended_on",
                     "is_acting", "is_current", "is_public", "is_featured")
     list_filter = ("is_acting", "is_public", "is_featured", "position")
@@ -166,7 +167,7 @@ class ExecutiveTenureAdmin(admin.ModelAdmin):
 # Nominal roll release
 # ---------------------------------------------------------------------------
 @admin.register(Designation)
-class DesignationAdmin(admin.ModelAdmin):
+class DesignationAdmin(ModelAdmin):
     list_display = ("name", "rank", "contediss_min", "contediss_max", "next_designation",
                     "staff_count", "is_active", "sort_order")
     list_editable = ("rank", "is_active", "sort_order")
@@ -194,7 +195,7 @@ class StateOfOriginAdmin(LookupAdmin):
     search_fields = ("name", "code")
 
 
-class ReadOnlyAdmin(admin.ModelAdmin):
+class ReadOnlyAdmin(ModelAdmin):
     """Rows are written by the app (promotions / imports) only."""
 
     def has_add_permission(self, request):
@@ -245,7 +246,7 @@ class ImportSessionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(SavedQuery)
-class SavedQueryAdmin(admin.ModelAdmin):
+class SavedQueryAdmin(ModelAdmin):
     list_display = ("name", "owner", "is_shared", "logic", "updated_at")
     list_filter = ("is_shared", "logic")
     search_fields = ("name", "description", "owner__email")

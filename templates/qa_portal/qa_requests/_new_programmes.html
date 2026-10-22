@@ -1,5 +1,5 @@
 {% load qa_tags %}
-<section class="qa-card" aria-labelledby="nq-progs"><header class="qa-card__head"><div><h2 id="nq-progs">2. Programmes</h2><p>{% if qa_type %}{{ qa_type.name }}{% if qa_type.uses_reassessment_window %} opens {{ window }} months before a programme’s accreditation expires (Requirement 4){% endif %}.{% else %}Choose a QA type first.{% endif %}</p></div></header>
+<section class="qa-card" aria-labelledby="nq-progs"><header class="qa-card__head"><div><h2 id="nq-progs">2. Programmes</h2><p>{% if qa_type %}{{ qa_type.name }}{% if qa_type.uses_reassessment_window %} opens {{ window }} months before a programme’s accreditation expires (Requirement 4){% endif %}.{% if qa_type.asks_streams %} Say how many streams you want for each programme (1 to {{ max_streams }}).{% endif %}{% else %}Choose a QA type first.{% endif %}</p></div></header>
   {% if qa_type %}
     <ul class="qa-checklist" role="list">
       {% for row in programmes %}
@@ -8,11 +8,19 @@
             <input type="checkbox" name="programmes" value="{{ row.programme.pk }}"{% if not row.eligible %} disabled{% endif %}{% if row.programme.pk in chosen %} checked{% endif %}>
             <span><strong>{{ row.programme }}</strong> <span class="qa-chip {{ row.programme.status|tone }}">{{ row.programme.get_status_display }}</span>
               {% if row.programme.expiry_date %}<span class="qa-small qa-muted">expires {{ row.programme.expiry_date|date:"j M Y" }}</span>{% endif %}
+              {% if row.programme.approved_streams %}<span class="qa-small qa-muted">· {{ row.programme.approved_streams }} stream{{ row.programme.approved_streams|pluralize }} approved</span>{% endif %}
               {% if not row.eligible %}<span class="qa-small qa-block qa-muted">{% icon "lock" 12 %} {{ row.reason }}</span>{% endif %}</span>
           </label>
+          {% if qa_type.asks_streams and row.eligible %}
+            <span class="qa-streams"><label for="st-{{ row.programme.pk }}">Number of streams</label>
+              <input class="input qa-streams__input" type="number" inputmode="numeric" id="st-{{ row.programme.pk }}" name="streams_{{ row.programme.pk }}" value="{{ row.streams }}" min="1" max="{{ max_streams }}" step="1"></span>
+          {% endif %}
         </li>
       {% empty %}<li class="qa-muted qa-small">Your institution has no programmes on NBTE’s record.</li>{% endfor %}
     </ul>
-    <div class="qa-card__body"><div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Create draft request</button><span class="qa-small qa-muted">Nothing is sent to NBTE until you submit the draft.</span></div></div>
+    <div class="qa-card__body qa-stack">
+      <div id="qa-fee-estimate" class="qa-region" hx-target="this" hx-swap="innerHTML" hx-get="{% url 'qa_portal:qa_request_estimate' %}" hx-trigger="load, change from:closest form, input delay:400ms from:closest form" hx-include="closest form" hx-sync="this:replace" aria-live="polite">{% include "qa_portal/qa_requests/_fee_estimate.html" %}</div>
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Create draft request</button><span class="qa-small qa-muted">Nothing is sent to NBTE until you submit the draft.</span></div>
+    </div>
   {% endif %}
 </section>

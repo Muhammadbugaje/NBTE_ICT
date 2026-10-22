@@ -105,8 +105,43 @@ def _new_context(request, inst, qa_type=None, **extra):
         ok, why = svc.type_availability(inst, t)
         types.append({"type": t, "available": ok, "reason": why})
     programmes = svc.eligible_programmes(inst, qa_type) if qa_type is not None else []
+    asked = extra.pop("asked", {})
+    for row in programmes:  # Phase 8: the streams box per programme
+        row["streams"] = asked.get(row["programme"].pk) or svc.default_streams(row["programme"], qa_type)
     return _shell_context(request, "qa_requests", inst=inst, types=types, qa_type=qa_type, programmes=programmes,
-                          window=svc.window_months(), **extra)
+                          window=svc.window_months(), max_streams=svc.max_streams(), **extra)
+
+
+def _asked_streams(request, ids):
+    """{programme pk: raw value} from the streams_<pk> inputs."""
+    return {pk: request.POST.get(f"streams_{pk}", request.GET.get(f"streams_{pk}")) for pk in ids
+            if (request.POST.get(f"streams_{pk}") or request.GET.get(f"streams_{pk}")) not in (None, "")}
+
+
+@institution_required
+@require_GET
+def request_estimate(request):
+    """Phase 8: the live fee estimate on the new-request page (HTMX). It
+    recalculates as the institution ticks programmes and types streams."""
+    user = request.user
+    inst = _inst(request)
+    if not svc.can_manage_requests(user, inst):
+        raise Http404
+    qa_type = QAType.objects.filter(code=request.GET.get("type") or "", is_active=True).first()
+    ids = [int(i) for i in request.GET.getlist("programmes") if str(i).isdigit()]
+    programmes = list(Programme.objects.for_user(user).filter(institution=inst, pk__in=ids))
+    asked = _asked_streams(request, ids)
+    pairs, problems = [], []
+    for p in programmes:
+        try:
+            n = svc._streams_for(p, qa_type, asked.get(p.pk)) if qa_type is not None else 1
+        except ValidationError as exc:
+            problems.append(_msg(exc))
+            n = svc.default_streams(p, qa_type)
+        pairs.append((p, n))
+    estimate = svc.fee_estimate(inst, qa_type, pairs) if (qa_type is not None and pairs) else None
+    return render(request, "qa_portal/qa_requests/_fee_estimate.html",
+                  {"estimate": estimate, "problems": problems, "qa_type": qa_type, "count": len(pairs)})
 
 
 @institution_required
@@ -121,13 +156,15 @@ def request_new(request):
     if request.method == "POST":
         ids = [int(i) for i in request.POST.getlist("programmes") if str(i).isdigit()]
         programmes = list(Programme.objects.for_user(user).filter(institution=inst, pk__in=ids))
+        asked = _asked_streams(request, [p.pk for p in programmes])
         try:
             if qa_type is None:
                 raise ValidationError("Choose a QA type.")
-            req = svc.create_request(inst, qa_type, programmes, user=user)
+            req = svc.create_request(inst, qa_type, programmes, user=user, streams=asked)
         except (ValidationError, PermissionDenied) as exc:
             response = render(request, "qa_portal/qa_requests/new.html",
-                              _new_context(request, inst, qa_type, error=_msg(exc), chosen=ids), status=422)
+                              _new_context(request, inst, qa_type, error=_msg(exc), chosen=ids,
+                                           asked={k: v for k, v in asked.items()}), status=422)
             return toast(response, "error", "Not created", _msg(exc))
         url = reverse("qa_portal:qa_request", args=[req.pk])
         if is_htmx(request):
@@ -181,7 +218,11 @@ def _detail_context(request, req, **extra):
         "can_cancel": manage and svc.is_cancellable(req), "r25": svc.cancellable_stage_labels(req),
         "queries": list(Query.objects.for_user(user).filter(qa_request=req).order_by("-created_at")),
         "board": _board(req),
+        "max_streams": svc.max_streams(),
     }
+    if req.status == "draft":  # Phase 8: what the fee will be, from the streams asked for
+        ctx["estimate"] = svc.fee_estimate(inst, req.qa_type, [(r.programme, r.requested_streams) for r in rows
+                                                              if r.status == "active"])
     ctx.update(extra)
     return _shell_context(request, "qa_requests", **ctx)
 
@@ -271,10 +312,24 @@ def request_add(request, pk):
     try:
         if programme is None:
             raise ValidationError("Choose a programme.")
-        svc.add_programme(req, programme, user=request.user)
+        svc.add_programme(req, programme, user=request.user, streams=request.POST.get("streams") or None)
     except (ValidationError, PermissionDenied) as exc:
         return _detail_response(request, req, error=_msg(exc))
     return _detail_response(request, req, ok=(f"{programme} added", ""))
+
+
+@institution_required
+@require_POST
+def request_streams(request, pk, row):
+    """Phase 8: change the streams asked for on a draft request."""
+    req = _req_or_404(request, pk)
+    _manage_or_404(request, req)
+    row = _row_or_404(request, req, row)
+    try:
+        svc.set_streams(req, row, request.POST.get("streams"), user=request.user)
+    except (ValidationError, PermissionDenied) as exc:
+        return _detail_response(request, req, error=_msg(exc))
+    return _detail_response(request, req, ok=(f"{row.programme}: {row.requested_streams} stream(s)", ""))
 
 
 def _row_or_404(request, req, row_pk):

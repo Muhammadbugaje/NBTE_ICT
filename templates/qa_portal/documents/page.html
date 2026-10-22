@@ -1,4 +1,5 @@
 {% extends base_template %}
+{% load ux_tags %}
 {% load qa_tags %}
 {% block title %}Documents · {{ portal_name }}{% endblock %}
 {% block content %}
@@ -21,7 +22,7 @@
     <aside class="qa-stack">
       <div id="qa-doc-summary" hx-get="{% url 'qa_portal:documents_summary' %}" hx-trigger="qa:documents-changed from:body" hx-swap="innerHTML" data-qa-no-overlay data-qa-no-skeleton>{% include "qa_portal/documents/_summary.html" %}</div>
       {% if history %}<section class="qa-card"><header class="qa-card__head"><h2>All versions</h2></header>
-        <ul class="qa-rowlist" role="list">{% for d in history %}<li><a class="qa-rowlink" href="{{ d.portal_download_url }}"><span class="qa-rowlink__badge">v{{ d.version }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ d.kind.name }}</span><span class="qa-rowlink__meta">{{ d.created_at|date:"j M Y" }} · {{ d.size_label }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ d.status|tone }}">{{ d.get_status_display|truncatewords:2 }}</span></span></a></li>{% endfor %}</ul></section>{% endif %}
+        <ul class="qa-rowlist" role="list">{% for d in history %}<li class="fpv-row"><a class="qa-rowlink" href="{{ d.portal_download_url }}"><span class="qa-rowlink__badge">v{{ d.version }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ d.kind.name }}</span><span class="qa-rowlink__meta">{{ d.created_at|date:"j M Y" }} · {{ d.size_label }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ d.status|tone }}">{{ d.get_status_display|truncatewords:2 }}</span></span></a>{% preview_button d.portal_download_url d.display_name d.size_bytes compact=True %}</li>{% endfor %}</ul></section>{% endif %}
     </aside>
   </div>
 </div>

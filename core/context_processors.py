@@ -15,8 +15,13 @@ from core.cache import get_or_set_context, TTL_SHORT
 # Site name
 # ---------------------------------------------------------------------------
 def site(request):
+    """SITE_NAME: Settings → Site → site.name when set, else the SITE_NAME setting."""
     from django.conf import settings
-    return {"SITE_NAME": settings.SITE_NAME}
+    try:
+        name = str(config.get("site.name", "") or "").strip()
+    except Exception:  # registry not ready (fresh database)
+        name = ""
+    return {"SITE_NAME": name or settings.SITE_NAME}
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +86,13 @@ def sidebar_counts(request):
             ).count()
         except Exception:
             pass
+
+        # Phase 9: announcements — unread badge (one query).
+        try:
+            from announcements.models import Announcement
+            counts["announcements_unread"] = Announcement.objects.unread_for(user).count()
+        except Exception:
+            counts["announcements_unread"] = 0
 
         try:
             from workflow.models import Request

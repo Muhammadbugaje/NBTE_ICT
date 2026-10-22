@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load ux_tags %}
 
 {% block title %}Archived · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Archived messages{% endblock %}
@@ -42,13 +43,15 @@
         </select>
       </label>
       <span class="msg-list-result-count" data-filter-count aria-live="polite"></span>
+      {% if threads %}{% bulk_all "bulk-threads" "Select all" %}{% endif %}
     </div>
   {% endif %}
 
   {% if threads %}
     <div class="msg-thread-list">
       {% for t in threads %}
-        <div class="msg-thread-row-wrap" data-message-thread data-message-unread="{% if t.unread %}true{% else %}false{% endif %}">
+        <div class="msg-thread-row-wrap" data-uxb-row data-message-thread data-message-unread="{% if t.unread %}true{% else %}false{% endif %}">
+          {% bulk_check "bulk-threads" t.pk t.display_title %}
           <a href="{% url 'messaging:thread' t.pk %}" class="msg-thread-row-link">
             <span class="msg-avatar msg-avatar-md msg-avatar-{% cycle 'c3' 'c4' 'c5' 'c6' 'c7' 'c0' 'c1' 'c2' %}">
               {{ t.display_title|slice:":1"|upper }}
@@ -81,6 +84,8 @@
       {% endfor %}
     </div>
     <p class="msg-filter-empty" data-filter-empty hidden>No archived conversations match these filters.</p>
+    {% url 'messaging:bulk_threads' as thread_bulk_url %}
+    {% bulk_bar "bulk-threads" thread_bulk_url actions="unarchive:Move to inbox::remove,delete:Delete for me:danger" noun="conversation" confirm_title="Delete {n} {noun} for you?" confirm_body="They disappear from your messages; the other people still have their copy. A conversation and its attachments are erased for good only once everyone in it has deleted it." %}
   {% else %}
     <div class="msg-empty">
       <div class="msg-empty-icon">

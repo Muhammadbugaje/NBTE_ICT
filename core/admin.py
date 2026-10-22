@@ -1,13 +1,17 @@
 from django.contrib import admin
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
+from core.admin_base import ChoicesDropdownFilter, RangeDateFilter, RangeDateTimeFilter, RelatedDropdownFilter, badge
 from django.utils import timezone
 
 from .models import AuditLogEntry, ContactMessage
 
 
 @admin.register(AuditLogEntry)
-class AuditLogEntryAdmin(admin.ModelAdmin):
+class AuditLogEntryAdmin(ModelAdmin):
     list_display = ("timestamp", "actor_repr", "action", "model_label", "object_pk", "object_repr")
-    list_filter = ("action", "model_label", "timestamp")
+    list_filter = (("action", ChoicesDropdownFilter), "model_label", ("timestamp", RangeDateTimeFilter))
+    date_hierarchy = "timestamp"
+    list_select_related = ("actor",)
     search_fields = ("actor_repr", "object_repr", "object_pk", "model_label")
 
     def has_add_permission(self, request):
@@ -21,12 +25,26 @@ class AuditLogEntryAdmin(admin.ModelAdmin):
 
 
 @admin.register(ContactMessage)
-class ContactMessageAdmin(admin.ModelAdmin):
+class ContactMessageAdmin(ModelAdmin):
     list_display = (
         "created_at", "name", "email", "subject_short",
         "handling_department", "assigned_to", "is_read", "is_handled",
     )
-    list_filter = ("handling_department", "is_read", "is_handled", "created_at")
+    list_filter = ("is_read", "is_handled", ("handling_department", RelatedDropdownFilter),
+                   ("created_at", RangeDateTimeFilter))
+    date_hierarchy = "created_at"
+    actions = ["mark_read", "mark_handled"]
+
+    @admin.action(description="Mark selected as read", permissions=["change"])
+    def mark_read(self, request, queryset):
+        n = queryset.filter(is_read=False).update(is_read=True)
+        self.message_user(request, f"Marked {n} message(s) as read.")
+
+    @admin.action(description="Mark selected as handled", permissions=["change"])
+    def mark_handled(self, request, queryset):
+        n = queryset.filter(is_handled=False).update(is_handled=True, is_read=True, handled_at=timezone.now(),
+                                                    handled_by=request.user)
+        self.message_user(request, f"Marked {n} message(s) as handled.")
     search_fields = ("name", "email", "subject", "message")
     readonly_fields = ("name", "email", "subject", "message", "ip_address", "user_agent", "created_at", "updated_at")
     fieldsets = (

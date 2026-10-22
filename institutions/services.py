@@ -705,11 +705,24 @@ def invite_user(inst, data, *, actor, request=None):
     return user
 
 
-def add_proposed_programme(inst, name, level, category=None, *, application=None, user=None):
+def add_proposed_programme(inst, name, level, category=None, *, application=None, user=None, streams=1):
     programme = Programme.unscoped.create(institution=inst, name=name, level=level, category=category,
-                                          status="proposed", source_application=application)
+                                          status="proposed", source_application=application,
+                                          requested_streams=max(1, int(streams or 1)))
     timeline.record(inst, "programme.proposed", subject=programme, actor=user, visibility="public",
-                    public_text=f"Programme proposed: {programme.name} ({programme.level.name}).")
+                    public_text=f"Programme proposed: {programme.name} ({programme.level.name}), "
+                                f"{programme.requested_streams} stream(s).")
+    return programme
+
+
+def set_programme_streams(programme, streams, *, user=None):
+    """Phase 8: the streams asked for on a proposed programme (SOP-01)."""
+    streams = max(1, int(streams))
+    if programme.requested_streams != streams:
+        programme.requested_streams = streams
+        programme.save(update_fields=["requested_streams", "updated_at"])
+        timeline.record(programme.institution, "programme.streams", subject=programme, actor=user,
+                        visibility="public", public_text=f"{programme.name}: {streams} stream(s) asked for.")
     return programme
 
 
@@ -719,3 +732,57 @@ def remove_proposed_programme(programme, *, user=None):
     programme.delete()
     timeline.record(inst, "programme.removed", actor=user, visibility="public",
                     public_text=f"Programme removed from the list: {label}.")
+
+
+# ---------------------------------------------------------------------------
+# Detail-page read rules (Phase 9: shared by the website and the mobile API)
+# ---------------------------------------------------------------------------
+def can_see_payments(user):
+    """The Payments tab of an institution (bills)."""
+    return bool(user.is_superuser or user.has_perm("payments.view_obligation"))
+
+
+def can_see_internal_timeline(user, inst):
+    return bool(user.is_superuser or user.has_perm("qa_core.view_timeline_internal")
+                or user.department_id == inst.handling_department_id)
+
+
+def timeline_for(user, inst, *, vis="", text=""):
+    """The institution's timeline as ``user`` may read it, newest first."""
+    from django.db.models import Q
+
+    from qa_core.models import TimelineEvent
+
+    qs = TimelineEvent.objects.for_user(user).filter(institution=inst).select_related("actor")
+    if vis in ("public", "internal"):
+        qs = qs.filter(visibility=vis)
+    if not can_see_internal_timeline(user, inst):
+        qs = qs.filter(visibility="public")
+    text = (text or "").strip()
+    if text:
+        qs = qs.filter(Q(public_text__icontains=text) | Q(internal_text__icontains=text) | Q(event_code__icontains=text))
+    return qs.order_by("-at", "-id")
+
+
+INSTITUTION_SORTS = {"name": "name", "code": "code", "recent": "-created_at", "status": "status"}
+
+
+def filter_institutions(qs, *, q="", status="", ownership="", type_code="", dept="", zone="", sort="name"):
+    """The Institutions list filters (Phase 9: shared with the mobile API)."""
+    from django.db.models import Q
+
+    q = (q or "").strip()
+    if q:
+        qs = qs.filter(Q(name__icontains=q) | Q(code__icontains=q) | Q(lga__icontains=q)
+                       | Q(former_names__icontains=q))
+    if status:
+        qs = qs.filter(status=status)
+    if ownership:
+        qs = qs.filter(ownership__code=ownership)
+    if type_code:
+        qs = qs.filter(institution_type__code=type_code)
+    if dept:
+        qs = qs.filter(handling_department__code=dept)
+    if zone:
+        qs = qs.filter(zone=zone)
+    return qs.order_by(INSTITUTION_SORTS.get(sort or "name", "name"))

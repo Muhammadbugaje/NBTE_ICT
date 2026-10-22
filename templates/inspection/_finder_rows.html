@@ -2,12 +2,13 @@
 <div class="qa-card__body qa-small qa-muted">For <strong>{{ need.row.programme }}</strong> ({{ need.programme.category.discipline.name|default:"no discipline" }}) · {{ need.start|date:"j M" }}–{{ need.end|date:"j M Y" }} · {{ case.institution.name }}</div>
 {% if page.rows %}
 <div class="qa-table-wrap"><table class="qa-table">
-  <thead><tr><th scope="col">#</th><th scope="col">Person</th><th scope="col" class="num">Visits this year</th><th scope="col">Last served</th><th scope="col" class="num">Rating</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+  <thead><tr><th scope="col">#</th><th scope="col">Person</th><th scope="col">Current load</th><th scope="col" class="num">Assignments this year</th><th scope="col">Last served</th><th scope="col" class="num">Rating</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
   <tbody>{% for c in page.rows %}<tr class="{% if not c.ok %}is-muted{% endif %}">
     <td class="num">{% if c.ok %}{{ forloop.counter }}{% else %}—{% endif %}</td>
-    <td><strong>{{ c.name }}</strong><br><span class="qa-small qa-muted">{% if c.kind == "resource_person" %}Resource person{% else %}QA personnel{% endif %}</span>
+    <td><strong>{{ c.name }}</strong><br><span class="qa-small qa-muted">{% if c.kind == "resource_person" %}Resource person{% else %}QA personnel{% endif %}{% if c.load.row %} · limits: {{ c.load.row }}{% endif %}</span>
       {% if not c.ok %}<ul class="qa-problems">{% for p in c.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}</td>
-    <td class="num">{{ c.visits_this_year }}</td>
+    <td data-label="Current load">{% include "inspection/_load.html" with load=c.load %}</td>
+    <td class="num" data-label="Assignments this year">{{ c.assignments_this_year }}</td>
     <td>{{ c.last_served|date:"j M Y"|default:"never" }}</td>
     <td class="num">{% if c.rating %}{{ c.rating|floatformat:1 }}{% else %}—{% endif %}</td>
     <td>{% if c.ok and can_map %}

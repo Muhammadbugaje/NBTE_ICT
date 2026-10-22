@@ -243,6 +243,7 @@ def inbox_memos_for(user):
         .filter(
             memo_recipients__user=user,
             memo_recipients__is_archived=False,
+            memo_recipients__hidden_at__isnull=True,
         )
         .distinct()
         .order_by("-published_at", "-pk")
@@ -255,7 +256,7 @@ def unread_memo_count_for(user):
         return 0
     return MemoRecipient.objects.filter(
         user=user, read_at__isnull=True,
-        is_archived=False,
+        is_archived=False, hidden_at__isnull=True,
         memo__status="published",
     ).count()
 
@@ -500,7 +501,8 @@ def add_attachment(memo, actor, file, description=""):
         memo=memo,
         file=file,
         description=(description or "")[:255],
-        uploaded_by=actor,
+        # (Phase 9 API fix: MemoAttachment has no uploaded_by field, so every
+        # attachment failed with "Could not attach <name>".)
     )
 
 
@@ -534,3 +536,206 @@ def allowed_target_kinds_for(user):
             Memo.ROLE,
         ])
     return base
+
+# ===========================================================================
+# Phase 9 API: list tabs, detail state and compose shared by the website
+# views (memos_views) and the mobile API.
+# ===========================================================================
+MEMO_TABS = ("inbox", "awaiting", "sent", "drafts", "archived")
+
+
+def memo_tab_queryset(user, tab, *, q="", priority=""):
+    """The memo list for one tab (website: inbox | awaiting | sent | archived;
+    the app adds "drafts" = the user's drafts, and its "sent" leaves drafts
+    out - pass tab="sent_published" for that)."""
+    from django.db.models import Q
+    from .models import Memo
+
+    if tab in ("sent", "sent_published"):
+        qs = visible_memos_for(user).filter(sender=user)
+        if tab == "sent_published":
+            qs = qs.exclude(status=Memo.DRAFT)
+    elif tab == "drafts":
+        qs = visible_memos_for(user).filter(sender=user, status=Memo.DRAFT)
+    elif tab == "archived":
+        qs = visible_memos_for(user).filter(
+            memo_recipients__user=user,
+            memo_recipients__is_archived=True,
+            memo_recipients__hidden_at__isnull=True,
+        ).distinct()
+    elif tab == "awaiting":
+        ids = [m.pk for m in awaiting_memos_for(user)]
+        qs = (
+            Memo.objects.filter(pk__in=ids)
+            .select_related("sender", "route", "department", "target_user")
+            .order_by("-updated_at")
+        )
+    else:
+        qs = inbox_memos_for(user)
+
+    q = (q or "").strip()
+    if q:
+        qs = qs.filter(Q(reference__icontains=q) | Q(subject__icontains=q) | Q(body__icontains=q))
+    if priority in dict(Memo.PRIORITY_CHOICES):
+        qs = qs.filter(priority=priority)
+    return qs
+
+
+def memo_tab_counts(user, tabs=("inbox", "awaiting", "sent", "archived")):
+    counts = {}
+    for tab in tabs:
+        if tab == "awaiting":
+            counts[tab] = len(awaiting_memos_for(user))
+        else:
+            counts[tab] = memo_tab_queryset(user, tab).count()
+    return counts
+
+
+def get_memo_for(user, pk):
+    """A memo the user may view, else Http404 (never a 403 that leaks it)."""
+    from django.http import Http404
+    from .models import Memo
+
+    memo = Memo.objects.select_related("sender", "department", "route", "target_user").filter(pk=pk).first()
+    if memo is None or not can_view_memo(memo, user):
+        raise Http404("Memo not found.")
+    return memo
+
+
+def open_memo(memo, user):
+    """What opening the memo page does: re-check a parked memo, mark the
+    user's copy read. Returns the (possibly refreshed) memo."""
+    from . import routing
+    from .models import Memo
+
+    if memo.status == Memo.AWAITING and routing.actor_for_memo(memo) is None:
+        try:
+            if routing.reconcile_memo(memo):
+                memo = get_memo_for(user, memo.pk)
+        except Exception:
+            logger.exception("Could not re-check memo %s", memo.reference)
+    receipt = memo.memo_recipients.filter(user=user).first()
+    if receipt is not None and receipt.read_at is None and memo.status == Memo.PUBLISHED:
+        mark_memo_read(memo, user)
+    return memo
+
+
+def can_download_document(memo, user):
+    """PDF / Word: published memos for anyone who can view them; before that
+    only the sender / managers (watermarked preview)."""
+    from .models import Memo
+
+    if memo.status == Memo.PUBLISHED:
+        return True
+    return can_manage_memo(memo, user)
+
+
+def memo_detail_state(memo, user):
+    """Everything the memo page decides for this user (buttons, banners)."""
+    from . import routing
+    from .models import Memo
+
+    receipt = memo.memo_recipients.filter(user=user).first()
+    show_stats = (memo.sender_id == user.pk or user.is_superuser
+                  or user.has_perm("messaging.manage_memo"))
+    pending_recipients = []
+    if show_stats and memo.requires_acknowledgment and memo.status == Memo.PUBLISHED:
+        pending_recipients = list(memo.memo_recipients.filter(acknowledged_at__isnull=True)
+                                  .select_related("user")[:50])
+    can_act = routing.can_act_on_memo(memo, user)
+    current_step = routing.current_step(memo)
+    current_actor = routing.resolve_memo_approver(current_step, memo) if current_step else None
+    is_sender = memo.sender_id == user.pk
+    can_manage = can_manage_memo(memo, user)
+    needs_ack = (receipt is not None and memo.requires_acknowledgment
+                 and receipt.acknowledged_at is None and memo.status == Memo.PUBLISHED)
+
+    actions = []
+    if can_act:
+        actions += ["approve", "return", "reject"]
+    if memo.status == Memo.RETURNED and is_sender:
+        actions.append("resubmit")
+    if can_manage and memo.status == Memo.DRAFT:
+        actions.append("publish")
+    if needs_ack:
+        actions.append("acknowledge")
+    if receipt is not None and memo.status == Memo.PUBLISHED:
+        actions.append("unarchive" if receipt.is_archived else "archive")
+    if can_manage and memo.status in (Memo.DRAFT, Memo.AWAITING, Memo.RETURNED):
+        actions.append("cancel")
+
+    return {
+        "receipt": receipt,
+        "is_sender": is_sender,
+        "can_manage": can_manage,
+        "show_stats": show_stats,
+        "pending_recipients": pending_recipients,
+        "needs_ack": needs_ack,
+        "can_act": can_act,
+        "current_step": current_step,
+        "current_actor": current_actor,
+        "acting_for": can_act and current_actor is not None and current_actor.pk != user.pk,
+        "parked_reason": (routing.describe_missing(current_step, memo)
+                          if memo.status == Memo.AWAITING and current_step and current_actor is None
+                          else ""),
+        "can_recheck": memo.status == Memo.AWAITING and (
+            user.is_superuser or user.has_perm("messaging.manage_memoroute")
+            or user.has_perm("messaging.manage_memo")),
+        "can_download_document": can_download_document(memo, user),
+        "chain_rows": routing.chain_view(memo),
+        "actions": actions,
+    }
+
+
+def submit_memo_form(user, cleaned, *, publish=False, from_message=None):
+    """Create a memo from a valid MemoForm's cleaned_data (website compose and
+    the API): draft, attachments, optional chat-message link, then publish.
+
+    Returns (memo, notes) where notes are (level, text) pairs for the user:
+    level is "success" | "warning". Raises ValidationError / PermissionDenied
+    from create_memo (nothing is saved then)."""
+    from .models import Memo
+
+    memo = create_memo(
+        sender=user,
+        subject=cleaned["subject"],
+        body=cleaned["body"],
+        visibility=cleaned["visibility"],
+        target_user=cleaned.get("target_user"),
+        department=cleaned.get("department"),
+        roles=list(cleaned.get("roles") or []),
+        recipients=list(cleaned.get("recipients") or []),
+        priority=cleaned.get("priority") or Memo.NORMAL,
+        requires_acknowledgment=cleaned.get("requires_acknowledgment", False),
+        expires_at=cleaned.get("expires_at"),
+        # Always a draft first: publish_memo() only starts the chain from
+        # DRAFT/RETURNED (creating it as AWAITING made "Send" fail with
+        # "already entered the pipeline" and left the memo stuck).
+        is_draft=True,
+    )
+    notes = []
+    for f in cleaned.get("attachments") or []:
+        try:
+            add_attachment(memo, user, f)
+        except Exception:
+            notes.append(("warning", f"Could not attach {f.name}."))
+
+    # Phase 9: a memo made from a chat message links back to it.
+    if from_message:
+        from .chat_services import link_message_to_memo
+        link_message_to_memo(from_message, memo, user)
+
+    if not publish:
+        notes.append(("success", "Memo saved as draft."))
+        return memo, notes
+    try:
+        publish_memo(memo, user)
+    except (ValidationError, PermissionDenied) as exc:
+        msgs = getattr(exc, "messages", None) or [str(exc)]
+        notes.append(("warning", "Draft saved, but the chain could not start: " + "; ".join(msgs)))
+        return memo, notes
+    if memo.status == Memo.PUBLISHED:
+        notes.append(("success", f"Memo {memo.reference} published to {memo.recipient_count} recipient(s)."))
+    else:
+        notes.append(("success", f"Memo {memo.reference} sent for approval."))
+    return memo, notes

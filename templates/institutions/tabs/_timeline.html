@@ -1,6 +1,13 @@
 {% load qa_tags %}
 <section class="qa-card" aria-labelledby="tab-tl">
-  <header class="qa-card__head"><div><h2 id="tab-tl" data-qa-focus-heading>Timeline</h2><p>The unified record. Internal events are visible to NBTE only.</p></div></header>
+  <header class="qa-card__head"><div><h2 id="tab-tl" data-qa-focus-heading>Timeline</h2><p>The unified record. Internal events are visible to NBTE only.</p></div>
+    <details class="qa-export-menu">
+      <summary class="btn btn-sm btn-subtle">{% icon "download" 14 %} Export</summary>
+      <ul class="qa-export-menu__list" role="list">
+        <li><a href="{% url 'qa_inst:timeline_export' inst.code %}?format=pdf{% if vis %}&amp;vis={{ vis|urlencode }}{% endif %}{% if tq %}&amp;tq={{ tq|urlencode }}{% endif %}" download>PDF{% if vis or tq %} (filtered){% endif %}</a></li>
+        <li><a href="{% url 'qa_inst:timeline_export' inst.code %}?format=csv{% if vis %}&amp;vis={{ vis|urlencode }}{% endif %}{% if tq %}&amp;tq={{ tq|urlencode }}{% endif %}" download>CSV (Excel){% if vis or tq %} (filtered){% endif %}</a></li>
+      </ul>
+    </details></header>
   <form class="qa-toolbar" role="search" hx-get="{% url 'qa_inst:detail' inst.code %}" hx-target="#qa-tab" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
     <input type="hidden" name="tab" value="timeline">
     <label class="qa-search"><span class="sr-only">Search the timeline</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="tq" value="{{ tq }}" placeholder="Search events"></label>

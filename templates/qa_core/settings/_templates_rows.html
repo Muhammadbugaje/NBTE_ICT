@@ -1,19 +1,15 @@
 {% if page.rows %}
-  <div class="qa-table-wrap">
-    <table class="qa-table">
-      <caption class="sr-only">Notification templates</caption>
-      <thead>
-        <tr>
-          <th scope="col">Template</th>
-          <th scope="col">Subject</th>
-          <th scope="col">On</th>
-          <th scope="col" class="qa-col-actions"><span class="sr-only">Actions</span></th>
-        </tr>
-      </thead>
-      {% for t in page.rows %}
-        {% include "qa_core/settings/_template_row.html" %}
-      {% endfor %}
-    </table>
+  <div class="tpl-list">
+    {% for t in page.rows %}
+      {% ifchanged t.family %}
+        {% if not forloop.first %}</div></section>{% endif %}
+        <section class="tpl-group" aria-label="{{ t.family_label }}">
+          <h3 class="tpl-group__title">{{ t.family_label }}</h3>
+          <div class="tpl-group__body">
+      {% endifchanged %}
+      {% include "qa_core/settings/_template_row.html" %}
+      {% if forloop.last %}</div></section>{% endif %}
+    {% endfor %}
   </div>
   {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
 {% else %}

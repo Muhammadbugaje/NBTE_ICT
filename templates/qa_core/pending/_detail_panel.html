@@ -125,6 +125,9 @@
                 data-qa-confirm="This applies “{{ pa.policy.label }}” on {{ pa.target_label|default:'the item' }} now."
                 data-qa-confirm-title="Confirm {{ pa.reference }}?" data-qa-confirm-label="Confirm and apply">
             {% csrf_token %}
+            {% if confirm_options %}<ul class="qa-checks qa-mb" role="list">{% for o in confirm_options %}
+              <li><label><input type="checkbox" name="opt_{{ o.name }}" value="1"{% if o.checked %} checked{% endif %}><span><strong>{{ o.label }}</strong>{% if o.help %}<br><span class="qa-small qa-muted">{{ o.help }}</span>{% endif %}</span></label></li>{% endfor %}</ul>
+              <input type="hidden" name="has_options" value="1">{% endif %}
             <button type="submit" class="btn btn-primary btn-block">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
               Confirm

@@ -177,10 +177,8 @@ def mark_unread(request, pk):
 @login_required
 @require_POST
 def mark_all_read(request):
-    from django.utils import timezone
-    Notification.objects.filter(
-        recipient=request.user, is_read=False
-    ).update(is_read=True, read_at=timezone.now())
+    from .services import mark_all_read as mark_all
+    mark_all(request.user)
     return _trigger_and_redirect(request)
 
 
@@ -209,3 +207,58 @@ def stream(request):
     return unread_response(request, unread)
 
 
+
+
+# ---------------------------------------------------------------------------
+# Bulk actions (Phase 8): delete selected / mark selected / delete all read
+# ---------------------------------------------------------------------------
+def _bulk(request, fallback):
+    """Act on the user's OWN notifications only (others' ids are skipped)."""
+    from core import audit, bulk as bulk_util
+
+    action = request.POST.get("action", "")
+    actor = getattr(request, "impersonator", None) or request.user
+    mine = Notification.objects.filter(recipient=request.user)
+
+    if action == "delete_read":
+        qs = mine.filter(is_read=True)
+        ids = list(qs.values_list("pk", flat=True))
+        qs.delete()
+        if ids:
+            audit.log("delete", request.user, actor=actor,
+                      note=f"deleted all read notifications ({len(ids)})")
+        return bulk_util.respond(request, action=action, done=ids, fallback=fallback,
+                                 message=(f"{bulk_util.plural(len(ids), 'read notification')} deleted."
+                                          if ids else "There were no read notifications to delete."))
+
+    from .services import BULK_ACTIONS, bulk_apply
+
+    if action not in BULK_ACTIONS:
+        return bulk_util.bad_request(request, "Choose what to do with the selected notifications.", fallback)
+    ids = bulk_util.parse_ids(request)
+    if not ids:
+        return bulk_util.bad_request(request, "Select at least one notification.", fallback)
+    result = bulk_apply(request.user, action, ids, actor=actor)
+    done, skipped, verb = result["done"], result["skipped"], result["verb"]
+    return bulk_util.respond(request, action=action, done=done, skipped=skipped, fallback=fallback,
+                             message=f"{bulk_util.plural(len(done), 'notification')} {verb}.")
+
+
+@login_required
+@require_POST
+def bulk(request):
+    return _bulk(request, reverse("notifications:list"))
+
+
+def portal_bulk(request):
+    """Same actions on the QA portal (portal login; read-only impersonation
+    is refused by the impersonation middleware before this runs)."""
+    from qa_core.portal_views import portal_login_required
+
+    @portal_login_required
+    @require_POST
+    def _inner(request):
+        from qa_core.hosts import portal_reverse
+
+        return _bulk(request, portal_reverse("qa_portal:notifications"))
+    return _inner(request)

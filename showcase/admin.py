@@ -1,5 +1,6 @@
 """Admin registration for showcase images."""
 from django.contrib import admin
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
 from django.utils.html import format_html
 
 from .forms import ShowcaseImageForm
@@ -20,7 +21,7 @@ class PlacementFilter(admin.SimpleListFilter):
 
 
 @admin.register(ShowcaseImage)
-class ShowcaseImageAdmin(admin.ModelAdmin):
+class ShowcaseImageAdmin(ModelAdmin):
     form = ShowcaseImageForm
     list_display = (
         "preview", "__str__", "placements_display",

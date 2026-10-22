@@ -1,4 +1,5 @@
 {% extends base_template %}
+{% load ux_tags %}
 {% load qa_tags %}
 {% block title %}{{ ob.reference }} · {{ portal_name }}{% endblock %}
 {% block content %}
@@ -50,7 +51,7 @@
                 <div class="qa-payopt__head"><span class="qa-payopt__icon">{% icon "bank" 18 %}</span>Bank transfer or deposit</div>
                 {% if slip %}<p>{{ slip.bank_snapshot.bank_name }} · {{ slip.bank_snapshot.account_name }} · <strong class="qa-mono">{{ slip.bank_snapshot.account_number }}</strong></p>{% endif %}
                 <p>Download the slip, pay at the bank, then upload your teller or transfer receipt.</p>
-                <div class="qa-row qa-gap-sm">{% if slip and not slip_expired %}<a class="btn btn-subtle btn-sm" href="{{ slip.portal_download_url }}">{% icon "download" 14 %} Payment slip (v{{ slip.version }})</a>{% endif %}
+                <div class="qa-row qa-gap-sm">{% if slip and not slip_expired %}<a class="btn btn-subtle btn-sm" href="{{ slip.portal_download_url }}">{% icon "download" 14 %} Payment slip (v{{ slip.version }})</a>{% preview_button slip.portal_download_url slip.display_name slip.size_bytes %}{% endif %}
                   <button class="btn btn-subtle btn-sm" type="button" onclick="document.getElementById('qa-proof').open=true;document.getElementById('qa-proof').scrollIntoView({behavior:'smooth'})">{% icon "upload" 14 %} I have paid</button></div>
               </div>
             {% endif %}
@@ -83,9 +84,9 @@
     </div>
 
     <aside class="qa-stack">
-      {% if advices %}<section class="qa-card"><header class="qa-card__head"><h2>Payment Advice</h2></header><ul class="qa-rowlist" role="list">{% for a in advices %}<li><a class="qa-rowlink" href="{{ a.portal_download_url }}"><span class="qa-rowlink__badge">{% icon "check" 16 "2.4" %}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.reference }}</span><span class="qa-rowlink__meta">{{ a.amount|naira }} · {{ a.generated_at|date:"j M Y" }}</span></span><span class="qa-rowlink__side">{% icon "download" 16 %}</span></a></li>{% endfor %}</ul></section>{% endif %}
-      {% if slip %}<section class="qa-card"><header class="qa-card__head"><h2>Slip</h2></header><div class="qa-card__body"><a class="btn btn-subtle btn-sm" href="{{ slip.portal_download_url }}">{% icon "download" 14 %} Version {{ slip.version }}</a><p class="qa-small qa-muted qa-mt-sm">{% if slip_expired %}Expired{% else %}Valid until{% endif %} {{ slip.expires_at|date:"j M Y" }}</p></div></section>{% endif %}
-      {% if proofs %}<section class="qa-card"><header class="qa-card__head"><h2>Your uploads</h2></header><ul class="qa-rowlist" role="list">{% for p in proofs %}<li><a class="qa-rowlink" href="{{ p.portal_download_url }}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ p.get_kind_display }}</span><span class="qa-rowlink__meta">{% if p.amount_claimed %}{{ p.amount_claimed|naira }} · {% endif %}{{ p.created_at|date:"j M Y" }}</span></span></a></li>{% endfor %}</ul></section>{% endif %}
+      {% if advices %}<section class="qa-card"><header class="qa-card__head"><h2>Payment Advice</h2></header><ul class="qa-rowlist" role="list">{% for a in advices %}<li class="fpv-row"><a class="qa-rowlink" href="{{ a.portal_download_url }}"><span class="qa-rowlink__badge">{% icon "check" 16 "2.4" %}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.reference }}</span><span class="qa-rowlink__meta">{{ a.amount|naira }} · {{ a.generated_at|date:"j M Y" }}</span></span><span class="qa-rowlink__side">{% icon "download" 16 %}</span></a>{% preview_button a.portal_download_url a.display_name a.size_bytes compact=True %}</li>{% endfor %}</ul></section>{% endif %}
+      {% if slip %}<section class="qa-card"><header class="qa-card__head"><h2>Slip</h2></header><div class="qa-card__body"><span class="fpv-pair"><a class="btn btn-subtle btn-sm" href="{{ slip.portal_download_url }}">{% icon "download" 14 %} Version {{ slip.version }}</a>{% preview_button slip.portal_download_url slip.display_name slip.size_bytes %}</span><p class="qa-small qa-muted qa-mt-sm">{% if slip_expired %}Expired{% else %}Valid until{% endif %} {{ slip.expires_at|date:"j M Y" }}</p></div></section>{% endif %}
+      {% if proofs %}<section class="qa-card"><header class="qa-card__head"><h2>Your uploads</h2></header><ul class="qa-rowlist" role="list">{% for p in proofs %}<li class="fpv-row"><a class="qa-rowlink" href="{{ p.portal_download_url }}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ p.get_kind_display }}</span><span class="qa-rowlink__meta">{% if p.amount_claimed %}{{ p.amount_claimed|naira }} · {% endif %}{{ p.created_at|date:"j M Y" }}</span></span></a>{% preview_button p.portal_download_url p.display_name p.size_bytes compact=True %}</li>{% endfor %}</ul></section>{% endif %}
       {% if attempts %}<section class="qa-card"><header class="qa-card__head"><h2>Online attempts</h2></header><ul class="qa-rowlist" role="list">{% for a in attempts %}<li><div class="qa-rowlink"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.get_provider_display }}</span><span class="qa-rowlink__meta">{{ a.amount|naira }} · {{ a.created_at|date:"j M Y H:i" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ a.status|tone }}">{{ a.get_status_display }}</span></span></div></li>{% endfor %}</ul></section>{% endif %}
     </aside>
   </div>

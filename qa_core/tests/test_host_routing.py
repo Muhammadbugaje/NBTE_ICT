@@ -23,10 +23,18 @@ def _routes(urlconf):
 
 
 SHARED_INFRA = ("^static/", "static/")  # dev-only static file serving exists on both
+# Phase 9: the mobile API is mounted at api/v1/ on both doors on purpose (its
+# authentication class enforces the door); tested in api/tests.
+SHARED_API = ("api/v1/",)
 
 
 def _business(routes):
-    return {r for r in routes if not r.startswith(SHARED_INFRA)}
+    return {r for r in routes if not r.startswith(SHARED_INFRA + SHARED_API)}
+
+
+def test_api_is_mounted_on_both_doors():  # Phase 9
+    for urlconf in (settings.ROOT_URLCONF, settings.QA_PORTAL_URLCONF):
+        assert "api/v1/me/" in _routes(urlconf)
 
 
 def test_url_tables_are_disjoint():
@@ -41,7 +49,8 @@ def test_url_tables_are_disjoint():
         # payments (incl. provider webhooks, slip verification, dev simulator),
         # protected downloads and QA impersonation hand-off.
         "register/", "institution/", "institution/users/", "institution/lgas/", "documents/",
-        "documents/summary/", "documents/upload/<int:kind_id>/", "timeline/", "application/",
+        "documents/summary/", "documents/upload/<int:kind_id>/", "timeline/", "programmes/list/", "programmes/<int:pk>/",  # Phase 8: programme pages
+        "application/",
         "application/start/", "application/submit/", "application/programmes/",
         "application/programmes/<int:pk>/remove/", "payments/", "payments/<int:pk>/", "payments/<int:pk>/slip/",
         "payments/<int:pk>/online/", "payments/<int:pk>/proof/", "payments/<int:pk>/receipt/",
@@ -62,15 +71,27 @@ def test_url_tables_are_disjoint():
         # Phase 6: the public how-to page and the Word guides it offers.
         "how-to/", "guides/<slug:slug>/",
         # Phase 7: every notification (the bell's "View all"), complaints and the knowledge base.
-        "alerts/", "complaints/", "complaints/new/", "complaints/suggest/", "complaints/<int:pk>/",
+        "alerts/", "alerts/bulk/", "complaints/", "complaints/new/", "complaints/suggest/", "complaints/<int:pk>/",
         "complaints/<int:pk>/reply/", "complaints/<int:pk>/act/<str:action>/",
         "complaints/<int:pk>/files/<int:file_pk>/", "help/", "help/<slug:slug>/",
+        # Phase 8 (Master Plan Phase 6): streams and fee estimates, the programme
+        # status board and outcome letters.
+        "application/programmes/<int:pk>/streams/", "application/programmes/estimate/", "qa-requests/estimate/",
+        "qa-requests/<int:pk>/programmes/<int:row>/streams/", "programmes/", "letters/",
+        # Phase 9: account security (devices, notification settings, deletion
+        # requests, passkeys) and passkey sign-in.
+        "account/devices/<int:pk>/sign-out/", "account/devices/sign-out-others/", "account/notifications/",
+        "account/delete/", "account/delete/withdraw/", "account/passkeys/register/begin/",
+        "account/passkeys/register/finish/", "account/passkeys/<int:pk>/rename/",
+        "account/passkeys/<int:pk>/remove/", "passkeys/sign-in/begin/", "passkeys/sign-in/finish/",
     }
     # "" (the portal dashboard) is the only literal both share: on the internal
     # host "" is the public landing page. Everything else is disjoint.
     assert internal & portal <= {""}
-    views_internal = {f"{p.callback.__module__}.{p.callback.__name__}" for p in _routes(settings.ROOT_URLCONF).values()}
-    views_portal = {f"{p.callback.__module__}.{p.callback.__name__}" for p in _routes(settings.QA_PORTAL_URLCONF).values()}
+    views_internal = {f"{p.callback.__module__}.{p.callback.__name__}" for r, p in _routes(settings.ROOT_URLCONF).items()
+                      if not r.startswith(SHARED_API)}  # Phase 9
+    views_portal = {f"{p.callback.__module__}.{p.callback.__name__}" for r, p in _routes(settings.QA_PORTAL_URLCONF).items()
+                    if not r.startswith(SHARED_API)}  # Phase 9
     assert not ({v for v in views_portal if "staticfiles" not in v} & views_internal)
 
 
@@ -86,7 +107,8 @@ def _internal_paths():
     """Every internal route without parameters, reversed to a real path."""
     paths = set()
     for route, p in _routes(settings.ROOT_URLCONF).items():
-        if "<" in route or "(?P" in route or route.startswith(SHARED_INFRA) or route in ("",):
+        if ("<" in route or "(?P" in route or route.startswith(SHARED_INFRA + SHARED_API)  # Phase 9
+                or route in ("",)):
             continue
         paths.add("/" + route.lstrip("^").rstrip("$"))
     return sorted(paths)

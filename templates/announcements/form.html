@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == 'create' %}New announcement{% else %}Edit announcement{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Announcements{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/announcements.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="ann-page">
+  <a href="{% if a %}{% url 'announcements:detail' a.pk %}{% else %}{% url 'announcements:list' %}{% endif %}" class="ann-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    {% if a %}Back to the announcement{% else %}All announcements{% endif %}
+  </a>
+
+  <header class="ann-hero">
+    <div class="ann-hero-title">
+      <span class="ann-hero-mark" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      </span>
+      <div>
+        <span class="ann-hero-eyebrow">NBTE Announcements</span>
+        <h1>{% if mode == 'create' %}New announcement{% else %}Edit announcement{% endif %}</h1>
+        <p>{% if a and a.is_published %}Already published — changes show straight away; nobody is notified again.{% else %}One-way notice to staff. Save a draft first if you are not ready to publish.{% endif %}</p>
+      </div>
+    </div>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="ann-form" novalidate>
+    {% csrf_token %}
+    <div class="ann-form-main">
+      {% if form.non_field_errors %}<div class="ann-form-alert" role="alert">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+
+      <section class="card">
+        <h2>Message</h2>
+        <p class="muted">Plain text. Line breaks are kept exactly as typed.</p>
+        <div class="field">
+          <label for="{{ form.title.id_for_label }}">Title</label>
+          {{ form.title }}
+          {{ form.title.errors }}
+        </div>
+        <div class="field">
+          <label for="{{ form.body.id_for_label }}">Announcement</label>
+          {{ form.body }}
+          {{ form.body.errors }}
+        </div>
+        <div class="field">
+          <span class="ann-field-label">Type</span>
+          <div class="ann-choices ann-kind-choices">
+            {% for radio in form.kind %}<label class="ann-kind-{{ radio.data.value }}">{{ radio.tag }}<span class="ann-chip">{{ radio.choice_label }}</span></label>{% endfor %}
+          </div>
+          {{ form.kind.errors }}
+        </div>
+        <div class="field">
+          <label for="{{ form.attachment.id_for_label }}">Attachment</label>
+          {% if a %}
+            {% with files=a.attachments.all %}{% if files %}
+              <ul class="ann-current-files">
+                {% for f in files %}
+                  <li><label><input type="checkbox" name="remove_attachments" value="{{ f.pk }}"> Remove <a href="{{ f.download_url }}">{{ f.original_name|default:"attachment" }}</a></label></li>
+                {% endfor %}
+              </ul>
+            {% endif %}{% endwith %}
+          {% endif %}
+          {{ form.attachment }}
+          <span class="hint">{{ form.attachment.help_text }}</span>
+          {{ form.attachment.errors }}
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Poll <span class="muted" style="font-weight:400;font-size:var(--fs-sm)">— optional</span></h2>
+        <p class="muted">Ask a quick question. Staff see live percentages after voting.</p>
+        {% if poll_locked %}<p class="ann-form-note">Voting has started, so the options can no longer change. You can still edit the question or closing time.</p>{% endif %}
+        <div class="field">
+          <label for="{{ form.poll_question.id_for_label }}">Question</label>
+          {{ form.poll_question }}
+          {{ form.poll_question.errors }}
+        </div>
+        <div class="field">
+          <span class="ann-field-label">Options (2 to 6)</span>
+          <div class="ann-poll-grid">
+            {% for f in form.option_fields %}<div>{{ f }}{{ f.errors }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="field">
+          <label class="ann-check">{{ form.poll_allow_multiple }}<span>Allow more than one choice{% if poll_locked %} <small>(fixed once voting starts)</small>{% endif %}</span></label>
+        </div>
+        <div class="field">
+          <label for="{{ form.poll_closes_at.id_for_label }}">Poll closes (optional)</label>
+          {{ form.poll_closes_at }}
+          {{ form.poll_closes_at.errors }}
+        </div>
+      </section>
+    </div>
+
+    <div class="ann-form-side">
+      <section class="card" data-ann-audience>
+        <h2>Audience</h2>
+        <p class="muted">Only NBTE staff ever receive announcements.</p>
+        <div class="ann-choices">
+          {% for radio in form.audience %}<label>{{ radio.tag }}<span>{{ radio.choice_label }}</span></label>{% endfor %}
+        </div>
+        {{ form.audience.errors }}
+        <div class="field" data-ann-when-dept>
+          <label for="{{ form.department.id_for_label }}">Department</label>
+          {{ form.department }}
+          {{ form.department.errors }}
+        </div>
+        <div class="field ann-roles" data-ann-when-roles>
+          <span class="ann-field-label">Roles</span>
+          {{ form.roles }}
+          {{ form.roles.errors }}
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Options</h2>
+        <label class="ann-check">{{ form.requires_ack }}<span>Ask staff to acknowledge<small>Adds an “Acknowledge” button and a report of who hasn't.</small></span></label>
+        <label class="ann-check">{{ form.pinned }}<span>Pin to the top<small>Stays above newer announcements.</small></span></label>
+        <div class="field" style="margin-top:var(--space-4)">
+          <label for="{{ form.expires_at.id_for_label }}">Expires (optional)</label>
+          {{ form.expires_at }}
+          <span class="hint">Hidden from the list after this time.</span>
+          {{ form.expires_at.errors }}
+        </div>
+      </section>
+
+      <section class="card ann-form-actions">
+        {% if not a or a.is_draft %}
+          <button type="submit" name="action" value="publish" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Publish
+          </button>
+          <button type="submit" name="action" value="draft" class="btn btn-ghost">Save draft</button>
+          <p class="ann-form-hint">Publishing notifies everyone in the audience.</p>
+        {% else %}
+          <button type="submit" name="action" value="save" class="btn btn-primary">Save changes</button>
+        {% endif %}
+        <a href="{% if a %}{% url 'announcements:detail' a.pk %}{% else %}{% url 'announcements:list' %}{% endif %}" class="btn btn-subtle">Cancel</a>
+      </section>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/announcements.js' %}?v=1" defer></script>
+{% endblock %}

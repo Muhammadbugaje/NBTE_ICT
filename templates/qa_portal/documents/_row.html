@@ -1,4 +1,4 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load ux_tags %}
 <li class="qa-doc{% if just_uploaded %} is-flash{% endif %}" data-state="{{ row.state }}" id="doc-{{ row.kind.pk }}">
   <span class="qa-doc__icon">{% if row.state == "accepted" %}{% icon "check" 20 "2.4" %}{% elif row.state == "returned" or row.state == "expired" %}{% icon "alert" 20 %}{% else %}{% icon "file" 20 %}{% endif %}</span>
   <div>
@@ -13,7 +13,7 @@
     {% if error %}<div class="qa-doc__remark" role="alert">{{ error }}</div>{% endif %}
   </div>
   <div class="qa-doc__tools">
-    {% if row.document %}<a class="btn btn-sm btn-subtle" href="{{ row.document.portal_download_url }}">{% icon "download" 14 %} View</a>{% endif %}
+    {% if row.document %}{% preview_button row.document.portal_download_url row.document.display_name row.document.size_bytes %}<a class="btn btn-sm btn-subtle" href="{{ row.document.portal_download_url }}">{% icon "download" 14 %} Download</a>{% endif %}
     {% if row.can_upload %}
       <form method="post" enctype="multipart/form-data" action="{% url 'qa_portal:document_upload' row.kind.pk %}" hx-post="{% url 'qa_portal:document_upload' row.kind.pk %}" hx-encoding="multipart/form-data" hx-target="closest li" hx-swap="outerHTML" hx-trigger="change" data-qa-progress class="qa-upload">
         {% csrf_token %}

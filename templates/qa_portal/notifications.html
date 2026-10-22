@@ -1,5 +1,5 @@
 {% extends base_template %}
-{% load qa_tags %}
+{% load qa_tags %}{% load ux_tags %}
 {% block title %}Notifications · {{ portal_name }}{% endblock %}
 {% block content %}
 <div class="qa-portal-page">
@@ -16,13 +16,21 @@
           <option value="unread"{% if show == "unread" %} selected{% endif %}>Unread only</option>
         </select>
       </form>
+      <div class="qa-toolbar__end qa-row qa-gap-sm">
       {% if unread_total %}
-      <form method="post" action="{% url 'qa_portal:notifications' %}" class="qa-toolbar__end">{% csrf_token %}
+      <form method="post" action="{% url 'qa_portal:notifications' %}">{% csrf_token %}
         <button class="btn btn-sm btn-subtle" type="submit">Mark all as read</button>
       </form>
       {% endif %}
+      <form method="post" action="{% url 'qa_portal:notifications_bulk' %}" data-confirm="Every notification you have already read is removed from your list. Unread ones stay." data-confirm-title="Delete all read notifications?" data-confirm-action="Delete read">{% csrf_token %}
+        <input type="hidden" name="action" value="delete_read"><input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button class="btn btn-sm btn-subtle" type="submit">Delete all read</button>
+      </form>
+      </div>
     </div>
     <div id="qa-notif-rows" class="qa-region" data-qa-region aria-live="polite">{% include "qa_portal/_notification_rows.html" %}</div>
   </section>
+  {% url 'qa_portal:notifications_bulk' as pnotif_bulk_url %}
+  {% bulk_bar "bulk-pnotifs" pnotif_bulk_url actions="mark_read:Mark read,delete:Delete:danger" noun="notification" confirm_title="Delete {n} {noun}?" confirm_body="They are removed from your list for good." %}
 </div>
 {% endblock %}

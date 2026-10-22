@@ -1,0 +1,13 @@
+{% load qa_tags %}{% comment %}Phase 8: live fee estimate (recalculated by HTMX as programmes and streams change).{% endcomment %}
+<div class="qa-fee-est" role="status" aria-live="polite">
+  <div class="qa-fee-est__head"><strong>Estimated fee</strong>{% if estimate and estimate.total is not None %}<span class="qa-fee-est__total">{{ estimate.total|naira }}</span>{% endif %}</div>
+  {% if problems %}<ul class="qa-problems">{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+  {% if not estimate %}
+    <p class="qa-small qa-muted">{% if qa_type %}Tick at least one programme to see the fee.{% else %}Choose a QA type first.{% endif %}</p>
+  {% elif estimate.error %}
+    <p class="qa-small qa-muted">{{ estimate.error }}</p>
+  {% else %}
+    {% if estimate.lines %}<ul class="qa-fee-est__lines" role="list">{% for label, amount in estimate.lines %}<li><span>{{ label }}</span><span class="qa-mono">{{ amount|naira }}</span></li>{% endfor %}</ul>{% endif %}
+    <p class="qa-small qa-muted">An estimate from NBTE's current fee rules. The bill NBTE issues is final{% if estimate.schedule %} ({{ estimate.schedule.name }}){% endif %}.</p>
+  {% endif %}
+</div>

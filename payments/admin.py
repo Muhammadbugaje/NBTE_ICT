@@ -6,21 +6,16 @@ Admin shows the records for support and audit.
 """
 from django.contrib import admin
 
+from core.admin_base import ChoicesDropdownFilter, RangeDateTimeFilter, ReadOnlyModelAdmin as _ThemedReadOnly, badge
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
+
 from .models import (
     BankAccount, BankStatementImport, BankStatementLine, FeeSchedule, PaymentAdvice, PaymentAttempt, PaymentCredit,
     PaymentObligation, PaymentSlip, PaymentVerification, ProofOfPayment, Refund, WebhookLog,
 )
 
 
-class ReadOnlyAdmin(admin.ModelAdmin):
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
+class ReadOnlyAdmin(_ThemedReadOnly):
 
     def get_queryset(self, request):
         manager = getattr(self.model, "unscoped", None) or self.model._default_manager
@@ -29,21 +24,25 @@ class ReadOnlyAdmin(admin.ModelAdmin):
 
 @admin.register(PaymentObligation)
 class PaymentObligationAdmin(ReadOnlyAdmin):
-    list_display = ("reference", "institution", "fee_schedule", "amount", "balance", "status", "created_at")
-    list_filter = ("status", "fee_schedule")
+    list_display = ("reference", "institution", "fee_schedule", "amount", "balance", "status_badge", "created_at")
+    list_filter = ("status", "fee_schedule", ("created_at", RangeDateTimeFilter))
+    date_hierarchy = "created_at"
+    status_badge = badge("status", "Status", {"issued": "info", "part_paid": "warning", "overpaid": "warning",
+                                              "refund_requested": "warning"})
     search_fields = ("reference", "institution__code", "institution__name")
 
 
 @admin.register(PaymentVerification)
 class PaymentVerificationAdmin(ReadOnlyAdmin):
     list_display = ("obligation", "source", "decision", "verified_by", "final_decision", "final_approver", "is_open")
-    list_filter = ("source", "decision", "final_decision", "is_open")
+    list_filter = ("is_open", "source", "decision", "final_decision", ("created_at", RangeDateTimeFilter))
 
 
 @admin.register(PaymentAttempt)
 class PaymentAttemptAdmin(ReadOnlyAdmin):
-    list_display = ("obligation", "provider", "provider_reference", "amount", "status", "webhook_verified")
-    list_filter = ("provider", "status")
+    list_display = ("obligation", "provider", "provider_reference", "amount", "status_badge", "webhook_verified")
+    list_filter = ("provider", ("status", ChoicesDropdownFilter), ("created_at", RangeDateTimeFilter))
+    status_badge = badge("status", "Status", {"initiated": "neutral", "successful": "success"})
 
 
 @admin.register(WebhookLog)

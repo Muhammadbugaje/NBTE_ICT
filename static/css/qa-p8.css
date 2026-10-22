@@ -1,0 +1,92 @@
+/* ==========================================================================
+   NBTE QA — Phase 8 components (Master Plan Phase 6): streams and the live
+   fee estimate, capacity assessments, decisions, the programme status board
+   with its expiry countdown, letters and the new-fee form.
+
+   Same idiom as qa.css … qa-p5.css: semantic tokens only (dark mode is
+   complete), mobile-first (320–1440 px), 44px touch targets, no inline styles.
+   ========================================================================== */
+
+/* ------------------------------------------------------------ streams input */
+.qa-streams { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem;
+  color: var(--text-muted); }
+.qa-streams label { white-space: nowrap; }
+.qa-streams__input { width: 84px; min-height: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+.qa-checklist__item .qa-streams { margin-top: 8px; margin-inline-start: 28px; }
+
+/* ------------------------------------------------------------ live fee estimate */
+.qa-fee-est { border: 1px solid var(--border); border-radius: var(--radius-md, 12px); background: var(--bg-subtle);
+  padding: 12px 14px; display: grid; gap: 8px; }
+.qa-fee-est__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.qa-fee-est__total { font-size: 1.25rem; font-weight: var(--fw-bold, 700); color: var(--text);
+  font-variant-numeric: tabular-nums; }
+.qa-fee-est__lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .88rem; }
+.qa-fee-est__lines li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0;
+  border-top: 1px dashed var(--divider); }
+.qa-fee-est__lines li:first-child { border-top: 0; }
+.qa-fee-est__lines li span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.htmx-request .qa-fee-est, .qa-fee-est.htmx-request { opacity: .6; transition: opacity var(--dur-fast, .15s); }
+
+/* ------------------------------------------------------------ capacity */
+.qa-cap__kinds { display: grid; }
+.qa-cap__kind { border-top: 1px solid var(--divider); }
+.qa-cap__kind > summary { list-style: none; cursor: pointer; min-height: 48px; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 8px 12px; padding: 10px var(--space-4, 16px); }
+.qa-cap__kind > summary::-webkit-details-marker { display: none; }
+.qa-cap__kind > summary::before { content: "▸"; color: var(--text-muted); transition: transform var(--dur-fast, .15s); }
+.qa-cap__kind[open] > summary::before { transform: rotate(90deg); }
+.qa-cap__kind-title { font-weight: var(--fw-semibold, 600); }
+.qa-cap__body { padding: 0 var(--space-4, 16px) var(--space-4, 16px); display: grid; gap: 12px; }
+.qa-cap__result dd { overflow-wrap: anywhere; }
+.qa-cap__fields { display: grid; gap: 10px 16px; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+.qa-cap__rooms { border: 1px solid var(--border); border-radius: var(--radius-md, 12px); padding: 10px 12px; margin: 0;
+  display: grid; gap: 8px; }
+.qa-cap__rooms legend { font-size: .86rem; font-weight: var(--fw-semibold, 600); padding: 0 4px; }
+.qa-cap__room { display: grid; gap: 8px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 520px) { .qa-cap__room { grid-template-columns: 1fr 1fr; } .qa-cap__room .qa-field:first-child { grid-column: 1 / -1; } }
+.qa-table--compact th, .qa-table--compact td { padding-block: 6px; }
+
+/* ------------------------------------------------------------ decisions */
+.qa-decision { border: 1px solid var(--border); border-radius: var(--radius-md, 12px); padding: 12px 14px; margin: 0;
+  display: grid; gap: 10px; background: var(--bg-card); }
+.qa-decision legend { padding: 0 6px; display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.qa-decision[disabled] { opacity: .75; }
+.qa-decision__context { display: grid; gap: 4px; font-size: .84rem; color: var(--text-muted); }
+.qa-decision__grid { display: grid; gap: 10px 16px; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); }
+
+/* ------------------------------------------------------------ programme status board (portal) */
+.qa-prog-board { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4, 16px);
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.qa-prog-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg, 16px);
+  padding: 16px; display: grid; gap: 12px; align-content: start; box-shadow: var(--shadow-xs, none);
+  border-inline-start-width: 4px; }
+.qa-prog-card--ok { border-inline-start-color: var(--success); }
+.qa-prog-card--soon { border-inline-start-color: var(--warning); }
+.qa-prog-card--expired { border-inline-start-color: var(--danger); }
+.qa-prog-card__head { display: flex; gap: 12px; align-items: flex-start; }
+.qa-prog-card__title { margin: 0; font-size: 1.02rem; line-height: 1.3; }
+.qa-prog-card__status { margin: 6px 0 0; }
+.qa-prog-card__facts { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.qa-prog-card__facts div { display: grid; gap: 2px; min-width: 0; }
+.qa-prog-card__facts dt { font-size: .74rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.qa-prog-card__facts dd { margin: 0; font-weight: var(--fw-medium, 500); }
+.qa-prog-card__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.qa-countdown { margin: 0; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: .88rem;
+  padding: 6px 10px; border-radius: var(--radius-pill, 999px); background: var(--bg-subtle); width: fit-content; }
+.qa-countdown--soon { background: var(--warning-subtle); color: var(--warning-fg); }
+.qa-countdown--expired { background: var(--danger-subtle); color: var(--danger-fg); }
+.qa-countdown--ok { background: var(--success-subtle); color: var(--success-fg); }
+
+/* ------------------------------------------------------------ fees: new fee, test, issuing events */
+.qa-fee-events { margin: 0; padding-inline-start: 16px; display: grid; gap: 2px; font-size: .82rem; }
+.qa-fee-vars { border: 1px solid var(--border); border-radius: var(--radius-md, 12px); padding: 10px 12px; margin: 0;
+  display: grid; gap: 8px; }
+.qa-fee-vars legend { font-size: .86rem; font-weight: var(--fw-semibold, 600); padding: 0 4px; }
+.qa-fee-var { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 8px; align-items: center; }
+@media (max-width: 520px) { .qa-fee-var { grid-template-columns: 1fr; } }
+.qa-fee-var__sample { min-height: 44px; }
+.qa-fee-test { font-size: .9rem; padding: 8px 12px; border-radius: var(--radius-md, 12px); background: var(--bg-subtle); }
+.qa-fee-test p { margin: 0; }
+.qa-fee-test__error { color: var(--danger-fg); }
+.qa-grow { flex: 1 1 240px; min-width: 0; }
+.qa-num-input { max-width: 110px; }

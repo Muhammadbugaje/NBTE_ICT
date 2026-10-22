@@ -44,18 +44,40 @@ from .ui import paginate, render_qa, toast
 TABS = [
     ("rules", "Rules & thresholds", "qa:settings_rules"),
     ("formulas", "Formulas", "qa:settings_formulas"),
+    ("references", "Reference formats", "qa:settings_references"),
     ("fees", "Fees & bank accounts", "qa_set:fees"),
     ("methods", "Payment methods", "qa_set:methods"),
+    ("rates", "Rate table", "qa_set:rates"),
     ("documents", "Document rules", "qa_set:documents"),
     ("lookups", "Lookups", "qa_set:lookups"),
     ("ssq_templates", "SSQ templates", "qa_set:ssq_templates"),
     ("catalogue", "Curriculum catalogue", "qa_set:catalogue"),
-    ("rates", "Rate table", "qa_set:rates"),
+    ("approval_types", "Approval types", "qa_set:approval_types"),  # Phase 8
+    ("workload", "Workload limits", "qa_set:workload"),  # Phase 8
     ("complaints", "Complaints", "qa_set:complaints"),  # Phase 7
-    ("references", "Reference formats", "qa:settings_references"),
     ("workflows", "Workflows", "qa:settings_workflows"),
     ("templates", "Notification templates", "qa:settings_templates"),
 ]
+
+# Phase 8 UI: the settings navigation is grouped (macOS System Settings
+# style). Each tab gets a group, an icon colour and a one-line purpose.
+TAB_META = {
+    "rules": ("General", "slate", "Thresholds, switches and limits"),
+    "formulas": ("General", "slate", "How fees and scores are worked out"),
+    "references": ("General", "slate", "How reference numbers are built"),
+    "fees": ("Money", "green", "Fee schedule and NBTE bank accounts"),
+    "methods": ("Money", "green", "How institutions can pay"),
+    "rates": ("Money", "green", "Cost sheet amounts"),
+    "documents": ("Institutions", "blue", "Documents each institution must hold"),
+    "lookups": ("Institutions", "blue", "Ownership, types and other lists"),
+    "ssq_templates": ("Accreditation", "indigo", "Self-study questionnaire builder"),
+    "catalogue": ("Accreditation", "indigo", "Programmes institutions can offer"),
+    "approval_types": ("Accreditation", "indigo", "Kinds of approval and their rules"),
+    "workload": ("Accreditation", "indigo", "Fair duty limits per rank"),
+    "complaints": ("Cases & messages", "orange", "Layers, routing and escalation"),
+    "workflows": ("Cases & messages", "orange", "Stages each process moves through"),
+    "templates": ("Cases & messages", "orange", "Words sent in-app and by e-mail"),
+}
 
 
 def _impersonating(request):
@@ -65,7 +87,10 @@ def _impersonating(request):
 def _settings_context(request, tab, **extra):
     qa = settings_service.qa_entries()
     ctx = {
-        "tabs": [{"key": k, "label": label, "url": reverse(name), "active": k == tab} for k, label, name in TABS],
+        "tabs": [{"key": k, "label": label, "url": reverse(name), "active": k == tab,
+                  "group": TAB_META[k][0], "hue": TAB_META[k][1], "blurb": TAB_META[k][2]}
+                 for k, label, name in TABS],
+        "active_tab_label": dict((k, label) for k, label, _ in TABS).get(tab, ""),
         "active_tab": tab,
         "pending_mine": PendingAction.objects.filter(initiated_by=request.user,
                                                      status=PendingAction.PENDING).count(),
@@ -470,8 +495,13 @@ def settings_templates(request):
     if event:
         qs = qs.filter(rules__event_code=event).distinct()
     page = paginate(request, qs)
+    _decorate_templates(page["rows"])
+    every = NotificationTemplate.objects.all()
     ctx = _settings_context(
         request, "templates", page=page, filters=request.GET,
+        tpl_counts={"total": every.count(), "in_app": every.filter(channel="in_app").count(),
+                    "email": every.filter(channel="email").count(),
+                    "off": every.filter(is_active=False).count()},
         channels=NotificationTemplate.CHANNEL_CHOICES,
         events=sorted(set(NotificationRule.objects.values_list("event_code", flat=True))),
         can_manage=_can_manage_templates(request.user),
@@ -482,12 +512,63 @@ def settings_templates(request):
     })
 
 
+# Phase 8 UI: templates are listed by the part of the system that sends them.
+TEMPLATE_FAMILIES = {
+    "complaint": "Complaints", "institution": "Institutions", "onboarding": "Onboarding",
+    "payment": "Payments", "pending_action": "Two-step changes", "programme": "Programmes",
+    "qa_request": "QA requests", "qa_stage": "QA case stages", "query": "Queries",
+    "rp": "Resource persons", "ssq": "Self-study questionnaires",
+}
+
+
+def _decorate_templates(rows):
+    events = {}
+    for tid, code in NotificationRule.objects.filter(template__in=[t.pk for t in rows]).values_list(
+            "template_id", "event_code"):
+        events.setdefault(tid, set()).add(code)
+    for t in rows:
+        t.events = sorted(events.get(t.pk, ()))
+        family = (t.code or "").split(".")[0]
+        t.family = family
+        t.family_label = TEMPLATE_FAMILIES.get(family, family.replace("_", " ").capitalize())
+        t.event_name = (t.code or "").split(".", 1)[-1].replace("_", " ")
+    return rows
+
+
 SAMPLE_CONTEXT = {
     "reference": "PA-2026-000123", "action": "Change a dual-control QA setting",
     "target": "qa.fee.programme_processing", "status": "Applied", "initiator": "Amina Officer",
     "decider": "Bello Director", "remark": "Matches the approved fee memo.", "reason": "Annex A update",
     "expires_at": "19 Oct 2026, 15:00", "failure": "", "institution": "Demo Polytechnic, Kaduna",
 }
+
+
+# Phase 8 UI: sample values for every placeholder the seeded templates use, so
+# the live preview reads like a real message. Preview only; never sent.
+PREVIEW_SAMPLE = {
+    **SAMPLE_CONTEXT,
+    "advice": "Upload the signed copy and resubmit.", "amount": "₦150,000.00", "body": "Please see the attached note.",
+    "days": "14", "decision": "Accredited", "department": "DPAP", "description": "Programme processing fee",
+    "detail": "Two sections are incomplete.", "document": "CAC certificate", "due": "4 Nov 2026",
+    "excerpt": "We have uploaded the missing inventory…", "expiry": "17 Feb 2027", "layer": "Payment issues",
+    "level": "2", "message": "Thank you, we are looking into it.", "name": "Amina Officer", "outcome": "Approved",
+    "percent": "50", "priority": "High", "programme": "ND Computer Science", "programmes": "3",
+    "qa_type": "Accreditation", "query": "Laboratory list", "resolution": "Fee confirmed by Finance.",
+    "sections": "Staff, Facilities", "sender": "NBTE", "source": "Remita", "stage": "Audit",
+    "subject": "Processing fee not confirmed", "title": "Visit scheduled", "verifier": "Bello Director",
+    "version": "2", "who": "Demo Polytechnic, Kaduna",
+}
+
+
+def _placeholders(template):
+    """Placeholders this template uses first, then the general ones."""
+    import re
+
+    used = []
+    for name in re.findall(r"\{\{\s*([A-Za-z_]\w*)", f"{template.subject} {template.body}"):
+        if name not in used:
+            used.append(name)
+    return used + [k for k in SAMPLE_CONTEXT if k not in used]
 
 
 @require(can_view_qa_settings)
@@ -497,10 +578,12 @@ def template_edit(request, pk):
     can_manage = _can_manage_templates(request.user)
     if request.method == "GET":
         if request.GET.get("cancel"):
-            return render(request, "qa_core/settings/_template_row.html", {"t": template, "can_manage": can_manage})
+            return render(request, "qa_core/settings/_template_row.html",
+                          {"t": _decorate_templates([template])[0], "can_manage": can_manage})
         return render(request, "qa_core/settings/_template_edit.html",
-                      {"t": template, "subject": template.subject, "body": template.body,
-                       "can_manage": can_manage, "sample": SAMPLE_CONTEXT})
+                      {"t": _decorate_templates([template])[0], "subject": template.subject, "body": template.body,
+                       "can_manage": can_manage, "sample": SAMPLE_CONTEXT,
+                       "placeholders": _placeholders(template)})
     if not can_manage:
         raise PermissionDenied("You cannot edit notification templates.")
     subject = request.POST.get("subject", "")
@@ -509,12 +592,15 @@ def template_edit(request, pk):
         notify.validate_template(subject, body)
     except notify.TemplateRenderError as exc:
         return render(request, "qa_core/settings/_template_edit.html",
-                      {"t": template, "subject": subject, "body": body, "errors": [str(exc)],
-                       "can_manage": can_manage, "sample": SAMPLE_CONTEXT})
+                      {"t": _decorate_templates([template])[0], "subject": subject, "body": body,
+                       "errors": [str(exc)],
+                       "can_manage": can_manage, "sample": SAMPLE_CONTEXT,
+                       "placeholders": _placeholders(template)})
     template.subject = subject
     template.body = body
     template.save()
-    response = render(request, "qa_core/settings/_template_row.html", {"t": template, "can_manage": can_manage})
+    response = render(request, "qa_core/settings/_template_row.html",
+                      {"t": _decorate_templates([template])[0], "can_manage": can_manage})
     return toast(response, "success", f"Saved template {template.code}")
 
 
@@ -524,8 +610,8 @@ def template_preview(request, pk):
     template = get_object_or_404(NotificationTemplate, pk=pk)
     subject, body, error = "", "", ""
     try:
-        subject = notify.render_string(request.POST.get("subject", template.subject), SAMPLE_CONTEXT)
-        body = notify.render_string(request.POST.get("body", template.body), SAMPLE_CONTEXT)
+        subject = notify.render_string(request.POST.get("subject", template.subject), PREVIEW_SAMPLE)
+        body = notify.render_string(request.POST.get("body", template.body), PREVIEW_SAMPLE)
     except notify.TemplateRenderError as exc:
         error = str(exc)
     return render(request, "qa_core/settings/_template_preview.html",
@@ -606,34 +692,18 @@ def _pending_or_404(request, pk):
 
 
 def _detail_context(request, pa, **extra):
-    handler = actions.get_handler(pa.policy_id)
-    target = actions._load_target(pa)
-    try:
-        # Create-type actions (Add TVET, bulk import) have no target yet; their
-        # handlers preview from the payload alone.
-        diff = handler.preview(target, pa.payload) if (target is not None or not pa.object_id) else []
-    except Exception:
-        diff = []
-    if pa.status != PendingAction.PENDING and pa.before_snapshot:
-        # Show what was proposed against what it replaced, not today's value.
-        diff = [actions.DiffRow(row.label, _snapshot_before(pa, row), row.after) for row in diff]
+    data = actions.review(pa)  # Phase 9: shared with the mobile API
     can, why = actions.can_decide(pa, request.user, impersonating=_impersonating(request))
-    stale = bool(target is not None and pa.target_version and pa.is_open
-                 and actions._version_of(target) != pa.target_version)
-    ctx = {"pa": pa, "diff": diff, "can_decide": can, "decide_reason": why, "target": target,
-           "stale": stale, "can_withdraw": pa.is_open and pa.initiated_by_id == request.user.pk,
+    ctx = {"pa": pa, "diff": data["diff"], "can_decide": can, "decide_reason": why, "target": data["target"],
+           "confirm_options": data["confirm_options"],
+           "stale": data["stale"], "can_withdraw": pa.is_open and pa.initiated_by_id == request.user.pk,
            "history": AuditLogEntry.objects.filter(model_label="qa_core.PendingAction", object_pk=str(pa.pk))
            .order_by("timestamp")[:30]}
     ctx.update(extra)
     return ctx
 
 
-def _snapshot_before(pa, row):
-    if row.label == "Value" and "value" in pa.before_snapshot:
-        return settings_service.display_value(pa.before_snapshot.get("value_type", "str"),
-                                              pa.before_snapshot["value"])
-    key = row.label.lower().replace(" ", "_")
-    return str(pa.before_snapshot.get(key, row.before))
+_snapshot_before = actions.snapshot_before  # Phase 9: moved to qa_core.actions
 
 
 @require(can_view_pending)
@@ -650,6 +720,7 @@ def _decide(request, pk, verb):
     error = ""
     try:
         if verb == "confirm":
+            _store_confirm_options(request, pa)
             pa = actions.confirm(pa, request.user, remark=remark, impersonating=_impersonating(request))
         elif verb == "reject":
             pa = actions.reject(pa, request.user, remark=remark, impersonating=_impersonating(request))
@@ -672,6 +743,14 @@ def _decide(request, pk, verb):
     }
     kind, title = titles.get(pa.status, ("info", f"{pa.reference}: {pa.get_status_display()}"))
     return toast(response, kind, title, pa.failure_detail)
+
+
+def _store_confirm_options(request, pa):
+    """The confirm form's option checkboxes (opt_<name>) → actions.store_confirm_options."""
+    if request.POST.get("has_options") != "1":
+        return
+    chosen = {key[4:]: value == "1" for key, value in request.POST.items() if key.startswith("opt_")}
+    actions.store_confirm_options(pa, request.user, chosen, impersonating=_impersonating(request))
 
 
 @require(can_view_pending)

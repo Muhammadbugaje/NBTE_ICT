@@ -17,7 +17,9 @@
       <h1>File management</h1>
       <p>
         See how much disk your media uses, scan for orphaned files left behind
-        by deletions, and clean up safely. Deletions here are permanent.
+        by deletions, and clean up safely. Files in use, in protected folders or newer
+        than {{ purge_min_age_days }} days are never touched, and clean-up moves files to a
+        quarantine folder first; they are removed for good only after the retention period.
       </p>
     </div>
   </header>
@@ -101,7 +103,7 @@
 
       {% if scan and scan.orphans %}
         <button type="submit" form="purge-form" class="btn btn-ghost">
-          Auto-purge ({{ purge_min_age_days }}d+ old)
+          Quarantine all ({{ purge_min_age_days }}+ days old)
         </button>
       {% endif %}
     </form>
@@ -202,6 +204,7 @@
                   <td class="files-cell-file">
                     <code>{{ o.rel }}</code>
                     {% if o.is_variant %}<span class="files-tag">variant</span>{% endif %}
+                    {% if o.reason %}<div class="files-note">{{ o.reason }}</div>{% endif %}
                   </td>
                   <td>
                     <span class="files-pill files-pill-{{ o.kind }}">
@@ -220,7 +223,7 @@
       <div class="files-bulk-bar">
         <span data-selected-count>0</span> selected
         <button type="submit" class="btn btn-danger">
-          Delete selected
+          Move selected to quarantine
         </button>
       </div>
     </form>
@@ -341,6 +344,7 @@
         '<td class="files-cell-file">' +
           '<code>' + escapeHtml(o.rel) + '</code>' +
           (o.is_variant ? '<span class="files-tag">variant</span>' : '') +
+          (o.reason ? '<div class="files-note">' + escapeHtml(o.reason) + '</div>' : '') +
         '</td>' +
         '<td><span class="files-pill files-pill-' + escapeHtml(o.kind) + '">' +
           escapeHtml(o.kind) + '</span></td>' +
@@ -527,12 +531,11 @@
       if (n === 0) return null;
 
       return {
-        title: "Delete " + n + " file" + (n === 1 ? "" : "s") + "?",
+        title: "Move " + n + " file" + (n === 1 ? "" : "s") + " to quarantine?",
         body:
-          "This permanently removes " +
-          (n === 1 ? "the selected file" : "the selected files") +
-          " from disk. It cannot be undone.",
-        confirmLabel: "Delete",
+          "Each file is checked again first. Files still in use or too new are kept. " +
+          "Quarantined files can be restored until the retention period ends.",
+        confirmLabel: "Move to quarantine",
         cancelLabel: "Keep them",
         tone: "danger",
       };
@@ -545,12 +548,12 @@
       if (!trigger) return null;
       var label = (trigger.textContent || "").trim();
       return {
-        title: "Auto-purge orphaned files?",
+        title: "Move all orphaned files to quarantine?",
         body:
-          "Every orphaned file older than the configured threshold will " +
-          "be permanently deleted from disk. " +
+          "Every orphaned file older than the configured threshold is checked " +
+          "again and moved to the quarantine folder. " +
           (label ? "(" + label + ")" : ""),
-        confirmLabel: "Purge",
+        confirmLabel: "Move to quarantine",
         cancelLabel: "Cancel",
         tone: "danger",
       };

@@ -1,17 +1,103 @@
 {% load qa_tags %}
 <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">Case Board</a><span aria-hidden="true">/</span><span aria-current="page">Task-link drift</span></nav>
+
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "rotate" 14 "2.4" %} QA cases (SOP-03)</span>
+    <h1 data-qa-focus>Task-link drift</h1>
+    <p>Every open case stage should have exactly one task, in the Tasks inbox of the person who must act. A check runs every night: it closes tasks whose stage has moved on and opens a task for any stage that has none.</p>
+    {% if can_run and not monitor %}
+    <div class="qa-hero__actions">
+      <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "rotate" 16 "2.2" %} Run and repair</button></form>
+      <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="dry_run" value="1"><button class="btn btn-subtle" type="submit">{% icon "search" 16 "2.2" %} Check only</button></form>
+    </div>
+    {% endif %}
+  </div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <div class="qa-stat"><strong>{{ runs_total }}</strong><span>Runs</span></div>
+    <div class="qa-stat{% if runs_with_drift %} qa-stat--warn{% else %} qa-stat--success{% endif %}"><strong>{{ runs_with_drift }}</strong><span>Found drift</span></div>
+  </div>
+</header>
+
+{% if monitor %}<div class="qa-readonly-banner" role="status">{% icon "eye" 16 %} You are the ICT monitor: you can see every run, but running a repair needs an officer who can reassign QA tasks.</div>{% endif %}
+
+<div class="qa-drift-summary">
+  <section class="qa-drift-card qa-drift-card--last" aria-labelledby="dr-last">
+    <h2 id="dr-last">Last run</h2>
+    {% if latest %}
+      <p class="qa-drift-card__when"><time datetime="{{ latest.run_at|date:'c' }}">{{ latest.run_at|date:"j M Y, H:i" }}</time> <small>{{ latest.run_at|timesince }} ago</small></p>
+      <p class="qa-drift-card__state">
+        {% if latest.closed or latest.opened %}<span class="qa-drift-dot is-warn" aria-hidden="true"></span>{% if latest.dry_run %}Drift found, not yet repaired{% else %}Drift found and repaired{% endif %}
+        {% else %}<span class="qa-drift-dot is-ok" aria-hidden="true"></span>Every stage had its task{% endif %}
+      </p>
+      <span class="qa-chip">{% if latest.dry_run %}Check only{% else %}Repair{% endif %}</span>
+    {% else %}
+      <p class="qa-drift-card__state"><span class="qa-drift-dot" aria-hidden="true"></span>Not run yet</p>
+    {% endif %}
+  </section>
+  <section class="qa-drift-card" aria-labelledby="dr-checked">
+    <h2 id="dr-checked">Links checked</h2>
+    <strong class="qa-drift-card__num">{{ latest.checked|default:0 }}</strong>
+    <p>Stage tasks compared with their cases in the last run.</p>
+  </section>
+  <section class="qa-drift-card" aria-labelledby="dr-closed">
+    <h2 id="dr-closed">Orphan tasks</h2>
+    <strong class="qa-drift-card__num">{{ latest.closed|default:0 }}</strong>
+    <p>{% if latest.dry_run %}Found: tasks for a stage that has moved on.{% else %}Closed: tasks for a stage that had moved on.{% endif %}</p>
+  </section>
+  <section class="qa-drift-card" aria-labelledby="dr-opened">
+    <h2 id="dr-opened">Missing tasks</h2>
+    <strong class="qa-drift-card__num">{{ latest.opened|default:0 }}</strong>
+    <p>{% if latest.dry_run %}Found: stages with no open task.{% else %}Opened: stages that had no open task.{% endif %}</p>
+  </section>
+</div>
+
 <section class="qa-card" aria-labelledby="dr-h">
-  <header class="qa-card__head"><div><h2 id="dr-h" data-qa-focus>Task-link drift reports</h2><p>The nightly reconciliation (<span class="qa-mono">manage.py qa_reconcile_tasks</span>) compares every open stage task with its case: it closes tasks whose stage has moved on and opens a task for any stage that has none.</p></div>
-    {% if can_run and not monitor %}<div class="qa-wrap" style="display:flex;gap:8px">
-      <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="dry_run" value="1"><button class="btn btn-sm btn-subtle" type="submit">Check (dry run)</button></form>
-      <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-sm btn-primary" type="submit">Run and repair</button></form></div>{% endif %}</header>
-  <ul class="qa-rowlist" role="list">
-    {% for r in page.rows %}
-    <li class="qa-rowlink qa-rowlink--static"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.run_at|date:"j M Y, H:i" }}{% if r.dry_run %} · dry run{% endif %}</span>
-      <span class="qa-rowlink__meta"><span>{{ r.checked }} checked</span><span>· {{ r.closed }} orphan{{ r.closed|pluralize }} {% if r.dry_run %}found{% else %}closed{% endif %}</span><span>· {{ r.opened }} missing task{{ r.opened|pluralize }} {% if r.dry_run %}found{% else %}opened{% endif %}</span></span>
-      {% if r.details %}<ul class="qa-small">{% for d in r.details %}<li>{{ d.kind|capfirst }}: {{ d.subject }} {{ d.stage }}{% if d.task %} ({{ d.task }}){% endif %} — {{ d.why }}</li>{% endfor %}</ul>{% endif %}</span>
-      <span class="qa-rowlink__side">{% if r.closed or r.opened %}<span class="qa-chip qa-tone-warn">Drift</span>{% else %}<span class="qa-chip qa-tone-success">Clean</span>{% endif %}</span></li>
-    {% empty %}<li class="qa-card__body qa-muted">No runs yet.</li>{% endfor %}
-  </ul>
-  {% include "qa_core/partials/_pagination.html" with page=page target="#qa-panel" %}
+  <header class="qa-card__head"><div><h2 id="dr-h">Run history</h2><p>Newest first. Open a run to see each repair.</p></div>
+    {% if last_repair %}<span class="qa-small qa-muted">Last repair {{ last_repair.run_at|date:"j M Y, H:i" }}</span>{% endif %}</header>
+  {% if page.rows %}
+    <div class="qa-table-wrap">
+      <table class="qa-table qa-drift-table">
+        <caption class="sr-only">Reconciliation runs</caption>
+        <thead><tr><th scope="col">When</th><th scope="col">Kind</th><th scope="col" class="qa-num">Checked</th><th scope="col" class="qa-num">Orphans</th><th scope="col" class="qa-num">Missing</th><th scope="col">Result</th></tr></thead>
+        {% for r in page.rows %}
+          <tbody>
+            <tr>
+              <td data-label="When"><strong>{{ r.run_at|date:"j M Y" }}</strong> <span class="qa-muted">{{ r.run_at|date:"H:i" }}</span></td>
+              <td data-label="Kind">{% if r.dry_run %}Check only{% else %}Repair{% endif %}</td>
+              <td data-label="Checked" class="qa-num">{{ r.checked }}</td>
+              <td data-label="Orphans" class="qa-num">{{ r.closed }}</td>
+              <td data-label="Missing" class="qa-num">{{ r.opened }}</td>
+              <td data-label="Result">{% if r.closed or r.opened %}<span class="qa-chip qa-tone-warn">{% if r.dry_run %}Drift found{% else %}Repaired{% endif %}</span>{% else %}<span class="qa-chip qa-tone-success">Clean</span>{% endif %}</td>
+            </tr>
+            {% if r.details %}
+            <tr class="qa-drift-details"><td colspan="6">
+              <details>
+                <summary>Show details ({{ r.details|length }})</summary>
+                <ul class="qa-drift-fixes" role="list">
+                  {% for d in r.details %}
+                    <li><span class="qa-chip {% if d.kind == 'missing' %}qa-chip--info{% elif d.kind == 'orphaned' %}qa-chip--dual{% endif %}">{% if d.kind == "missing" %}{% if r.dry_run %}Missing task{% else %}Task opened{% endif %}{% elif d.kind == "orphaned" %}{% if r.dry_run %}Orphan task{% else %}Task closed{% endif %}{% else %}{{ d.kind|capfirst }}{% endif %}</span>
+                      <span><strong>{{ d.subject }}</strong>{% if d.stage %} · stage <code>{{ d.stage }}</code>{% endif %}{% if d.task %} · task {{ d.task }}{% endif %}<small>{{ d.why|capfirst }}</small></span></li>
+                  {% endfor %}
+                </ul>
+              </details>
+            </td></tr>
+            {% endif %}
+          </tbody>
+        {% endfor %}
+      </table>
+    </div>
+    {% include "qa_core/partials/_pagination.html" with page=page target="#qa-panel" %}
+  {% else %}
+    <div class="nbte-empty-state qa-empty">
+      <span class="qa-tile qa-tile--lg qa-tile--purple qa-empty__tile" aria-hidden="true">{% icon "rotate" 26 "2.2" %}</span>
+      <h3 class="nbte-empty-state__title">No runs yet</h3>
+      <p class="nbte-empty-state__body">The first nightly check will appear here. {% if can_run and not monitor %}Run a check now to see whether any case stage is missing its task — it changes nothing.{% endif %}</p>
+      {% if can_run and not monitor %}
+      <div class="nbte-empty-state__action">
+        <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="dry_run" value="1"><button class="btn btn-primary" type="submit">Check now</button></form>
+      </div>
+      {% endif %}
+    </div>
+  {% endif %}
 </section>

@@ -1,0 +1,25 @@
+{% load backups_tags %}
+{% if run %}
+<div id="bk-progress" class="bk-progress is-{{ run.status }}"
+     {% if run.is_running %}hx-get="{% url 'backups:progress' run.pk %}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}
+     role="status" aria-live="polite">
+  <div class="bk-progress__head">
+    <div>
+      <strong>{% if run.is_running %}Backing up…{% elif run.status == "succeeded" %}Backup finished{% elif run.status == "partial" %}Backup finished with problems{% else %}Backup failed{% endif %}</strong>
+      <small>{{ run.label }} · started {{ run.started_at|date:"j M Y, H:i" }}{% if run.triggered_by %} by {{ run.triggered_by.get_full_name|default:run.triggered_by.email }}{% endif %}</small>
+    </div>
+    {% include "backups/_status_chip.html" with status=run.status %}
+  </div>
+  <div class="bk-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ run.progress }}" aria-label="Backup progress">
+    <span style="--pct: {{ run.progress }}%"></span>
+  </div>
+  <p class="bk-progress__label">{{ run.progress_label|default:"Starting" }}{% if run.is_running %} <span class="bk-dots" aria-hidden="true"></span>{% endif %}</p>
+  {% if notice %}<p class="bk-note">{{ notice }}</p>{% endif %}
+  {% if not run.is_running %}
+    <p class="bk-progress__summary">{{ run.size_bytes|filesize_h }}{% if run.duration %} · took {{ run.duration|duration_h }}{% endif %}{% if run.encrypted %} · encrypted{% endif %}</p>
+    {% if run.error %}<pre class="bk-error">{{ run.error }}</pre>{% endif %}
+    {% for w in run.warnings %}<p class="bk-note bk-note--warn">{{ w }}</p>{% endfor %}
+  {% endif %}
+</div>
+{% if oob_history %}{% include "backups/_history.html" with oob=True %}{% endif %}
+{% endif %}

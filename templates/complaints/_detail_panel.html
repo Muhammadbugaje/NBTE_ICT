@@ -1,4 +1,4 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load ux_tags %}
 <nav class="qa-crumbs" aria-label="Breadcrumb">
   <a href="{% url 'qa_complaints:queue' %}" hx-get="{% url 'qa_complaints:queue' %}" hx-target="#qa-panel" hx-push-url="true">Complaints</a>
   <span aria-hidden="true">/</span>
@@ -16,6 +16,7 @@
     <span class="qa-chip{% if c.priority == 'critical' %} qa-tone-danger{% elif c.priority == 'high' %} qa-tone-warn{% else %} qa-tone-neutral{% endif %}">{{ c.get_priority_display }} priority</span>
     <span class="qa-chip{% if c.closed_at %} qa-tone-neutral{% elif c.status == 'resolved' %} qa-tone-success{% else %} qa-tone-pending{% endif %}" data-qa-announce="Status: {{ current.stage_label|default:c.status }}">{% if current %}{{ current.stage_label }}{% else %}{{ c.status|humanize_code }}{% endif %}</span>
     {% if c.reopened_count %}<span class="qa-chip qa-tone-warn">Reopened ×{{ c.reopened_count }}</span>{% endif %}
+    <a class="qa-chip qa-chip--button" href="{% url 'qa_complaints:record_pdf' c.pk %}" download>{% icon "download" 12 "2.4" %} Record (PDF)</a>
   </div>
 </header>
 
@@ -44,7 +45,7 @@
               <div class="cx-msg__bubble">
                 <div class="cx-msg__head"><strong>{% if m.is_system or not m.author %}QA system{% else %}{{ m.author|who }}{% endif %}</strong><time datetime="{{ m.created_at|date:'c' }}">{{ m.created_at|date:"j M, H:i" }}</time>{% if m.visibility == "internal" %}<span class="cx-lock">{% icon "lock" 12 "2.4" %} Internal</span>{% endif %}</div>
                 <div class="cx-msg__body">{{ m.body }}</div>
-                {% if m.attachments.all %}<div class="cx-msg__files">{% for f in m.attachments.all %}<a class="qa-chip" href="{{ f.download_url }}">{% icon "download" 12 %} {{ f.display_name }}</a>{% endfor %}</div>{% endif %}
+                {% if m.attachments.all %}<div class="cx-msg__files">{% for f in m.attachments.all %}<span class="fpv-pair"><a class="qa-chip" href="{{ f.download_url }}">{% icon "download" 12 %} {{ f.display_name }}</a>{% preview_button f.download_url f.display_name f.size_bytes compact=True %}</span>{% endfor %}</div>{% endif %}
               </div>
             </li>
           {% endif %}{% empty %}<li class="qa-muted qa-small">No messages yet.</li>{% endfor %}

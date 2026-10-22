@@ -125,13 +125,22 @@ def cases():
         return {"open": 0, "by_group": [], "closed": 0}
     counts = {label: 0 for label, _a, _b in STAGE_GROUPS}
     open_cases, closed = 0, 0
-    for status, n in QACase.unscoped.values_list("status").annotate(n=Count("id")):
-        no = STAGE_NUMBERS.get(status, 1 if status in ("assign_audit_officer", "assign_finance_officer",
-                                                       "assign_ict_officer") else -1)
+    # Phase 8: stage numbers come from the live flow too, so stages the
+    # demo map does not list (e.g. "supervisors_assigned") and cases not yet
+    # started ("awaiting_sop03") are counted as open instead of dropped.
+    stage_no = dict(STAGE_NUMBERS)
+    try:
+        from qa_core.models import FlowStage
+
+        for code, no in FlowStage.objects.filter(flow__code="qa_case", sop_stage_no__isnull=False) \
+                .values_list("code", "sop_stage_no"):
+            stage_no.setdefault(code, no)
+    except Exception:  # pragma: no cover - flows not seeded
+        pass
+    for status, n in (QACase.unscoped.order_by().values_list("status").annotate(n=Count("id"))):
+        no = stage_no.get(status, 0)
         if status == "closed" or no >= 18:
             closed += n
-            continue
-        if no < 0:
             continue
         open_cases += n
         for label, a, b in STAGE_GROUPS:

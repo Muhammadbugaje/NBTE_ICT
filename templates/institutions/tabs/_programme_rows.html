@@ -1,0 +1,17 @@
+{% load qa_tags %}
+{% if page.rows %}
+<div class="qa-table-wrap"><table class="qa-table">
+  <caption class="sr-only">Programmes of {{ inst.name }}</caption>
+  <thead><tr><th scope="col">Programme</th><th scope="col">Level</th><th scope="col">Status</th><th scope="col" class="num">Streams</th><th scope="col">Accreditation</th><th scope="col">Professional body</th><th scope="col">Open request / case</th></tr></thead>
+  <tbody>{% for p in page.rows %}<tr>
+    <td data-label="Programme"><a href="{% url 'qa_inst:programme' inst.code p.pk %}" hx-get="{% url 'qa_inst:programme' inst.code p.pk %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ p.name }}</strong></a>{% if p.category %}<br><span class="qa-small qa-muted">{{ p.category.name }}</span>{% endif %}</td>
+    <td data-label="Level">{{ p.level.code|upper|default:"—" }}</td>
+    <td data-label="Status"><span class="qa-chip {{ p.status|tone }}">{{ p.get_status_display }}</span>{% if p.approval_type_name %}<br><span class="qa-small qa-muted">{{ p.approval_type_name }}</span>{% endif %}</td>
+    <td data-label="Streams" class="num">{{ p.approved_streams }}</td>
+    <td data-label="Accreditation">{% if p.commencement_date or p.expiry_date %}<span class="qa-small">{{ p.commencement_date|date:"j M Y"|default:"—" }} → {{ p.expiry_date|date:"j M Y"|default:"—" }}</span>{% if p.expiry_info.label %}<br><span class="qa-countdown {{ p.expiry_info.tone }}">{{ p.expiry_info.label }}</span>{% endif %}{% else %}<span class="qa-muted">—</span>{% endif %}</td>
+    <td data-label="Professional body">{% for b in p.bodies %}<a class="qa-chip qa-tone-info" href="{% url 'qa_pb:body_detail' b.pk %}" title="{{ b.name }}">{{ b.acronym|default:b.name }}</a> {% empty %}<span class="qa-muted">—</span>{% endfor %}</td>
+    <td data-label="Open request / case">{% if p.work %}<a href="{{ p.work.url }}"><strong>{{ p.work.reference }}</strong></a><br><span class="qa-small qa-muted">{{ p.work.type }} · {% if p.work.stage_no %}stage {{ p.work.stage_no }}: {% endif %}{{ p.work.stage }}</span>{% else %}<span class="qa-muted">—</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% include "qa_core/partials/_pagination.html" with target="#qa-prog-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "layers" 28 %}</span><h3 class="nbte-empty-state__title">{% if any_filter %}No programme matches{% else %}No programmes recorded{% endif %}</h3><p class="nbte-empty-state__body">{% if any_filter %}Change or clear the filters.{% else %}Programmes appear here once they are listed or imported.{% endif %}</p></div>{% endif %}

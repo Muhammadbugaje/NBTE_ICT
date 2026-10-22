@@ -1,0 +1,101 @@
+{% extends 'admin/base.html' %}
+{% load i18n static %}
+
+{% comment %}
+  NBTE admin home (Phase 8). Numbers and shortcuts come from
+  core.admin_dashboard.dashboard_callback (UNFOLD["DASHBOARD_CALLBACK"]).
+{% endcomment %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+  {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="nbte-dash">
+  <section class="nbte-hero" aria-labelledby="nbte-hero-title">
+    <div class="nbte-hero__text">
+      <p class="nbte-hero__eyebrow">NBTE Admin · {% now "l j F Y" %}</p>
+      <h1 id="nbte-hero-title" class="nbte-hero__title">{{ nbte_greeting }}</h1>
+      <p class="nbte-hero__lead">Support tools for the ICT System and the Digital QA System. Day-to-day work still happens in the staff system, where changes get their second officer and their audit trail.</p>
+      <div class="nbte-hero__links">
+        {% for link in nbte_site_links %}{% if link.url %}
+          <a class="nbte-pill" href="{{ link.url }}"><span class="material-symbols-outlined" aria-hidden="true">{{ link.icon }}</span>{{ link.label }}</a>
+        {% endif %}{% endfor %}
+      </div>
+    </div>
+    <img class="nbte-hero__logo" src="{% static 'img/NBTE_logo.png' %}" alt="" width="96" height="96">
+  </section>
+
+  <section aria-labelledby="nbte-tiles-title">
+    <h2 id="nbte-tiles-title" class="nbte-section-title">At a glance</h2>
+    <div class="nbte-tiles">
+      {% for t in nbte_tiles %}
+        <a class="nbte-tile nbte-tile--{{ t.tone }}" href="{{ t.url|default:'#' }}" data-nbte-tile="{{ t.key }}">
+          <span class="nbte-tile__icon material-symbols-outlined" aria-hidden="true">{{ t.icon }}</span>
+          <span class="nbte-tile__value" data-nbte-count="{{ t.value|default_if_none:'' }}">{% if t.value is None %}—{% else %}{{ t.value }}{% endif %}</span>
+          <span class="nbte-tile__label">{{ t.label }}</span>
+          <span class="nbte-tile__hint">{{ t.hint }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="nbte-split">
+    <section class="nbte-card" aria-labelledby="nbte-short-title">
+      <header class="nbte-card__head">
+        <h2 id="nbte-short-title">Shortcuts</h2>
+        <p>Common support jobs</p>
+      </header>
+      <div class="nbte-shortcuts">
+        {% for s in nbte_shortcuts %}
+          <a class="nbte-shortcut" href="{{ s.url }}"><span class="material-symbols-outlined" aria-hidden="true">{{ s.icon }}</span><span>{{ s.label }}</span></a>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="nbte-card" aria-labelledby="nbte-recent-title">
+      <header class="nbte-card__head">
+        <h2 id="nbte-recent-title">Recent admin changes</h2>
+        <p>The last ten changes made on these pages, by anyone</p>
+      </header>
+      {% if nbte_recent %}
+        <ol class="nbte-timeline">
+          {% for r in nbte_recent %}
+            <li class="nbte-timeline__item nbte-timeline__item--{{ r.kind }}">
+              <span class="nbte-timeline__dot material-symbols-outlined" aria-hidden="true">{% if r.kind == "added" %}add{% elif r.kind == "deleted" %}delete{% else %}edit{% endif %}</span>
+              <div class="nbte-timeline__body">
+                <p class="nbte-timeline__what">{% if r.url %}<a href="{{ r.url }}">{{ r.what }}</a>{% else %}{{ r.what }}{% endif %}</p>
+                <p class="nbte-timeline__meta">{{ r.who }} {{ r.kind }} {{ r.model }} · <time datetime="{{ r.when|date:'c' }}">{{ r.when|timesince }} ago</time></p>
+              </div>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="nbte-empty">No changes have been made here yet.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="nbte-card nbte-card--apps" aria-labelledby="nbte-apps-title">
+    <header class="nbte-card__head">
+      <h2 id="nbte-apps-title">Everything in the admin</h2>
+      <p>Every list you can open, grouped by part of the system</p>
+    </header>
+    <div class="nbte-apps">
+      {% for app in app_list %}
+        <div class="nbte-app">
+          <h3 class="nbte-app__name">{{ app.name }}</h3>
+          <ul>
+            {% for model in app.models %}
+              <li>{% if model.admin_url %}<a href="{{ model.admin_url }}">{{ model.name }}</a>{% else %}{{ model.name }}{% endif %}
+                {% if model.add_url %}<a class="nbte-app__add" href="{{ model.add_url }}" aria-label="Add {{ model.name }}"><span class="material-symbols-outlined" aria-hidden="true">add</span></a>{% endif %}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

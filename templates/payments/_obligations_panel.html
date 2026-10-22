@@ -2,7 +2,8 @@
 {% with fin_tab="bills" fin_title="Bills" fin_lead="Every QA bill: amount frozen at issue from the fee formula, its payment stage, and what was received." %}
 {% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
 <section class="qa-card" aria-label="Bills">
-  <header class="qa-card__head"><div><h2>All bills</h2><p>Confirmed revenue so far: <strong>{{ confirmed_total }}</strong> · {{ waived }} waived (not counted)</p></div></header>
+  <header class="qa-card__head"><div><h2>All bills</h2><p>Confirmed revenue so far: <strong>{{ confirmed_total }}</strong> · {{ waived }} waived (not counted)</p></div>
+    <a class="btn btn-sm btn-subtle" href="{% url 'qa_fin:issue_bill' %}" hx-get="{% url 'qa_fin:issue_bill' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "plus" 14 %} Issue a bill</a></header>
   <form class="qa-toolbar" role="search" hx-get="{% url 'qa_fin:obligations' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
     <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference, institution or code" autocomplete="off"></label>
     <select class="input qa-select" name="group" aria-label="Stage"><option value="">Any stage</option>{% for v, l in "issued:Not yet published,due:To pay,checking:Being confirmed,settled:Settled,closed:Cancelled / expired"|split_pairs %}<option value="{{ v }}"{% if filters.group == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>

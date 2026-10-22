@@ -249,23 +249,28 @@ def complaint_action(request, pk, action):
 @require_GET
 def complaint_file(request, pk, file_pk):
     """Attachments of public messages only (the portal never serves internal files)."""
-    import mimetypes
-    from urllib.parse import quote
-
-    from core import audit
-
     complaint = _complaint_or_404(request, pk)
     att = ComplaintAttachment.objects.filter(pk=file_pk, complaint=complaint).select_related("message").first()
     if att is None or not att.file or (att.message_id and att.message.visibility != ComplaintMessage.PUBLIC):
         raise Http404
-    audit.log("other", att, actor=getattr(request, "impersonator", None) or request.user,
-              note="complaint attachment downloaded (portal)")
+    return attachment_response(request, att)
+
+
+def attachment_response(request, att, *, channel="portal"):
+    """Serve a public-message attachment already checked by the caller (the
+    portal page above and the mobile API, Phase 9)."""
+    import mimetypes
+
+    from core import audit
+    from core import file_preview
+
     name = att.original_name or att.file.name.rsplit("/", 1)[-1]
-    response = FileResponse(att.file.open("rb"), content_type=mimetypes.guess_type(name)[0] or
-                            "application/octet-stream")
-    response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(name)}"
-    response["Cache-Control"] = "private, no-store"
-    return response
+    ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    inline = file_preview.wants_inline(request, ctype)
+    audit.log("other", att, actor=getattr(request, "impersonator", None) or request.user,
+              note=file_preview.audit_note(inline, "complaint attachment") + f" ({channel})")
+    response = FileResponse(att.file.open("rb"), content_type=file_preview.text_charset(ctype))
+    return file_preview.finish(response, name, inline)
 
 
 # ===========================================================================

@@ -14,6 +14,11 @@ _DEFAULTS = {
     "phone": "",
     "address": "",
     "footer_note": "Authorized access only. All actions logged and audited.",
+    # Phase 8 UI: names shown by the templates (Settings → Site).
+    "name": "",
+    "qa_name": "Quality Assurance",
+    "portal_name": "NBTE Quality Assurance Portal",
+    "portal_short_name": "Quality Assurance Portal",
 }
 
 
@@ -21,4 +26,7 @@ def site_info(request):
     """Returns {'site_info': {department_name, organisation_name, tagline,
     email, phone, address, footer_note}} for every template."""
     info = {key: config.get(f"site.{key}", default) for key, default in _DEFAULTS.items()}
+    for key, default in _DEFAULTS.items():  # a blank value falls back to the default
+        if not str(info.get(key) or "").strip() and default:
+            info[key] = default
     return {"site_info": info}

@@ -1,4 +1,5 @@
 {% extends base_template %}
+{% load static %}
 {% block title %}Account settings · {{ portal_name }}{% endblock %}
 {% block content %}
 <div class="qa-portal-page qa-portal-page--narrow">
@@ -31,6 +32,25 @@
     <div id="qa-password-card" class="qa-region" data-qa-region>
       {% include "qa_portal/_password_card.html" %}
     </div>
+
+    {# Phase 9: notification settings, devices, passkeys, account deletion #}
+    <link rel="stylesheet" href="{% static 'css/account-security.css' %}?v=1">
+    <div id="p9-notifications" class="p9-portal-block">
+      <header class="p9-band-head">
+        <h2>Notifications</h2>
+        <p>Choose what reaches your phone and inbox, and when to keep quiet.</p>
+      </header>
+      {% url 'qa_portal:account_notifications' as p9_notif_action %}
+      {% include "notifications/_p9_preferences_form.html" with form=notification_form action=p9_notif_action disabled=p9_impersonating %}
+    </div>
+    <div class="p9-portal-block">
+      <header class="p9-band-head">
+        <h2>Security &amp; privacy</h2>
+        <p>Where you are signed in, passkeys for quick sign-in, and closing your account.</p>
+      </header>
+      {% include "accounts/_p9_security.html" %}
+    </div>
+    <script src="{% static 'js/passkeys.js' %}?v=1" defer></script>
   </div>
 </div>
 {% endblock %}

@@ -1,0 +1,22 @@
+{% load qa_tags %}
+<div class="qa-card__body qa-fee-new" style="border-top:1px solid var(--divider)">
+  <form method="post" action="{% url 'qa_set:fee_new' %}" hx-post="{% url 'qa_set:fee_new' %}" hx-target="#fee-form-slot" class="qa-form qa-stack" id="fee-new-form">{% csrf_token %}
+    <h3 class="qa-menu__group">Add a new fee (a second officer confirms it)</h3>
+    <p class="qa-small qa-muted">Nothing is created until the Director of Finance confirms. The formula becomes the setting <span class="qa-mono">qa.fee.&lt;code&gt;</span> (changed later under dual control, like every fee formula).</p>
+    {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" message=error %}{% endif %}
+    <div class="qa-fields">{% for n in "name code description"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div>
+    {% include "qa_core/partials/_field.html" with field=form|bf:"expr" %}
+    <fieldset class="qa-fee-vars"><legend>Variables the formula may use <span class="qa-muted">(and sample values to test it)</span></legend>
+      {% for v in variables %}<div class="qa-fee-var">
+        <label class="qa-field--check"><input type="checkbox" name="vars" value="{{ v.name }}"{% if v.checked %} checked{% endif %}><span><span class="qa-mono">{{ v.name }}</span> <span class="qa-small qa-muted">{{ v.help }}</span></span></label>
+        <label class="sr-only" for="fs-{{ v.name }}">Sample {{ v.name }}</label><input class="input qa-fee-var__sample" id="fs-{{ v.name }}" name="sample_{{ v.name }}" value="{{ v.sample }}">
+      </div>{% endfor %}
+      <p class="qa-small qa-muted">Allowed: numbers, + − × ÷, comparisons, <span class="qa-mono">x if condition else y</span>, and min, max, round, ceil, floor, abs, clamp. Text values are compared in quotes, e.g. <span class="qa-mono">ownership == 'private'</span>.</p>
+    </fieldset>
+    <div class="qa-row qa-gap-sm qa-wrap"><button class="btn btn-subtle btn-sm" type="button" hx-post="{% url 'qa_set:fee_test' %}" hx-include="#fee-new-form" hx-target="#fee-test-result">{% icon "check" 14 %} Test the formula</button>
+      <div id="fee-test-result" class="qa-grow">{% include "payments/settings/_fee_test.html" %}</div></div>
+    <div class="qa-fields">{% for n in "due_days remita_service_type_id revenue_account"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div>
+    {% include "qa_core/partials/_field.html" with field=form|bf:"reason" %}
+    <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "shield" 16 %} Send for confirmation</button><button class="btn btn-subtle" type="button" onclick="this.closest('#fee-form-slot').innerHTML=''">Cancel</button></div>
+  </form>
+</div>

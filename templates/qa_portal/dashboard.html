@@ -5,7 +5,7 @@
 <div class="qa-portal-page">
   <section class="qa-welcome" aria-labelledby="qa-welcome-title">
     <div class="qa-welcome__text">
-      <span class="qa-eyebrow">{% if is_resource_person %}Resource person{% else %}Institution dashboard{% endif %}</span>
+      <span class="qa-eyebrow qa-welcome__eyebrow"><span class="qa-tile qa-tile--sm qa-tile--green" aria-hidden="true">{% icon "home" 15 "2.3" %}</span>{% if is_resource_person %}Resource person{% else %}Institution dashboard{% endif %}</span>
       <h1 id="qa-welcome-title" data-qa-focus>Welcome{% if request.user.first_name %}, {{ request.user.first_name }}{% endif %}</h1>
       <p>
         {% if is_resource_person %}
@@ -71,7 +71,8 @@
   {% if institution %}
   <div class="qa-dash-grid qa-mt">
     <section class="qa-card" aria-labelledby="qa-prog-title">
-      <header class="qa-card__head"><div><h2 id="qa-prog-title">Programme status board</h2><p>{{ programme_count }} programme{{ programme_count|pluralize }} on NBTE's record.</p></div></header>
+      <header class="qa-card__head"><div><h2 id="qa-prog-title">Programme status board</h2><p>{{ programme_count }} programme{{ programme_count|pluralize }} on NBTE's record.</p></div>
+        {% if institution.status == "approved" %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_portal:programme_board' %}" hx-boost="true" hx-target="#qa-main" hx-push-url="true">Open</a>{% endif %}</header>
       <div class="qa-card__body">
         {% if programme_board %}<div class="qa-board">{% for label, n in programme_board %}<div class="qa-board__item"><strong>{{ n }}</strong><span>{{ label }}</span></div>{% endfor %}</div>
         {% else %}<p class="qa-small qa-muted">No programmes yet{% if institution.status == "proposed" or institution.status == "under_review" %} — you list them after your registration fee is confirmed{% endif %}.</p>{% endif %}
@@ -80,7 +81,7 @@
     <section class="qa-card" aria-labelledby="qa-exp-title">
       <header class="qa-card__head"><div><h2 id="qa-exp-title">Upcoming expiries</h2><p>Accreditations ending in the next six months.</p></div></header>
       <div class="qa-card__body">
-        {% if expiring %}<ul class="qa-action-items" role="list">{% for p in expiring %}<li class="qa-ai qa-ai--warn"><div><strong>{{ p }}</strong><p>Expires {{ p.expiry_date|date:"j M Y" }} ({{ p.expiry_date|timeuntil }})</p></div></li>{% endfor %}</ul>
+        {% if expiring %}<ul class="qa-action-items" role="list">{% for p in expiring %}<li class="qa-ai qa-ai--warn"><div><strong><a href="{% url 'qa_portal:programme' p.pk %}">{{ p }}</a></strong><p>Expires {{ p.expiry_date|date:"j M Y" }} ({{ p.expiry_date|timeuntil }})</p></div></li>{% endfor %}</ul>
         {% else %}<p class="qa-small qa-muted">Nothing expires in the next six months.</p>{% endif %}
       </div>
     </section>
@@ -97,12 +98,16 @@
     </ul>
   </section>
   {% else %}
-  <section aria-labelledby="qa-soon-title" class="qa-soon">
-    <h2 id="qa-soon-title" class="qa-soon__title">Coming next</h2>
-    <ul class="qa-soon__grid" role="list">
-      <li class="qa-soon__card"><span class="qa-soon__icon" aria-hidden="true">{% icon "check" 22 %}</span><strong>QA requests &amp; SSQs</strong><span>Ask for accreditation or re-accreditation and complete the self-study online.</span></li>
-      <li class="qa-soon__card"><span class="qa-soon__icon" aria-hidden="true">{% icon "clock" 22 %}</span><strong>Visits &amp; decisions</strong><span>See scheduled visits, outcomes and download letters.</span></li>
-      <li class="qa-soon__card"><span class="qa-soon__icon" aria-hidden="true">{% icon "mail" 22 %}</span><strong>Complaints</strong><span>Raise an issue and follow it to resolution.</span></li>
+  <section aria-labelledby="qa-go-title" class="qa-go">
+    <h2 id="qa-go-title" class="qa-go__title">Go to</h2>
+    <ul class="qa-go__grid" role="list" hx-boost="true" hx-target="#qa-main" hx-push-url="true">
+      {% for item in portal_nav %}{% if item.key != "dashboard" and item.key != "account" %}
+        <li><a class="qa-go__link" href="{{ item.url }}">
+          <span class="qa-tile qa-tile--md qa-tile--{{ item.hue }}" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">{{ item.icon|safe }}</svg></span>
+          <span class="qa-go__text"><strong>{{ item.label }}</strong>{% if item.blurb %}<small>{{ item.blurb }}</small>{% endif %}</span>
+          <svg class="qa-go__chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </a></li>
+      {% endif %}{% endfor %}
     </ul>
   </section>
   {% endif %}

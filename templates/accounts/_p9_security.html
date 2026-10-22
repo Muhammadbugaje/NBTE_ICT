@@ -1,0 +1,185 @@
+{% comment %}
+  Phase 9: account security — signed-in devices, passkeys and the account
+  deletion request. Shared by the internal profile page and the QA portal
+  account page; `p9_urls` (accounts.security_views) names each door's URLs.
+{% endcomment %}
+<div class="p9-security" id="p9-security">
+
+  {# ---------------------------- Signed-in devices ---------------------------- #}
+  <section class="sh-section p9-section" id="p9-devices" aria-labelledby="p9-devices-title">
+    <header class="sh-section__head">
+      <div>
+        <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="2"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="12" rx="1.2"/></svg></span>
+        <h2 id="p9-devices-title">Signed-in devices</h2>
+        <p>Browsers and apps where you are signed in. Sign out of any you don’t recognise.</p>
+      </div>
+    </header>
+    <ul class="p9-list" role="list">
+      {% for d in p9_devices %}
+        <li class="p9-item{% if d.is_current %} is-current{% endif %}">
+          <span class="p9-item__icon" aria-hidden="true">
+            {% if "iPhone" in d.device_label or "Android" in d.device_label or d.kind == "app" %}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+            {% else %}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            {% endif %}
+          </span>
+          <span class="p9-item__main">
+            <span class="p9-item__title">
+              {{ d.device_label|default:"Unknown device" }}
+              {% if d.is_current %}<span class="p9-chip p9-chip--success">This device</span>{% endif %}
+              {% if d.kind == "app" %}<span class="p9-chip">App</span>{% endif %}
+            </span>
+            <span class="p9-item__meta">
+              {% if d.is_current %}Active now{% elif d.seen_recently %}Active in the last few minutes{% elif d.last_seen_at %}Last active {{ d.last_seen_at|timesince }} ago{% endif %}
+              {% if d.ip %}<span class="p9-dot" aria-hidden="true">·</span>{{ d.ip }}{% endif %}
+              <span class="p9-dot" aria-hidden="true">·</span>Signed in {{ d.created_at|date:"j M Y, H:i" }}
+            </span>
+          </span>
+          {% if not d.is_current %}
+            <form method="post" action="{% url p9_urls.device_revoke d.pk %}" class="p9-item__action"
+                  data-confirm="{{ d.device_label|default:'This device' }} will be signed out straight away."
+                  data-confirm-title="Sign out this device?" data-confirm-action="Sign out">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost btn-sm"{% if p9_impersonating %} disabled{% endif %}>Sign out</button>
+            </form>
+          {% endif %}
+        </li>
+      {% empty %}
+        <li class="p9-empty">No signed-in devices are recorded yet.</li>
+      {% endfor %}
+    </ul>
+    {% if p9_devices|length > 1 %}
+      <div class="sh-section__foot">
+        <span>{{ p9_devices|length }} device{{ p9_devices|length|pluralize }} signed in</span>
+        <form method="post" action="{% url p9_urls.devices_revoke_others %}"
+              data-confirm="Every other browser and app signed in to your account will be signed out. This device stays signed in."
+              data-confirm-title="Sign out of all other devices?" data-confirm-action="Sign out others">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger btn-sm"{% if p9_impersonating %} disabled{% endif %}>Sign out of all other devices</button>
+        </form>
+      </div>
+    {% endif %}
+  </section>
+
+  {# --------------------------------- Passkeys -------------------------------- #}
+  <section class="sh-section p9-section" id="p9-passkeys" aria-labelledby="p9-passkeys-title" data-passkey-scope>
+    <header class="sh-section__head">
+      <div>
+        <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="4"/><path d="M11 12.5 20 21.5M17 18.5l2-2M15 16.5l2-2"/></svg></span>
+        <h2 id="p9-passkeys-title">Passkeys</h2>
+        <p>Sign in with your fingerprint, face or device PIN instead of typing a password. Your biometric never leaves your device.</p>
+      </div>
+    </header>
+    <ul class="p9-list" role="list">
+      {% for p in p9_passkeys %}
+        <li class="p9-item">
+          <span class="p9-item__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="4"/><path d="M11 12.5 20 21.5M17 18.5l2-2M15 16.5l2-2"/></svg></span>
+          <span class="p9-item__main">
+            <span class="p9-item__title">{{ p.name|default:"Passkey" }}</span>
+            <span class="p9-item__meta">
+              Added {{ p.created_at|date:"j M Y" }}
+              <span class="p9-dot" aria-hidden="true">·</span>
+              {% if p.last_used_at %}Last used {{ p.last_used_at|timesince }} ago{% else %}Not used yet{% endif %}
+            </span>
+          </span>
+          <span class="p9-item__action p9-item__action--group">
+            <details class="p9-rename">
+              <summary class="btn btn-ghost btn-sm">Rename</summary>
+              <form method="post" action="{% url p9_urls.passkey_rename p.pk %}" class="p9-rename__form">
+                {% csrf_token %}
+                <label class="sr-only" for="p9-pk-name-{{ p.pk }}">New name</label>
+                <input class="input" id="p9-pk-name-{{ p.pk }}" name="name" maxlength="80" value="{{ p.name }}" required>
+                <button type="submit" class="btn btn-primary btn-sm"{% if p9_impersonating %} disabled{% endif %}>Save</button>
+              </form>
+            </details>
+            <form method="post" action="{% url p9_urls.passkey_remove p.pk %}"
+                  data-confirm="“{{ p.name|default:'This passkey' }}” will no longer sign you in. You can add it again later."
+                  data-confirm-title="Remove this passkey?" data-confirm-action="Remove">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost btn-sm p9-btn-danger-text"{% if p9_impersonating %} disabled{% endif %}>Remove</button>
+            </form>
+          </span>
+        </li>
+      {% empty %}
+        <li class="p9-empty">You have no passkeys yet.</li>
+      {% endfor %}
+    </ul>
+    <div class="sh-section__foot p9-passkey-add">
+      <div class="p9-passkey-add__row" data-passkey-only hidden>
+        <label class="sr-only" for="p9-new-passkey-name">Passkey name</label>
+        <input class="input" id="p9-new-passkey-name" maxlength="80" placeholder="Name (optional), e.g. Work laptop">
+        <button type="button" class="btn btn-primary btn-sm" data-passkey-add hidden
+                data-begin-url="{% url p9_urls.passkey_register_begin %}"
+                data-finish-url="{% url p9_urls.passkey_register_finish %}"
+                data-name-input="#p9-new-passkey-name"{% if p9_impersonating %} disabled{% endif %}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add a passkey
+        </button>
+      </div>
+      <span data-passkey-unsupported>This browser does not support passkeys.</span>
+      <p class="p9-status" data-passkey-status role="status" aria-live="polite" hidden></p>
+    </div>
+  </section>
+
+  {# ------------------------- Account deletion request ------------------------ #}
+  <section class="sh-section p9-section p9-section--danger" id="p9-deletion" aria-labelledby="p9-deletion-title">
+    <header class="sh-section__head">
+      <div>
+        <span class="sh-section__icon p9-icon-danger" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span>
+        <h2 id="p9-deletion-title">Request account deletion</h2>
+        <p>Ask NBTE to close your account. An administrator reviews every request, because some records must be kept by law.</p>
+      </div>
+      {% if p9_deletion %}
+        <span class="p9-chip p9-chip--{{ p9_deletion.status }}">Last request: {{ p9_deletion.get_status_display }}</span>
+      {% endif %}
+    </header>
+    <div class="p9-deletion">
+      <div class="p9-deletion__cols">
+        <div>
+          <h3>What will be removed</h3>
+          <ul>{% for item in p9_deletion_removed %}<li>{{ item }}</li>{% endfor %}</ul>
+        </div>
+        <div>
+          <h3>What NBTE must keep</h3>
+          <ul>{% for item in p9_deletion_kept %}<li>{{ item }}</li>{% endfor %}</ul>
+        </div>
+      </div>
+
+      {% if p9_deletion_open %}
+        <div class="p9-callout" role="status">
+          <strong>Request #{{ p9_deletion_open.pk }} is {{ p9_deletion_open.get_status_display|lower }}.</strong>
+          Sent {{ p9_deletion_open.created_at|date:"j M Y, H:i" }}.
+          {% if p9_deletion_open.note %}<br>Note from NBTE: {{ p9_deletion_open.note }}{% endif %}
+          {% if p9_deletion_open.status == "pending" %}
+            <form method="post" action="{% url p9_urls.deletion_withdraw %}" class="p9-callout__action"
+                  data-confirm="Your account will stay open and the request will be closed."
+                  data-confirm-title="Withdraw your request?" data-confirm-action="Withdraw" data-confirm-variant="neutral">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost btn-sm"{% if p9_impersonating %} disabled{% endif %}>Withdraw request</button>
+            </form>
+          {% endif %}
+        </div>
+      {% else %}
+        {% if p9_deletion and p9_deletion.status == "declined" and p9_deletion.note %}
+          <p class="p9-note">Your last request was declined: {{ p9_deletion.note }}</p>
+        {% endif %}
+        <form method="post" action="{% url p9_urls.deletion_request %}" class="p9-deletion__form"
+              data-confirm="NBTE administrators will be asked to close your account. You can withdraw the request while it is pending."
+              data-confirm-title="Request account deletion?" data-confirm-action="Send request">
+          {% csrf_token %}
+          <label for="p9-deletion-reason">Reason <span class="p9-optional">(optional)</span></label>
+          <textarea class="input" id="p9-deletion-reason" name="reason" rows="3" maxlength="2000"
+                    placeholder="Tell us why you want your account closed."></textarea>
+          <label class="p9-check">
+            <input type="checkbox" name="confirm" value="yes" required>
+            <span>I understand my account will be switched off and the records above will be kept.</span>
+          </label>
+          <div>
+            <button type="submit" class="btn btn-danger"{% if p9_impersonating %} disabled{% endif %}>Request account deletion</button>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+</div>

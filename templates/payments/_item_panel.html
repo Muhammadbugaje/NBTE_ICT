@@ -1,4 +1,4 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load ux_tags %}
 <nav class="qa-crumbs" aria-label="Breadcrumb">
   <a href="{% url 'qa_fin:queue' %}" hx-get="{% url 'qa_fin:queue' %}" hx-target="#qa-panel" hx-push-url="true">Verification queue</a>
   <span aria-hidden="true">/</span><span aria-current="page">{{ ob.reference }}</span>
@@ -41,7 +41,7 @@
       <div class="qa-card__body qa-evidence">
         {% for p in proofs %}
           <div class="qa-ev{% if p.fraud_flag %} qa-ev--warn{% endif %}">
-            <div class="qa-ev__head"><span>{% icon "file" 16 %} {{ p.get_kind_display }}{% if p.fraud_flag %} — same file as another bill's proof{% endif %}</span><a class="btn btn-sm btn-subtle" href="{{ p.download_url }}">{% icon "download" 14 %} Open</a></div>
+            <div class="qa-ev__head"><span>{% icon "file" 16 %} {{ p.get_kind_display }}{% if p.fraud_flag %} — same file as another bill's proof{% endif %}</span><span class="fpv-pair">{% preview_button p.download_url p.display_name p.size_bytes %}<a class="btn btn-sm btn-subtle" href="{{ p.download_url }}">{% icon "download" 14 %} Download</a></span></div>
             <div class="qa-ev__kv">
               <span><small>Amount claimed</small>{{ p.amount_claimed|naira }}</span><span><small>Paid on</small>{{ p.paid_on|date:"j M Y"|default:"—" }}</span>
               <span><small>Bank</small>{{ p.bank_name|default:"—" }}</span><span><small>Teller / transaction</small>{{ p.teller_number|default:"—" }}</span>
@@ -140,7 +140,7 @@
       {% elif not can_first and not can_second and item.is_open %}
         {% include "qa_core/partials/_callout.html" with title="View only" message="Only the holder of the Director of Finance role can confirm or reject payments." %}
       {% endif %}
-      {% if advices %}<div class="qa-stack">{% for a in advices %}<a class="btn btn-sm btn-subtle" href="{{ a.download_url }}">{% icon "download" 14 %} Payment Advice {{ a.reference }}</a>{% endfor %}</div>{% endif %}
+      {% if advices %}<div class="qa-stack">{% for a in advices %}<span class="fpv-pair"><a class="btn btn-sm btn-subtle" href="{{ a.download_url }}">{% icon "download" 14 %} Payment Advice {{ a.reference }}</a>{% preview_button a.download_url a.display_name a.size_bytes %}</span>{% endfor %}</div>{% endif %}
     </div>
   </aside>
 </div>

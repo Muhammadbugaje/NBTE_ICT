@@ -1,0 +1,88 @@
+{# A destination form: kind picker, then only the fields that kind needs (all are shown without JavaScript). #}
+<form method="post" action="{{ action }}" class="bk-form" data-bk-dest-form>
+  {% csrf_token %}
+  <div class="bk-field">
+    <label for="{{ form.name.id_for_label }}">Name</label>
+    {{ form.name }}
+    <small>{{ form.name.help_text }}</small>
+  </div>
+  <fieldset class="bk-field bk-kinds">
+    <legend>Kind</legend>
+    {% for value, label in form.fields.kind.choices %}
+      <label class="bk-kind">
+        <input type="radio" name="kind" value="{{ value }}" {% if form.kind.value == value %}checked{% endif %} data-bk-kind>
+        <span>
+          {% if value == "local" %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          {% elif value == "mounted" %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 12h.01M10 12h.01"/></svg>
+          {% else %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>{% endif %}
+          {{ label }}
+        </span>
+      </label>
+    {% endfor %}
+  </fieldset>
+
+  <div class="bk-kindfields" data-kind="local">
+    <div class="bk-field">
+      <label for="{{ form.path.id_for_label }}">{{ form.path.label }}</label>
+      <input class="input" type="text" name="path" id="{{ form.path.id_for_label }}" value="{{ form.path.value|default:'' }}" placeholder="/var/backups/nbte" autocomplete="off" spellcheck="false">
+      <small>{{ form.path.help_text }}</small>
+    </div>
+  </div>
+
+  <div class="bk-kindfields" data-kind="mounted">
+    {% if show_mounts %}{% include "backups/_mounts.html" %}{% endif %}
+    <div class="bk-grid2">
+      <div class="bk-field">
+        <label for="{{ form.mount_path.id_for_label }}">{{ form.mount_path.label }}</label>
+        <input class="input" type="text" name="mount_path" id="{{ form.mount_path.id_for_label }}" value="{{ form.mount_path.value|default:'' }}" placeholder="/media/ict/BACKUP" autocomplete="off" spellcheck="false" data-bk-mount-input>
+        <small>{{ form.mount_path.help_text }}</small>
+      </div>
+      <div class="bk-field">
+        <label for="{{ form.subfolder.id_for_label }}">{{ form.subfolder.label }}</label>
+        <input class="input" type="text" name="subfolder" id="{{ form.subfolder.id_for_label }}" value="{{ form.subfolder.value|default:'' }}" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+  </div>
+
+  <div class="bk-kindfields" data-kind="s3">
+    <div class="bk-grid2">
+      <div class="bk-field">
+        <label for="{{ form.bucket.id_for_label }}">Bucket</label>
+        <input class="input" type="text" name="bucket" id="{{ form.bucket.id_for_label }}" value="{{ form.bucket.value|default:'' }}" placeholder="nbte-backups" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="bk-field">
+        <label for="{{ form.prefix.id_for_label }}">{{ form.prefix.label }}</label>
+        <input class="input" type="text" name="prefix" id="{{ form.prefix.id_for_label }}" value="{{ form.prefix.value|default:'' }}" placeholder="nbte" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="bk-field">
+        <label for="{{ form.endpoint_url.id_for_label }}">{{ form.endpoint_url.label }}</label>
+        <input class="input" type="url" name="endpoint_url" id="{{ form.endpoint_url.id_for_label }}" value="{{ form.endpoint_url.value|default:'' }}" placeholder="https://<account-id>.r2.cloudflarestorage.com" autocomplete="off" spellcheck="false">
+        <small>{{ form.endpoint_url.help_text }}</small>
+      </div>
+      <div class="bk-field">
+        <label for="{{ form.region.id_for_label }}">Region</label>
+        <input class="input" type="text" name="region" id="{{ form.region.id_for_label }}" value="{{ form.region.value|default:'' }}" placeholder="auto" autocomplete="off" spellcheck="false">
+        <small>{{ form.region.help_text }}</small>
+      </div>
+      <div class="bk-field">
+        <label for="{{ form.addressing_style.id_for_label }}">{{ form.addressing_style.label }}</label>
+        {{ form.addressing_style }}
+      </div>
+      <div class="bk-field">
+        <label for="{{ form.credential_env_prefix.id_for_label }}">{{ form.credential_env_prefix.label }}</label>
+        <input class="input bk-mono" type="text" name="credential_env_prefix" id="{{ form.credential_env_prefix.id_for_label }}" value="{{ form.credential_env_prefix.value|default:'' }}" placeholder="{{ suggested_prefix }}" autocomplete="off" spellcheck="false">
+        <small>{{ form.credential_env_prefix.help_text }} Blank = made from the name.</small>
+      </div>
+    </div>
+    <p class="bk-note">Never type keys here. After saving, the card shows the exact lines to add to the server's <code>.env</code>.</p>
+  </div>
+
+  <div class="bk-form__foot">
+    <label class="sh-switch">
+      <input type="checkbox" name="is_active" value="1" {% if form.is_active.value %}checked{% endif %}>
+      <span class="sh-switch__track" aria-hidden="true"></span>
+      <span>Use this destination for backups</span>
+    </label>
+    <button class="btn btn-primary" type="submit">{{ submit_label }}</button>
+  </div>
+</form>

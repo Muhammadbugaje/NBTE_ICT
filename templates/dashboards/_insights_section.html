@@ -1,0 +1,120 @@
+{% comment %}Phase 9: personal insights on "My workspace". Data: dashboards/insights.py (chart_context).
+Charts are inline SVG drawn on the server; colours come from the theme tokens, so they follow light and dark mode.{% endcomment %}
+<section class="ss-section p9-insights" id="insights" aria-labelledby="p9-insights-title">
+  <header class="ss-section-head p9-insights__head">
+    <div class="ss-section-head-text">
+      <span class="ss-section-kicker">Insights · {{ insights.period_label }}</span>
+      <h2 id="p9-insights-title">How things are going</h2>
+      <p>Arrival times, task progress and tickets — for you only.</p>
+    </div>
+    <nav class="p9-seg" aria-label="Insights period">
+      {% for p in insights.periods %}
+        <a href="?period={{ p.key }}#insights" class="p9-seg__btn{% if p.key == insights.period %} is-active{% endif %}"
+           {% if p.key == insights.period %}aria-current="true"{% endif %}>{{ p.label }}</a>
+      {% endfor %}
+    </nav>
+  </header>
+
+  <div class="p9-insights__grid">
+    {# ------------------------------ Arrival times ------------------------------ #}
+    <article class="p9-chart-card" aria-labelledby="p9-arr-title">
+      <header>
+        <h3 id="p9-arr-title">Arrival times</h3>
+        {% if insights.arrivals.average %}
+          <p class="p9-kpi"><strong>{{ insights.arrivals.average }}</strong> average check-in</p>
+        {% endif %}
+      </header>
+      {% with c=insights.arrival_chart a=insights.arrivals %}
+        {% if c %}
+          <svg class="p9-chart" viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-labelledby="p9-arr-title p9-arr-desc" preserveAspectRatio="xMidYMid meet">
+            <desc id="p9-arr-desc">Average check-in time per {% if insights.period == "week" %}day{% else %}week{% endif %}; taller bars mean earlier arrival.</desc>
+            {% for t in c.ticks %}
+              <line class="p9-grid" x1="{{ c.pad_l }}" x2="{{ c.w }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+              <text class="p9-axis" x="{{ c.tick_x }}" y="{{ t.y }}" text-anchor="end" dominant-baseline="middle">{{ t.label }}</text>
+            {% endfor %}
+            {% for b in c.bars %}
+              <rect class="p9-bar{% if b.empty %} is-empty{% endif %}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="3"><title>{{ b.title }}</title></rect>
+              {% if forloop.counter0|divisibleby:c.every or forloop.last %}<text class="p9-axis" x="{{ b.lx }}" y="{{ c.label_y }}" text-anchor="middle">{{ b.label }}</text>{% endif %}
+            {% endfor %}
+          </svg>
+          <p class="p9-chart-foot">{{ a.days_recorded }} check-in{{ a.days_recorded|pluralize }} · earliest {{ a.earliest }} · latest {{ a.latest }}{% if a.late_days %} · {{ a.late_days }} late{% endif %}</p>
+          <table class="sr-only" data-no-wrap>
+            <caption>Average check-in time</caption>
+            <thead><tr><th scope="col">{% if insights.period == "week" %}Day{% else %}Week of{% endif %}</th><th scope="col">Average</th><th scope="col">Days</th></tr></thead>
+            <tbody>{% for b in a.buckets %}<tr><td>{{ b.label }}</td><td>{{ b.average|default:"No check-in" }}</td><td>{{ b.days }}</td></tr>{% endfor %}</tbody>
+          </table>
+        {% else %}
+          <div class="p9-nodata"><strong>No data yet</strong><span>Check-ins for this period will show here.</span></div>
+        {% endif %}
+      {% endwith %}
+    </article>
+
+    {# ------------------------------ Tasks by state ----------------------------- #}
+    <article class="p9-chart-card" aria-labelledby="p9-tasks-title">
+      <header>
+        <h3 id="p9-tasks-title">Tasks by state</h3>
+        {% if insights.tasks.total %}<p class="p9-kpi"><strong>{{ insights.tasks.total }}</strong> tasks</p>{% endif %}
+      </header>
+      {% with c=insights.task_chart t=insights.tasks %}
+        {% if c %}
+          <div class="p9-donut-wrap">
+            <svg class="p9-donut" viewBox="0 0 140 140" role="img" aria-labelledby="p9-tasks-title p9-tasks-desc">
+              <desc id="p9-tasks-desc">{% for s in t.states %}{{ s.label }} {{ s.count }}{% if not forloop.last %}, {% endif %}{% endfor %}.</desc>
+              <circle class="p9-donut__track" cx="70" cy="70" r="{{ c.r }}"/>
+              <g transform="rotate(-90 70 70)">
+                {% for s in c.segments %}
+                  <circle class="p9-donut__seg p9-tone-{{ s.key }}" cx="70" cy="70" r="{{ c.r }}" stroke-dasharray="{{ s.dash }}" stroke-dashoffset="{{ s.offset }}"><title>{{ s.label }}: {{ s.count }}</title></circle>
+                {% endfor %}
+              </g>
+              <text x="70" y="66" text-anchor="middle" class="p9-donut__num">{{ c.total }}</text>
+              <text x="70" y="86" text-anchor="middle" class="p9-donut__lbl">tasks</text>
+            </svg>
+            <ul class="p9-legend">
+              {% for s in t.states %}
+                <li><span class="p9-swatch p9-tone-{{ s.key }}" aria-hidden="true"></span>{{ s.label }}<strong>{{ s.count }}</strong></li>
+              {% endfor %}
+            </ul>
+          </div>
+          <p class="p9-chart-foot">Done = finished in this period; the others are your open tasks today.</p>
+        {% else %}
+          <div class="p9-nodata"><strong>No data yet</strong><span>Tasks assigned to you will show here.</span></div>
+        {% endif %}
+      {% endwith %}
+    </article>
+
+    {# --------------------------- Tickets raised vs resolved ----------------------- #}
+    <article class="p9-chart-card" aria-labelledby="p9-tk-title">
+      <header>
+        <h3 id="p9-tk-title">Tickets raised vs resolved</h3>
+        {% if insights.ticket_chart %}<p class="p9-kpi"><strong>{{ insights.tickets.resolved_total }}</strong> resolved of {{ insights.tickets.raised_total }} raised</p>{% endif %}
+      </header>
+      {% with c=insights.ticket_chart k=insights.tickets %}
+        {% if c %}
+          <svg class="p9-chart" viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-labelledby="p9-tk-title p9-tk-desc" preserveAspectRatio="xMidYMid meet">
+            <desc id="p9-tk-desc">{{ k.raised_total }} tickets raised and {{ k.resolved_total }} resolved in this period, tickets you raised or handle.</desc>
+            {% for t in c.ticks %}
+              <line class="p9-grid" x1="{{ c.pad_l }}" x2="{{ c.w }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+              <text class="p9-axis" x="{{ c.tick_x }}" y="{{ t.y }}" text-anchor="end" dominant-baseline="middle">{{ t.label }}</text>
+            {% endfor %}
+            <polyline class="p9-line p9-line--raised" points="{{ c.raised_points }}"/>
+            <polyline class="p9-line p9-line--resolved" points="{{ c.resolved_points }}"/>
+            {% for p in c.raised %}<circle class="p9-dotm p9-line--raised" cx="{{ p.x }}" cy="{{ p.y }}" r="3"><title>{{ p.label }}: {{ p.v }} raised</title></circle>{% endfor %}
+            {% for p in c.resolved %}<rect class="p9-dotm p9-line--resolved" x="{{ p.sx }}" y="{{ p.sy }}" width="6" height="6" rx="1"><title>{{ p.label }}: {{ p.v }} resolved</title></rect>{% endfor %}
+            {% for l in c.labels %}{% if l.show %}<text class="p9-axis" x="{{ l.x }}" y="{{ c.label_y }}" text-anchor="middle">{{ l.label }}</text>{% endif %}{% endfor %}
+          </svg>
+          <ul class="p9-legend p9-legend--inline">
+            <li><span class="p9-swatch p9-swatch--line p9-line--raised" aria-hidden="true"></span>Raised</li>
+            <li><span class="p9-swatch p9-swatch--line p9-swatch--square p9-line--resolved" aria-hidden="true"></span>Resolved</li>
+          </ul>
+          <table class="sr-only" data-no-wrap>
+            <caption>Tickets raised and resolved</caption>
+            <thead><tr><th scope="col">Period</th><th scope="col">Raised</th><th scope="col">Resolved</th></tr></thead>
+            <tbody>{% for b in k.buckets %}<tr><td>{{ b.label }}</td><td>{{ b.raised }}</td><td>{{ b.resolved }}</td></tr>{% endfor %}</tbody>
+          </table>
+        {% else %}
+          <div class="p9-nodata"><strong>No data yet</strong><span>Tickets you raise or handle will show here.</span></div>
+        {% endif %}
+      {% endwith %}
+    </article>
+  </div>
+</section>

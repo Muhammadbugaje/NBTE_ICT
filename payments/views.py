@@ -70,43 +70,9 @@ AGES = {"24h": 1, "3d": 3, "7d": 7}
 
 
 def _queue_rows(request):
-    qs = (PaymentVerification.objects.for_user(request.user).filter(is_open=True)
-          .select_related("obligation", "obligation__institution", "verified_by", "attempt", "proof", "statement_line"))
-    f = request.GET
-    if f.get("source"):
-        qs = qs.filter(source=f["source"])
-    if f.get("age") in AGES:
-        qs = qs.filter(opened_at__lte=timezone.now() - datetime.timedelta(days=AGES[f["age"]]))
-    q = (f.get("q") or "").strip()
-    if q:
-        qs = qs.filter(Q(obligation__reference__icontains=q.replace(" ", "")) | Q(obligation__institution__name__icontains=q)
-                       | Q(obligation__institution__code__iexact=q) | Q(proof__teller_number__icontains=q)
-                       | Q(attempt__provider_reference__icontains=q))
-    rows = list(qs.order_by("opened_at"))
-    stage = f.get("stage", "")
-    out = []
-    now = timezone.now()
-    for item in rows:
-        item.ready, item.ready_why = services.ready_for_final(item)
-        item.needs_second = services.needs_second_check(item) and item.decision == "approved" and not item.second_decision
-        item.overdue = item.obligation.status == "finance_confirmation_overdue" or (item.sla_due_at and item.sla_due_at <= now)
-        if item.sla_due_at:
-            total = max(1, (item.sla_due_at - item.opened_at).total_seconds())
-            item.sla_pct = min(100, int(100 * (now - item.opened_at).total_seconds() / total))
-        else:
-            item.sla_pct = 0
-        if stage == "first" and item.decision:
-            continue
-        if stage == "second" and not item.needs_second:
-            continue
-        if stage == "final" and not item.ready:
-            continue
-        if stage == "info" and item.decision != "needs_info":
-            continue
-        if stage == "overdue" and not item.overdue:
-            continue
-        out.append(item)
-    return out
+    f = request.GET  # Phase 9: the rows come from services.queue_items (shared with the API)
+    return services.queue_items(request.user, source=f.get("source", ""), age=f.get("age", ""),
+                                q=f.get("q", ""), stage=f.get("stage", ""))
 
 
 @require(can_view_finance)
@@ -153,8 +119,7 @@ def _item_context(request, item, **extra):
                            .filter(Q(amount=ob.balance) | Q(extracted_reference=ob.reference)
                                    | Q(candidates__icontains=ob.reference)).select_related("statement")[:5])
     ready, why = services.ready_for_final(item)
-    is_director = services.is_final_approver(user)
-    did_first_pass = user.pk in (item.verified_by_id, item.second_verifier_id)
+    rights = services.item_rights(item, user, impersonating=_impersonating(request))
     history = flow.history(instance)
     ctx = {
         "item": item, "ob": ob, "proofs": proofs, "attempts": attempts, "lines": lines, "suggestions": suggestions,
@@ -162,13 +127,7 @@ def _item_context(request, item, **extra):
         "history": history, "ready": ready, "ready_why": why,
         "needs_second": services.needs_second_check(item),
         "threshold": naira(services._decimal("qa.payment.dual_verify_threshold", "5000000")),
-        "can_first": user.has_perm("payments.verify_payment") and item.is_open and not item.final_decision
-        and not _impersonating(request),
-        "can_second": user.has_perm("payments.second_verify_payment") and item.is_open
-        and item.decision in ("approved", "rejected") and user.pk != item.verified_by_id
-        and services.needs_second_check(item) and not item.second_decision,
-        "is_director": is_director, "did_first_pass": did_first_pass,
-        "can_final": is_director and item.is_open and not did_first_pass and not _impersonating(request),
+        **rights,
         "first_form": extra.pop("first_form", None) or FirstPassForm(initial={"amount": ob.balance}),
         "advices": list(PaymentAdvice.objects.for_user(user).filter(obligation=ob)),
         "final_role": services.final_approver_role(),
@@ -632,8 +591,32 @@ class FeeForm(QAForm):
     reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}), min_length=5)
 
 
+class NewFeeForm(QAForm):
+    name = forms.CharField(max_length=150, help_text="As Finance and institutions will see it.")
+    code = forms.SlugField(max_length=51, help_text="Lower-case, e.g. late_submission. Workflows and QA types "
+                                                    "refer to the fee by this code.")
+    description = forms.CharField(max_length=255, required=False, label="Text on the slip")
+    expr = forms.CharField(label="Formula", widget=forms.Textarea(attrs={"rows": 2, "spellcheck": "false"}),
+                           help_text="e.g. 50000 * programmes + 25000 * max(streams - programmes, 0)")
+    due_days = forms.IntegerField(required=False, min_value=1, max_value=365,
+                                  help_text="Blank = qa.payment.due_days.")
+    remita_service_type_id = forms.CharField(max_length=40, required=False, label="Remita service type ID")
+    revenue_account = forms.ModelChoiceField(BankAccount.objects.filter(is_placeholder=False), required=False,
+                                             help_text="Blank = the default account.")
+    reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}), min_length=5)
+
+
+def _fee_variables_ctx(request):
+    from . import fee_admin
+
+    return [{"name": n, "help": h, "checked": n in request.POST.getlist("vars"),
+             "sample": request.POST.get(f"sample_{n}", fee_admin.SAMPLE_DEFAULTS[n])} for n, h in fee_admin.VARIABLE_HELP]
+
+
 def _fees_ctx(request, **extra):
     from qa_core.views import _settings_context
+
+    from . import fee_admin
 
     schedules = list(FeeSchedule.objects.select_related("revenue_account").order_by("name"))
     from config.models import ConfigEntry
@@ -643,10 +626,15 @@ def _fees_ctx(request, **extra):
         s.expr = (entry.parsed() or {}).get("expr", "") if entry and entry.value_type == "formula" else ""
         s.blocked = bool(s.confirmed_setting and str(ConfigEntry.objects.filter(key=s.confirmed_setting)
                                                      .values_list("value", flat=True).first()).lower() != "true")
+    events = fee_admin.issuing_events()
+    for s in schedules:
+        s.events = events.get(s.code, [])
     pending = list(actions.visible_to(request.user).filter(policy_id__in=("payments.update_bank_account",
-                                                                          "payments.update_fee_schedule"),
+                                                                          "payments.update_fee_schedule",
+                                                                          "payments.create_fee_schedule"),
                                                            status="pending"))
     ctx = _settings_context(request, "fees", schedules=schedules, accounts=list(BankAccount.objects.all()),
+                            fee_variables=fee_admin.VARIABLE_HELP,
                             pending=pending, bank_form=extra.pop("bank_form", None) or BankForm(),
                             can_propose=request.user.has_perm("payments.view_obligation") or request.user.is_superuser,
                             usable=services.default_bank_account(), default_account=services.default_bank_account())
@@ -740,3 +728,137 @@ def settings_methods(request):
                             missing=[r for r in report if r["setting"] and r["missing"] and not r["simulated"]])
     return render_qa(request, "payments/settings/methods.html", ctx,
                      {"qa-panel": "payments/settings/_methods_panel.html"})
+
+
+# ===========================================================================
+# Phase 8: add a new fee (two officers) and test its formula
+# ===========================================================================
+def _can_propose_fee(user):
+    return user.is_superuser or user.has_perm("payments.view_obligation")
+
+
+@require(_can_see_fee_settings)
+@require_http_methods(["GET", "POST"])
+def settings_fee_new(request):
+    from . import fee_admin
+
+    if not _can_propose_fee(request.user):
+        raise PermissionDenied("Proposing a fee needs payments.view_obligation (Finance).")
+    form = NewFeeForm(request.POST or None)
+    error = ""
+    if request.method == "POST":
+        if form.is_valid():
+            d = form.cleaned_data
+            payload = {"code": d["code"], "name": d["name"], "description": d.get("description") or d["name"],
+                       "expr": d["expr"], "vars": request.POST.getlist("vars"), "due_days": d.get("due_days"),
+                       "remita_service_type_id": d.get("remita_service_type_id", ""),
+                       "revenue_account_id": d["revenue_account"].pk if d.get("revenue_account") else None,
+                       "sample": {n: request.POST.get(f"sample_{n}", "") for n, _h in fee_admin.VARIABLE_HELP},
+                       "reason": d["reason"]}
+            try:
+                pa = actions.initiate("payments.create_fee_schedule", actor=request.user, payload=payload,
+                                      reason=d["reason"], impersonating=_impersonating(request))
+            except (ValidationError, PermissionDenied) as exc:
+                error = " ".join(getattr(exc, "messages", [str(exc)]))
+            else:
+                response = render(request, "payments/settings/_fees_panel.html", _fees_ctx(request))
+                return toast(response, "success", f"{pa.reference} waiting for a second officer",
+                             "The fee is created only when the Director of Finance confirms it.")
+        else:
+            error = "Check the form."
+    ctx = {"form": form, "error": error, "variables": _fee_variables_ctx(request)}
+    return render(request, "payments/settings/_fee_new.html", ctx, status=422 if error else 200)
+
+
+@require(_can_see_fee_settings)
+@require_POST
+def settings_fee_test(request):
+    """HTMX: evaluate the new formula with the sample inputs (nothing is saved)."""
+    from . import fee_admin
+
+    amount, error = fee_admin.test_formula(request.POST.get("expr", ""), request.POST.getlist("vars"),
+                                           {n: request.POST.get(f"sample_{n}", "") for n, _h in fee_admin.VARIABLE_HELP})
+    return render(request, "payments/settings/_fee_test.html", {"amount": amount, "error": error})
+
+
+# ===========================================================================
+# Phase 8: issue a bill by hand (a Finance officer proposes, the Director confirms)
+# ===========================================================================
+class IssueBillForm(QAForm):
+    institution = forms.CharField(max_length=20, label="Institution code")
+    fee = forms.ModelChoiceField(FeeSchedule.objects.filter(is_active=True), to_field_name="code",
+                                 label="Fee schedule")
+    programmes = forms.IntegerField(required=False, min_value=0, max_value=500,
+                                    help_text="Blank = every programme on the institution's record.")
+    streams = forms.IntegerField(required=False, min_value=0, max_value=5000,
+                                 help_text="Blank = the streams on the institution's record.")
+    description = forms.CharField(max_length=255, required=False, label="Text on the slip",
+                                  help_text="Blank = the fee schedule's own text.")
+    reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}), min_length=5)
+
+
+def _bill_institution(request, code):
+    from institutions.models import Institution
+
+    return Institution.objects.for_user(request.user).filter(code__iexact=(code or "").strip()).first()
+
+
+def _bill_variables(d):
+    out = {}
+    for key in ("programmes", "streams"):
+        if d.get(key) is not None:
+            out[key] = d[key]
+    if "programmes" in out and "streams" not in out:
+        out["streams"] = out["programmes"]
+    if "streams" in out:
+        out["max_streams"] = out["streams"]
+    return out
+
+
+@require(can_view_finance)
+@require_http_methods(["GET", "POST"])
+def issue_bill(request):
+    if not _can_propose_fee(request.user):
+        raise PermissionDenied("Issuing a bill needs payments.view_obligation (Finance).")
+    form = IssueBillForm(request.POST or None, initial={"institution": request.GET.get("institution", "")})
+    error, estimate = "", None
+    inst = None
+    if request.method == "POST":
+        if form.is_valid():
+            d = form.cleaned_data
+            inst = _bill_institution(request, d["institution"])
+            if inst is None:
+                form.add_error("institution", "No institution with this code in your scope.")
+            elif request.POST.get("op") == "preview":
+                estimate = _bill_estimate(inst, d)
+            else:
+                payload = {"fee_code": d["fee"].code, "variables": _bill_variables(d),
+                           "description": d.get("description", ""), "reason": d["reason"]}
+                try:
+                    pa = actions.initiate("payments.issue_bill", actor=request.user, target=inst, payload=payload,
+                                          reason=d["reason"], impersonating=_impersonating(request))
+                except (ValidationError, PermissionDenied) as exc:
+                    error = " ".join(getattr(exc, "messages", [str(exc)]))
+                else:
+                    response = render(request, "payments/_issue_bill_panel.html",
+                                      {"form": IssueBillForm(initial={"institution": inst.code}), "sent": pa,
+                                       "hero": _hero(request)})
+                    return toast(response, "success", f"{pa.reference} waiting for the Director of Finance",
+                                 "The bill is issued when a second officer confirms.")
+        if not form.is_valid() and not error:
+            error = "Check the form."
+    ctx = {"form": form, "error": error, "estimate": estimate, "inst": inst, "hero": _hero(request)}
+    return render_qa(request, "payments/issue_bill.html", ctx, {"qa-panel": "payments/_issue_bill_panel.html"},
+                     status=422 if error else 200)
+
+
+def _bill_estimate(inst, d):
+    from qa_core.formula import FormulaError, evaluate_setting
+
+    from .money import to_money
+
+    try:
+        snap = evaluate_setting(d["fee"].formula, services.fee_variables(inst, **_bill_variables(d)))
+    except FormulaError as exc:
+        return {"error": str(exc)}
+    return {"amount": to_money(snap["result"]), "inputs": snap["inputs"], "expr": snap["expr"]}

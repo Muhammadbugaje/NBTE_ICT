@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load ux_tags %}
 
 {% block title %}Public contact inbox · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Public contact inbox{% endblock %}
@@ -39,8 +40,11 @@
   </form>
 
   {% if page.object_list %}
+    <div class="bulk-toolbar">{% bulk_all "bulk-contact" %}</div>
     <div class="contact-message-list">
       {% for item in page.object_list %}
+        <div class="contact-select" data-uxb-row>
+        {% bulk_check "bulk-contact" item.pk item.subject|default:"message" %}
         <a class="contact-message-row {% if not item.is_read %}is-unread{% endif %}" href="{% url 'core:contact_detail' item.pk %}">
           <span class="contact-message-status" aria-hidden="true"></span>
           <span class="contact-message-main">
@@ -62,8 +66,15 @@
             {% endif %}
           </span>
         </a>
+        </div>
       {% endfor %}
     </div>
+    {% url 'core:contact_bulk' as contact_bulk_url %}
+    {% if perms.core.delete_contactmessage %}
+      {% bulk_bar "bulk-contact" contact_bulk_url actions="mark_read:Mark read,mark_handled:Mark handled,delete:Delete:danger" noun="message" confirm_title="Delete {n} {noun}?" confirm_body="They are deleted for everyone who handles the contact inbox. Use this for spam and duplicates; mark real enquiries as handled instead." %}
+    {% else %}
+      {% bulk_bar "bulk-contact" contact_bulk_url actions="mark_read:Mark read,mark_handled:Mark handled" noun="message" note="Only administrators can delete contact messages." %}
+    {% endif %}
   {% elif filters_active %}
     {% include "partials/empty_state.html" with title="No matching messages" body="Try another search term or clear the filters to see all public enquiries." only %}
   {% else %}

@@ -1,4 +1,4 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load ux_tags %}
 {% include "inspection/_subnav.html" with section="rp" %}
 <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_insp:rp_list' %}" hx-get="{% url 'qa_insp:rp_list' %}" hx-target="#qa-panel" hx-push-url="true">Resource persons</a><span aria-hidden="true">/</span><span aria-current="page">{{ rp.full_name }}</span></nav>
 <header class="qa-inst-head">
@@ -31,7 +31,7 @@
   </div>
   <aside class="qa-stack">
     <section class="qa-card" aria-labelledby="rp-h4"><header class="qa-card__head"><h2 id="rp-h4">CV and documents</h2></header>
-      <ul class="qa-rowlist" role="list">{% for f in files %}<li><a class="qa-rowlink qa-rowlink--nobadge" href="{{ f.download_url }}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ f.get_kind_display }}</span><span class="qa-rowlink__meta"><span>{{ f.original_name|default:"file" }}</span><span>· {{ f.created_at|date:"j M Y" }}</span></span></span></a></li>{% empty %}<li class="qa-card__body qa-muted">No CV yet.</li>{% endfor %}</ul>
+      <ul class="qa-rowlist" role="list">{% for f in files %}<li class="fpv-row"><a class="qa-rowlink qa-rowlink--nobadge" href="{{ f.download_url }}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ f.get_kind_display }}</span><span class="qa-rowlink__meta"><span>{{ f.original_name|default:"file" }}</span><span>· {{ f.created_at|date:"j M Y" }}</span></span></span></a>{% preview_button f.download_url f.display_name f.size_bytes %}</li>{% empty %}<li class="qa-card__body qa-muted">No CV yet.</li>{% endfor %}</ul>
       {% if can_manage %}<div class="qa-card__body"><form class="qa-form" method="post" enctype="multipart/form-data" action="{% url 'qa_insp:rp_action' rp.pk 'file' %}" hx-post="{% url 'qa_insp:rp_action' rp.pk 'file' %}" hx-encoding="multipart/form-data" hx-target="#qa-panel">{% csrf_token %}
         <div class="qa-fields">{% for field in file_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
         <div class="qa-form-actions"><button class="btn btn-subtle" type="submit">{% icon "upload" 16 %} Upload</button></div></form></div>{% endif %}

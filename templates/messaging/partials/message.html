@@ -1,42 +1,42 @@
-{% if m.is_system %}
-  <div class="msg-system-note"><span>{{ m.body }}</span></div>
-{% else %}
-  <article class="msg-bubble {% if m.sender_id == request.user.pk %}is-mine{% else %}is-theirs{% endif %}{% if m.is_deleted_for_everyone %} is-deleted{% endif %}"
-           data-message data-message-id="{{ m.pk }}">
-    {% if m.sender %}
-      <span class="msg-avatar msg-avatar-sm msg-avatar-{{ m.msg_color|default:'c5' }}">
-        {{ m.sender.first_name|slice:":1"|upper }}{{ m.sender.last_name|slice:":1"|upper }}
-      </span>
-    {% else %}
-      <span class="msg-avatar msg-avatar-sm msg-avatar-c7">?</span>
+{% load ux_tags chat_tags %}{% if m.is_system %}
+  <div class="msg-system-note" id="m{{ m.pk }}" data-message-id="{{ m.pk }}" data-system-note><span>{{ m.body }}</span></div>
+{% else %}{% reaction_emojis as emojis %}
+  <article id="m{{ m.pk }}" class="msg-bubble {% if m.is_mine %}is-mine{% else %}is-theirs{% endif %}{% if m.is_deleted_for_everyone %} is-deleted{% endif %}{% if m.voice %} has-voice{% endif %}{% if m.poll_data %} has-poll{% endif %}"
+           data-message data-message-id="{{ m.pk }}" data-sender-name="{{ m.sender_name }}"{% if m.is_mine %} data-mine{% endif %}>
+    {% if not m.is_mine %}
+      <span class="msg-avatar msg-avatar-sm msg-avatar-{{ m.msg_color|default:'c5' }}" aria-hidden="true">{{ m.sender_initials }}</span>
     {% endif %}
+    <div class="msg-bubble-col">
     <div class="msg-bubble-body">
-      <div class="msg-bubble-head">
-        <strong>
-          {% if m.sender_id == request.user.pk %}
-            You
-          {% elif m.sender %}
-            {{ m.sender.get_full_name|default:m.sender.email }}
-          {% else %}
-            System
-          {% endif %}
-        </strong>
-        <time title="{{ m.sent_at|date:'M j, Y · H:i' }}">{{ m.sent_at|timesince }} ago</time>
-      </div>
-
-      {% if m.reply_preview %}
-        <div class="msg-reply-quote">
-          <strong>{{ m.reply_sender }}</strong>
-          <span>{{ m.reply_preview|truncatechars:180 }}</span>
+      {% if not m.is_mine and m.is_group %}
+        <div class="msg-bubble-author msg-author-{{ m.msg_color|default:'c5' }}">{{ m.sender_name }}</div>
+      {% endif %}
+      {% if m.forwarded and not m.is_deleted_for_everyone %}
+        <div class="msg-forwarded">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+          Forwarded
         </div>
       {% endif %}
 
-      <div class="msg-bubble-text" data-message-text>{{ m.body|linebreaksbr }}</div>
-      {% if m.edited_at %}<small class="msg-edited-label">Edited</small>{% endif %}
+      {% if m.reply_preview and not m.is_deleted_for_everyone %}
+        <button type="button" class="msg-reply-quote" data-jump-to="{{ m.reply_to_id }}" aria-label="Go to the message this replies to">
+          <strong>{{ m.reply_sender }}</strong>
+          <span>{{ m.reply_preview|truncatechars:180 }}</span>
+        </button>
+      {% endif %}
+
+      {% if m.poll_data %}
+        {% include "messaging/partials/poll.html" with pd=m.poll_data %}
+      {% elif m.voice %}
+        {% include "messaging/partials/voice_note.html" with v=m.voice %}
+      {% else %}
+        <div class="msg-bubble-text" data-message-text>{{ m.body|chat_text:m.search_q }}</div>
+      {% endif %}
 
       {% if not m.is_deleted_for_everyone and m.attachments.all %}
         <div class="msg-attachments">
           {% for attachment in m.attachments.all %}
+            <span class="fpv-pair msg-attachment-pair">
             <a class="msg-attachment" href="{{ attachment.download_url }}">
               <span class="msg-attachment-icon" aria-hidden="true">↧</span>
               <span class="msg-attachment-info">
@@ -44,43 +44,34 @@
                 <small>{{ attachment.file.size|filesizeformat }}</small>
               </span>
             </a>
+            {% preview_button attachment.download_url attachment.original_name compact=True %}
+            </span>
           {% endfor %}
         </div>
       {% endif %}
 
       <div class="msg-bubble-meta">
-        {% if m.sender_id == request.user.pk and m.seen_by_someone %}
-          <span class="msg-seen-label">Seen</span>
+        {% if m.is_starred %}
+          <span class="msg-star-flag" title="Starred" aria-label="Starred">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.5L12 17.3l-5.9 3.2 1.3-6.5-4.9-4.6 6.6-.8z"/></svg>
+          </span>
         {% endif %}
-        {% if not m.is_deleted_for_everyone %}
-        <details class="msg-message-actions" data-message-menu>
-          <summary aria-label="Message actions" title="Reply or manage message">•••</summary>
-          <div class="msg-message-actions-menu">
-            <button type="button" data-reply-to="{{ m.pk }}">Reply</button>
-            {% if m.sender_id == request.user.pk and m.can_change_for_everyone %}
-              <button type="button" data-edit-message>Edit</button>
-            {% endif %}
-            <form method="post" action="{% url 'messaging:delete_message' thread.pk m.pk %}" data-confirm="This message will be removed from your view. Other participants will still see it." data-confirm-title="Delete this message for you?" data-confirm-action="Delete for me">
-              {% csrf_token %}
-              <input type="hidden" name="scope" value="me">
-              <button type="submit">Delete for me</button>
-            </form>
-            {% if m.sender_id == request.user.pk and m.can_change_for_everyone %}
-              <form method="post" action="{% url 'messaging:delete_message' thread.pk m.pk %}" data-confirm="This permanently removes the message for everyone in this chat. This action cannot be undone." data-confirm-title="Delete message for everyone?" data-confirm-action="Delete for everyone">
-                {% csrf_token %}
-                <input type="hidden" name="scope" value="everyone">
-                <button type="submit" class="is-danger">Delete for everyone</button>
-              </form>
-            {% endif %}
-          </div>
-        </details>
+        {% if m.edited_at %}<small class="msg-edited-label">Edited</small>{% endif %}
+        <time datetime="{{ m.sent_at|date:'c' }}" title="{{ m.sent_at|date:'M j, Y · H:i' }}">{{ m.sent_at|chat_time }}</time>
+        {% if m.is_mine and not m.is_deleted_for_everyone and m.receipt %}
+          <button type="button" class="msg-ticks is-{{ m.receipt.state }}" data-ticks data-info-open
+                  title="{{ m.receipt_text }}" aria-label="{{ m.receipt_text }}. Open message info">
+            <svg class="msg-tick-one" width="16" height="11" viewBox="0 0 16 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1.5 6 5 9.5 12.5 1.5"/></svg>
+            <svg class="msg-tick-two" width="20" height="11" viewBox="0 0 20 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1.5 6 5 9.5 12.5 1.5"/><polyline points="9 9.5 18.5 1.5"/></svg>
+            {% if m.seen_by_someone %}<span class="msg-visually-hidden msg-seen-label">Seen</span>{% endif %}
+          </button>
         {% endif %}
       </div>
 
-      {% if m.sender_id == request.user.pk and m.can_change_for_everyone %}
+      {% if m.is_mine and m.can_change_for_everyone and not m.voice and not m.poll_data %}
         <form method="post" action="{% url 'messaging:edit_message' thread.pk m.pk %}" class="msg-edit-form" data-edit-form hidden>
           {% csrf_token %}
-          <textarea name="body" rows="3" required>{{ m.body }}</textarea>
+          <textarea name="body" rows="3" required aria-label="Edit message">{{ m.body }}</textarea>
           <div>
             <button type="submit" class="btn btn-primary btn-sm">Save edit</button>
             <button type="button" class="btn btn-ghost btn-sm" data-cancel-edit>Cancel</button>
@@ -88,5 +79,92 @@
         </form>
       {% endif %}
     </div>
+
+    {% if m.reaction_list %}
+      <div class="msg-reactions" aria-label="Reactions">
+        {% for g in m.reaction_list %}
+          <button type="button" class="msg-reaction-chip{% if g.mine %} is-mine{% endif %}" data-reaction-chip
+                  data-emoji="{{ g.emoji }}" data-users="{{ g.users|join:'|' }}"
+                  aria-label="{{ g.emoji }} {{ g.count }}: {{ g.users|join:', ' }}" title="{{ g.users|join:', ' }}">
+            <span class="msg-reaction-emoji">{{ g.emoji }}</span><span class="msg-reaction-n">{{ g.count }}</span>
+          </button>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if not m.is_deleted_for_everyone and m.linked_task_id or not m.is_deleted_for_everyone and m.linked_memo_id %}
+      <div class="msg-links">
+        {% if m.linked_task_id %}
+          <a class="msg-link-chip" href="{% url 'tasks:detail' m.linked_task_id %}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Made into task {{ m.linked_task.reference }}
+          </a>
+        {% endif %}
+        {% if m.linked_memo_id %}
+          <a class="msg-link-chip" href="{% url 'messaging:memo_detail' m.linked_memo_id %}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Turned into memo {{ m.linked_memo.reference }}
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+    </div>
+
+    {% if not m.is_deleted_for_everyone %}
+    <details class="msg-message-actions" data-message-menu>
+      <summary aria-label="Message actions" title="React, reply and more">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+      </summary>
+      <div class="msg-message-actions-menu" role="menu">
+        <div class="msg-react-bar" role="group" aria-label="React to this message">
+          {% for e in emojis %}
+            <button type="button" data-react="{{ e }}" class="{% if e == m.my_reaction %}is-active{% endif %}" aria-label="React with {{ e }}" aria-pressed="{% if e == m.my_reaction %}true{% else %}false{% endif %}">{{ e }}</button>
+          {% endfor %}
+        </div>
+        <button type="button" role="menuitem" data-reply-to="{{ m.pk }}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>Reply</button>
+        {% if not m.voice %}
+        <button type="button" role="menuitem" data-copy>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button>
+        {% endif %}
+        <form method="post" action="{% url 'messaging:star' thread.pk m.pk %}" data-star-form>
+          {% csrf_token %}
+          <button type="submit" role="menuitem" data-star>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.5L12 17.3l-5.9 3.2 1.3-6.5-4.9-4.6 6.6-.8z"/></svg>{% if m.is_starred %}Unstar{% else %}Star{% endif %}</button>
+        </form>
+        {% if not m.poll_data %}
+        <button type="button" role="menuitem" data-forward>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>Forward</button>
+        {% endif %}
+        <a role="menuitem" href="{% url 'messaging:make_task' thread.pk m.pk %}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Make a task</a>
+        <a role="menuitem" href="{% url 'messaging:make_memo' thread.pk m.pk %}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/></svg>Turn into a memo</a>
+        {% if m.is_mine and m.can_change_for_everyone and not m.voice and not m.poll_data %}
+          <button type="button" role="menuitem" data-edit-message>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Edit</button>
+        {% endif %}
+        {% if m.is_mine %}
+          <button type="button" role="menuitem" data-info-open>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>Info</button>
+        {% endif %}
+        <div class="msg-menu-sep" role="separator"></div>
+        <form method="post" action="{% url 'messaging:delete_message' thread.pk m.pk %}" data-confirm="This message will be removed from your view. Other participants will still see it." data-confirm-title="Delete this message for you?" data-confirm-action="Delete for me">
+          {% csrf_token %}
+          <input type="hidden" name="scope" value="me">
+          <button type="submit" role="menuitem" class="is-danger">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/></svg>Delete for me</button>
+        </form>
+        {% if m.is_mine and m.can_change_for_everyone %}
+          <form method="post" action="{% url 'messaging:delete_message' thread.pk m.pk %}" data-confirm="This permanently removes the message for everyone in this chat. This action cannot be undone." data-confirm-title="Delete message for everyone?" data-confirm-action="Delete for everyone">
+            {% csrf_token %}
+            <input type="hidden" name="scope" value="everyone">
+            <button type="submit" role="menuitem" class="is-danger">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>Delete for everyone</button>
+          </form>
+        {% endif %}
+      </div>
+    </details>
+    {% endif %}
   </article>
 {% endif %}

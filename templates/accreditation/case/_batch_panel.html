@@ -1,0 +1,32 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">Case Board</a><span aria-hidden="true">/</span><span aria-current="page">Batch decisions</span></nav>
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "layers" 14 "2.4" %} CQAC Chairman · stage 15</span>
+    <h1 data-qa-focus>Batch decisions</h1>
+    <p>Approve the CQAC's recommendations for several programmes at once — one programme category per batch (B23). Programmes the CQAC did not recommend for approval are decided one by one on their case.</p>
+  </div>
+</header>
+{% if not enabled %}{% include "qa_core/partials/_callout.html" with kind="info" title="Batch approval is switched off" message="An administrator can switch on qa.cqac.batch_approval_enabled. Until then, decide each case on its Decisions tab." %}{% endif %}
+{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not approved" message=error %}{% endif %}
+{% if result %}{% include "qa_core/partials/_callout.html" with kind="success" title="Batch approved" message="The decisions were recorded and the cases whose programmes are all decided went on to the Executive Secretary." %}{% endif %}
+{% for g in groups %}
+<section class="qa-card" aria-labelledby="bg-{{ forloop.counter }}">
+  <form method="post" action="{% url 'qa_case:batch' %}" hx-post="{% url 'qa_case:batch' %}" hx-target="#qa-panel" hx-trigger="qa:confirmed" data-qa-confirm="The CQAC recommendation becomes the Chairman's decision for every ticked programme." data-qa-confirm-title="Approve this batch?" data-qa-confirm-label="Approve batch">{% csrf_token %}
+    <input type="hidden" name="category" value="{{ g.category.pk|default:0 }}">
+    <header class="qa-card__head"><div><h2 id="bg-{{ forloop.counter }}">{{ g.category.name|default:"No category" }}</h2><p>{{ g.items|length }} programme{{ g.items|length|pluralize }} waiting for you.</p></div>
+      {% if enabled %}<button class="btn btn-primary btn-sm" type="submit">{% icon "check" 14 %} Approve ticked</button>{% endif %}</header>
+    <div class="qa-table-wrap"><table class="qa-table">
+      <thead><tr><th scope="col"><span class="sr-only">Choose</span></th><th scope="col">Programme</th><th scope="col">Case</th><th scope="col">CQAC recommendation</th></tr></thead>
+      <tbody>{% for it in g.items %}<tr>
+        <td>{% if it.batchable and enabled %}<input type="checkbox" name="rows" value="{{ it.row.pk }}" checked aria-label="Include {{ it.row.programme }}">{% endif %}</td>
+        <td><strong>{{ it.row.programme }}</strong><br><span class="qa-small qa-muted">{{ it.case.institution.name }}</span></td>
+        <td><a href="{% url 'qa_case:detail' it.case.pk %}?tab=decisions">{{ it.case.reference }}</a></td>
+        <td>{% if it.recommendation %}<span class="qa-chip {{ it.recommendation.outcome|tone }}">{{ it.recommendation.get_outcome_display }}</span>{% if it.recommendation.approval_type %} {{ it.recommendation.approval_type.name }}, {{ it.recommendation.approved_streams }} stream{{ it.recommendation.approved_streams|pluralize }} from {{ it.recommendation.commencement_date|date:"j M Y" }}{% endif %}{% if not it.batchable %}<br><span class="qa-small qa-muted">Decide on the case.</span>{% endif %}{% else %}<span class="qa-muted">No recommendation</span>{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </form>
+</section>
+{% empty %}
+<section class="qa-card"><div class="qa-card__body"><p class="qa-muted">Nothing is waiting for your decision.</p></div></section>
+{% endfor %}

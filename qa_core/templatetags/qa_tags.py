@@ -65,6 +65,8 @@ _TONES = {
     # programmes
     "accredited": "success", "interim": "info", "approval_to_commence": "info", "resource_inspected": "pending",
     "denied": "danger", "dropped": "neutral",
+    # Phase 8: capacity results and decisions
+    "adequate": "success", "inadequate": "danger", "approve": "success", "deny": "danger", "return": "warn",
     # statement lines
     "matched": "success", "ambiguous": "warn", "unmatched": "danger", "ignored": "neutral",
 }

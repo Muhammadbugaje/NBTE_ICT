@@ -48,6 +48,8 @@ DATA_STAGES = {  # stage → which tab holds its work
     "es_approve_visit": "visit", "request_fund_release": "funds",
     # Phase 5
     "post_visit_report": "reports", "post_visit_recommendation": "reports",
+    # Phase 8: decisions are recorded on the Decisions tab
+    "cqac_recommendation": "decisions", "cqac_chair_approval": "decisions", "es_final_approval": "decisions",
 }
 
 
@@ -347,6 +349,10 @@ def prerequisites(case, stage_code):
         from inspection.services import recommendation_problems
 
         problems += recommendation_problems(case)
+    elif stage_code in ("cqac_recommendation", "cqac_chair_approval", "es_final_approval"):  # Phase 8
+        from . import decisions
+
+        problems += decisions.problems(case, stage_code)
     return problems
 
 
@@ -564,8 +570,22 @@ def add_personnel(case, *, user, staff, duty="member", remark=""):
         raise ValidationError("Choose a duty.")
     if duty == "team_lead":
         _check_team_lead(staff)
+    _check_visit_load(case, staff)
     return PersonnelEntry.unscoped.create(personnel_list=plist, staff=staff, duty=duty, remark=(remark or "")[:255],
                                           added_by=user)
+
+
+def _check_visit_load(case, staff):
+    """Fair workload (Phase 8): the visit team respects the per-rank limits —
+    visits a year, the same institution within N months, open tasks."""
+    from inspection import workload
+
+    user = getattr(staff, "user", None)
+    person = user if user is not None else staff
+    problems = workload.problems_for(person, duty="physical_verification", institution_id=case.institution_id,
+                                     name=str(staff))
+    if problems:
+        raise ValidationError([f"{message} ({setting})." for _rule, setting, message in problems])
 
 
 @transaction.atomic
@@ -728,6 +748,12 @@ def on_returned(ctx):
         elif kind == "visit":
             VisitDetail.unscoped.filter(case=case).update(status="returned" if status == "draft" else status,
                                                           updated_at=now)
+    if ctx.transition.from_stage.code in ("cqac_recommendation", "cqac_chair_approval", "es_final_approval"):
+        # Phase 8: a returned decision stage is decided again when it comes back.
+        from .models import Decision
+
+        stage = {v: k for k, v in Decision.FLOW_STAGE.items()}[ctx.transition.from_stage.code]
+        Decision.unscoped.filter(case=case, stage=stage, applied_at__isnull=True).delete()
     if ctx.transition.from_stage.code == "request_fund_release":
         FundRelease.unscoped.filter(case=case, status="es_approved").update(status="returned", remark=ctx.remark,
                                                                            updated_at=now)
@@ -737,11 +763,16 @@ def on_returned(ctx):
 
 
 def on_completed(ctx):
+    """Stage 17 → closed: apply the ES decisions to the programmes, issue the
+    outcome letters and notify the institution (Phase 8, decisions.apply_final)."""
+    from . import decisions
+
     case = ctx.subject
+    letters = decisions.apply_final(case, actor=ctx.actor)
     QACase.unscoped.filter(pk=case.pk).update(completed_at=timezone.now(), updated_at=timezone.now())
     timeline.record(case.institution, "qa_case.completed", subject=case, actor=ctx.actor, visibility="internal",
-                    internal_text=f"SOP-03 stages 1–16 complete for {case.reference}. Stage 17 (programme record "
-                                  "update and letters) is applied in Phase 6.")
+                    internal_text=f"SOP-03 complete for {case.reference}: stage 17 updated the programme record(s) "
+                                  f"and issued {len(letters)} outcome letter(s).")
 
 
 def on_case_opened(ctx):
@@ -787,13 +818,23 @@ def validate_assignee(case, stage, user):
     if getattr(getattr(user, "role", None), "code", "") == "ict-qa-monitor":
         raise ValidationError("The ICT monitor cannot hold QA work (R-13).")
     code = getattr(stage, "code", "")
+    from inspection import workload
+
     if code in OFFICER_STAGES:
-        cap = _int("qa.resource_person.max_open_ssq_per_officer", 3)
+        lim = workload.limit(user, "max_open_ssq")  # per rank (qa.workload.limits), else the general R-01 cap
+        cap = lim.value if lim.value is not None else _int("qa.resource_person.max_open_ssq_per_officer", 3)
+        setting = lim.setting if lim.row_label else "qa.resource_person.max_open_ssq_per_officer"
         load = open_case_load(user)
         if load >= cap:
             raise ValidationError(f"{_name(user)} already holds QA work on {load} open case(s); the limit is {cap} "
-                                  "(R-01, qa.resource_person.max_open_ssq_per_officer).")
+                                  f"(R-01, {setting}).")
         _check_grade(user)
+    tasks_cap = workload.limit(user, "max_open_tasks")
+    if tasks_cap:
+        held = workload.open_tasks(user)
+        if held >= tasks_cap.value:
+            raise ValidationError(f"{_name(user)} holds {held} open task(s); the limit is {tasks_cap.value} "
+                                  f"({tasks_cap.setting}).")
     if code in REVIEW_STAGES and _bool("qa.workload.reviewer_cannot_verify", True):
         on_team = PersonnelEntry.unscoped.filter(personnel_list__case=case, staff__user=user).exclude(
             status="returned").exists()
@@ -1034,3 +1075,128 @@ def case_timeline(case, user):
                          .capitalize(), "detail": "", "remark": t.internal_text or t.public_text, "actor": t.actor})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows
+
+
+# ===========================================================================
+# Screen helpers shared by the website and the mobile API (Phase 9: moved
+# here from case_views so both read the same rules)
+# ===========================================================================
+APPROVE_LABELS = {
+    "case_opened": "Send to supervising departments", "assign_audit_officer": "Assign Audit officer",
+    "assign_finance_officer": "Assign Finance officer", "assign_ict_officer": "Assign ICT officer(s)",
+    "generate_cost": "Submit cost sheet", "add_personnel": "Submit personnel list",
+    "confirm_personnel": "Confirm personnel", "audit_personnel_cost": "Submit audited cost",
+    "confirm_audit_cost": "Confirm audited cost", "es_approve_cost": "Approve cost (ES)",
+    "add_visit_details": "Submit visit details", "confirm_visit_details": "Confirm visit details",
+    "es_approve_visit": "Approve visit (ES)", "request_fund_release": "Confirm funds released",
+    "post_visit_report": "Submit post-visit report", "post_visit_recommendation": "Confirm recommendation",
+    "cqac_recommendation": "Send CQAC recommendation", "cqac_chair_approval": "Approve (CQAC Chairman)",
+    "es_final_approval": "Final approval (ES)",
+}
+NO_RETURN_STAGES = ("case_opened", "programme_auto_update")
+NON_ACTION_KINDS = ("end", "join", "parallel_gate")
+
+
+def stage_actions(case, user, current=None):
+    """One row per current action stage: may ``user`` act, why not, who
+    holds it, what blocks *approve*, its open task link."""
+    current = stage_objects(case) if current is None else current
+    rows = []
+    for stage in current:
+        if stage.kind in NON_ACTION_KINDS:
+            continue
+        ok, why = can_act(case, user, stage.code)
+        rows.append({"stage": stage, "can": ok, "why": why, "holders": holders(case, stage.code),
+                     "problems": prerequisites(case, stage.code) if ok else [],
+                     "link": open_link(case, stage.code),
+                     "approve_label": APPROVE_LABELS.get(stage.code, "Approve"),
+                     "returns": stage.code not in NO_RETURN_STAGES})
+    return rows
+
+
+def stepper(case, current):
+    """The 17-stage progress rows ({no, label, state, code}) of the case page."""
+    rows, seen_current = [], False
+    current_nos = [s.sop_stage_no for s in current if s.sop_stage_no is not None]
+    low = min(current_nos) if current_nos else None
+    closed = case.status == "closed"
+    for stage in flow_stages(case):
+        if stage.kind in ("parallel_gate", "join", "start", "end") and stage.code != "case_opened":
+            continue
+        if stage.code in ("assign_finance_officer", "assign_ict_officer"):
+            continue
+        no = stage.sop_stage_no
+        label = "Assign supervising staff" if stage.code == "assign_audit_officer" else stage.label
+        if closed:
+            state = "done"
+        elif stage.code in [s.code for s in current] or (
+                stage.code == "assign_audit_officer" and any(s.code.startswith("assign_") for s in current)):
+            state, seen_current = "current", True
+        elif low is not None and no is not None and no < low:
+            state = "done"
+        elif not seen_current and low is None and current and current[0].code == "case_opened":
+            state = "todo"
+        else:
+            state = "todo" if (low is None or no is None or no > low) else "done"
+        rows.append({"no": no if no is not None else 0, "label": label, "state": state, "code": stage.code})
+    return rows
+
+
+def open_links_by_case(case_ids):
+    """{case_id: [open QATaskLink with prefetched assignees]} (one query)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from qa_core.models import QATaskLink
+
+    out = {}
+    links = (QATaskLink.objects.filter(content_type=ContentType.objects.get_for_model(QACase), closed_at__isnull=True,
+                                       object_id__in=list(case_ids))
+             .prefetch_related("task__assignee_rows__user"))
+    for link in links:
+        out.setdefault(link.object_id, []).append(link)
+    return out
+
+
+def decorate_cases(cases, now=None):
+    """Board card data on each case: ``holders``, ``due`` (earliest open
+    stage deadline), ``overdue``, ``stage_label``, ``stage_no``."""
+    now = now or timezone.now()
+    by_case = open_links_by_case([c.pk for c in cases])
+    labels = {s.code: s for s in flow_stages()}
+    for case in cases:
+        case_links_ = by_case.get(case.pk, [])
+        case.holders = [r.user for link in case_links_ for r in link.task.assignee_rows.all() if r.state != "declined"]
+        case.due = min((link.due_at for link in case_links_ if link.due_at), default=None)
+        case.overdue = bool(case.due and case.due < now)
+        stage = labels.get(case.status)
+        case.stage_label = stage.label if stage else ("Not started" if case.status in ("", "awaiting_sop03")
+                                                     else case.status.replace("_", " ").capitalize())
+        case.stage_no = stage.sop_stage_no if stage else None
+    return cases
+
+
+def decorate_stage_links(links, now=None):
+    """``stage_label``, ``stage_no`` and ``overdue`` on my-stage links."""
+    now = now or timezone.now()
+    labels = {s.code: s for s in flow_stages()}
+    for link in links:
+        stage = labels.get(link.stage_code)
+        link.stage_label = stage.label if stage else link.stage_code
+        link.stage_no = stage.sop_stage_no if stage else None
+        link.overdue = bool(link.due_at and link.due_at < now)
+    return links
+
+
+def filter_cases(qs, *, q="", department="", flag=""):
+    """The Case Board filters (search, owning department, needs reassignment)."""
+    from django.db.models import Q
+
+    q = (q or "").strip()
+    qs = qs.select_related("institution", "owning_department").order_by("-updated_at")
+    if q:
+        qs = qs.filter(Q(reference__icontains=q) | Q(institution__name__icontains=q) | Q(institution__code__iexact=q))
+    if department:
+        qs = qs.filter(owning_department__code=department)
+    if flag == "reassign":
+        qs = qs.filter(needs_reassignment=True)
+    return qs

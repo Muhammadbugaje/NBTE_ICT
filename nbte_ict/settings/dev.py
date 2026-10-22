@@ -14,6 +14,13 @@ from .base import *  # noqa
 DEBUG = os.environ.get("DEBUG", "True") == "True"
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
 
+# Phase 9: mobile API - browsable API pages and the X-NBTE-Door header only
+# while DEBUG is on (production stays JSON only, doors by host only).
+API_DEV_DOOR_HEADER = DEBUG
+if DEBUG:
+    REST_FRAMEWORK = {**REST_FRAMEWORK, "DEFAULT_RENDERER_CLASSES": [  # noqa: F405
+        "rest_framework.renderers.JSONRenderer", "rest_framework.renderers.BrowsableAPIRenderer"]}
+
 # With DEBUG=False, `runserver` stops serving /static/ and /media/, so pages
 # lose their styling (and the styled 404/500 pages look broken). In
 # development we keep serving them so DEBUG=False behaves like production.

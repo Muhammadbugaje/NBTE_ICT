@@ -113,6 +113,9 @@ RULES = [  # code, name, setting — the fixed list (for screens and docs)
     ("annual_cap", "Annual visit cap", "qa.resource_person.max_visits_per_year"),
     ("open_ssq", "Open SSQ reviews (R-01)", "qa.resource_person.max_open_ssq_per_officer"),
     ("reviewer_not_visitor", "Reviewer is not a visitor (R-02)", "qa.workload.reviewer_cannot_verify"),
+    ("ssq_year_cap", "SSQ reviews a year (per rank)", "qa.workload.limits"),
+    ("open_tasks", "Open tasks (per rank)", "qa.workload.limits"),
+    ("staff_first", "Resource persons only when no staff is free", "qa.workload.resource_persons_only_when_no_staff"),
 ]
 
 
@@ -177,6 +180,8 @@ class Candidate:
     rating: float = 0.0
     visits_this_year: int = 0
     last_served: datetime.date | None = None
+    load: dict = field(default_factory=dict)
+    assignments_this_year: int = 0
     score: float = 0.0
     problems: list = field(default_factory=list)
 
@@ -311,34 +316,17 @@ def assignment_problems(person, need, *, stop_early=False):
     if c.home_institution_id and c.home_institution_id == need.institution_id:
         if add(Problem("conflict_of_interest", "", f"{c.name} works at the institution being inspected")):
             return p
-    months = _int("qa.matching.same_institution_cooldown_months", 24)
-    if months > 0:
-        since = timezone.localdate() - datetime.timedelta(days=int(months * 30.44))
-        served = (_service(c).filter(institution_id=need.institution_id, served_to__gte=since,
-                                     duty__in=VISIT_DUTIES).aggregate(n=Sum("visit_count"))["n"] or 0)
-        if served > 0:
-            if add(Problem("cooldown", "qa.matching.same_institution_cooldown_months",
-                           f"{c.name} served this institution within the last {months} months")):
-                return p
-    # 6. annual cap
-    cap = _int("qa.resource_person.max_visits_per_year", 6)
+    # 5b–6 and R-01: the per-rank workload limits (qa.workload.limits), falling
+    # back to the general settings (cooldown, annual cap, open SSQ reviews).
+    from . import workload
+
     year = need.start.year
-    visits = (_service(c).filter(served_to__year=year, duty__in=VISIT_DUTIES)
-              .aggregate(n=Sum("visit_count"))["n"] or 0)
-    c.visits_this_year = visits
-    if need.duty in VISIT_DUTIES and visits >= cap:
-        if add(Problem("annual_cap", "qa.resource_person.max_visits_per_year",
-                       f"{c.name} has {visits} visit(s) in {year}; the cap is {cap}")):
+    c.visits_this_year = workload.visits_in(c, year)
+    for rule, setting, message in workload.problems_for(c, duty=need.duty, institution_id=need.institution_id,
+                                                        year=year, name=c.name,
+                                                        exclude_mapping_id=need.exclude_mapping_id):
+        if add(Problem(rule, setting, message)):
             return p
-    # R-01: open SSQ reviews (officers only)
-    if need.duty == "ssq_review" and c.user_id:
-        cap = _int("qa.resource_person.max_open_ssq_per_officer", 3)
-        open_reviews = SSQReviewAssignment.unscoped.filter(reviewer_id=c.user_id, completed_at__isnull=True).count()
-        open_reviews += _live(c, need).filter(duty="ssq_review").count()
-        if open_reviews >= cap:
-            if add(Problem("open_ssq", "qa.resource_person.max_open_ssq_per_officer",
-                           f"{c.name} has {open_reviews} open SSQ review(s); the limit is {cap} (R-01)")):
-                return p
     # 7. R-02: the reviewer of the case is not a visitor
     if need.duty == "physical_verification" and _bool("qa.workload.reviewer_cannot_verify", True):
         if _is_reviewer_of(c, need.case):
@@ -360,7 +348,7 @@ def _is_reviewer_of(c, case):
 
 
 def check_assignment(person, need):
-    raise_if(assignment_problems(person, need))
+    raise_if(assignment_problems(person, need) or resource_person_block(person, need))
 
 
 # ===========================================================================
@@ -399,22 +387,68 @@ def pool(kind="all", *, search=""):
 
 
 def find(need, *, kind="all", search="", include_ineligible=False):
-    """Candidates for ``need``: eligible ones ranked (fewest visits this year,
-    longest since last served, rating — ``qa.matching.rank_score``). With
-    ``include_ineligible`` the others come after, each with its reasons."""
+    """Candidates for ``need``: eligible ones ranked fairly — NBTE staff before
+    resource persons (``qa.workload.staff_first``), then fewest assignments
+    this year (visits + SSQ reviews), then longest since last served, then
+    ``qa.matching.rank_score``. With ``include_ineligible`` the others come
+    after, each with its reasons. Every candidate carries its current load."""
+    from . import workload
+
+    rows = workload.table()
+    staff_first = workload.bool_setting("qa.workload.staff_first", True)
+    only_when_no_staff = workload.bool_setting("qa.workload.resource_persons_only_when_no_staff", False)
+    people = pool(kind, search=search)
+    if only_when_no_staff and kind == "resource_person":
+        people += pool("qa_personnel", search="")  # needed to know whether staff are free
     good, bad = [], []
-    for person in pool(kind, search=search):
+    for person in people:
         c = candidate(person)
         c.problems = assignment_problems(c, need)
-        c.last_served = _last_served(c)
+        c.load = workload.load(c, year=need.start.year, rows=rows)
+        c.last_served = c.load["last_served"] or _last_served(c)
+        c.assignments_this_year = c.load["assignments_year"]
         if c.ok:
             c.score = _score(c)
             good.append(c)
         elif include_ineligible:
             bad.append(c)
-    good.sort(key=lambda c: (c.score, c.name))
+    if only_when_no_staff and any(c.kind == "qa_personnel" for c in good):
+        for c in [c for c in good if c.kind == "resource_person" and not c.obj.is_staff_person]:
+            c.problems = [Problem("staff_first", "qa.workload.resource_persons_only_when_no_staff",
+                                  f"{c.name} is a resource person and NBTE staff are free for this work")]
+            good.remove(c)
+            if include_ineligible:
+                bad.append(c)
+    if kind == "resource_person":
+        good = [c for c in good if c.kind == "resource_person"]
+        bad = [c for c in bad if c.kind == "resource_person"]
+    today = timezone.localdate()
+
+    def fair(c):
+        days = (today - c.last_served).days if c.last_served else 100000
+        external = c.kind == "resource_person" and not c.obj.is_staff_person
+        return (staff_first and external, c.assignments_this_year, -days, c.score, c.name)
+
+    good.sort(key=fair)
     bad.sort(key=lambda c: c.name)
     return good + bad
+
+
+def staff_free_for(need):
+    """True when an active NBTE QA officer passes every rule for ``need``."""
+    return any(not assignment_problems(qp, need, stop_early=True) for qp in pool("qa_personnel"))
+
+
+def resource_person_block(person, need):
+    """The "resource persons only when no staff" rule for a save path."""
+    from . import workload
+
+    if (isinstance(person, ResourcePerson) and not person.is_staff_person
+            and workload.bool_setting("qa.workload.resource_persons_only_when_no_staff", False)
+            and staff_free_for(need)):
+        return [Problem("staff_first", "qa.workload.resource_persons_only_when_no_staff",
+                        f"{person.full_name} is a resource person and NBTE staff are free for this work")]
+    return []
 
 
 # ===========================================================================

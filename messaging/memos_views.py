@@ -45,9 +45,7 @@ def _can_download_document(memo, user):
     """Published memos: anyone who can view them.
     Not-yet-published memos: sender / managers / superusers only —
     they get the watermarked preview."""
-    if memo.status == Memo.PUBLISHED:
-        return True
-    return memo_service.can_manage_memo(memo, user)
+    return memo_service.can_download_document(memo, user)
 
 
 def _sender_signature_lines(memo):
@@ -89,51 +87,10 @@ def memo_list(request):
     if tab not in ("inbox", "awaiting", "sent", "archived"):
         tab = "inbox"
 
-    if tab == "sent":
-        qs = memo_service.visible_memos_for(request.user).filter(sender=request.user)
-    elif tab == "archived":
-        qs = memo_service.visible_memos_for(request.user).filter(
-            memo_recipients__user=request.user,
-            memo_recipients__is_archived=True,
-        ).distinct()
-    elif tab == "awaiting":
-        awaiting_list = memo_service.awaiting_memos_for(request.user)
-        ids = [m.pk for m in awaiting_list]
-        qs = (
-            Memo.objects
-            .filter(pk__in=ids)
-            .select_related("sender", "route", "department", "target_user")
-            .order_by("-updated_at")
-        )
-    else:
-        qs = memo_service.inbox_memos_for(request.user)
-
     q = (request.GET.get("q") or "").strip()
     prio = (request.GET.get("priority") or "").strip()
-
-    if q:
-        from django.db.models import Q
-        qs = qs.filter(
-            Q(reference__icontains=q)
-            | Q(subject__icontains=q)
-            | Q(body__icontains=q)
-        )
-    if prio in dict(Memo.PRIORITY_CHOICES):
-        qs = qs.filter(priority=prio)
-
-    awaiting_count = len(memo_service.awaiting_memos_for(request.user))
-    counts = {
-        "inbox":    memo_service.inbox_memos_for(request.user).count(),
-        "awaiting": awaiting_count,
-        "sent":     memo_service.visible_memos_for(request.user)
-                    .filter(sender=request.user).count(),
-        "archived": memo_service.visible_memos_for(request.user)
-                    .filter(
-                        memo_recipients__user=request.user,
-                        memo_recipients__is_archived=True,
-                    )
-                    .distinct().count(),
-    }
+    qs = memo_service.memo_tab_queryset(request.user, tab, q=q, priority=prio)
+    counts = memo_service.memo_tab_counts(request.user)
 
     return render(request, "messaging/memo_list.html", {
         "memos": qs,
@@ -162,40 +119,9 @@ def memo_detail(request, pk):
         return _gone(request)
     memo = _require_view(request.user, pk)
 
-    # A memo waiting on a step nobody can act on, or on a step that was
-    # changed or deleted, moves on as soon as it can.
-    if memo.status == Memo.AWAITING and routing.actor_for_memo(memo) is None:
-        try:
-            if routing.reconcile_memo(memo):
-                memo = _require_view(request.user, pk)
-        except Exception:
-            logger.exception("Could not re-check memo %s", memo.reference)
-
-    receipt = memo.memo_recipients.filter(user=request.user).first()
-    if (
-        receipt is not None
-        and receipt.read_at is None
-        and memo.status == Memo.PUBLISHED
-    ):
-        memo_service.mark_memo_read(memo, request.user)
-        receipt.refresh_from_db()
-
-    show_stats = (
-        memo.sender_id == request.user.pk
-        or request.user.is_superuser
-        or request.user.has_perm("messaging.manage_memo")
-    )
-    pending_recipients = []
-    if (
-        show_stats
-        and memo.requires_acknowledgment
-        and memo.status == Memo.PUBLISHED
-    ):
-        pending_recipients = list(
-            memo.memo_recipients
-            .filter(acknowledged_at__isnull=True)
-            .select_related("user")[:50]
-        )
+    # Re-check a parked memo, mark my copy read (shared with the mobile API).
+    memo = memo_service.open_memo(memo, request.user)
+    state = memo_service.memo_detail_state(memo, request.user)
 
     sender_name, sender_desig, sender_dept = _sender_signature_lines(memo)
 
@@ -203,46 +129,26 @@ def memo_detail(request, pk):
     acked = memo.acknowledged_count
     ack_pct = int(round((acked / total) * 100)) if total else 0
 
-    can_act = routing.can_act_on_memo(memo, request.user)
-    current_step = routing.current_step(memo)
-    current_actor = (
-        routing.resolve_memo_approver(current_step, memo)
-        if current_step else None
-    )
-    acting_for = can_act and current_actor is not None and current_actor.pk != request.user.pk
-    parked_reason = (routing.describe_missing(current_step, memo)
-                     if memo.status == Memo.AWAITING and current_step and current_actor is None else "")
-    can_recheck = memo.status == Memo.AWAITING and (
-        request.user.is_superuser or request.user.has_perm("messaging.manage_memoroute")
-        or request.user.has_perm("messaging.manage_memo"))
-
-    chain_rows = _annotate_chain(memo)
-
     return render(request, "messaging/memo_detail.html", {
         "memo": memo,
-        "receipt": receipt,
-        "is_sender": memo.sender_id == request.user.pk,
-        "can_manage": memo_service.can_manage_memo(memo, request.user),
-        "show_stats": show_stats,
-        "pending_recipients": pending_recipients,
-        "needs_ack": (
-            receipt is not None
-            and memo.requires_acknowledgment
-            and receipt.acknowledged_at is None
-            and memo.status == Memo.PUBLISHED
-        ),
+        "receipt": state["receipt"],
+        "is_sender": state["is_sender"],
+        "can_manage": state["can_manage"],
+        "show_stats": state["show_stats"],
+        "pending_recipients": state["pending_recipients"],
+        "needs_ack": state["needs_ack"],
         "attachment_form": MemoAttachmentForm(),
         "sender_name": sender_name,
         "sender_desig": sender_desig,
         "sender_dept": sender_dept,
         "ack_pct": ack_pct,
-        "can_act": can_act,
-        "current_step": current_step,
-        "current_actor": current_actor,
-        "acting_for": acting_for,
-        "parked_reason": parked_reason,
-        "can_recheck": can_recheck,
-        "chain_rows": chain_rows,
+        "can_act": state["can_act"],
+        "current_step": state["current_step"],
+        "current_actor": state["current_actor"],
+        "acting_for": state["acting_for"],
+        "parked_reason": state["parked_reason"],
+        "can_recheck": state["can_recheck"],
+        "chain_rows": state["chain_rows"],
     })
 
 
@@ -262,61 +168,24 @@ def memo_create(request):
         action = request.POST.get("action", "draft")
         if form.is_valid():
             try:
-                memo = memo_service.create_memo(
-                    sender=request.user,
-                    subject=form.cleaned_data["subject"],
-                    body=form.cleaned_data["body"],
-                    visibility=form.cleaned_data["visibility"],
-                    target_user=form.cleaned_data.get("target_user"),
-                    department=form.cleaned_data.get("department"),
-                    roles=list(form.cleaned_data.get("roles") or []),
-                    recipients=list(form.cleaned_data.get("recipients") or []),
-                    priority=form.cleaned_data["priority"],
-                    requires_acknowledgment=form.cleaned_data.get(
-                        "requires_acknowledgment", False,
-                    ),
-                    expires_at=form.cleaned_data.get("expires_at"),
-                    is_draft=(action != "publish"),
+                memo, notes = memo_service.submit_memo_form(
+                    request.user, form.cleaned_data,
+                    publish=(action == "publish"),
+                    from_message=request.GET.get("from_message"),
                 )
             except (ValidationError, PermissionDenied) as exc:
                 msgs = getattr(exc, "messages", None) or [str(exc)]
                 messages.error(request, "; ".join(msgs))
             else:
-                for f in form.cleaned_data.get("attachments") or []:
-                    try:
-                        memo_service.add_attachment(memo, request.user, f)
-                    except Exception:
-                        messages.warning(request, f"Could not attach {f.name}.")
-
-                if action == "publish":
-                    try:
-                        memo_service.publish_memo(memo, request.user)
-                    except (ValidationError, PermissionDenied) as exc:
-                        msgs = getattr(exc, "messages", None) or [str(exc)]
-                        messages.warning(
-                            request,
-                            "Draft saved, but the chain could not start: "
-                            + "; ".join(msgs),
-                        )
-                        return redirect("messaging:memo_detail", pk=memo.pk)
-                    if memo.status == Memo.PUBLISHED:
-                        messages.success(
-                            request,
-                            f"Memo {memo.reference} published to "
-                            f"{memo.recipient_count} recipient(s).",
-                        )
-                    else:
-                        messages.success(
-                            request,
-                            f"Memo {memo.reference} sent for approval.",
-                        )
-                else:
-                    messages.success(request, "Memo saved as draft.")
+                for level, text in notes:
+                    getattr(messages, level)(request, text)
                 return redirect("messaging:memo_detail", pk=memo.pk)
         else:
             messages.error(request, "Please fix the errors below.")
     else:
-        form = MemoForm(user=request.user, allowed_kinds=allowed_kinds)
+        # Phase 9: ?subject=&body=&from_message= prefill ("Turn into a memo").
+        prefill = {k: request.GET[k][:10000] for k in ("subject", "body") if request.GET.get(k)}
+        form = MemoForm(user=request.user, allowed_kinds=allowed_kinds, initial=prefill or None)
 
     return render(request, "messaging/memo_form.html", {
         "form": form,
@@ -647,13 +516,28 @@ def memo_attachment_download(request, pk):
         or not attachment.file
     ):
         raise Http404("This attachment is no longer available.")
+    return memo_attachment_response(request, attachment)
+
+
+def memo_attachment_response(request, attachment):
+    """The bytes of a memo attachment the caller already checked (website
+    download above and the mobile API)."""
+    import mimetypes
+    from urllib.parse import quote
+    from django.conf import settings
+    from django.http import FileResponse
 
     original_name = (
         getattr(attachment, "original_name", "")
         or attachment.file.name.rsplit("/", 1)[-1]
     )
+    from core import audit, file_preview
+
     ctype = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
-    disposition = f"attachment; filename*=UTF-8''{quote(original_name)}"
+    inline = file_preview.wants_inline(request, ctype)
+    ctype = file_preview.text_charset(ctype)
+    if inline:
+        audit.log("other", attachment, actor=request.user, note="memo attachment previewed")
 
     if getattr(settings, "USE_X_ACCEL_REDIRECT", False):
         resp = HttpResponse(content_type=ctype)
@@ -662,9 +546,7 @@ def memo_attachment_download(request, pk):
     else:
         resp = FileResponse(attachment.file.open("rb"), content_type=ctype)
 
-    resp["Content-Disposition"] = disposition
-    resp["Cache-Control"] = "private, no-store"
-    return resp
+    return file_preview.finish(resp, original_name, inline)
 
 
 # ===========================================================================
@@ -695,10 +577,12 @@ def memo_download_pdf(request, pk):
         messages.error(request, "Could not generate the PDF. Try again later.")
         return redirect("messaging:memo_detail", pk=memo.pk)
 
+    from core import file_preview
+
     resp = HttpResponse(pdf_bytes, content_type="application/pdf")
-    resp["Content-Disposition"] = f'inline; filename="{memo.reference}.pdf"'
-    resp["Cache-Control"] = "private, no-store"
-    return resp
+    # Always inline (it opens in the browser's PDF viewer); framable by the
+    # preview viewer on the same site.
+    return file_preview.finish(resp, f"{memo.reference}.pdf", True)
 
 
 @login_required

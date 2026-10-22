@@ -1,0 +1,22 @@
+{% load backups_tags %}
+<div id="bk-mounts" class="bk-mounts">
+  <div class="bk-mounts__head">
+    <span>Drives found on this server (under /media, /mnt, /run/media and /Volumes)</span>
+    <button type="button" class="btn btn-sm btn-ghost" hx-get="{% url 'backups:mounts' %}" hx-target="#bk-mounts" hx-swap="outerHTML">Look again</button>
+  </div>
+  {% if mounts %}
+    <ul>
+      {% for m in mounts %}
+        <li>
+          <button type="button" class="bk-mount" data-bk-mount="{{ m.path }}"{% if not m.writable %} disabled{% endif %}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 12h.01M10 12h.01"/></svg>
+            <span><strong>{{ m.path }}</strong><small>{{ m.free|filesize_h }} free of {{ m.total|filesize_h }}{% if not m.writable %} · the server cannot write here{% endif %}</small></span>
+          </button>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="bk-muted">No drive is mounted right now. Plug the drive in, mount it (most desktops do this automatically; on a server: <code>sudo mount /dev/sdb1 /mnt/backup</code>), then press Look again. You can also type the mount point below.</p>
+  {% endif %}
+  {% if refreshed %}<span class="visually-hidden" role="status">List refreshed.</span>{% endif %}
+</div>

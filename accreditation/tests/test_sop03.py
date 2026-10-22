@@ -243,7 +243,17 @@ def test_seventeen_stage_walk_through_the_screens(p4):
     for report in insp.reports_of(case):
         post(holder(case, "post_visit_recommendation"), f"reports/{report.pk}/recommend/",
              {"recommendation": "accredit", "note": "Meets the minimum standard"})
+    from accreditation import decisions as dec
+
     for code in LINEAR[11:]:
+        if dec.is_decision_stage(code):  # Phase 8: every programme needs a decision first
+            data = {"stage": code}
+            for d in dec.board(case, code, holder(case, code)):
+                pk = d["row"].pk
+                data.update({f"d{pk}-outcome": "approve", f"d{pk}-approval_type": d["start"]["approval_type"].pk,
+                             f"d{pk}-approved_streams": "1", f"d{pk}-commencement_date": "2026-10-15",
+                             f"d{pk}-weaknesses": "", f"d{pk}-note": ""})
+            post(holder(case, code), "decisions/", data)
         post(holder(case, code), "act/", {"stage": code, "action": "approve"})
     case.refresh_from_db()
     assert case.status == "closed"

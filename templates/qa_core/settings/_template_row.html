@@ -1,15 +1,18 @@
-<tbody id="tpl-{{ t.pk }}" class="qa-rule">
-  <tr>
-    <td data-label="Template">
-      <span class="qa-key">{{ t.code }}</span>
-      <div class="qa-chip-row">
-        <span class="qa-chip {% if t.channel == 'email' %}qa-chip--info{% elif t.channel == 'sms' %}qa-chip--dual{% else %}qa-chip--direct{% endif %}">{{ t.get_channel_display }}</span>
-        {% if t.n_rules is not None %}<span class="qa-chip">{{ t.n_rules }} rule{{ t.n_rules|pluralize }}</span>{% endif %}
-      </div>
-      {% if t.description %}<span class="qa-desc">{{ t.description }}</span>{% endif %}
-    </td>
-    <td data-label="Subject"><span class="qa-value qa-value--mono">{{ t.subject|default:"—" }}</span></td>
-    <td data-label="On">
+<article id="tpl-{{ t.pk }}" class="qa-rule">
+  <div class="tpl-row{% if not t.is_active %} is-off{% endif %}">
+    <span class="tpl-channel tpl-channel--{{ t.channel }}" title="{{ t.get_channel_display }}">
+      {% if t.channel == "email" %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22 6 12 13 2 6"/></svg>
+      {% elif t.channel == "sms" %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+      {% else %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>{% endif %}
+      <span>{% if t.channel == "email" %}E-mail{% else %}{{ t.get_channel_display }}{% endif %}</span>
+    </span>
+    <div class="tpl-row__main">
+      <strong class="tpl-row__name">{{ t.event_name|capfirst }}</strong>
+      <span class="tpl-row__subject">{{ t.subject|default:"No subject" }}</span>
+      {% if t.description %}<span class="tpl-row__desc">{{ t.description }}</span>{% endif %}
+      <span class="tpl-row__meta"><code>{{ t.code }}</code>{% if t.n_rules is not None %}<span>{% if t.n_rules %}Used by {{ t.n_rules }} rule{{ t.n_rules|pluralize }}{% else %}Not used by any rule{% endif %}</span>{% endif %}</span>
+    </div>
+    <div class="tpl-row__control">
       <label class="qa-switch{% if t.is_active %} is-on{% endif %}">
         <input type="checkbox" name="is_active" {% if t.is_active %}checked{% endif %}
                {% if can_manage %}hx-post="{% url 'qa:template_toggle' t.pk %}" hx-trigger="change" hx-swap="none" data-qa-optimistic data-qa-no-overlay{% else %}disabled{% endif %}
@@ -17,12 +20,10 @@
         <span class="qa-switch__track" aria-hidden="true"></span>
         <span class="qa-switch__label" aria-hidden="true">{% if t.is_active %}On{% else %}Off{% endif %}</span>
       </label>
-    </td>
-    <td class="qa-col-actions">
       <button type="button" class="btn btn-sm btn-subtle" hx-get="{% url 'qa:template_edit' t.pk %}"
               hx-target="#tpl-{{ t.pk }}" hx-swap="outerHTML">
         {% if can_manage %}Edit{% else %}View{% endif %}
       </button>
-    </td>
-  </tr>
-</tbody>
+    </div>
+  </div>
+</article>

@@ -1039,3 +1039,113 @@ def sla_state(cs, now=None, calendar=None):
     return {"state": "near" if pct >= 50 else "on_track", "pct": pct,
             "left": f"{sla.humanise(left)} left" + (" (working time)" if cs.business_hours else ""),
             "due": cs.due_at}
+
+
+# ===========================================================================
+# The internal queue (Phase 9: shared by the complaint screens and the API)
+# ===========================================================================
+QUEUE_TABS = ("mine", "department", "escalated", "all")
+SLA_ORDER = {"breached": 0, "near": 1, "on_track": 2, "paused": 3, "none": 4}
+
+
+def queue_base(user, tab):
+    """The complaints of one queue tab (Assigned to me · My department ·
+    Escalated to me · All I can see)."""
+    qs = visible_to(user)
+    if tab == "mine":
+        mine = ComplaintStage.objects.filter(assigned_to=user, left_at__isnull=True).values("complaint_id")
+        qs = qs.filter(Q(current_assignee=user) | Q(pk__in=mine) | Q(referred_user=user))
+    elif tab == "department":
+        qs = qs.filter(current_department_id=user.department_id) if user.department_id else qs.none()
+    elif tab == "escalated":
+        qs = qs.filter(watchers=user)
+    return qs
+
+
+def status_filter(qs, status):
+    if status == "open":
+        return qs.filter(closed_at__isnull=True).exclude(status__in=RESOLVED_CODES)
+    if status == "resolved":
+        return qs.filter(closed_at__isnull=True, status__in=RESOLVED_CODES)
+    if status == "closed":
+        return qs.filter(closed_at__isnull=False)
+    return qs
+
+
+def decorate(rows, now=None):
+    """Attach ``stage_row`` (the open stage) and ``sla`` to each complaint (one query)."""
+    from . import sla as sla_mod
+
+    now = now or timezone.now()
+    ids = [c.pk for c in rows]
+    stages = {}
+    for cs in (ComplaintStage.objects.filter(complaint_id__in=ids, left_at__isnull=True)
+               .select_related("assigned_to", "assigned_department").order_by("entered_at", "id")):
+        stages[cs.complaint_id] = cs
+    cal = sla_mod.Calendar()
+    for c in rows:
+        c.stage_row = stages.get(c.pk)
+        c.sla = sla_state(c.stage_row, now, cal) if c.closed_at is None else {"state": "none"}
+    return rows
+
+
+def queue_rows(user, tab, *, status="open", layer="", priority="", q="", sla_filter=""):
+    """One queue tab, filtered, most urgent first (overdue, then deadline)."""
+    qs = status_filter(queue_base(user, tab), status or "open")
+    if layer:
+        qs = qs.filter(Q(layer__code=layer) | Q(layer__parent__code=layer))
+    if priority:
+        qs = qs.filter(priority=priority)
+    q = (q or "").strip()
+    if q:
+        qs = qs.filter(Q(reference__icontains=q) | Q(subject__icontains=q) | Q(institution__name__icontains=q)
+                       | Q(institution__code__iexact=q) | Q(raised_by__email__icontains=q))
+    rows = list(qs.select_related("layer", "institution", "current_department", "current_assignee", "raised_by")
+                .order_by("-created_at", "-id")[:2000])
+    decorate(rows)
+    if sla_filter:
+        rows = [c for c in rows if c.sla.get("state") == sla_filter]
+    far = timezone.now() + datetime.timedelta(days=3650)
+    rows.sort(key=lambda c: (SLA_ORDER.get(c.sla.get("state"), 5), c.sla.get("due") or far))
+    return rows
+
+
+def queue_counts(user):
+    """Open complaints per tab, plus ``breached``."""
+    out = {key: status_filter(queue_base(user, key), "open").count() for key in QUEUE_TABS}
+    breached_ids = ComplaintStage.objects.filter(left_at__isnull=True, breached_at__isnull=False).values(
+        "complaint_id")
+    out["breached"] = status_filter(visible_to(user), "open").filter(pk__in=breached_ids).count()
+    return out
+
+
+def default_tab(user, counts):
+    if counts.get("mine"):
+        return "mine"
+    if user.department_id and counts.get("department"):
+        return "department"
+    if counts.get("escalated"):
+        return "escalated"
+    return "all"
+
+
+def detail_rights(user, complaint):
+    """What ``user`` may do on one complaint page (Phase 9: shared with the API)."""
+    internal = can_handle_view(user, complaint)
+    ok, why = can_act(user, complaint)
+    return {
+        "internal": internal, "can_write": internal, "can_act": ok, "act_why": why,
+        "actions": handler_actions(user, complaint),
+        "can_escalate": complaint.is_open and (user.is_superuser or user.has_perm("complaints.escalate_complaint")),
+        "can_hold": complaint.is_open and hold_allowed(complaint) and (
+            user.is_superuser or user.has_perm("qa_core.place_suspension")),
+    }
+
+
+def messages_for(user, complaint, *, internal=None):
+    """The conversation ``user`` may read (internal notes only for handlers)."""
+    internal = can_handle_view(user, complaint) if internal is None else internal
+    qs = complaint.messages.select_related("author").prefetch_related("attachments")
+    if not internal:
+        qs = qs.filter(visibility=ComplaintMessage.PUBLIC)
+    return qs

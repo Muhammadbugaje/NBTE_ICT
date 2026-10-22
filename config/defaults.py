@@ -25,10 +25,26 @@ DEFAULTS = [
      "Public physical address."),
     ("site.footer_note", "Authorized access only. All actions logged and audited.",
      "str", "Site", "Small disclaimer text in the footer."),
+    # Phase 8 UI: names the templates show (blank = the built-in default).
+    ("site.name", "NBTE ICT Directorate", "str", "Site",
+     "Name of the internal workspace, shown in the top bar and the browser tab."),
+    ("site.qa_name", "Quality Assurance", "str", "Site",
+     "Name of the Quality Assurance workspace, shown on QA pages."),
+    ("site.portal_name", "NBTE Quality Assurance Portal", "str", "Site",
+     "Full name of the institutions' portal, used in page titles and messages."),
+    ("site.portal_short_name", "Quality Assurance Portal", "str", "Site",
+     "Short portal name shown next to the logo in the portal's top bar."),
 
     # --- Profile completeness ------------------------------------------
     ("profile.completion_threshold", "70", "int", "Profile",
-     "Minimum profile completeness percentage required to unlock gated features (e.g. raising requests)."),
+     "Minimum profile completeness percentage. Below it, staff see a reminder banner, get periodic "
+     "reminders and are asked to complete their profile when they start a request (they may continue)."),
+    ("profile.reminder_days", "7", "int", "Profile",
+     "Days between in-app reminders to staff whose profile is below the threshold. 0 turns reminders off."),
+    ("profile.banner_enabled", "1", "int", "Profile",
+     "1 = show the profile completeness banner on every page (staff can hide it for the session); 0 = off."),
+    ("profile.interrupt_enabled", "1", "int", "Profile",
+     "1 = ask staff below the threshold to complete their profile when they start a new request; 0 = off."),
     ("profile.weight.photo", "4", "int", "Profile",
      "Weight of the profile-photo field when computing completeness."),
     ("profile.weight.phone", "3", "int", "Profile",
@@ -212,6 +228,44 @@ DEFAULTS = [
     ("files.orphan_scan_max_files", "5000", "int", "Files",
      "Maximum number of files to enumerate in a single scan. "
      "Guards against very large media roots."),
-
-    
+    ("files.quarantine_retention_days", "30", "int", "Files",
+     "Days a file stays in the quarantine folder (.quarantine/<date>/) "
+     "after the orphan clean-up moves it there, before it is removed for good."),
+    ("files.orphan_protected_folders", "", "str", "Files",
+     "Extra media folders whose files are never treated as orphans, "
+     "separated by commas (e.g. qa/guides, protected:showcase). Adds to "
+     "MEDIA_SCAN_PROTECTED_FOLDERS in settings."),
 ]
+
+# Phase 8 UI: editable section titles on the public home page and the QA
+# portal landing page. Templates read them with {% site_text "key" %}
+# (config/templatetags/site_text.py); a blank value falls back to the default.
+HOME_TEXT = [
+    ("home.title.about", "One workspace for the whole directorate.", "Home page: title of the 'What it is' section."),
+    ("home.title.how", "From report to resolution, in four steps.", "Home page: title of the 'How it works' section."),
+    ("home.title.leaders", "Meet the people in charge.", "Home page: title of the leadership section."),
+    ("home.title.qa_portal", "The NBTE Quality Assurance Portal.", "Home page: title of the QA portal band."),
+    ("home.title.news", "News & updates.", "Home page: title of the news section."),
+    ("home.title.awards", "Awards & milestones.", "Home page: title of the awards section."),
+    ("home.title.gallery", "Gallery.", "Home page: title of the gallery section."),
+    ("home.title.documents", "Recent documents.", "Home page: title of the documents section."),
+    ("home.title.contact", "We're here when you need us.", "Home page: title of the contact section."),
+    ("portal.home.title.services", "Everything between your institution and NBTE, in one place.",
+     "QA portal landing: title of the services section."),
+    ("portal.home.title.follow", "Accreditation you can follow, step by step.",
+     "QA portal landing: title of the tracking section."),
+    ("portal.home.title.journey", "From registration to decision, in four stages.",
+     "QA portal landing: title of the journey section."),
+    ("portal.home.title.types", "The right review for each stage of a programme's life.",
+     "QA portal landing: title of the review types section."),
+    ("portal.home.title.pay", "Fees, paid and confirmed without the paperwork.",
+     "QA portal landing: title of the payments section."),
+    ("portal.home.title.who", "Built for everyone who takes part.", "QA portal landing: title of the audiences section."),
+    ("portal.home.title.ready", "Have these to hand and registration takes about fifteen minutes.",
+     "QA portal landing: title of the checklist section."),
+    ("portal.home.title.guides", "Guides you can print or share.", "QA portal landing: title of the guides section."),
+    ("portal.home.title.faq", "Common questions.", "QA portal landing: title of the questions section."),
+    ("portal.home.title.cta", "Ready when you are.", "QA portal landing: title of the closing call to action."),
+]
+HOME_TEXT_DEFAULTS = {key: value for key, value, _desc in HOME_TEXT}
+DEFAULTS += [(key, value, "str", "Homepage", desc) for key, value, desc in HOME_TEXT]

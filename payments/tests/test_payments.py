@@ -591,3 +591,29 @@ def _code128_text(values):
         else:
             out.append(chr(v + 32) if v < 64 else chr(v - 64))
     return "".join(out)
+
+
+# ---------------------------------------------------------------------------
+# Phase 8: coming back from the checkout page checks the payment at once
+# ---------------------------------------------------------------------------
+def test_return_from_checkout_verifies_without_waiting_for_the_webhook(bill, inst_user, monkeypatch):
+    from payments import providers, services
+    from payments.providers.base import VerificationResult
+
+    attempt = _pay_online(bill, inst_user, "paystack")
+    provider = providers.get("paystack")
+    monkeypatch.setattr(type(provider), "verify", lambda self, a: VerificationResult(
+        paid=True, status="success", amount=bill.amount, reference=a.provider_reference, message="ok", raw={}))
+    out = services.verify_on_return(_ob(bill.pk), {"reference": attempt.provider_reference})
+    assert out.status == "provider_reported_paid"
+    ob = _ob(bill.pk)
+    assert ob.status in ("provider_reported_paid", "awaiting_finance_confirmation")
+    assert ob.status != "confirmed"  # still needs the Director of Finance
+
+
+def test_return_with_an_unknown_reference_changes_nothing(bill, inst_user):
+    from payments import services
+
+    _pay_online(bill, inst_user, "paystack")
+    assert services.verify_on_return(_ob(bill.pk), {"reference": "NOPE"}) is None
+    assert _ob(bill.pk).status == "provider_processing"

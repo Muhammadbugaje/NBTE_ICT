@@ -1,4 +1,4 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load ux_tags %}
 {% with name=f.key|ssq_input_name %}
 <div class="qa-field qa-ssq-field qa-ssq-field--{{ f.type }}{% if f.type == 'table' or f.type == 'catalogue' or f.type == 'textarea' %} qa-ssq-field--wide{% endif %}" id="ssq-f-{{ f.key }}">
   <div class="qa-ssq-field__label">
@@ -44,8 +44,8 @@
     <div class="qa-ssq-files" aria-labelledby="lbl-{{ f.key }}">
       {% if f.evidence %}<ul class="qa-snap__files" role="list">{% for ev in f.evidence %}
         <li>{% icon "file" 14 %}
-          {% if ev.reused_from_id %}<a href="{{ ev.reused_from.portal_download_url }}">{{ ev.label }}</a> <span class="qa-chip qa-tone-info">Re-used from your record</span>
-          {% else %}<a href="{{ ev.portal_download_url }}">{{ ev.display_name }}</a> <span class="qa-small qa-muted">{{ ev.size_label }}</span>{% endif %}
+          {% if ev.reused_from_id %}<a href="{{ ev.reused_from.portal_download_url }}">{{ ev.label }}</a> {% preview_button ev.reused_from.portal_download_url ev.reused_from.display_name ev.reused_from.size_bytes compact=True %} <span class="qa-chip qa-tone-info">Re-used from your record</span>
+          {% else %}<a href="{{ ev.portal_download_url }}">{{ ev.display_name }}</a> {% preview_button ev.portal_download_url ev.display_name ev.size_bytes compact=True %} <span class="qa-small qa-muted">{{ ev.size_label }}</span>{% endif %}
           {% if editable %}<button type="button" class="btn btn-xs btn-subtle" hx-post="{% url 'qa_portal:ssq_evidence_remove' req.pk ssq.pk ev.pk %}" hx-target="#ssq-section" hx-params="none" aria-label="Remove {{ ev.label }}">Remove</button>{% endif %}
         </li>{% endfor %}</ul>
       {% else %}<p class="qa-small qa-muted">No file yet.</p>{% endif %}

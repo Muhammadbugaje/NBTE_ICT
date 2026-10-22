@@ -1,0 +1,45 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="dec-h">
+  <header class="qa-card__head"><div><h2 id="dec-h">Decisions</h2><p>Stage 14: the CQAC recommends. Stage 15: the CQAC Chairman decides{% if batch_enabled %} (here, or in a batch on the <a href="{% url 'qa_case:batch' %}">batch decisions</a> page){% endif %}. Stage 16: the Executive Secretary gives the final decision. Stage 17 then updates the programme record and issues the letters. The expiry date is always worked out from the approval type — it is never typed.</p></div></header>
+  {% if decision_stage %}
+  <div class="qa-card__body qa-stack">
+    <p><strong>Now: {{ decision_stage_label }}.</strong> {% if not can_decide %}<span class="qa-muted">{{ decide_why }}</span>{% endif %}</p>
+    {% if decision_problems %}<ul class="qa-problems">{% for p in decision_problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+    <form class="qa-stack" method="post" action="{% url 'qa_case:decisions_save' case.pk %}" hx-post="{% url 'qa_case:decisions_save' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="stage" value="{{ decision_stage }}"><input type="hidden" name="tab" value="decisions">
+    {% for d in decision_rows %}
+      <fieldset class="qa-decision"{% if not can_decide %} disabled{% endif %}>
+        <legend><strong>{{ d.programme }}</strong> <span class="qa-small qa-muted">{{ d.row.requested_streams }} stream{{ d.row.requested_streams|pluralize }} asked for</span>{% if d.decision %} <span class="qa-chip {{ d.decision.outcome|tone }}">Saved: {{ d.decision.get_outcome_display }}</span>{% else %} <span class="qa-chip qa-tone-warn">Not decided yet</span>{% endif %}</legend>
+        <div class="qa-decision__context">
+          {% if d.report %}<span>Directorate (stage 13): <strong>{{ d.report.get_recommendation_display|default:"—" }}</strong>{% if d.report.recommendation_note %} — {{ d.report.recommendation_note }}{% endif %}</span>{% endif %}
+          {% if d.capacity %}<span>Capacity: <span class="qa-chip {% if d.capacity.adequate %}qa-tone-success{% else %}qa-tone-danger{% endif %}">{% if d.capacity.adequate %}adequate{% else %}short — {{ d.capacity.short|join:", " }}{% endif %}</span> {{ d.capacity.supportable_streams }} stream{{ d.capacity.supportable_streams|pluralize }} supportable ({{ d.capacity.assessed }}/{{ d.capacity.of }} assessed)</span>{% else %}<span class="qa-muted">Capacity not assessed (Capacity tab).</span>{% endif %}
+          {% for h in d.history %}<span>{{ h.get_stage_display }}: <span class="qa-chip {{ h.outcome|tone }}">{{ h.get_outcome_display }}</span>{% if h.approval_type %} {{ h.approval_type.name }}, {{ h.approved_streams }} stream{{ h.approved_streams|pluralize }}{% endif %} — {{ h.decided_by|who }}{% if h.batch_key %} (batch){% endif %}</span>{% endfor %}
+        </div>
+        <div class="qa-decision__grid">
+          <div class="qa-field"><label for="d{{ d.row.pk }}-outcome">Outcome</label>
+            <select class="input" id="d{{ d.row.pk }}-outcome" name="d{{ d.row.pk }}-outcome"><option value="approve"{% if d.start.outcome == "approve" %} selected{% endif %}>Approve</option><option value="deny"{% if d.start.outcome == "deny" %} selected{% endif %}>Deny</option><option value="return"{% if d.start.outcome == "return" %} selected{% endif %}>Return for more work</option></select></div>
+          <div class="qa-field"><label for="d{{ d.row.pk }}-approval_type">Approval type</label>
+            <select class="input" id="d{{ d.row.pk }}-approval_type" name="d{{ d.row.pk }}-approval_type"><option value="">—</option>{% for t in approval_types %}<option value="{{ t.pk }}"{% if d.start.approval_type and d.start.approval_type.pk == t.pk %} selected{% endif %}>{{ t.name }} ({{ t.duration_months }} months)</option>{% endfor %}</select></div>
+          <div class="qa-field"><label for="d{{ d.row.pk }}-approved_streams">Approved streams</label>
+            <input class="input" type="number" inputmode="numeric" min="1" id="d{{ d.row.pk }}-approved_streams" name="d{{ d.row.pk }}-approved_streams" value="{{ d.start.approved_streams }}"></div>
+          <div class="qa-field"><label for="d{{ d.row.pk }}-commencement_date">Commencement date</label>
+            <input class="input" type="date" id="d{{ d.row.pk }}-commencement_date" name="d{{ d.row.pk }}-commencement_date" value="{{ d.start.commencement_date|date:'Y-m-d' }}"></div>
+        </div>
+        {% if d.decision and d.decision.expiry_date %}<p class="qa-small">Expires <strong>{{ d.decision.expiry_date|date:"j M Y" }}</strong> (worked out from the approval type).</p>{% endif %}
+        <div class="qa-field"><label for="d{{ d.row.pk }}-weaknesses">Weaknesses <span class="qa-muted">(one per line; printed on the letter)</span></label>
+          <textarea class="input" id="d{{ d.row.pk }}-weaknesses" name="d{{ d.row.pk }}-weaknesses" rows="3">{{ d.weaknesses_text }}</textarea></div>
+        <div class="qa-field"><label for="d{{ d.row.pk }}-note">Note <span class="qa-muted">(internal, optional)</span></label>
+          <input class="input" id="d{{ d.row.pk }}-note" name="d{{ d.row.pk }}-note" value="{{ d.start.note }}" maxlength="2000"></div>
+      </fieldset>
+    {% endfor %}
+    {% if can_decide %}<div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "check" 16 %} Save decisions</button><span class="qa-small qa-muted">Then approve the stage above.</span></div>{% endif %}
+    </form>
+  </div>
+  {% endif %}
+  {% if all_decisions %}
+  <div class="qa-table-wrap"><table class="qa-table">
+    <caption class="sr-only">Decisions recorded on this case</caption>
+    <thead><tr><th scope="col">Programme</th><th scope="col">Stage</th><th scope="col">Outcome</th><th scope="col">Approval</th><th scope="col">Expires</th><th scope="col">By</th></tr></thead>
+    <tbody>{% for d in all_decisions %}<tr><td>{{ d.programme }}</td><td>{{ d.get_stage_display }}</td><td><span class="qa-chip {{ d.outcome|tone }}">{{ d.get_outcome_display }}</span></td><td>{% if d.approval_type %}{{ d.approval_type.name }} · {{ d.approved_streams }} stream{{ d.approved_streams|pluralize }} from {{ d.commencement_date|date:"j M Y" }}{% else %}—{% endif %}{% if d.weaknesses %}<br><span class="qa-small qa-muted">{{ d.weaknesses|length }} weakness{{ d.weaknesses|length|pluralize:"es" }}</span>{% endif %}</td><td>{{ d.expiry_date|date:"j M Y"|default:"—" }}</td><td>{{ d.decided_by|who }}<br><span class="qa-small qa-muted">{{ d.decided_at|date:"j M Y" }}{% if d.batch_key %} · batch {{ d.batch_key }}{% endif %}{% if d.applied_at %} · applied{% endif %}</span></td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% elif not decision_stage %}<div class="qa-card__body"><p class="qa-muted">Decisions are recorded from stage 14 (CQAC recommendation).</p></div>{% endif %}
+</section>

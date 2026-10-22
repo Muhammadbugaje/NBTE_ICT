@@ -1,7 +1,9 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load ux_tags %}
 {% if page.rows %}
+<div class="bulk-toolbar qa-card__body" style="padding-bottom:0">{% bulk_all "bulk-pnotifs" %}</div>
 <ul class="qa-rowlist" role="list">{% for n in page.rows %}
-  <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge{% if not n.is_read %} is-unread{% endif %}">
+  <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge{% if not n.is_read %} is-unread{% endif %}" data-uxb-row>
+    {% bulk_check "bulk-pnotifs" n.pk n.title %}
     <span class="qa-rowlink__main">
       <span class="qa-rowlink__title">{{ n.title }}</span>
       {% if n.body %}<span class="qa-small qa-muted">{{ n.body }}</span>{% endif %}

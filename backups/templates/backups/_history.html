@@ -1,0 +1,82 @@
+{% load backups_tags %}
+<div id="bk-history" class="sh"{% if oob %} hx-swap-oob="outerHTML"{% endif %}
+     {% if history_busy %}hx-get="{% url 'backups:history' %}" hx-trigger="every 4s" hx-swap="outerHTML"{% endif %}>
+  <section class="sh-section" id="bk-runs" aria-labelledby="bk-runs-title">
+    <header class="sh-section__head">
+      <div>
+        <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></span>
+        <h2 id="bk-runs-title">Backup history</h2>
+        <p>The latest 25 runs. Download a manifest to see every file with its size and SHA-256.</p>
+      </div>
+      <span class="sh-chip">{{ runs|length }} shown</span>
+    </header>
+    {% if runs %}
+    <div class="bk-table-wrap">
+      <table class="bk-table">
+        <thead>
+          <tr><th scope="col">Started</th><th scope="col">Status</th><th scope="col">Size</th><th scope="col">Destinations</th><th scope="col">Duration</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+        </thead>
+        <tbody>
+        {% for run in runs %}
+          <tr>
+            <td data-label="Started"><div>
+              <strong>{{ run.started_at|date:"j M Y, H:i" }}</strong>
+              <small>{{ run.get_trigger_display }}{% if run.triggered_by %} · {{ run.triggered_by.get_full_name|default:run.triggered_by.email }}{% endif %}</small>
+            </div></td>
+            <td data-label="Status"><div>{% include "backups/_status_chip.html" with status=run.status %}{% if run.encrypted %}<small class="bk-lock" title="Encrypted">Encrypted</small>{% endif %}</div></td>
+            <td data-label="Size" class="bk-num">{% if run.size_bytes %}{{ run.size_bytes|filesize_h }}{% else %}—{% endif %}</td>
+            <td data-label="Destinations">
+              <span class="bk-copies">
+              {% for copy in run.copies.all %}
+                <span class="bk-copy {% if copy.deleted_at %}is-removed{% elif copy.status == 'ok' %}is-ok{% else %}is-bad{% endif %}"
+                      title="{% if copy.deleted_at %}Removed by retention {{ copy.deleted_at|date:'j M Y' }}{% elif copy.error %}{{ copy.error }}{% else %}{{ copy.location }}{% endif %}">{{ copy.destination.name }}</span>
+              {% empty %}<span class="bk-muted">None</span>{% endfor %}
+              </span>
+            </td>
+            <td data-label="Duration" class="bk-num">{% if run.is_running %}{{ run.progress }}%{% elif run.duration %}{{ run.duration|duration_h }}{% else %}—{% endif %}</td>
+            <td class="bk-actions">
+              {% if run.manifest %}<a class="btn btn-sm btn-ghost" href="{% url 'backups:manifest' run.pk %}" download>Manifest</a>{% endif %}
+              {% if can_drill and run.can_drill %}
+                <form method="post" action="{% url 'backups:drill' run.pk %}" hx-post="{% url 'backups:drill' run.pk %}" hx-target="#bk-history" hx-swap="outerHTML" hx-disabled-elt="find button">
+                  {% csrf_token %}
+                  <button class="btn btn-sm btn-ghost" type="submit">Run restore drill</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% if run.error and not run.is_running %}
+          <tr class="bk-table__detail"><td colspan="6"><details><summary>What went wrong</summary><pre class="bk-error">{{ run.error }}</pre></details></td></tr>
+          {% endif %}
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="bk-empty"><strong>No backups yet</strong><span>Set a destination, then press Back up now.</span></div>
+    {% endif %}
+  </section>
+
+  <section class="sh-section" id="bk-drills" aria-labelledby="bk-drills-title">
+    <header class="sh-section__head">
+      <div>
+        <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+        <h2 id="bk-drills-title">Restore drills</h2>
+        <p>A drill proves a backup can be restored: it checks every file's checksum, restores the database into a scratch copy, runs the system checks and compares key record counts. The live system is never touched.</p>
+      </div>
+    </header>
+    <ul class="sh-list bk-drills">
+      {% for drill in drills %}
+        <li>
+          <div class="bk-drill__main">
+            <strong>{{ drill.backup_run.label }}</strong>
+            <small>{{ drill.started_at|date:"j M Y, H:i" }} · {% if drill.automatic %}automatic{% elif drill.triggered_by %}{{ drill.triggered_by.get_full_name|default:drill.triggered_by.email }}{% else %}command line{% endif %}{% if drill.finished_at %} · took {{ drill.finished_at|timesince:drill.started_at }}{% endif %}</small>
+            {% if drill.report %}<details><summary>Report</summary><pre class="bk-report">{{ drill.report }}</pre></details>{% endif %}
+          </div>
+          {% include "backups/_status_chip.html" with status=drill.result %}
+        </li>
+      {% empty %}
+        <li class="bk-muted">No drills yet. One runs automatically after every few successful backups, or start one from the history above.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>

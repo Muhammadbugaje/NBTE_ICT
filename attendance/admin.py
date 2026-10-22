@@ -1,5 +1,6 @@
 """Attendance admin."""
 from django.contrib import admin, messages
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
 from django.db.models import Count, Q
 from django.utils import timezone
 
@@ -7,7 +8,7 @@ from .models import AttendanceLocation, AttendanceRecord
 
 
 @admin.register(AttendanceLocation)
-class AttendanceLocationAdmin(admin.ModelAdmin):
+class AttendanceLocationAdmin(ModelAdmin):
     list_display = (
         "name", "code", "latitude", "longitude",
         "radius_meters", "gps_offset_meters",
@@ -101,7 +102,7 @@ def bulk_mark_holiday(modeladmin, request, queryset):
 
 
 @admin.register(AttendanceRecord)
-class AttendanceRecordAdmin(admin.ModelAdmin):
+class AttendanceRecordAdmin(ModelAdmin):
     list_display = (
         "date", "user_link", "status_badge", "source",
         "check_in_at", "distance_display", "location",
@@ -170,7 +171,7 @@ from .models import AttendanceLocation, AttendanceRecord, LocationCheckInCode
 
 
 @admin.register(LocationCheckInCode)
-class LocationCheckInCodeAdmin(admin.ModelAdmin):
+class LocationCheckInCodeAdmin(ModelAdmin):
     list_display = ("location", "code", "window_start", "window_end", "generated_by")
     list_filter = ("location", "window_start")
     search_fields = ("code", "location__name")

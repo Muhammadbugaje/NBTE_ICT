@@ -8,3 +8,4 @@ class AccountsConfig(AppConfig):
     def ready(self):
         from . import signals  # noqa: F401
         from . import group_signals  # noqa: F401  (Stage 3 audit of group changes)
+        from . import device_signals  # noqa: F401  (Phase 9: signed-in devices)

@@ -81,9 +81,10 @@ def _contact_items(user):
     ]
 
 
-def _request_items(user):
+def actionable_requests(user):
+    """Phase 9: open requests whose current step ``user`` may act on, with
+    ``request.active_step`` set (shared with the mobile API)."""
     from workflow import services
-    from workflow.models import ApprovalStep, Request
 
     # Review M17: narrow to requests this user could act on in one query
     # before resolving each one's approver.
@@ -95,14 +96,23 @@ def _request_items(user):
         )
         .order_by("current_step_started_at", "created_at")
     )
-    items = []
+    out = []
     for request in requests:
         try:
             step, _actor = services._ensure_actor(request, user)
         except (PermissionDenied, ValidationError):
             continue
-
         request.active_step = step
+        out.append(request)
+    return out
+
+
+def _request_items(user):
+    from workflow.models import ApprovalStep
+
+    items = []
+    for request in actionable_requests(user):
+        step = request.active_step
         items.append(_make_item(
             source="request",
             title=request.subject,

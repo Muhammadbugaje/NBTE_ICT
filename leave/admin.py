@@ -1,10 +1,11 @@
 from django.contrib import admin
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
 
 from .models import LeaveApplication, LeaveEntitlement
 
 
 @admin.register(LeaveEntitlement)
-class LeaveEntitlementAdmin(admin.ModelAdmin):
+class LeaveEntitlementAdmin(ModelAdmin):
     list_display = ("staff", "year", "days", "updated_by", "updated_at")
     list_filter = ("year", "staff__department")
     search_fields = ("staff__first_name", "staff__last_name", "staff__employee_no")
@@ -12,7 +13,7 @@ class LeaveEntitlementAdmin(admin.ModelAdmin):
 
 
 @admin.register(LeaveApplication)
-class LeaveApplicationAdmin(admin.ModelAdmin):
+class LeaveApplicationAdmin(ModelAdmin):
     list_display = ("staff", "request", "start_date", "end_date")
     list_filter = ("start_date", "request__status")
     search_fields = ("staff__first_name", "staff__last_name", "request__reference")

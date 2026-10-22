@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 {% load list_tags %}
+{% load ux_tags %}
 
 {% block title %}Notifications · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Notifications{% endblock %}
@@ -32,6 +33,10 @@
       <span>unread</span>
     </div>
   </div>
+  <a href="{% url 'notifications:settings' %}" class="btn btn-ghost notif-settings-link">{# Phase 9 #}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    Settings
+  </a>
   <form class="m-0" method="post"
         action="{% url 'notifications:mark_all_read' %}"
         data-notification-mark-all
@@ -92,9 +97,22 @@
 {# ---------- List container (HTMX swaps this) ---------- #}
 <div id="notif-list-container" class="notif-list-container" data-notification-filter="{{ filter }}">
   {% if page.object_list %}
+    <div class="bulk-toolbar">
+      {% bulk_all "bulk-notifs" %}
+      <div class="bulk-toolbar__extra">
+        <form method="post" action="{% url 'notifications:bulk' %}" class="m-0"
+              data-confirm="Every notification you have already read is removed from your list. Unread ones stay."
+              data-confirm-title="Delete all read notifications?" data-confirm-action="Delete read">
+          {% csrf_token %}<input type="hidden" name="action" value="delete_read">
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="btn btn-ghost btn-sm">Delete all read</button>
+        </form>
+      </div>
+    </div>
     <div class="notif-list-page">
       {% for n in page.object_list %}
-        <article class="notif-row {% if not n.is_read %}unread{% endif %} notif-level-{{ n.level }}" data-notification-row data-is-read="{{ n.is_read|yesno:'true,false' }}">
+        <article class="notif-row {% if not n.is_read %}unread{% endif %} notif-level-{{ n.level }}" data-notification-row data-uxb-row data-is-read="{{ n.is_read|yesno:'true,false' }}">
+          {% bulk_check "bulk-notifs" n.pk n.title %}
           <div class="notif-row-icon">
             {% if n.level == 'success' %}
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -178,9 +196,11 @@
     </div>
   {% endif %}
 </div>
+  {% url 'notifications:bulk' as notif_bulk_url %}
+{% bulk_bar "bulk-notifs" notif_bulk_url actions="mark_read:Mark read,mark_unread:Mark unread,delete:Delete:danger" noun="notification" confirm_title="Delete {n} {noun}?" confirm_body="They are removed from your list for good. This doesn't affect anyone else." %}
   </div>
   {% endblock %}
 
   {% block extra_js %}
     <script src="{% static 'js/notifications-list.js' %}?v=1" defer></script>
-  {% endblock %}
+{% endblock %}

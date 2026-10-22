@@ -89,11 +89,15 @@ def body_detail(request, pk):
 
     notices = (ProfessionalBodyNotice.objects.for_user(request.user).filter(body=body)
                .select_related("case", "case__institution").order_by("-created_at")[:25])
-    ctx = {**_base_ctx(request), "body": body, "mappings": mappings, "notices": notices,
+    from .programme_info import programmes_of_body
+
+    programmes = paginate(request, programmes_of_body(body, request.user))
+    ctx = {**_base_ctx(request), "body": body, "mappings": mappings, "notices": notices, "programmes": programmes,
            "map_form": pb_forms.MappingForm(body=body) if can_manage(request.user) else None,
            "programme_names": _programme_names(), "section": "bodies"}
     return render_qa(request, "institutions/pb/body_detail.html", ctx,
-                     {"qa-panel": "institutions/pb/_body_detail_panel.html"})
+                     {"qa-panel": "institutions/pb/_body_detail_panel.html",
+                      "pb-prog-rows": "institutions/pb/_body_programmes.html"})
 
 
 @require(can_manage)

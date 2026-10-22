@@ -257,6 +257,59 @@ class CheckInResult:
 
 
 # ===========================================================================
+# Phase 9: shared by the website's check_in_api and the mobile API
+# ===========================================================================
+def validate_gps_reading(lat, lng, accuracy):
+    """Return (lat, lng, accuracy) as floats or raise ValidationError with
+    the user-facing message.
+
+    Review M12: server-side sanity checks. A browser can still fake its
+    position; these only reject impossible or imprecise readings.
+    """
+    import math
+
+    if lat is None or lng is None:
+        raise ValidationError("Missing coordinates.")
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except (TypeError, ValueError):
+        raise ValidationError("Invalid coordinates.")
+    if (not (math.isfinite(lat) and math.isfinite(lng))
+            or not (-90 <= lat <= 90 and -180 <= lng <= 180)
+            or (lat == 0 and lng == 0)):
+        raise ValidationError("Invalid coordinates.")
+    max_accuracy = _cfg_int("attendance.max_gps_accuracy_m", 200)
+    try:
+        accuracy = float(accuracy)
+    except (TypeError, ValueError):
+        accuracy = None
+    if accuracy is None or not math.isfinite(accuracy) or accuracy < 0:
+        raise ValidationError("Your device did not report location accuracy. "
+                              "Reload the page and try again.")
+    if accuracy > max_accuracy:
+        raise ValidationError(f"Your location is only accurate to about "
+                              f"{round(accuracy)} m (limit {max_accuracy} m). "
+                              f"Move to an open area and try again.")
+    return lat, lng, accuracy
+
+
+def check_in_block_reason(user, day=None):
+    """The refusals of check_in_user that do not depend on the GPS reading,
+    in the same order, or "" when the user may try to check in."""
+    day = day or timezone.localdate()
+    blocked = non_working_reason(day, user)
+    if blocked:
+        return blocked
+    existing = AttendanceRecord.objects.filter(user=user, date=day).first()
+    if existing is not None and existing.status != AttendanceRecord.ON_LEAVE:
+        return f"You already checked in today ({existing.get_status_display()})."
+    if not user.department_id:
+        return "You are not assigned to a department, so we can't match a location."
+    return ""
+
+
+# ===========================================================================
 # Check-in
 # ===========================================================================
 @transaction.atomic

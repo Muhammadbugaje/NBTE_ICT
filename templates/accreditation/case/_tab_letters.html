@@ -1,0 +1,21 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="ltr-h">
+  <header class="qa-card__head"><div><h2 id="ltr-h">Outcome letters</h2><p>Issued at stage 17, one per programme: the original and a duplicate with a visible watermark. The institution downloads both from its portal.</p></div></header>
+  {% if letters %}
+  <ul class="qa-rowlist" role="list">{% for l in letters %}
+    <li class="qa-rowlink qa-rowlink--static{% if not l.is_current %} is-muted{% endif %}">
+      <span class="qa-rowlink__badge">{% icon "file" 16 %}</span>
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ l.programme }}</span>
+        <span class="qa-rowlink__meta"><span class="qa-mono">{{ l.reference }}</span><span>· {{ l.decision.get_outcome_display }}</span><span>· {{ l.generated_at|date:"j M Y, H:i" }}</span>{% if not l.is_current %}<span>· replaced</span>{% endif %}{% if l.regenerated_reason %}<span>· “{{ l.regenerated_reason }}”</span>{% endif %}</span></span>
+      <span class="qa-rowlink__side">
+        {% for c in l.copies.all %}<a class="btn btn-sm btn-subtle" href="{{ c.download_url }}">{% icon "download" 14 %} {{ c.get_kind_display }}</a>{% endfor %}
+        {% if can_regenerate and l.is_current %}
+          <details class="qa-menu"><summary class="btn btn-sm btn-subtle">Regenerate…</summary><div class="qa-menu__panel" style="width:min(340px,calc(100vw - 32px))">
+            <form class="qa-form qa-stack" method="post" action="{% url 'qa_case:letter_regenerate' case.pk l.pk %}" hx-post="{% url 'qa_case:letter_regenerate' case.pk l.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="letters">
+              <div class="qa-field"><label for="lr-{{ l.pk }}">Why regenerate? <span class="qa-muted">(a new reference is issued; the old letter is kept)</span></label><textarea class="input" id="lr-{{ l.pk }}" name="reason" rows="2" required minlength="5"></textarea></div>
+              <button class="btn btn-sm btn-primary" type="submit">Regenerate letter</button></form></div></details>
+        {% endif %}
+      </span>
+    </li>{% endfor %}</ul>
+  {% else %}<div class="qa-card__body"><p class="qa-muted">No letters yet — they are issued when the case completes stage 17.</p></div>{% endif %}
+</section>

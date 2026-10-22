@@ -1,5 +1,7 @@
 """Admin registration for the tickets app."""
 from django.contrib import admin
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
+from core.admin_base import ChoicesDropdownFilter, RangeDateFilter, RangeDateTimeFilter, RelatedDropdownFilter, badge
 from django import forms
 from django.db import models
 from django.utils.html import format_html
@@ -14,7 +16,7 @@ from .models import (
 
 
 @admin.register(TicketCategory)
-class TicketCategoryAdmin(admin.ModelAdmin):
+class TicketCategoryAdmin(ModelAdmin):
     list_display = (
         "name", "code", "handling_department",
         "minimum_priority", "is_active", "sort_order",
@@ -25,14 +27,14 @@ class TicketCategoryAdmin(admin.ModelAdmin):
     prepopulated_fields = {"code": ("name",)}
 
 
-class TicketCommentInline(admin.TabularInline):
+class TicketCommentInline(TabularInline):
     model = TicketComment
     extra = 0
     readonly_fields = ("author", "created_at", "updated_at")
     fields = ("author", "body", "is_internal", "created_at", "updated_at")
 
 
-class TicketAttachmentInline(admin.TabularInline):
+class TicketAttachmentInline(TabularInline):
     model = TicketAttachment
     extra = 0
     readonly_fields = ("uploaded_by", "original_name", "created_at", "link")
@@ -48,7 +50,7 @@ class TicketAttachmentInline(admin.TabularInline):
         return "—"
 
 
-class TicketActivityInline(admin.TabularInline):
+class TicketActivityInline(TabularInline):
     model = TicketActivity
     extra = 0
     can_delete = False
@@ -61,17 +63,20 @@ class TicketActivityInline(admin.TabularInline):
 
 
 @admin.register(Ticket)
-class TicketAdmin(admin.ModelAdmin):
+class TicketAdmin(ModelAdmin):
     list_display = (
-        "reference", "subject", "state", "priority",
+        "reference", "subject", "state_badge", "priority_badge",
         "category", "assigned_to", "handling_department",
         "created_at",
     )
     list_filter = (
-        "state", "priority", "category",
-        "handling_department", "sla_response_breached",
-        "sla_resolution_breached",
+        ("state", ChoicesDropdownFilter), ("priority", ChoicesDropdownFilter),
+        ("category", RelatedDropdownFilter), ("handling_department", RelatedDropdownFilter),
+        "sla_response_breached", "sla_resolution_breached", ("created_at", RangeDateTimeFilter),
     )
+    list_select_related = ("category", "assigned_to", "handling_department")
+    state_badge = badge("state", "State")
+    priority_badge = badge("priority", "Priority", {'low': 'neutral', 'normal': 'info', 'high': 'warning', 'urgent': 'danger', 'critical': 'danger'})
     search_fields = ("reference", "subject", "body")
     readonly_fields = (
         "reference", "created_at", "updated_at",
@@ -118,14 +123,14 @@ class TicketAdmin(admin.ModelAdmin):
 
 
 @admin.register(TicketComment)
-class TicketCommentAdmin(admin.ModelAdmin):
+class TicketCommentAdmin(ModelAdmin):
     list_display = ("ticket", "author", "is_internal", "created_at")
     list_filter = ("is_internal",)
     search_fields = ("body", "ticket__reference")
 
 
 @admin.register(TicketAttachment)
-class TicketAttachmentAdmin(admin.ModelAdmin):
+class TicketAttachmentAdmin(ModelAdmin):
     list_display = ("ticket", "original_name", "uploaded_by", "created_at")
     search_fields = ("original_name", "ticket__reference")
     readonly_fields = ("link",)
@@ -141,7 +146,7 @@ class TicketAttachmentAdmin(admin.ModelAdmin):
 
 
 @admin.register(TicketActivity)
-class TicketActivityAdmin(admin.ModelAdmin):
+class TicketActivityAdmin(ModelAdmin):
     list_display = ("ticket", "kind", "actor", "created_at")
     list_filter = ("kind",)
     search_fields = ("ticket__reference", "message")

@@ -541,21 +541,15 @@ def raise_request_view(request, type_code=None):
         if form.is_valid():
             form_data = extract_form_data(form, request_type)
             try:
-                if request_type.code == "annual-leave":
-                    from leave.services import validate_application
-                    validate_application(request.user, form_data)
-                with transaction.atomic():
-                    req = services.raise_request(
-                        requester=request.user,
-                        request_type=request_type,
-                        subject=form.cleaned_data["subject"],
-                        body=form.cleaned_data["body"],
-                        priority=form.cleaned_data["priority"],
-                        form_data=form_data,
-                    )
-                    if request_type.code == "annual-leave":
-                        from leave.services import sync_application
-                        sync_application(req, form_data)
+                # Phase 9: leave checks + raise + leave sync in one service.
+                req = services.raise_request_checked(
+                    requester=request.user,
+                    request_type=request_type,
+                    subject=form.cleaned_data["subject"],
+                    body=form.cleaned_data["body"],
+                    priority=form.cleaned_data["priority"],
+                    form_data=form_data,
+                )
             except ValidationError as exc:
                 messages.error(request, "; ".join(exc.messages))
             else:
@@ -868,26 +862,15 @@ def resubmit(request, pk):
 
     form_data = extract_form_data(form, req.request_type)
     try:
-        if req.request_type.code == "annual-leave":
-            from leave.services import validate_application
-            validate_application(request.user, form_data, exclude_request_id=req.pk)
-        with transaction.atomic():
-            services.resubmit(
-                req, request.user,
-                subject=form.cleaned_data["subject"],
-                body=form.cleaned_data["body"],
-                comment=form.cleaned_data.get("comment") or "",
-                form_data=form_data,
-            )
-            if req.request_type.code == "annual-leave":
-                from leave.services import sync_application
-                sync_application(req, form_data)
-            if form.cleaned_data.get("file"):
-                services.add_attachment(
-                    req, request.user,
-                    file=form.cleaned_data["file"],
-                    description=form.cleaned_data.get("file_description") or "",
-                )
+        services.resubmit_checked(
+            req, request.user,
+            subject=form.cleaned_data["subject"],
+            body=form.cleaned_data["body"],
+            comment=form.cleaned_data.get("comment") or "",
+            form_data=form_data,
+            file=form.cleaned_data.get("file"),
+            file_description=form.cleaned_data.get("file_description") or "",
+        )
     except (PermissionDenied, ValidationError) as exc:
         messages.error(request, "; ".join(getattr(exc, "messages", [str(exc)])))
     else:

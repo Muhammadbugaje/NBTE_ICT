@@ -1,4 +1,5 @@
 {% extends "portal/_layout.html" %}
+{% load ux_tags %}
 {% block title %}{{ document.title }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Document{% endblock %}
 
@@ -78,6 +79,7 @@
               Download
             {% endif %}
           </a>
+          {% if not document.is_external and document.current_version %}{% preview_button document.effective_download_url document.current_version.original_name document.current_version.file_size %}{% endif %}
         {% endif %}
 
         {% if perms.portal.change_document or document.owner_id == request.user.pk %}
@@ -149,6 +151,8 @@
                   {% if v.change_note %}<p class="doc-version-note">{{ v.change_note }}</p>{% endif %}
                 </div>
               </div>
+              {% url 'portal:document_version_download' document.pk v.pk as v_url %}
+              {% preview_button v_url v.original_name v.file_size compact=True %}
               <a href="{% url 'portal:document_version_download' document.pk v.pk %}"
                  class="btn btn-ghost btn-sm">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>

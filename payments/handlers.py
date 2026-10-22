@@ -187,3 +187,104 @@ class UpdateFeeScheduleHandler(FinanceHandler):
                 setattr(target, f, payload[f] if payload[f] != "" else None if f.endswith("_id") or f == "due_days"
                         else payload[f])
         target.save()
+
+
+
+# ===========================================================================
+# Phase 8: a new fee schedule, and a bill issued by hand (two officers each)
+# ===========================================================================
+@register
+class CreateFeeScheduleHandler(FinanceHandler):
+    code = "payments.create_fee_schedule"
+    target_model = None
+
+    def target_label(self, target):
+        return ""
+
+    def payload_label(self, payload):
+        return f"New fee: {payload.get('name', '')} ({payload.get('code', '')})"
+
+    def validate(self, target, payload):
+        from . import fee_admin
+
+        fee_admin.clean_spec(payload)
+        amount, error = fee_admin.test_formula(payload.get("expr", ""), payload.get("vars") or [],
+                                               payload.get("sample") or {})
+        if amount is None:
+            raise ValidationError(error)
+
+    def preview(self, target, payload):
+        from . import fee_admin
+
+        amount, error = fee_admin.test_formula(payload.get("expr", ""), payload.get("vars") or [],
+                                               payload.get("sample") or {})
+        return [DiffRow("Fee", "—", f"{payload.get('name')} ({payload.get('code')})"),
+                DiffRow("Formula setting", "—", fee_admin.setting_key(payload.get("code", ""))),
+                DiffRow("Formula", "—", payload.get("expr", "")),
+                DiffRow("Variables", "—", ", ".join(payload.get("vars") or []) or "none"),
+                DiffRow("Due", "—", f"{payload.get('due_days')} days" if payload.get("due_days")
+                        else "qa.payment.due_days"),
+                DiffRow("Remita service type", "—", payload.get("remita_service_type_id") or "—"),
+                DiffRow("Test with the sample inputs", "—", naira(amount) if amount is not None else error)]
+
+    def apply(self, target, payload, actor):
+        from . import fee_admin
+
+        fee_admin.create_schedule(fee_admin.clean_spec(payload), actor=actor)
+
+
+@register
+class IssueBillHandler(FinanceHandler):
+    code = "payments.issue_bill"
+
+    @property
+    def target_model(self):
+        from institutions.models import Institution
+
+        return Institution
+
+    def target_label(self, target):
+        return f"Bill for {target.name} ({target.code})" if target else ""
+
+    def _schedule(self, payload):
+        schedule = FeeSchedule.objects.filter(code=payload.get("fee_code") or "", is_active=True).first()
+        if schedule is None:
+            raise ValidationError("Choose an active fee schedule.")
+        return schedule
+
+    def _amount(self, target, payload):
+        from qa_core.formula import FormulaError, evaluate_setting
+
+        from .money import to_money
+
+        schedule = self._schedule(payload)
+        try:
+            snap = evaluate_setting(schedule.formula, services.fee_variables(target, **(payload.get("variables") or {})))
+        except FormulaError as exc:
+            raise ValidationError(f"The fee formula could not be worked out: {exc}") from None
+        return schedule, to_money(snap["result"])
+
+    def validate(self, target, payload):
+        if target is None or target.status == "delisted":
+            raise ValidationError("Choose an institution that is not delisted.")
+        if len((payload.get("reason") or "").strip()) < 5:
+            raise ValidationError("Say why this bill is issued.")
+        schedule, amount = self._amount(target, payload)
+        if schedule.confirmed_setting and not services._bool(schedule.confirmed_setting, False):
+            raise ValidationError(f"{schedule.name}: the amount is not confirmed yet ({schedule.confirmed_setting}).")
+        if amount <= 0:
+            raise ValidationError(f"The formula gives {naira(amount)}; a bill must be more than zero.")
+
+    def preview(self, target, payload):
+        schedule, amount = self._amount(target, payload)
+        return [DiffRow("Institution", "", f"{target.name} ({target.code})"), DiffRow("Fee", "", schedule.name),
+                DiffRow("Amount (from the formula now)", "", naira(amount)),
+                DiffRow("Inputs given", "", ", ".join(f"{k} = {v}" for k, v in (payload.get("variables") or {})
+                                                     .items()) or "from the institution's record"),
+                DiffRow("Description on the slip", "", payload.get("description") or schedule.description),
+                DiffRow("Reason", "", payload.get("reason", ""))]
+
+    def apply(self, target, payload, actor):
+        schedule = self._schedule(payload)
+        services.issue_obligation(target, schedule.code, actor=actor, variables=payload.get("variables") or {},
+                                  description=payload.get("description") or "")

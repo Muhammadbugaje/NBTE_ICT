@@ -1,0 +1,48 @@
+{% load qa_tags %}
+<section class="qa-card" aria-labelledby="cap-h">
+  <header class="qa-card__head"><div><h2 id="cap-h">Capacity and resources</h2><p>How many streams each programme's classrooms, laboratories, library and staff can carry (Spec §7). Inputs start from the submitted SSQ; officers check and adjust them, then run the assessment. Each run is kept with the constants and formulas in effect at the time, so changing a setting later never changes a stored result.</p></div></header>
+  {% if capacity_denied %}<div class="qa-card__body"><p class="qa-muted">You do not hold accreditation.view_capacity_assessment.</p></div>{% endif %}
+</section>
+{% for item in capacity_items %}
+<section class="qa-card qa-cap" aria-labelledby="cap-{{ item.row.pk }}">
+  <header class="qa-card__head"><div><h2 id="cap-{{ item.row.pk }}">{{ item.row.programme }}</h2>
+    <p>{{ item.row.requested_streams }} stream{{ item.row.requested_streams|pluralize }} asked for · {{ item.row.programme.approved_streams }} approved now{% if item.row.programme.category %} · {{ item.row.programme.category.name }} ({{ item.row.programme.category.students_per_stream }} students per stream){% endif %}</p></div>
+    {% if item.overall %}<span class="qa-chip {% if item.overall.adequate %}qa-tone-success{% else %}qa-tone-danger{% endif %}">{% if item.overall.adequate %}Adequate{% else %}Short: {{ item.overall.short|join:", " }}{% endif %} · {{ item.overall.supportable_streams }} stream{{ item.overall.supportable_streams|pluralize }} supportable ({{ item.overall.assessed }}/{{ item.overall.of }} assessed)</span>{% else %}<span class="qa-chip">Not assessed yet</span>{% endif %}</header>
+  <div class="qa-cap__kinds">
+  {% for k in item.kinds %}
+    <details class="qa-cap__kind"{% if not k.assessment %} open{% endif %}>
+      <summary><span class="qa-cap__kind-title">{{ k.label }}</span>
+        {% if k.assessment %}<span class="qa-chip {{ k.assessment.result.adequacy|tone }}">{{ k.assessment.result.adequacy|capfirst }}</span><span class="qa-small qa-muted">{{ k.assessment.result.supportable_streams }} supportable · {{ k.assessment.result.requested_streams }} asked{% if k.assessment.result.shortfall %} · short by {{ k.assessment.result.shortfall }}{% endif %} · v{{ k.assessment.version }}, {{ k.assessment.computed_at|date:"j M Y" }}</span>{% else %}<span class="qa-small qa-muted">Not run yet</span>{% endif %}</summary>
+      <div class="qa-cap__body">
+        {% if k.assessment %}
+          <dl class="qa-dl qa-cap__result">
+            {% for key, value in k.assessment.result.detail.items %}{% if key != "rooms" %}<div><dt>{{ key|humanize_code }}</dt><dd class="qa-mono">{{ value|default_if_none:"—" }}</dd></div>{% endif %}{% endfor %}
+          </dl>
+          {% if k.assessment.result.detail.rooms %}<div class="qa-table-wrap"><table class="qa-table qa-table--compact"><thead><tr><th scope="col">Room</th><th scope="col">Seats / places</th><th scope="col">Rooms</th><th scope="col">Size factor</th></tr></thead><tbody>{% for r in k.assessment.result.detail.rooms %}<tr><td>{{ r.label|default:"—" }}</td><td>{{ r.seats }}</td><td>{{ r.count }}</td><td>{{ r.factor }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+          <details class="qa-rules"><summary>Constants and formulas used (v{{ k.assessment.version }})</summary>
+            <dl class="qa-dl">{% for key, value in k.assessment.parameters_snapshot.constants.items %}<div><dt class="qa-mono">{{ key }}</dt><dd class="qa-mono">{{ value }}</dd></div>{% endfor %}
+            {% for key, f in k.assessment.parameters_snapshot.formulas.items %}<div><dt class="qa-mono">{{ key }}</dt><dd class="qa-mono">{{ f.expr }}</dd></div>{% endfor %}</dl>
+            <p class="qa-small qa-muted">Run by {{ k.assessment.computed_by|who:"the system" }} on {{ k.assessment.computed_at|date:"j M Y, H:i" }}.</p></details>
+          {% if k.older %}<p class="qa-small qa-muted">Earlier runs: {% for o in k.older %}v{{ o.version }} ({{ o.result.supportable_streams }} supportable, {{ o.computed_at|date:"j M" }}){% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+        {% endif %}
+        {% if can_run_capacity %}
+        <form class="qa-stack qa-cap__form" method="post" action="{% url 'qa_case:capacity_run' case.pk item.row.pk k.kind %}" hx-post="{% url 'qa_case:capacity_run' case.pk item.row.pk k.kind %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="capacity">
+          <div class="qa-cap__fields">{% for f in k.fields %}<div class="qa-field"><label for="cf-{{ item.row.pk }}-{{ k.kind }}-{{ f.key }}">{{ f.label }}{% if f.help %} <span class="qa-muted">({{ f.help }})</span>{% endif %}</label><input class="input" type="number" inputmode="decimal" min="0" step="any" id="cf-{{ item.row.pk }}-{{ k.kind }}-{{ f.key }}" name="{{ f.key }}" value="{{ f.value }}"></div>{% endfor %}</div>
+          {% if k.rooms_kind %}
+          <fieldset class="qa-cap__rooms"><legend>{% if k.kind == "classroom" %}Classrooms{% else %}Laboratories and workshops{% endif %} <span class="qa-muted">(one line per size; leave a line empty to ignore it)</span></legend>
+            {% for r in k.rooms %}<div class="qa-cap__room">
+              <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-l">Name</label><input class="input" id="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-l" name="rooms-{{ forloop.counter0 }}-label" value="{{ r.label }}" maxlength="120"></div>
+              <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-s">{% if k.kind == "classroom" %}Seats{% else %}Places{% endif %}</label><input class="input" type="number" inputmode="numeric" min="0" id="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-s" name="rooms-{{ forloop.counter0 }}-seats" value="{{ r.seats }}"></div>
+              <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-c">Rooms</label><input class="input" type="number" inputmode="numeric" min="0" id="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-c" name="rooms-{{ forloop.counter0 }}-count" value="{{ r.count }}"></div>
+            </div>{% endfor %}
+          </fieldset>
+          {% endif %}
+          <div class="qa-form-actions"><button class="btn btn-primary btn-sm" type="submit">{% icon "check" 14 %} {% if k.assessment %}Re-run{% else %}Run{% endif %} assessment</button></div>
+        </form>
+        {% endif %}
+      </div>
+    </details>
+  {% endfor %}
+  </div>
+</section>
+{% endfor %}

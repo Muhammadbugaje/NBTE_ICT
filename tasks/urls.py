@@ -74,6 +74,7 @@ urlpatterns = [
 
     # ---- Bulk ----
     path("bulk/",                 views.task_bulk_action,  name="bulk_action"),
+    path("drafts/discard/",       views.task_discard_drafts, name="discard_drafts"),
 
     path("<int:pk>/reopen/",      views.task_reopen,        name="reopen"),
 

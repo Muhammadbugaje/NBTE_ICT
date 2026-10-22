@@ -116,6 +116,16 @@ class ThreadParticipant(models.Model):
     last_read_at = models.DateTimeField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
+    # Phase 9: chat upgrade.
+    # Set whenever this user's client fetches the thread or polls for updates;
+    # a message is "delivered" to them once this is >= its sent_at.
+    last_delivered_at = models.DateTimeField(null=True, blank=True)
+    is_pinned = models.BooleanField(default=False)
+    pinned_at = models.DateTimeField(null=True, blank=True)
+    # Null = not muted. "Always" is stored as a far-future date.
+    muted_until = models.DateTimeField(null=True, blank=True)
+
+    MAX_PINNED = 5
 
     class Meta:
         unique_together = ("thread", "user")
@@ -141,9 +151,30 @@ class Message(models.Model):
     )
     edited_at = models.DateTimeField(null=True, blank=True)
     is_deleted_for_everyone = models.BooleanField(default=False)
+    # Phase 9: chat upgrade.
+    forwarded = models.BooleanField(default=False)
+    # Bumped whenever anything a viewer sees on the message changes (edit,
+    # delete, reaction, poll vote, transcript, task/memo link) so the
+    # short-poll updates endpoint can send the new version.
+    changed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    linked_task = models.ForeignKey(
+        "tasks.Task", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="source_messages",
+    )
+    linked_memo = models.ForeignKey(
+        "Memo", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="source_messages",
+    )
 
     class Meta:
         ordering = ["sent_at", "id"]
+
+    def touch(self, save=True):
+        """Mark the message as changed for the live-updates endpoint."""
+        self.changed_at = timezone.now()
+        if save:
+            Message.objects.filter(pk=self.pk).update(changed_at=self.changed_at)
+        return self.changed_at
 
     def __str__(self):
         return f"[{self.thread_id}] {self.sender}: {self.body[:40]}"
@@ -208,6 +239,149 @@ class MessageAttachment(RestrictedFileModel):
         return self.message.thread.participants.filter(
             user=user, is_deleted=False,
         ).exists()
+
+
+# ---------------------------------------------------------------------------
+# Phase 9: reactions, stars, polls, voice notes
+# ---------------------------------------------------------------------------
+REACTION_EMOJIS = ["\U0001F44D", "\u2764\uFE0F", "\U0001F602", "\U0001F62E",
+                   "\U0001F622", "\U0001F64F", "\U0001F44F", "\u2705"]
+
+
+class MessageReaction(models.Model):
+    """One reaction per user per message; a new emoji replaces the old one."""
+    message = models.ForeignKey(Message, on_delete=models.CASCADE,
+                                related_name="reactions")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="message_reactions")
+    emoji = models.CharField(max_length=16)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["message", "user"],
+                                    name="messaging_unique_reaction_per_user"),
+        ]
+
+
+class MessageStar(models.Model):
+    message = models.ForeignKey(Message, on_delete=models.CASCADE,
+                                related_name="stars")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="starred_messages")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["message", "user"],
+                                    name="messaging_unique_star_per_user"),
+        ]
+
+
+class ChatPoll(models.Model):
+    message = models.OneToOneField(Message, on_delete=models.CASCADE,
+                                   related_name="poll")
+    question = models.CharField(max_length=300)
+    allow_multiple = models.BooleanField(default=False)
+    closes_at = models.DateTimeField(null=True, blank=True)
+
+    def is_closed(self):
+        return bool(self.closes_at and self.closes_at <= timezone.now())
+
+
+class ChatPollOption(models.Model):
+    poll = models.ForeignKey(ChatPoll, on_delete=models.CASCADE,
+                             related_name="options")
+    text = models.CharField(max_length=120)
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+
+class ChatPollVote(models.Model):
+    poll = models.ForeignKey(ChatPoll, on_delete=models.CASCADE,
+                             related_name="votes")
+    option = models.ForeignKey(ChatPollOption, on_delete=models.CASCADE,
+                               related_name="votes")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="chat_poll_votes")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["option", "user"],
+                                    name="messaging_unique_poll_vote_per_option"),
+        ]
+
+
+class VoiceNote(RestrictedFileModel):
+    """A recorded voice message, normalised to AAC-LC mono 16 kHz (.m4a)."""
+    MEDIA_SUBDIR = "messaging/voice"
+
+    PENDING, DONE, FAILED, DISABLED, UNAVAILABLE = (
+        "pending", "done", "failed", "disabled", "unavailable",
+    )
+    TRANSCRIPT_STATUS_CHOICES = [
+        (PENDING, "Transcribing"),
+        (DONE, "Done"),
+        (FAILED, "Failed"),
+        (DISABLED, "Turned off by the sender"),
+        (UNAVAILABLE, "Unavailable"),
+    ]
+
+    message = models.OneToOneField(Message, on_delete=models.CASCADE,
+                                   related_name="voice_note")
+    duration_ms = models.PositiveIntegerField(default=0)
+    size_bytes = models.PositiveIntegerField(default=0)
+    waveform = models.JSONField(default=list, blank=True)
+    mime = models.CharField(max_length=60, default="audio/mp4")
+    transcript_status = models.CharField(max_length=12, choices=TRANSCRIPT_STATUS_CHOICES,
+                                         default=PENDING)
+    transcript = models.TextField(blank=True)
+    transcript_language = models.CharField(max_length=12, blank=True)
+    transcript_confidence = models.FloatField(null=True, blank=True)
+    transcript_edited = models.BooleanField(default=False)
+    transcribed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def can_download(self, user):
+        # Same rules as MessageAttachment (participants only; not deleted for
+        # everyone; not hidden by this user) - voice notes do not expire.
+        if (
+            not user.is_authenticated
+            or self.is_deleted
+            or self.message.is_deleted_for_everyone
+            or self.message.hidden_for.filter(user=user).exists()
+        ):
+            return False
+        return self.message.thread.participants.filter(
+            user=user, is_deleted=False,
+        ).exists()
+
+    @property
+    def duration_label(self):
+        seconds = int(round((self.duration_ms or 0) / 1000))
+        return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+class VoiceNotePlay(models.Model):
+    """First time a listener played a voice note (drives the unplayed dot)."""
+    voice_note = models.ForeignKey(VoiceNote, on_delete=models.CASCADE,
+                                   related_name="plays")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="voice_note_plays")
+    played_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["voice_note", "user"],
+                                    name="messaging_unique_voice_play_per_user"),
+        ]
 
 
 def start_thread(*, creator, participants, subject="", initial_body="",
@@ -689,6 +863,9 @@ class MemoRecipient(models.Model):
     read_at = models.DateTimeField(null=True, blank=True, db_index=True)
     acknowledged_at = models.DateTimeField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+    # "Remove from my list" (Phase 8): the memo stays on record; it only
+    # leaves this recipient's inbox and archive.
+    hidden_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ("memo", "user")

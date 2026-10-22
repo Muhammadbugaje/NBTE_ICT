@@ -1,0 +1,22 @@
+<form method="post" action="{% url 'announcements:vote' a.pk %}" class="ann-poll-options"
+      {% if poll.allow_multiple %}hx-post="{% url 'announcements:vote' a.pk %}" hx-target="#poll-{{ a.pk }}" hx-swap="outerHTML"{% endif %}>
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  {% for r in poll.rows %}
+    {% if poll.allow_multiple %}
+      <label class="ann-poll-option">
+        <input type="checkbox" name="option" value="{{ r.option.pk }}" {% if r.chosen %}checked{% endif %}>
+        <span>{{ r.option.text }}</span>
+      </label>
+    {% else %}
+      <button type="submit" name="option" value="{{ r.option.pk }}" class="ann-poll-option"
+              hx-post="{% url 'announcements:vote' a.pk %}" hx-target="#poll-{{ a.pk }}" hx-swap="outerHTML">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/>{% if r.chosen %}<circle cx="12" cy="12" r="4.5" fill="currentColor"/>{% endif %}</svg>
+        <span>{{ r.option.text }}</span>
+      </button>
+    {% endif %}
+  {% endfor %}
+  {% if poll.allow_multiple %}
+    <div class="ann-poll-actions"><button type="submit" class="btn btn-primary btn-sm">Submit vote</button></div>
+  {% endif %}
+</form>

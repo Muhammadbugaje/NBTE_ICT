@@ -1,4 +1,5 @@
 {% extends base_template %}
+{% load ux_tags %}
 {% load qa_tags %}
 {% block title %}{{ query.reference }} · {{ portal_name }}{% endblock %}
 {% block content %}
@@ -15,7 +16,7 @@
       <section class="qa-card"><header class="qa-card__head"><div><h2>NBTE asks</h2><p>{{ query.created_at|date:"j M Y, H:i" }}</p></div></header><div class="qa-card__body"><p>{{ query.body|linebreaksbr }}</p></div></section>
       {% for r in responses %}
         <section class="qa-card qa-card--reply"><header class="qa-card__head"><div><h2>Your response</h2><p>{{ r.responded_by.get_full_name|default:r.responded_by.email }} · {{ r.at|date:"j M Y, H:i" }}</p></div></header>
-          <div class="qa-card__body qa-stack"><p>{{ r.body|linebreaksbr }}</p>{% if r.file %}<a class="btn btn-sm btn-subtle" href="{{ r.portal_download_url }}">{% icon "download" 14 %} {{ r.display_name }} ({{ r.size_label }})</a>{% endif %}</div></section>
+          <div class="qa-card__body qa-stack"><p>{{ r.body|linebreaksbr }}</p>{% if r.file %}<span class="fpv-pair"><a class="btn btn-sm btn-subtle" href="{{ r.portal_download_url }}">{% icon "download" 14 %} {{ r.display_name }} ({{ r.size_label }})</a>{% preview_button r.portal_download_url r.display_name r.size_bytes %}</span>{% endif %}</div></section>
       {% endfor %}
       {% if can_respond %}
         <section class="qa-card" aria-labelledby="qr-h"><header class="qa-card__head"><div><h2 id="qr-h">{% if responses %}Add to your response{% else %}Respond{% endif %}</h2><p>NBTE’s officer is notified as soon as you send it.</p></div></header>

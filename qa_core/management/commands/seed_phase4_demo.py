@@ -2,6 +2,8 @@
 
     python manage.py seed_phase4_demo                 # case at stage 2 (generate cost)
     python manage.py seed_phase4_demo --stage 3       # … or advanced to stage 3, 5, 11 …
+    python manage.py seed_phase4_demo --stage 18      # through the decisions (14–16) and stage 17:
+                                                      # programmes "Accredited — expires …", letters issued
     python manage.py seed_phase4_demo --reset-passwords
     python manage.py seed_phase4_demo --new-case      # another case (a fresh demo request)
 

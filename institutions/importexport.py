@@ -467,8 +467,15 @@ def summarise(rows):
 @transaction.atomic
 def stage_batch(upload, kind, *, user):
     """Validate an uploaded sheet and keep it as a batch (invalid or validated)."""
-    raw_rows = read_rows(upload, kind)
-    clean, errors = validate_rows(kind, raw_rows)
+    if kind == "legacy":  # Phase 8: migrate from the previous system (institutions/migration.py)
+        from . import migration
+
+        sheets = migration.read_workbook(upload)
+        raw_rows = [r for rows in sheets.values() for r in rows]
+        clean, errors = migration.validate(sheets)
+    else:
+        raw_rows = read_rows(upload, kind)
+        clean, errors = validate_rows(kind, raw_rows)
     batch = InstitutionImportBatch(kind=kind, created_by=user, department=getattr(user, "department", None),
                                    rows=clean if not errors else [], errors=errors,
                                    summary={**summarise(clean), "errors": len(errors), "total": len(raw_rows)},
@@ -481,6 +488,10 @@ def stage_batch(upload, kind, *, user):
 
 def revalidate(batch):
     """Run the stored rows through validation again (at confirm time)."""
+    if batch.kind == "legacy":
+        from . import migration
+
+        return migration.revalidate(batch)
     columns = COLUMNS[batch.kind]
     fields = [f for _h, f, _r, _x in columns]
     raw = []
@@ -524,7 +535,11 @@ def _state_name(pk):
 # ===========================================================================
 # Apply (inside the PendingAction's transaction)
 # ===========================================================================
-def apply_batch(batch, *, actor):
+def apply_batch(batch, *, actor, options=None):
+    if batch.kind == "legacy":
+        from . import migration
+
+        return migration.apply(batch, actor=actor, send_invites=bool((options or {}).get("send_invites")))
     rows = revalidate(batch)
     counts = {"created": 0, "updated": 0, "unchanged": 0}
     created_codes = []

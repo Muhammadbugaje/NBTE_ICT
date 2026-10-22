@@ -1,0 +1,59 @@
+{% load qa_tags %}
+{% include "qa_core/settings/_tabs.html" %}
+{% if errors %}<div class="qa-callout qa-callout--danger" role="alert">{% icon "alert" 18 "2.2" %}<div><strong>Not saved</strong><ul class="qa-small">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div></div>{% endif %}
+<section class="qa-card" aria-labelledby="wl-h">
+  <header class="qa-card__head"><div><h2 id="wl-h" data-qa-focus>Workload limits</h2>
+    <p>Share QA work fairly. Each row sets limits for one rank (a designation or role) or kind of person; a blank cell uses the row “Everyone else”, and a blank there uses the general rule shown in grey. The availability finder, Edit QA Mapping, SSQ review and visit-team assignment and task reassignment all refuse work that would break a limit, and say which one.</p></div>
+    {% if dual %}<span class="qa-chip qa-tone-warn">Dual control</span>{% endif %}
+  </header>
+  <form id="wl-form" class="qa-form" method="post" action="{% url 'qa_set:workload' %}" hx-post="{% url 'qa_set:workload' %}" hx-target="#qa-panel">
+    {% csrf_token %}
+    <div class="qa-table-wrap"><table class="qa-table qa-limits">
+      <caption class="sr-only">Workload limits per rank</caption>
+      <thead><tr><th scope="col">Applies to</th>{% for key, label, help, setting, fallback in fields %}<th scope="col" class="num"><span title="{{ help }}">{{ label }}</span></th>{% endfor %}{% if editable %}<th scope="col"><span class="sr-only">Remove</span></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr{% if row.key == "default" %} class="qa-limits__default"{% endif %}>
+          <td data-label="Applies to">
+            {% if row.key == "default" %}<input type="hidden" name="key" value="default"><strong>Everyone else</strong><br><span class="qa-small qa-muted">Default row</span>
+            {% elif editable %}<label class="sr-only" for="wl-key-{{ forloop.counter }}">Applies to</label>
+              <select class="input qa-select" id="wl-key-{{ forloop.counter }}" name="key"><option value="">Choose a rank…</option>{% for code, label in choices %}{% if code != "default" %}<option value="{{ code }}"{% if code == row.key %} selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}</select>
+            {% else %}<input type="hidden" name="key" value="{{ row.key }}"><strong>{{ row.who }}</strong>{% endif %}
+            <input type="hidden" name="label" value="{{ row.label|default:'' }}">
+          </td>
+          {% for cell in row.cells %}
+            <td data-label="{% for key, label, help, setting, fallback in fields %}{% if key == cell.field %}{{ label }}{% endif %}{% endfor %}" class="num">
+              {% if editable %}<input class="input qa-limits__num" type="number" min="0" step="1" inputmode="numeric" name="{{ cell.field }}" value="{{ cell.value }}" aria-label="{{ row.who }}: {{ cell.field }}" placeholder="{% if row.key == 'default' %}{{ general|get_item:cell.field|default_if_none:'no limit' }}{% else %}inherit{% endif %}">
+              {% else %}{% if cell.value != "" %}{{ cell.value }}{% elif row.key == "default" %}<span class="qa-muted">{{ general|get_item:cell.field|default_if_none:"no limit" }}</span>{% else %}<span class="qa-muted">inherit</span>{% endif %}{% endif %}
+            </td>
+          {% endfor %}
+          {% if editable %}<td>{% if row.key != "default" %}<button class="btn btn-xs btn-subtle" type="submit" name="op" value="remove:{{ forloop.counter0 }}" formnovalidate aria-label="Remove the row for {{ row.who }}">{% icon "x" 14 %} Remove</button>{% endif %}</td>{% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="qa-card__body qa-stack">
+      <ul class="qa-checks" role="list">
+        {% for s in switches %}<li><label><input type="checkbox" name="{{ s.key }}" value="1"{% if s.on %} checked{% endif %}{% if not editable %} disabled{% endif %}><span><strong>{{ s.label }}</strong><br><span class="qa-small qa-muted">{{ s.help }}</span></span></label></li>{% endfor %}
+      </ul>
+      {% if editable %}
+        <div class="qa-field"><label for="wl-reason">Reason for the change</label><input class="input" id="wl-reason" name="reason" placeholder="e.g. Directors were doing most visits" maxlength="255"></div>
+        <div class="qa-form-actions">
+          <button class="btn btn-subtle" type="submit" name="op" value="add" formnovalidate>{% icon "plus" 16 %} Add a rank</button>
+          <button class="btn btn-primary" type="submit" name="op" value="save">{% icon "check" 16 %} Save limits</button>
+          {% if dirty %}<span class="qa-small qa-muted" role="status">Unsaved changes.</span>{% endif %}
+        </div>
+      {% else %}{% include "qa_core/partials/_callout.html" with message=why|default:"You can read these limits but not change them." %}{% endif %}
+    </div>
+  </form>
+</section>
+<section class="qa-card" aria-labelledby="wl-how">
+  <header class="qa-card__head"><h2 id="wl-how">How a person's row is chosen</h2></header>
+  <div class="qa-card__body"><ol class="qa-twostep">
+    <li>Their <strong>designation</strong> (for example Chief Lecturer), or an external resource person's rank code.</li>
+    <li>Their <strong>role</strong> (for example Director).</li>
+    <li>Their kind: QA personnel, resource person or NBTE staff.</li>
+    <li>Otherwise <strong>Everyone else</strong>.</li>
+  </ol>
+  <p class="qa-small qa-muted">The finder ranks people with the fewest assignments this year first, then the longest since they last served. Current loads are shown in the finder and in the QA personnel and resource-person lists.</p></div>
+</section>

@@ -35,8 +35,24 @@ G_INTERACTION = "QA · Interaction (§20)"
 G_SETTINGS = "QA · Settings"
 G_INSTITUTIONS = "QA · Institutions and documents"
 G_COMPLAINTS = "QA · Complaints"  # Phase 7
+G_BACKUPS = "Backups"  # Phase 8 (Master Plan §22): system-wide, edited on Settings → Backups
+G_DECISIONS = "QA · Decisions and letters"  # Phase 8 (Master Plan Phase 6)
+G_CAPACITY = "QA · Capacity engine (Spec §7)"  # Phase 8 (Master Plan Phase 6)
 
-GROUP_ORDER = [G_FEES, G_INSTITUTIONS, G_WORKFLOW, G_COMPLAINTS, G_ELIGIBILITY, G_ACCESS, G_INTERACTION, G_SETTINGS]
+GROUP_ORDER = [G_FEES, G_INSTITUTIONS, G_WORKFLOW, G_DECISIONS, G_CAPACITY, G_COMPLAINTS, G_ELIGIBILITY, G_ACCESS,
+               G_INTERACTION, G_SETTINGS, G_BACKUPS]
+
+# Phase 8: every fee formula is evaluated with these variables (documented on
+# Settings → Fees). ``payments.services.fee_variables`` always supplies all of them.
+FEE_VARIABLES = [
+    ("ownership", "Ownership code of the institution: 'federal', 'state' or 'private'."),
+    ("institution_type", "Institution type code, e.g. 'polytechnic', 'monotechnic'."),
+    ("programmes", "Number of programmes the bill is for."),
+    ("new_programmes", "How many of those programmes are new (proposed)."),
+    ("streams", "Total streams asked for across those programmes (each programme counts at least 1)."),
+    ("max_streams", "The most streams asked for in any one of those programmes."),
+]
+FEE_VARIABLE_NAMES = [name for name, _help in FEE_VARIABLES]
 
 
 def _formula(expr, vars_, returns="decimal"):
@@ -46,20 +62,23 @@ def _formula(expr, vars_, returns="decimal"):
 SETTINGS = [
     # --- Fees and payments -------------------------------------------------
     ("qa.fee.institutional_processing",
-     _formula("4000000 if ownership == 'private' else 2000000", ["ownership"]),
+     _formula("4000000 if ownership == 'private' else 2000000", FEE_VARIABLE_NAMES),
      "formula", G_FEES,
      "SOP-01 institutional processing fee (₦). Annex A: first figure Private, second Public (Q-04).",
      EDIT, True),
     ("qa.fee.programme_processing",
-     _formula("programmes * (2000000 if ownership == 'private' else 1000000)", ["programmes", "ownership"]),
+     _formula("programmes * (2000000 if ownership == 'private' else 1000000)"
+              " + max(streams - programmes, 0) * cfg('qa.fee.programme.per_additional_stream')", FEE_VARIABLE_NAMES),
      "formula", G_FEES,
-     "Programme processing fee (₦) for a number of programmes, by ownership.",
+     "Programme processing fee (₦) for a number of programmes, by ownership, plus any extra streams beyond one "
+     "per programme (qa.fee.programme.per_additional_stream, ₦0 until NBTE sets it).",
      EDIT, True),
     ("qa.fee.qa_request_processing",
-     _formula("cfg('qa.fee.qa_request.base') + programmes * cfg('qa.fee.qa_request.per_programme')",
-              ["programmes"]),
+     _formula("cfg('qa.fee.qa_request.base') + programmes * cfg('qa.fee.qa_request.per_programme')"
+              " + max(streams - programmes, 0) * cfg('qa.fee.qa_request.per_additional_stream')",
+              FEE_VARIABLE_NAMES),
      "formula", G_FEES,
-     "SOP-02 processing fee (₦): base + programmes × per-programme (D15).",
+     "SOP-02 processing fee (₦): base + programmes × per-programme + extra streams × per-additional-stream (D15).",
      EDIT, True),
     ("qa.fee.qa_request_processing.confirmed", "false", "bool", G_FEES,
      "While false, SOP-02 bills cannot be issued (D15 unconfirmed; Q-04).",
@@ -308,7 +327,129 @@ SETTINGS_PHASE7 = [
      "Empty = holds are off.", EDIT, True),
 ]
 
+# Phase 8 — backups (Master Plan §22). The schedule is monthly by default; a
+# daily Celery Beat entry checks whether the interval has passed.
+BACKUP_PERM = "backups.manage_destinations"
+SETTINGS_BACKUPS = [
+    ("qa.backup.interval_days", "30", "int", G_BACKUPS,
+     "Days between scheduled backups (30 = monthly). A daily check starts one when this has passed.",
+     BACKUP_PERM, False),
+    ("qa.backup.keep_count", "8", "int", G_BACKUPS,
+     "Backups kept at each destination. Older ones are removed only after a newer backup succeeds there.",
+     BACKUP_PERM, False),
+    ("qa.backup.drill_every_n_runs", "4", "int", G_BACKUPS,
+     "Run an automatic restore drill after this many successful backups.", BACKUP_PERM, False),
+    ("qa.backup.encrypt_at_rest", "true", "bool", G_BACKUPS,
+     "Encrypt backups before they leave the server (needs BACKUP_ENCRYPTION_KEY in .env).", BACKUP_PERM, False),
+]
+
+# ---------------------------------------------------------------------------
+# Phase 8 — Master Plan Phase 6: decisions, letters, capacity, streams, expiry
+# ---------------------------------------------------------------------------
+CAPACITY_FORMULA_VARS = ["standard_hours", "total_size_factor", "contact_hours", "approved_streams", "other_load"]
+LETTER_TEMPLATE = {
+    "heading": "OUTCOME OF {qa_type_upper}",
+    "salutation": "Dear Sir/Madam,",
+    "subject": "{qa_type}: {programme} ({level})",
+    "approve": [
+        "Following the {qa_type_lower} exercise of {programme} at {institution} and the consideration of the "
+        "report by the Committee on Quality Assurance, I am directed to inform you that the Executive Secretary has "
+        "approved the programme for {approval_type} with effect from {commencement}.",
+        "The approval is for {streams} stream(s) and remains valid until {expiry}. You may apply for "
+        "re-accreditation from {reassessment_from}.",
+    ],
+    "deny": [
+        "Following the {qa_type_lower} exercise of {programme} at {institution} and the consideration of the "
+        "report by the Committee on Quality Assurance, I regret to inform you that the programme has not been "
+        "approved.",
+        "You may apply again when the weaknesses listed below have been corrected.",
+    ],
+    "weaknesses_intro": "The following weaknesses were noted and must be corrected:",
+    "closing": "Please accept the assurances of the Executive Secretary.",
+}
+
+SETTINGS_PHASE8 = [
+    # Streams and fees
+    ("qa.streams.max_per_programme", "10", "int", G_INSTITUTIONS,
+     "Most streams an institution may ask for in one programme (programme selection and QA requests).", EDIT,
+     False),
+    ("qa.fee.programme.per_additional_stream", "0", "decimal", G_FEES,
+     "Programme processing fee: amount (₦) for each stream beyond one per programme. 0 = streams do not change "
+     "the fee.", EDIT, True),
+    ("qa.fee.qa_request.per_additional_stream", "0", "decimal", G_FEES,
+     "SOP-02 fee: amount (₦) for each stream beyond one per programme. 0 = streams do not change the fee.",
+     EDIT, True),
+    # Decisions, approval and expiry
+    ("qa.cqac.batch_approval_enabled", "true", "bool", G_DECISIONS,
+     "The CQAC Chairman may approve recommendations in a batch, one programme category at a time (B23).",
+     EDIT, False),
+    ("qa.programme.renewal_reminder_days", json.dumps([180, 90, 30, 7]), "json", G_DECISIONS,
+     "Days before expiry at which the institution and its handling department are reminded to renew "
+     "(each reminder is sent once per expiry date).", EDIT, False),
+    ("qa.letters.watermark", json.dumps({"text": "NBTE DUPLICATE", "opacity": 0.12, "angle": 45}), "json",
+     G_DECISIONS, "Watermark on the duplicate outcome letter: text, opacity (0–1) and angle (degrees).", EDIT, False),
+    ("qa.letters.signatory", json.dumps({"name": "", "title": "Executive Secretary"}), "json", G_DECISIONS,
+     "Name and title printed under the signature line of outcome letters.", EDIT, True),
+    ("qa.letters.template", json.dumps(LETTER_TEMPLATE), "json", G_DECISIONS,
+     "Outcome letter wording. Placeholders: {institution} {programme} {level} {qa_type} {approval_type} "
+     "{streams} {commencement} {expiry} {reassessment_from} {reference} {date}.", EDIT, False),
+    # Capacity engine (Spec §7)
+    ("qa.capacity.classroom.use_factor", "0.8", "decimal", G_CAPACITY,
+     "Share of the standard hours a classroom can realistically be used.", EDIT, False),
+    ("qa.capacity.hours_per_day", "8", "int", G_CAPACITY, "Teaching hours in a day (standard hours).", EDIT, False),
+    ("qa.capacity.days_per_week", "5", "int", G_CAPACITY, "Teaching days in a week (standard hours).", EDIT, False),
+    ("qa.capacity.weeks_per_semester", "15", "int", G_CAPACITY, "Teaching weeks in a semester (standard hours).",
+     EDIT, False),
+    ("qa.capacity.classroom.size_factors", json.dumps([[15, 20, 0.5], [30, 40, 1.0], [45, 60, 1.5], [60, None, 2.0]]),
+     "json", G_CAPACITY,
+     "Classroom size factors: [from seats, to seats, factor]. A room takes the factor of the highest band it "
+     "reaches; below the first band it counts 0.", EDIT, False),
+    ("qa.capacity.lab.use_factor", "0.75", "decimal", G_CAPACITY,
+     "Share of the standard hours a laboratory or workshop can realistically be used.", EDIT, False),
+    ("qa.capacity.lab.size_factors", json.dumps([[15, 0.5], [30, 1.0], [45, 1.5]]), "json", G_CAPACITY,
+     "Laboratory size factors: [from places, factor]; the highest band reached applies.", EDIT, False),
+    ("qa.capacity.additional_streams",
+     _formula("((standard_hours * total_size_factor) - (contact_hours * approved_streams + other_load)) "
+              "/ contact_hours", CAPACITY_FORMULA_VARS),
+     "formula", G_CAPACITY,
+     "Additional streams the rooms can carry (classrooms and laboratories). Every capacity decision uses it.",
+     EDIT, True),
+    ("qa.capacity.library.seat_ratio", "0.1", "decimal", G_CAPACITY,
+     "Library seats needed per student (0.1 = one seat for every ten students).", EDIT, False),
+    ("qa.capacity.library.material_ratio", "0.3333", "decimal", G_CAPACITY,
+     "Programme titles needed per student (0.3333 = one title for every three students).", EDIT, False),
+    ("qa.capacity.lecturer_max_hours_week", "18", "int", G_CAPACITY,
+     "Most teaching hours a week for a full-time lecturer.", EDIT, False),
+    ("qa.capacity.admin_post_hours_week", "8", "int", G_CAPACITY,
+     "Teaching hours a week for a lecturer holding an administrative post.", EDIT, False),
+    ("qa.capacity.service_staff_ratio", "20", "int", G_CAPACITY,
+     "Students per technologist/technician (support staff needed = students ÷ this).", EDIT, False),
+    ("qa.capacity.rule_of_thumb", _formula("4 + 2 * (streams - 1)", ["streams"]), "formula", G_CAPACITY,
+     "Indicative minimum number of lecturers for a number of streams (a cross-check only).", EDIT, False),
+    ("qa.capacity.default_contact_hours_week", "20", "int", G_CAPACITY,
+     "Weekly contact hours of one stream, used to prefill an assessment (officers can change it).", EDIT, False),
+    ("qa.capacity.default_room_seats", "40", "int", G_CAPACITY,
+     "Seats assumed per classroom when the SSQ gives only the number of rooms (prefill only).", EDIT, False),
+    ("qa.ratio.staff_student", _formula("students / counted_staff", ["students", "counted_staff"]), "formula",
+     G_CAPACITY, "Staff–student ratio (B15): students per counted lecturer.", EDIT, False),
+    ("qa.ratio.hnd_min_rank", "lecturer-i", "str", G_CAPACITY,
+     "Lowest rank counted as HND teaching staff (B15).", EDIT, False),
+]
+
 SETTINGS = (SETTINGS + SETTINGS_PHASE2 + SETTINGS_PHASE3 + SETTINGS_PHASE4 + SETTINGS_PHASE5 + SETTINGS_PHASE6
-            + SETTINGS_PHASE7)
+            + SETTINGS_PHASE7 + SETTINGS_PHASE8 + SETTINGS_BACKUPS)
+
+# Phase 8 — fair workload limits per rank (Master Plan §9; Settings → QA → Workload limits)
+SETTINGS_PHASE8_WORKLOAD = [
+    ("qa.workload.limits", '{"rows": [{"key": "default"}]}', "json", G_ELIGIBILITY,
+     "Workload limits per rank (designation or role code): SSQ reviews at once and per year, visits per year, "
+     "times at the same institution within N months, open tasks. Blank cells use the general settings. "
+     "Edit in Settings → QA → Workload limits.", EDIT, False),
+    ("qa.workload.staff_first", "true", "bool", G_ELIGIBILITY,
+     "List eligible NBTE staff before resource persons in the availability finder.", EDIT, False),
+    ("qa.workload.resource_persons_only_when_no_staff", "false", "bool", G_ELIGIBILITY,
+     "Block resource persons while an eligible NBTE staff member is free for the same need.", EDIT, False),
+]
+SETTINGS = SETTINGS + SETTINGS_PHASE8_WORKLOAD
 
 SETTING_KEYS = [row[0] for row in SETTINGS]

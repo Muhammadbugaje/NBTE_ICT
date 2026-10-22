@@ -1,4 +1,4 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load ux_tags %}
 <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_fin:obligations' %}" hx-get="{% url 'qa_fin:obligations' %}" hx-target="#qa-panel" hx-push-url="true">Bills</a><span aria-hidden="true">/</span><span aria-current="page">{{ ob.reference }}</span></nav>
 <header class="qa-detail-head">
   <div><span class="qa-eyebrow">{% icon "card" 14 "2.2" %} {{ ob.fee_schedule.name }}</span><h1 data-qa-focus>{{ ob.institution.name }}</h1><p class="qa-detail-head__target">{{ ob.description }}{% if ob.source_reference %} · for {{ ob.source_reference }}{% endif %}</p></div>
@@ -27,11 +27,11 @@
 
     <section class="qa-card"><header class="qa-card__head"><h2>Evidence on file</h2></header>
       <div class="qa-card__body qa-evidence">
-        {% for p in proofs %}<div class="qa-ev{% if p.fraud_flag %} qa-ev--warn{% endif %}"><div class="qa-ev__head"><span>{% icon "file" 16 %} {{ p.get_kind_display }} · {{ p.teller_number|default:p.display_name }}</span><a class="btn btn-sm btn-subtle" href="{{ p.download_url }}">Open</a></div><div class="qa-ev__kv"><span><small>Amount</small>{{ p.amount_claimed|naira }}</span><span><small>Paid on</small>{{ p.paid_on|date:"j M Y"|default:"—" }}</span><span><small>Uploaded by</small>{{ p.uploaded_by|who:"—" }}</span></div></div>{% endfor %}
+        {% for p in proofs %}<div class="qa-ev{% if p.fraud_flag %} qa-ev--warn{% endif %}"><div class="qa-ev__head"><span>{% icon "file" 16 %} {{ p.get_kind_display }} · {{ p.teller_number|default:p.display_name }}</span><span class="fpv-pair">{% preview_button p.download_url p.display_name p.size_bytes %}<a class="btn btn-sm btn-subtle" href="{{ p.download_url }}">Download</a></span></div><div class="qa-ev__kv"><span><small>Amount</small>{{ p.amount_claimed|naira }}</span><span><small>Paid on</small>{{ p.paid_on|date:"j M Y"|default:"—" }}</span><span><small>Uploaded by</small>{{ p.uploaded_by|who:"—" }}</span></div></div>{% endfor %}
         {% for a in attempts %}<div class="qa-ev"><div class="qa-ev__head"><span>{% icon "card" 16 %} {{ a.get_provider_display }} · {{ a.provider_reference }}</span><span class="qa-chip {{ a.status|tone }}">{{ a.get_status_display }}</span></div><div class="qa-ev__kv"><span><small>Amount</small>{{ a.amount|naira }}</span><span><small>Started</small>{{ a.created_at|date:"j M Y, H:i" }}</span>{% if a.failure_reason %}<span style="grid-column:1/-1"><small>Note</small>{{ a.failure_reason }}</span>{% endif %}</div></div>{% endfor %}
         {% for l in lines %}<div class="qa-ev qa-ev--ok"><div class="qa-ev__head"><span>{% icon "sheet" 16 %} Statement #{{ l.statement_id }}, line {{ l.row_number }}</span><span>{{ l.amount|naira }}</span></div><p class="qa-small qa-muted">{{ l.narration }}</p></div>{% endfor %}
         {% if not proofs and not attempts and not lines %}<p class="qa-small qa-muted">Nothing yet.</p>{% endif %}
-        {% for a in advices %}<a class="btn btn-sm btn-subtle" href="{{ a.download_url }}">{% icon "download" 14 %} Payment Advice {{ a.reference }} · {{ a.amount|naira }}</a>{% endfor %}
+        {% for a in advices %}<span class="fpv-pair"><a class="btn btn-sm btn-subtle" href="{{ a.download_url }}">{% icon "download" 14 %} Payment Advice {{ a.reference }} · {{ a.amount|naira }}</a>{% preview_button a.download_url a.display_name a.size_bytes %}</span>{% endfor %}
       </div></section>
 
     <section class="qa-card"><header class="qa-card__head"><h2>History</h2></header>

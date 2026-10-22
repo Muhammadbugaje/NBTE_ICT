@@ -1,5 +1,7 @@
 """Tasks admin — read-focused. Actions live in services layer."""
 from django.contrib import admin
+from core.admin_base import ModelAdmin, StackedInline, TabularInline  # Phase 8 admin theme
+from core.admin_base import ChoicesDropdownFilter, RangeDateFilter, RangeDateTimeFilter, RelatedDropdownFilter, badge
 from django import forms
 from django.db import models
 from django.utils.html import format_html
@@ -11,7 +13,7 @@ from .models import (
 
 
 @admin.register(TaskCategory)
-class TaskCategoryAdmin(admin.ModelAdmin):
+class TaskCategoryAdmin(ModelAdmin):
     list_display = (
         "name", "code", "handling_department", "default_priority",
         "default_due_days", "requires_review", "is_reusable",
@@ -25,7 +27,7 @@ class TaskCategoryAdmin(admin.ModelAdmin):
     prepopulated_fields = {"code": ("name",)}
 
 
-class TaskSubtaskInline(admin.TabularInline):
+class TaskSubtaskInline(TabularInline):
     model = Task
     fk_name = "parent"
     extra = 0
@@ -38,7 +40,7 @@ class TaskSubtaskInline(admin.TabularInline):
         return False
 
 
-class TaskAssigneeInline(admin.TabularInline):
+class TaskAssigneeInline(TabularInline):
     model = TaskAssignee
     extra = 0
     fields = (
@@ -48,14 +50,14 @@ class TaskAssigneeInline(admin.TabularInline):
     readonly_fields = ("assigned_at", "accepted_at", "started_at", "completed_at")
 
 
-class TaskCommentInline(admin.TabularInline):
+class TaskCommentInline(TabularInline):
     model = TaskComment
     extra = 0
     fields = ("author", "body", "is_internal", "is_pinned", "created_at")
     readonly_fields = ("author", "created_at")
 
 
-class TaskAttachmentInline(admin.TabularInline):
+class TaskAttachmentInline(TabularInline):
     model = TaskAttachment
     extra = 0
     fields = ("uploaded_by", "file", "original_name", "description", "created_at", "link")
@@ -71,7 +73,7 @@ class TaskAttachmentInline(admin.TabularInline):
         return "—"
 
 
-class TaskActivityInline(admin.TabularInline):
+class TaskActivityInline(TabularInline):
     model = TaskActivity
     extra = 0
     can_delete = False
@@ -83,7 +85,7 @@ class TaskActivityInline(admin.TabularInline):
         return False
 
 
-class TaskDependencyInline(admin.TabularInline):
+class TaskDependencyInline(TabularInline):
     model = TaskDependency
     fk_name = "task"
     extra = 0
@@ -91,7 +93,7 @@ class TaskDependencyInline(admin.TabularInline):
     fields = ("depends_on", "note")
 
 
-class TaskTimeEntryInline(admin.TabularInline):
+class TaskTimeEntryInline(TabularInline):
     model = TaskTimeEntry
     extra = 0
     fields = ("user", "started_at", "ended_at", "duration_seconds", "note")
@@ -99,15 +101,19 @@ class TaskTimeEntryInline(admin.TabularInline):
 
 
 @admin.register(Task)
-class TaskAdmin(admin.ModelAdmin):
+class TaskAdmin(ModelAdmin):
     list_display = (
-        "reference", "title", "state", "priority",
+        "reference", "title", "state_badge", "priority_badge",
         "created_by", "due_date", "owner_department",
     )
     list_filter = (
-        "state", "priority", "requires_review", "is_recurring",
-        "recurrence_type", "owner_department", "category",
+        ("state", ChoicesDropdownFilter), ("priority", ChoicesDropdownFilter),
+        ("owner_department", RelatedDropdownFilter), ("category", RelatedDropdownFilter),
+        ("due_date", RangeDateFilter), "requires_review", "is_recurring", "recurrence_type",
     )
+    list_select_related = ("created_by", "owner_department")
+    state_badge = badge("state", "State")
+    priority_badge = badge("priority", "Priority", {'low': 'neutral', 'normal': 'info', 'high': 'warning', 'urgent': 'danger', 'critical': 'danger'})
     search_fields = ("reference", "title", "description")
     readonly_fields = (
         "reference", "created_at", "updated_at",
@@ -150,14 +156,15 @@ class TaskAdmin(admin.ModelAdmin):
 
 
 @admin.register(TaskAssignee)
-class TaskAssigneeAdmin(admin.ModelAdmin):
-    list_display = ("task", "user", "state", "assigned_at", "completed_at")
-    list_filter = ("state",)
+class TaskAssigneeAdmin(ModelAdmin):
+    list_display = ("task", "user", "state_badge", "assigned_at", "completed_at")
+    list_filter = (("state", ChoicesDropdownFilter), ("assigned_at", RangeDateTimeFilter))
+    state_badge = badge("state", "State")
     search_fields = ("task__reference", "user__email")
 
 
 @admin.register(TaskActivity)
-class TaskActivityAdmin(admin.ModelAdmin):
+class TaskActivityAdmin(ModelAdmin):
     list_display = ("task", "kind", "actor", "created_at")
     list_filter = ("kind",)
     search_fields = ("task__reference", "message")
@@ -165,14 +172,14 @@ class TaskActivityAdmin(admin.ModelAdmin):
 
 
 @admin.register(TaskComment)
-class TaskCommentAdmin(admin.ModelAdmin):
+class TaskCommentAdmin(ModelAdmin):
     list_display = ("task", "author", "is_internal", "is_pinned", "created_at")
     list_filter = ("is_internal", "is_pinned")
     search_fields = ("body", "task__reference")
 
 
 @admin.register(TaskAttachment)
-class TaskAttachmentAdmin(admin.ModelAdmin):
+class TaskAttachmentAdmin(ModelAdmin):
     list_display = ("task", "original_name", "uploaded_by", "created_at")
     search_fields = ("original_name", "task__reference")
     readonly_fields = ("link",)
@@ -188,13 +195,13 @@ class TaskAttachmentAdmin(admin.ModelAdmin):
 
 
 @admin.register(TaskTimeEntry)
-class TaskTimeEntryAdmin(admin.ModelAdmin):
+class TaskTimeEntryAdmin(ModelAdmin):
     list_display = ("task", "user", "started_at", "ended_at", "hours")
     list_filter = ("user",)
     search_fields = ("task__reference", "user__email")
 
 
 @admin.register(TaskDependency)
-class TaskDependencyAdmin(admin.ModelAdmin):
+class TaskDependencyAdmin(ModelAdmin):
     list_display = ("task", "depends_on", "created_at")
     search_fields = ("task__reference", "depends_on__reference")

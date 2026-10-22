@@ -1,0 +1,20 @@
+{# Acknowledge control. `target` = element to swap; `view` tells the server which partial to return. #}
+{% if a.requires_ack and a.in_audience %}
+  {% if a.is_acked %}
+    <span class="ann-acked">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+      You acknowledged
+    </span>
+  {% elif not a.is_expired %}
+    <form method="post" action="{% url 'announcements:acknowledge' a.pk %}" class="m-0"
+          hx-post="{% url 'announcements:acknowledge' a.pk %}" hx-target="{{ target }}" hx-swap="outerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <input type="hidden" name="view" value="{{ view }}">
+      <button type="submit" class="btn btn-primary btn-sm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+        Acknowledge
+      </button>
+    </form>
+  {% endif %}
+{% endif %}

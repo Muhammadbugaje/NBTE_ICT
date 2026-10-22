@@ -1,0 +1,23 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Outcome letters · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "file" 14 "2.2" %} Decisions</span>
+    <h1 data-qa-focus>Outcome letters</h1>
+    <p>NBTE's letter for each decided programme. Each comes as the original and a duplicate marked with a visible watermark — keep the original for your records and use the duplicate for copies.</p>
+  </header>
+  <section class="qa-card" aria-label="Your outcome letters">
+  {% if letters %}
+    <ul class="qa-rowlist" role="list">{% for l in letters %}
+      <li class="qa-rowlink qa-rowlink--static{% if not l.is_current %} is-muted{% endif %}">
+        <span class="qa-rowlink__badge">{% icon "file" 16 %}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ l.programme }}</span>
+          <span class="qa-rowlink__meta"><span class="qa-mono">{{ l.reference }}</span><span>· {% if l.decision.outcome == "approve" %}{{ l.decision.approval_type.name }}, expires {{ l.decision.expiry_date|date:"j M Y" }}{% else %}Not approved{% endif %}</span><span>· {{ l.generated_at|date:"j M Y" }}</span>{% if not l.is_current %}<span>· replaced by a newer letter</span>{% endif %}</span></span>
+        <span class="qa-rowlink__side">{% for c in l.copies.all %}<a class="btn btn-sm {% if c.kind == 'original' %}btn-primary{% else %}btn-subtle{% endif %}" href="{{ c.portal_download_url }}">{% icon "download" 14 %} {{ c.get_kind_display }}</a>{% endfor %}</span>
+      </li>{% endfor %}</ul>
+  {% else %}<div class="qa-card__body"><p class="qa-muted">No letters yet. When NBTE decides on a programme, its letter appears here.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

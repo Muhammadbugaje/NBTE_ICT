@@ -70,11 +70,18 @@ def closed_message(email, phone):
     return "Institution registration is currently managed by NBTE. Please contact NBTE to begin your registration."
 
 
+def info_name(request=None):
+    try:
+        return str(config.get("site.portal_name", "") or "").strip()
+    except Exception:
+        return ""
+
+
 def public_context(request, page):
     email, phone = contact_details(request)
     return {"page": page, "registration_open": registration_open(), "contact_email": email,
             "contact_phone": phone, "registration_closed_message": closed_message(email, phone),
-            "portal_name": "NBTE Quality Assurance Portal",
+            "portal_name": (info_name(request) or "NBTE Quality Assurance Portal"),
             "maintenance_message": (config.get("qa.portal.maintenance_message", "") or "").strip()}
 
 

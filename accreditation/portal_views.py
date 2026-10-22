@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from django import forms
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.validators import MaxValueValidator
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
@@ -46,6 +47,7 @@ def _context(request, inst, app, **extra):
                            .select_related("level", "category").order_by("name")),
         "obligations": _obligations(request, app),
     }
+    ctx["estimate"] = _programme_estimate(inst, ctx["programmes"])
     ctx.update(extra)
     return _shell_context(request, "application", **ctx)
 
@@ -112,6 +114,31 @@ class ProgrammeForm(QAForm):
     name = forms.CharField(max_length=200, label="Programme")
     level = forms.ModelChoiceField(ProgrammeLevel.objects.filter(is_active=True).exclude(code="admin"))
     category = forms.ModelChoiceField(ProgrammeCategory.objects.filter(is_active=True), required=False)
+    streams = forms.IntegerField(label="Number of streams", min_value=1, initial=1,
+                                 help_text="How many streams (parallel classes) you plan to admit.")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .qa_services import max_streams
+
+        top = max_streams()
+        self.fields["streams"].max_value = top
+        self.fields["streams"].validators.append(MaxValueValidator(top))
+        self.fields["streams"].widget.attrs.update({"min": 1, "max": top, "inputmode": "numeric"})
+        self.fields["streams"].help_text = f"How many streams (parallel classes) you plan to admit: 1 to {top}."
+
+
+def _programme_estimate(inst, programmes, pending=None):
+    """Phase 8: the programme processing fee for the listed programmes (and
+    the one being typed, if any), one line per programme."""
+    from payments.services import fee_estimate
+
+    pairs = [(p, p.requested_streams) for p in programmes if p.status != "dropped"]
+    if pending is not None:
+        pairs.append(pending)
+    if not pairs:
+        return None
+    return fee_estimate(inst, "programme_processing", pairs)
 
 
 @institution_required
@@ -136,7 +163,7 @@ def programmes(request):
                 form.add_error("name", "This programme is already on your list.")
             else:
                 inst_services.add_proposed_programme(inst, d["name"].strip(), d["level"], d.get("category"),
-                                                     application=app, user=request.user)
+                                                     application=app, user=request.user, streams=d["streams"])
                 response = render(request, "qa_portal/application/_programmes.html",
                                   _context(request, inst, app, form=ProgrammeForm(), selecting=selecting))
                 return toast(response, "success", "Programme added")
@@ -159,3 +186,53 @@ def programme_remove(request, pk):
     response = render(request, "qa_portal/application/_programmes.html",
                       _context(request, inst, app, form=ProgrammeForm(), selecting=True))
     return toast(response, "info", "Programme removed")
+
+
+@institution_required
+@require_POST
+def programme_streams(request, pk):
+    """Phase 8: change the streams of a proposed programme while selecting."""
+    from .qa_services import clean_streams
+
+    inst = _inst(request)
+    app = _app(request, inst)
+    programme = Programme.objects.for_user(request.user).filter(pk=pk, institution=inst).first()
+    if programme is None or app is None or app.status != "programme_selection" or programme.status != "proposed" \
+            or getattr(request, "is_impersonating", False):
+        raise Http404
+    try:
+        n = clean_streams(request.POST.get("streams"))
+    except ValidationError as exc:
+        response = render(request, "qa_portal/application/_programmes.html",
+                          _context(request, inst, app, form=ProgrammeForm(), selecting=True,
+                                   stream_error=" ".join(exc.messages)), status=422)
+        return toast(response, "error", "Not saved", " ".join(exc.messages))
+    inst_services.set_programme_streams(programme, n, user=request.user)
+    response = render(request, "qa_portal/application/_programmes.html",
+                      _context(request, inst, app, form=ProgrammeForm(), selecting=True))
+    return toast(response, "success", f"{programme.name}: {n} stream{'s' if n != 1 else ''}")
+
+
+@institution_required
+def programme_estimate(request):
+    """Phase 8: live programme-fee estimate while the institution types (HTMX)."""
+    from .qa_services import clean_streams
+
+    inst = _inst(request)
+    app = _app(request, inst)
+    if app is None:
+        raise Http404
+    programmes = list(Programme.objects.for_user(request.user).filter(institution=inst))
+    pending, problems = None, []
+    name = (request.GET.get("name") or "").strip()
+    raw = request.GET.get("streams")
+    if name or raw:
+        try:
+            n = clean_streams(raw or 1)
+        except ValidationError as exc:
+            problems.append(" ".join(exc.messages))
+            n = 1
+        pending = (Programme(name=name or "New programme", status="proposed"), n)
+    return render(request, "qa_portal/qa_requests/_fee_estimate.html",
+                  {"estimate": _programme_estimate(inst, programmes, pending), "problems": problems,
+                   "qa_type": True, "count": len(programmes)})

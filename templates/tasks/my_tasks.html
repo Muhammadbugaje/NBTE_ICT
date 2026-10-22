@@ -14,6 +14,14 @@
       <p>{{ total }} task{{ total|pluralize }} you've assigned.</p>
     </div>
     <div class="tsk-page-head-actions">
+      {% if draft_count %}
+        <form method="post" action="{% url 'tasks:discard_drafts' %}" class="m-0"
+              data-confirm="Your {{ draft_count }} draft task{{ draft_count|pluralize }} {{ draft_count|pluralize:'is,are' }} deleted. Drafts were never sent to anyone, so nobody else is affected."
+              data-confirm-title="Discard your drafts?" data-confirm-action="Discard drafts">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="tsk-btn tsk-btn-ghost">Discard my drafts ({{ draft_count }})</button>
+        </form>
+      {% endif %}
       <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         All tasks

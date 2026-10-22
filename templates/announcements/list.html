@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Announcements · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Announcements{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/announcements.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="ann-page">
+  <header class="ann-hero">
+    <div class="ann-hero-title">
+      <span class="ann-hero-mark" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+      </span>
+      <div>
+        <span class="ann-hero-eyebrow">NBTE Announcements</span>
+        <h1>Announcements</h1>
+        <p>Official notices from management, ICT and HR.{% if counts.ack %} <strong>{{ counts.ack }}</strong> waiting for your acknowledgement.{% endif %}</p>
+      </div>
+    </div>
+    {% if can_post %}
+      <div class="ann-hero-actions">
+        <a href="{% url 'announcements:create' %}" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New announcement
+        </a>
+      </div>
+    {% endif %}
+  </header>
+
+  <div class="ann-toolbar">
+    <nav class="ann-filters" aria-label="Filter announcements">
+      <a href="?filter=all" class="ann-filter {% if filter == 'all' %}active{% endif %}" {% if filter == 'all' %}aria-current="page"{% endif %}>All</a>
+      <a href="?filter=unread" class="ann-filter {% if filter == 'unread' %}active{% endif %}" {% if filter == 'unread' %}aria-current="page"{% endif %}>Unread{% if counts.unread %} <span class="ann-filter-count">{{ counts.unread }}</span>{% endif %}</a>
+      <a href="?filter=ack" class="ann-filter {% if filter == 'ack' %}active{% endif %}" {% if filter == 'ack' %}aria-current="page"{% endif %}>Needs my acknowledgement{% if counts.ack %} <span class="ann-filter-count">{{ counts.ack }}</span>{% endif %}</a>
+      {% if can_post %}
+        <a href="?filter=sent" class="ann-filter {% if filter == 'sent' %}active{% endif %}" {% if filter == 'sent' %}aria-current="page"{% endif %}>Sent by me{% if counts.sent %} <span class="ann-filter-count">{{ counts.sent }}</span>{% endif %}</a>
+        <a href="?filter=drafts" class="ann-filter {% if filter == 'drafts' %}active{% endif %}" {% if filter == 'drafts' %}aria-current="page"{% endif %}>My drafts{% if counts.drafts %} <span class="ann-filter-count">{{ counts.drafts }}</span>{% endif %}</a>
+      {% endif %}
+    </nav>
+    <form method="get" class="ann-search" role="search">
+      <input type="hidden" name="filter" value="{{ filter }}">
+      <input type="search" name="q" value="{{ q }}" class="input" placeholder="Search announcements…" aria-label="Search announcements">
+      {% if q %}<a href="?filter={{ filter }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+    </form>
+  </div>
+
+  {% if items %}
+    <div class="ann-list">
+      {% for a in items %}{% include "announcements/_card.html" %}{% endfor %}
+    </div>
+
+    {% if page.has_other_pages %}
+      <nav class="pagination" aria-label="Pagination">
+        {% if page.has_previous %}<a href="?filter={{ filter }}&q={{ q|urlencode }}&page={{ page.previous_page_number }}">« Prev</a>{% else %}<span class="disabled">« Prev</span>{% endif %}
+        <span class="current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="?filter={{ filter }}&q={{ q|urlencode }}&page={{ page.next_page_number }}">Next »</a>{% else %}<span class="disabled">Next »</span>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="card ann-empty">
+      <span class="ann-empty-icon" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+      </span>
+      <h3>
+        {% if q %}No announcements match “{{ q }}”
+        {% elif filter == 'unread' %}You're all caught up
+        {% elif filter == 'ack' %}Nothing waiting for your acknowledgement
+        {% elif filter == 'drafts' %}No drafts
+        {% elif filter == 'sent' %}You haven't published anything yet
+        {% else %}No announcements yet{% endif %}
+      </h3>
+      <p>{% if filter == 'drafts' %}Drafts you save appear here until you publish them.{% else %}Official notices for you or your department will appear here.{% endif %}</p>
+      {% if q %}<a href="?filter={{ filter }}" class="btn btn-ghost">Clear search</a>{% elif can_post and filter != 'unread' and filter != 'ack' %}<a href="{% url 'announcements:create' %}" class="btn btn-primary">Write an announcement</a>{% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

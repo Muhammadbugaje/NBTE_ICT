@@ -475,9 +475,17 @@ class Programme(InstitutionScopedModelMixin, TimeStampedModel):
     is_institutional_admin = models.BooleanField(default=False, help_text="Requirement 6.3.")
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="proposed", db_index=True)
     approved_streams = models.PositiveSmallIntegerField(default=0)
+    requested_streams = models.PositiveSmallIntegerField(
+        default=1, help_text="Streams asked for when the programme was proposed (SOP-01 programme fee).")
+    approval_type = models.ForeignKey("accreditation.ApprovalType", null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="programmes")
     commencement_date = models.DateField(null=True, blank=True)
     expiry_date = models.DateField(null=True, blank=True, help_text="Always derived (B18).")
     eligible_for_reassessment_at = models.DateField(null=True, blank=True)
+    expired_at = models.DateTimeField(null=True, blank=True)
+    renewal_reminders_sent = models.JSONField(
+        default=list, blank=True,
+        help_text="Reminder thresholds already sent for the current expiry date, e.g. [\"2031-10-15:180\"].")
     source_application = models.ForeignKey("accreditation.Application", null=True, blank=True,
                                            on_delete=models.SET_NULL, related_name="programmes")
     dropped_at = models.DateTimeField(null=True, blank=True)
@@ -505,6 +513,7 @@ class InstitutionDocument(InstitutionScopedModelMixin, QAFileMixin, TimeStampedM
     AUDITED = True
     INSTITUTION_PATH = "institution"
     MEDIA_SUBDIR = "qa/institution_documents"
+    INSTITUTION_MEDIA_KIND = "documents"
     SUBMITTED, ACCEPTED, RETURNED, SUPERSEDED = "submitted", "accepted", "returned", "superseded"
     STATUS_CHOICES = [(SUBMITTED, "Submitted — awaiting review"), (ACCEPTED, "Accepted"),
                       (RETURNED, "Returned — upload a new version"), (SUPERSEDED, "Superseded")]
@@ -679,7 +688,8 @@ class InstitutionImportBatch(QAFileMixin, TimeStampedModel):
 
     AUDITED = True
     MEDIA_SUBDIR = "qa/imports"
-    KIND_CHOICES = [("institutions", "Institutions"), ("programmes", "Programmes")]
+    KIND_CHOICES = [("institutions", "Institutions"), ("programmes", "Programmes"),
+                    ("legacy", "Migration from the previous system")]
     STATUS_CHOICES = [("validated", "Validated"), ("invalid", "Has errors"),
                       ("pending", "Waiting for a second officer"), ("applied", "Applied"),
                       ("failed", "Failed"), ("rejected", "Rejected"), ("withdrawn", "Withdrawn")]

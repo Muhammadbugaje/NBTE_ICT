@@ -1,0 +1,47 @@
+{% load chat_tags %}<div class="msg-voice{% if not m.voice_played %} is-unplayed{% endif %}" data-voice
+     data-voice-id="{{ v.pk }}" data-src="{% url 'messaging:voice_audio' v.pk %}"
+     data-mime="{{ v.mime }}" data-duration-ms="{{ v.duration_ms }}"
+     data-played-url="{% url 'messaging:voice_played' v.pk %}" data-download="{{ v.download_url }}"{% if m.is_mine %} data-own{% endif %}>
+  <span class="msg-visually-hidden" data-message-text>Voice note ({{ v.duration_label }})</span>
+  <button type="button" class="msg-voice-play" data-voice-play aria-label="Play voice note, {{ v.duration_label }}">
+    <svg class="i-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>
+    <svg class="i-pause" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4.2" height="16" rx="1.2"/><rect x="13.8" y="4" width="4.2" height="16" rx="1.2"/></svg>
+  </button>
+  <div class="msg-voice-main">
+    <div class="msg-voice-wave" data-voice-wave role="slider" tabindex="0"
+         aria-label="Voice note position" aria-valuemin="0" aria-valuemax="{% widthratio v.duration_ms 1000 1 %}" aria-valuenow="0" aria-valuetext="0:00 of {{ v.duration_label }}">
+      {% for b in m.voice_bars %}<span style="height: {{ b|bar_height }}%"></span>{% endfor %}
+    </div>
+    <div class="msg-voice-foot">
+      <span class="msg-voice-time" data-voice-time>{{ v.duration_label }}</span>
+      {% if not m.voice_played %}<span class="msg-voice-dot" title="Not played yet" aria-label="Not played yet"></span>{% endif %}
+      <button type="button" class="msg-voice-speed" data-voice-speed aria-label="Playback speed 1 times">1×</button>
+    </div>
+  </div>
+</div>
+<div class="msg-transcript" data-transcript data-status="{{ v.transcript_status }}">
+  {% if v.transcript_status == "pending" %}
+    <span class="msg-transcript-status"><span class="msg-spinner" aria-hidden="true"></span>Transcribing…</span>
+  {% elif v.transcript %}
+    <details class="msg-transcript-details"{% if m.search_q and m.search_q|lower in v.transcript|lower %} open{% endif %}>
+      <summary>{% if v.transcript_edited %}Transcript · edited{% else %}Automatic transcript{% endif %}</summary>
+      <p class="msg-transcript-text" data-transcript-text>{{ v.transcript|chat_text:m.search_q }}</p>
+      {% if m.is_mine %}
+        <button type="button" class="msg-transcript-edit" data-transcript-edit>Edit transcript</button>
+      {% endif %}
+    </details>
+  {% else %}
+    <span class="msg-transcript-status is-muted">Transcript unavailable</span>
+    {% if m.is_mine %}<button type="button" class="msg-transcript-edit" data-transcript-edit>Add transcript</button>{% endif %}
+  {% endif %}
+  {% if m.is_mine %}
+    <form method="post" action="{% url 'messaging:voice_transcript' v.pk %}" class="msg-transcript-form" data-transcript-form hidden>
+      {% csrf_token %}
+      <textarea name="transcript" rows="3" aria-label="Transcript">{{ v.transcript }}</textarea>
+      <div>
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-transcript-cancel>Cancel</button>
+      </div>
+    </form>
+  {% endif %}
+</div>

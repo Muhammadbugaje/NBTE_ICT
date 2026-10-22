@@ -32,13 +32,13 @@ def _url(name, *args, query=""):
 
 
 def tasks_panel(user, limit=6):
-    from tasks.models import Task, TaskAssignee
+    from dashboards.counts import my_open_tasks
 
     today = timezone.localdate()
-    qs = (Task.objects.filter(assignee_rows__user=user)
-          .exclude(assignee_rows__user=user, assignee_rows__state__in=[TaskAssignee.DONE, TaskAssignee.DECLINED])
-          .exclude(state__in=list(Task.CLOSED_STATES) + [Task.DRAFT])
-          .distinct())
+    # Phase 8: the old double .exclude() over assignee rows matched the user
+    # and the "done" state on *different* rows, so a task disappeared from
+    # here as soon as a colleague on it finished their part.
+    qs = my_open_tasks(user)
     total = qs.count()
     rows = sorted(qs.only("pk", "reference", "title", "due_date", "priority", "state")[:60],
                   key=lambda t: (t.due_date is None, t.due_date or today, t.pk))

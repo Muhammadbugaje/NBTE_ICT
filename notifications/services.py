@@ -73,3 +73,50 @@ def notify_many(recipients, **kwargs):
     except Exception:
         logger.exception("Failed to bulk-create %d notifications", len(rows))
         return []
+
+# ---------------------------------------------------------------------------
+# Bulk actions (Phase 8; shared by the website's bulk views and the Phase 9
+# mobile API)
+# ---------------------------------------------------------------------------
+BULK_ACTIONS = ("delete", "mark_read", "mark_unread")
+NOT_YOURS = "Some items are not yours and were left alone."
+
+
+def bulk_apply(user, action, ids, actor=None):
+    """Apply ``action`` (delete | mark_read | mark_unread) to the ids that are
+    ``user``'s OWN notifications; others' ids are skipped.
+
+    Returns {"done": [ids], "skipped": [{"id", "reason"}], "verb": "deleted"}.
+    Raises ValueError for an unknown action. Writes the audit entry.
+    """
+    from django.utils import timezone
+
+    from core import audit
+
+    if action not in BULK_ACTIONS:
+        raise ValueError(f"Unknown action {action!r}")
+    mine = Notification.objects.filter(recipient=user)
+    own = mine.filter(pk__in=ids)
+    own_ids = set(own.values_list("pk", flat=True))
+    skipped = [{"id": i, "reason": NOT_YOURS} for i in ids if i not in own_ids]
+    done = [i for i in ids if i in own_ids]
+    if action == "delete":
+        own.delete()
+        verb = "deleted"
+    elif action == "mark_read":
+        own.filter(is_read=False).update(is_read=True, read_at=timezone.now())
+        verb = "marked as read"
+    else:
+        own.filter(is_read=True).update(is_read=False, read_at=None)
+        verb = "marked as unread"
+    if done:
+        audit.log("delete" if action == "delete" else "update", user, actor=actor or user,
+                  note=f"notifications {verb}: {len(done)}", changes={"ids": done[:100]})
+    return {"done": done, "skipped": skipped, "verb": verb}
+
+
+def mark_all_read(user):
+    """Mark every unread notification of ``user`` read; returns how many."""
+    from django.utils import timezone
+
+    return Notification.objects.filter(recipient=user, is_read=False).update(is_read=True, read_at=timezone.now())

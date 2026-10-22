@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import memos_views, views
+from . import bulk_views, chat_views, memos_views, views
 
 app_name = "messaging"
 
@@ -18,10 +18,35 @@ urlpatterns = [
     path("<int:pk>/delete/", views.delete_chat, name="delete_chat"),
     path("<int:pk>/archive/", views.archive, name="archive"),
     path("archived/", views.archived, name="archived"),
+    path("bulk/", bulk_views.bulk_threads, name="bulk_threads"),
     path("<int:pk>/unarchive/", views.unarchive, name="unarchive"),
+
+    # ---- Phase 9: chat upgrade (logic in chat_services / voice) ----
+    path("inbox/updates/", chat_views.inbox_updates, name="inbox_updates"),
+    path("starred/", chat_views.starred, name="starred"),
+    path("<int:pk>/updates/", chat_views.thread_updates, name="thread_updates"),
+    path("<int:pk>/typing/", chat_views.typing, name="typing"),
+    path("<int:pk>/pin/", chat_views.pin, name="pin"),
+    path("<int:pk>/mute/", chat_views.mute, name="mute"),
+    path("<int:pk>/poll/", chat_views.poll_create, name="poll_create"),
+    path("<int:pk>/poll/<int:poll_pk>/vote/", chat_views.poll_vote, name="poll_vote"),
+    path("<int:pk>/voice/", chat_views.voice_upload, name="voice_upload"),
+    path("<int:pk>/message/<int:message_pk>/",
+         chat_views.message_fragment, name="message_fragment"),
+    path("<int:pk>/message/<int:message_pk>/react/", chat_views.react, name="react"),
+    path("<int:pk>/message/<int:message_pk>/star/", chat_views.star, name="star"),
+    path("<int:pk>/message/<int:message_pk>/forward/", chat_views.forward, name="forward"),
+    path("<int:pk>/message/<int:message_pk>/info/", chat_views.message_info, name="message_info"),
+    path("<int:pk>/message/<int:message_pk>/task/", chat_views.make_task, name="make_task"),
+    path("<int:pk>/message/<int:message_pk>/memo/", chat_views.make_memo, name="make_memo"),
+    path("voice/<int:voice_pk>/audio/", chat_views.voice_audio, name="voice_audio"),
+    path("voice/<int:voice_pk>/played/", chat_views.voice_played, name="voice_played"),
+    path("voice/<int:voice_pk>/transcript/", chat_views.voice_transcript,
+         name="voice_transcript"),
 
     # ---- Memos ----
     path("memos/", memos_views.memo_list, name="memo_list"),
+    path("memos/bulk/", bulk_views.bulk_memos, name="memo_bulk"),
     path("memos/new/", memos_views.memo_create, name="memo_create"),
     path("memos/<int:pk>/", memos_views.memo_detail, name="memo_detail"),
     path("memos/<int:pk>/edit/", memos_views.memo_update, name="memo_update"),

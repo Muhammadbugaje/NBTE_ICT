@@ -1161,3 +1161,35 @@ def _notify_director_signoff_needed(ticket, actor):
             
             
             
+
+# ===========================================================================
+# Phase 9: what the signed-in user may do on the detail page. Shared by the
+# website's ticket_detail view and the mobile API so they cannot drift apart.
+# ===========================================================================
+def available_actions(ticket, user):
+    is_raiser = ticket.raised_by_id == user.pk
+    is_assignee = ticket.assigned_to_id == user.pk
+    can_assign = ticket.is_open and _can_assign(ticket, user)
+    return {
+        "is_raiser": is_raiser,
+        "is_assignee": is_assignee,
+        "can_assign": can_assign,
+        "can_reassign": can_assign,
+        "can_start": is_assignee and ticket.state in (
+            Ticket.ASSIGNED, Ticket.REOPENED, Ticket.AWAITING_RESPONSE),
+        "can_await": is_assignee and ticket.state == Ticket.IN_PROGRESS,
+        "can_resolve": (
+            ticket.state in (Ticket.IN_PROGRESS, Ticket.AWAITING_RESPONSE,
+                             Ticket.ASSIGNED, Ticket.REOPENED)
+            and _can_resolve(ticket, user)
+        ),
+        "can_close": is_raiser and ticket.state in (Ticket.RESOLVED, Ticket.IN_PROGRESS),
+        "can_reopen": is_raiser and ticket.state in (Ticket.RESOLVED, Ticket.CLOSED),
+        "can_cancel": is_raiser and ticket.state in (
+            Ticket.NEW, Ticket.ASSIGNED, Ticket.AWAITING_RESPONSE),
+        "can_comment": not ticket.is_closed or is_raiser or user.is_superuser,
+        "can_internal": (not is_raiser and _is_staff_on_ticket(ticket, user)) or user.is_superuser,
+        "can_attach": not ticket.is_closed or is_raiser or user.is_superuser,
+        "can_signoff": (ticket.state == Ticket.AWAITING_DIRECTOR
+                        and _is_department_head(user, ticket.handling_department_id)),
+    }

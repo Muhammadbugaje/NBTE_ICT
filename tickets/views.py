@@ -70,6 +70,26 @@ def _visible_tickets_qs(user):
     return visible_tickets_queryset(user)
 
 
+def ticket_list_base(user, scope):
+    """Phase 9: base queryset of each ticket list tab (website + mobile API).
+    scope: my (raised by me) / assigned (assigned to me) / all (everything
+    this user may see)."""
+    if scope == "my":
+        return (
+            Ticket.objects
+            .filter(raised_by=user)
+            .select_related("category", "assigned_to", "handling_department")
+        )
+    if scope == "assigned":
+        return (
+            Ticket.objects
+            .filter(assigned_to=user)
+            .exclude(state=Ticket.CANCELLED)
+            .select_related("category", "raised_by", "handling_department")
+        )
+    return _visible_tickets_qs(user)
+
+
 def _can_edit_ticket(user, ticket):
     return services._is_staff_on_ticket(ticket, user)
 
@@ -138,11 +158,7 @@ def ticket_list(request):
 
 @login_required
 def my_tickets(request):
-    qs = (
-        Ticket.objects
-        .filter(raised_by=request.user)
-        .select_related("category", "assigned_to", "handling_department")
-    )
+    qs = ticket_list_base(request.user, "my")
 
     q = (request.GET.get("q") or "").strip()
     if q:
@@ -177,12 +193,7 @@ def my_tickets(request):
 
 @login_required
 def assigned_to_me(request):
-    qs = (
-        Ticket.objects
-        .filter(assigned_to=request.user)
-        .exclude(state=Ticket.CANCELLED)
-        .select_related("category", "raised_by", "handling_department")
-    )
+    qs = ticket_list_base(request.user, "assigned")
 
     q = (request.GET.get("q") or "").strip()
     if q:
@@ -301,45 +312,14 @@ def ticket_detail(request, pk):
     comments = ticket.comments.select_related("author").order_by("created_at")
     attachments = ticket.attachments.select_related("uploaded_by").order_by("-created_at")
 
-    # What can this user do?
+    # What can this user do? (Phase 9: rules in tickets.services.available_actions)
     user = request.user
-    is_raiser = ticket.raised_by_id == user.pk
-    is_assignee = ticket.assigned_to_id == user.pk
-
-    can_assign = (
-        ticket.is_open
-        and services._can_assign(ticket, user)
-    )
-    can_start = (
-        is_assignee
-        and ticket.state in (Ticket.ASSIGNED, Ticket.REOPENED, Ticket.AWAITING_RESPONSE)
-    )
-    can_await = (
-        is_assignee
-        and ticket.state == Ticket.IN_PROGRESS
-    )
-    can_resolve = (
-        ticket.state in (Ticket.IN_PROGRESS, Ticket.AWAITING_RESPONSE,
-                         Ticket.ASSIGNED, Ticket.REOPENED)
-        and services._can_resolve(ticket, user)
-    )
-    can_close = (
-        is_raiser
-        and ticket.state in (Ticket.RESOLVED, Ticket.IN_PROGRESS)
-    )
-    can_reopen = (
-        is_raiser
-        and ticket.state in (Ticket.RESOLVED, Ticket.CLOSED)
-    )
-    can_cancel = (
-        is_raiser
-        and ticket.state in (Ticket.NEW, Ticket.ASSIGNED, Ticket.AWAITING_RESPONSE)
-    )
-    can_comment = not ticket.is_closed or is_raiser or user.is_superuser
-    can_internal = (
-        not is_raiser and services._is_staff_on_ticket(ticket, user)
-    ) or user.is_superuser
-    can_attach = not ticket.is_closed or is_raiser or user.is_superuser
+    flags = services.available_actions(ticket, user)
+    is_raiser, is_assignee = flags["is_raiser"], flags["is_assignee"]
+    can_assign, can_start, can_await = flags["can_assign"], flags["can_start"], flags["can_await"]
+    can_resolve, can_close, can_reopen = flags["can_resolve"], flags["can_close"], flags["can_reopen"]
+    can_cancel, can_comment = flags["can_cancel"], flags["can_comment"]
+    can_internal, can_attach = flags["can_internal"], flags["can_attach"]
 
     asset_link_ok = False
     if ticket.asset_id:
@@ -383,13 +363,8 @@ def ticket_detail(request, pk):
             .first() or 0
         ),
         "director_form": DirectorSignoffForm(),
-        "can_signoff": (
-            ticket.state == Ticket.AWAITING_DIRECTOR
-            and services._is_department_head(request.user, ticket.handling_department_id)
-        ),
-        "can_reassign": (
-            ticket.is_open and services._can_assign(ticket, request.user)
-        ),
+        "can_signoff": flags["can_signoff"],
+        "can_reassign": flags["can_reassign"],
         "allow_raiser_reassign": getattr(ticket.category, "allow_raiser_reassign", True),
         "requires_director_signoff": getattr(ticket.category, "requires_director_signoff", False),
     })

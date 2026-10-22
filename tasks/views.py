@@ -106,6 +106,33 @@ def _visible_tasks_qs(user):
     return base.filter(q).distinct()
 
 
+def task_list_base(user, scope):
+    """Phase 9: the base queryset of each task list tab, shared by the
+    website views below and the mobile API (scope: all / created /
+    assigned / review)."""
+    if scope == "created":
+        return Task.objects.filter(created_by=user).select_related("category", "owner_department")
+    if scope == "assigned":
+        return (
+            Task.objects
+            .filter(assignee_rows__user=user)
+            .exclude(state__in=Task.CLOSED_STATES)
+            .select_related("category", "created_by", "owner_department")
+            .prefetch_related("assignee_rows")
+            .distinct()
+        )
+    if scope == "review":
+        return (
+            Task.objects
+            .filter(state=Task.AWAITING_REVIEW)
+            .filter(Q(reviewer=user) | Q(reviewer__isnull=True, created_by=user))
+            .select_related("category", "created_by", "owner_department")
+            .prefetch_related("assignee_rows__user")
+            .distinct()
+        )
+    return _visible_tasks_qs(user)
+
+
 def _require_view(request, pk):
     task = get_object_or_404(_visible_tasks_qs(request.user), pk=pk)
     return task
@@ -241,11 +268,7 @@ def _build_kanban_columns(qs):
 
 @login_required
 def my_tasks(request):
-    qs = (
-        Task.objects
-        .filter(created_by=request.user)
-        .select_related("category", "owner_department")
-    )
+    qs = task_list_base(request.user, "created")
     qdict = _list_querystring(request)
     qs, qdict = _apply_list_filters(qs, request)
 
@@ -259,6 +282,7 @@ def my_tasks(request):
 
     return render(request, "tasks/my_tasks.html", {
         "page": page, "total": total,
+        "draft_count": Task.objects.filter(created_by=request.user, state=Task.DRAFT).count(),
         "q": qdict["q"], "state_filter": qdict["state"],
         "sort_key": sort_key, "sort_dir": sort_dir,
         "state_choices": Task.STATE_CHOICES,
@@ -267,14 +291,7 @@ def my_tasks(request):
 
 @login_required
 def assigned_to_me(request):
-    qs = (
-        Task.objects
-        .filter(assignee_rows__user=request.user)
-        .exclude(state__in=Task.CLOSED_STATES)
-        .select_related("category", "created_by", "owner_department")
-        .prefetch_related("assignee_rows")
-        .distinct()
-    )
+    qs = task_list_base(request.user, "assigned")
     qdict = _list_querystring(request)
     qs, qdict = _apply_list_filters(qs, request)
 
@@ -297,14 +314,7 @@ def assigned_to_me(request):
 @login_required
 def review_queue(request):
     """Tasks waiting on MY review."""
-    qs = (
-        Task.objects
-        .filter(state=Task.AWAITING_REVIEW)
-        .filter(Q(reviewer=request.user) | Q(reviewer__isnull=True, created_by=request.user))
-        .select_related("category", "created_by", "owner_department")
-        .prefetch_related("assignee_rows__user")
-        .distinct()
-    )
+    qs = task_list_base(request.user, "review")
     qdict = _list_querystring(request)
     qs, qdict = _apply_list_filters(qs, request)
     total = qs.count()
@@ -356,6 +366,10 @@ def task_create(request, category_code=None):
                 messages.error(request, "; ".join(exc.messages))
             else:
                 messages.success(request, f"Task {task.reference} created as draft.")
+                # Phase 9: a task made from a chat message links back to it.
+                if request.GET.get("from_message"):
+                    from messaging.chat_services import link_message_to_task
+                    link_message_to_task(request.GET["from_message"], task, request.user)
                 if request.POST.get("_open_now") == "1":
                     try:
                         services.open_task(task, request.user)
@@ -364,7 +378,16 @@ def task_create(request, category_code=None):
                         messages.warning(request, f"Could not open: {'; '.join(exc.messages)}")
                 return redirect("tasks:detail", pk=task.pk)
     else:
-        form = TaskCreateForm(user=request.user, locked_category=locked_category)
+        # Phase 9: accept ?title=&description=&from_message= to prefill (chat
+        # "Make a task"); with a prefill the category is chosen in the form.
+        prefill = {k: request.GET[k][:5000] for k in ("title", "description") if request.GET.get(k)}
+        form = TaskCreateForm(user=request.user, locked_category=locked_category,
+                              initial=prefill or None)
+        if prefill and category_code is None:
+            return render(request, "tasks/create.html", {
+                "form": form, "locked_category": None,
+                "prefill_source": {"type": "message", "id": request.GET.get("from_message")},
+            })
 
     # No category chosen yet AND no POST — show the picker.
     if category_code is None and request.method == "GET":
@@ -478,95 +501,21 @@ def task_detail(request, pk):
         task=task, user=request.user, ended_at__isnull=True,
     ).first()
 
-    user = request.user
-    is_creator = task.created_by_id == user.pk
-    is_assignee = my_row is not None
-
-    can_edit = services.can_edit_task(task, user)
-    can_cancel = services.can_cancel_task(task, user)
-    can_delete = services.can_delete_task(task, user)
-    can_review = services.can_review(task, user) and task.state == Task.AWAITING_REVIEW
-    can_assign = can_edit and task.state in (Task.DRAFT, Task.OPEN, Task.RETURNED)
-
-    # --- Assignee-specific --------------------------------------------------
-    # Accept is only for someone who hasn't accepted yet.
-    can_accept = bool(
-        is_assignee
-        and my_row.state == TaskAssignee.ASSIGNED
-        and task.state not in Task.CLOSED_STATES
-    )
-
-    # Start work only until the row is IN_PROGRESS.
-    can_start = bool(
-        is_assignee
-        and my_row.state in (TaskAssignee.ASSIGNED, TaskAssignee.ACCEPTED)
-        and task.state in Task.ACTIVE_STATES
-    )
-
-    can_reopen = bool(
-        task.state == Task.COMPLETED
-        and (
-            user.is_superuser
-            or is_creator
-            or (task.reviewer_id and task.reviewer_id == user.pk)
-            or (task.owner_department_id
-                and services.is_department_head(user, task.owner_department_id))
-        )
-    )
-
-    # Timer controls — visible only while this user's row is IN_PROGRESS.
-    can_start_timer = bool(
-        is_assignee
-        and my_row.state == TaskAssignee.IN_PROGRESS
-        and running_timer is None
-        and task.state not in Task.CLOSED_STATES
-    )
-    can_stop_timer = bool(
-        is_assignee
-        and running_timer is not None
-        and task.state not in Task.CLOSED_STATES
-    )
-
-    can_ask = bool(
-        is_assignee
-        and task.state in (Task.OPEN, Task.IN_PROGRESS)
-        and my_row.state != TaskAssignee.DONE
-    )
-    can_resume = bool(
-        is_assignee
-        and task.state in (Task.AWAITING_RESPONSE, Task.RETURNED)
-    )
-    can_return = bool(
-        is_assignee
-        and task.state in (Task.OPEN, Task.IN_PROGRESS, Task.AWAITING_RESPONSE)
-        and my_row.state != TaskAssignee.DONE
-    )
-    can_mark_done = bool(
-        is_assignee
-        and my_row.state in (TaskAssignee.ACCEPTED, TaskAssignee.IN_PROGRESS, TaskAssignee.BLOCKED)
-        and task.state in Task.ACTIVE_STATES
-    )
-    can_resend = can_edit and task.state == Task.RETURNED
-    can_split = can_edit and not task.subtasks.exists() and task.state != Task.CANCELLED
+    # Phase 9: the permission flags live in tasks.services.available_actions
+    # (shared with the mobile API).
+    flags = services.available_actions(task, request.user, my_row=my_row,
+                                       running_timer=running_timer)
+    is_creator, is_assignee = flags["is_creator"], flags["is_assignee"]
+    can_edit, can_cancel, can_delete = flags["can_edit"], flags["can_cancel"], flags["can_delete"]
+    can_review, can_assign = flags["can_review"], flags["can_assign"]
+    can_accept, can_start, can_reopen = flags["can_accept"], flags["can_start"], flags["can_reopen"]
+    can_start_timer, can_stop_timer = flags["can_start_timer"], flags["can_stop_timer"]
+    can_ask, can_resume, can_return = flags["can_ask"], flags["can_resume"], flags["can_return"]
+    can_mark_done, can_resend, can_split = flags["can_mark_done"], flags["can_resend"], flags["can_split"]
+    can_comment, can_attach = flags["can_comment"], flags["can_attach"]
+    qa_link_url, qa_link_open = flags["qa_link_url"], flags["qa_link_open"]
 
     dependencies_met = services.dependencies_met(task)
-
-    # Phase 4: a task linked to a QA stage is driven from the QA screens —
-    # it closes when the stage is approved or returned there, never here.
-    qa_link_url, qa_link_open = "", False
-    try:
-        from qa_core.task_bridge import is_linked, open_link_for, qa_url
-
-        if is_linked(task):
-            link = open_link_for(task) or task.qa_link
-            qa_link_url, qa_link_open = qa_url(link), link.closed_at is None
-            can_mark_done = can_cancel = can_delete = can_review = can_assign = False
-            can_reopen = can_split = can_resend = False
-    except ImportError:  # the QA apps are not installed
-        pass
-
-    can_comment = not task.is_closed
-    can_attach = not task.is_closed
 
     ctx = {
         "task": task,
@@ -1380,3 +1329,36 @@ def task_create_from_ticket(request, ticket_id):
         },
     })
 
+
+
+# ===========================================================================
+# Discard my drafts (Phase 8)
+# ===========================================================================
+@login_required
+@require_POST
+def task_discard_drafts(request):
+    """Delete the user's OWN draft tasks (all of them, or the posted ids).
+    Drafts never reached anyone, so no reason is asked; the deletion is
+    still logged on the task timeline and in the audit log."""
+    from django.urls import reverse
+
+    from core import bulk as bulk_util
+
+    fallback = reverse("tasks:my_tasks")
+    drafts = Task.objects.filter(created_by=request.user, state=Task.DRAFT)
+    ids = bulk_util.parse_ids(request)
+    if ids:
+        drafts = drafts.filter(pk__in=ids)
+    done, skipped = [], []
+    for task in drafts:
+        pk = task.pk  # delete() clears it
+        try:
+            services.delete_task(task, request.user, reason="Draft discarded by its creator.")
+            done.append(pk)
+        except (PermissionDenied, ValidationError) as exc:
+            skipped.append({"id": pk, "reason": str(getattr(exc, "messages", [exc])[0])})
+    skipped += [{"id": i, "reason": "Only your own drafts can be discarded."}
+                for i in ids if i not in done and i not in {s["id"] for s in skipped}]
+    return bulk_util.respond(request, action="delete", done=done, skipped=skipped, fallback=fallback,
+                             message=(f"{bulk_util.plural(len(done), 'draft')} discarded."
+                                      if done else "There were no drafts to discard."))
