@@ -18,9 +18,20 @@ class QAPortalHostMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        # WORKAROUND FOR RENDER: Allow the QA portal to be accessed via the /qa-portal/ path
+        # 1. WORKAROUND FOR RENDER: Allow the QA portal via the /qa-portal/ path
         if request.path.startswith("/qa-portal/"):
             request.is_qa_portal = True
+            return self.get_response(request)
+
+        # 2. Host-based routing
+        host = request.get_host().split(':')[0]
+        internal_host = getattr(settings, "INTERNAL_HOST", "").split(':')[0]
+        qa_host = getattr(settings, "QA_PORTAL_HOST", "").split(':')[0]
+
+        # If the QA host is the same as the internal host (like on Render), 
+        # we CANNOT use host-based routing. Default to internal, path handles QA.
+        if qa_host and qa_host == internal_host:
+            request.is_qa_portal = False
             return self.get_response(request)
 
         request.is_qa_portal = is_portal_request(request)
