@@ -18,6 +18,11 @@ class QAPortalHostMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        # WORKAROUND FOR RENDER: Allow the QA portal to be accessed via the /qa-portal/ path
+        if request.path.startswith("/qa-portal/"):
+            request.is_qa_portal = True
+            return self.get_response(request)
+
         request.is_qa_portal = is_portal_request(request)
         if request.is_qa_portal:
             urlconf = getattr(settings, "QA_PORTAL_URLCONF", "qa_core.portal_urls")

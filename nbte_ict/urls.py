@@ -45,6 +45,8 @@ urlpatterns = [
     path("showcase/", include("showcase.urls")),
     # NBTE Digital QA System — internal screens (Master Plan §13). The QA
     # portal host is served by qa_core.portal_urls, never by this file.
+     # WORKAROUND FOR RENDER: Serve the QA Portal on a /portal/ path
+    path("qa-portal/", include("qa_core.portal_urls")),
     path("qa/", include("qa_core.urls")),
     path("qa/", include("assignments.urls")),  # v2.1 Phase P: my work, grants log, who can see
     # QA Phase 2: institutions (§6), onboarding applications (SOP-01), Finance (QA), settings tables
