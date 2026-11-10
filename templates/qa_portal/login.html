@@ -22,7 +22,7 @@
       <label for="id_username">Email address</label>
       <input class="input{% if form.username.errors %} error{% endif %}" type="email" name="username" id="id_username"
              autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required
-             placeholder="registrar@yourinstitution.edu.ng" value="{{ form.username.value|default:request.GET.username|default:'' }}"
+             placeholder="registrar@yourinstitution.edu.ng" value="{{ form.username.value|default:'' }}"
              {% if form.username.errors %}aria-invalid="true" aria-describedby="id_username_error"{% endif %}>
       {% if form.username.errors %}<span class="error" id="id_username_error">{{ form.username.errors|join:" " }}</span>{% endif %}
     </div>
@@ -30,7 +30,7 @@
     <div class="field">
       <div class="auth-label-row">
         <label for="id_password">Password</label>
-        <a href="{% url 'qa_portal:password_forgot' %}?email={{ request.GET.username|urlencode }}" class="auth-forgot">First sign-in / forgot password?</a>
+        <a href="{% url 'qa_portal:password_forgot' %}?email={{ form.username.value|default:''|urlencode }}" class="auth-forgot">First sign-in / forgot password?</a>
       </div>
       <div class="input-group">
         <input class="input{% if form.password.errors %} error{% endif %}" type="password" name="password" id="id_password"
@@ -45,6 +45,7 @@
 
     <button class="btn btn-primary btn-lg btn-block auth-submit" type="submit">Sign in</button>
   </form>
+  
   {# Phase 9: passkey sign-in (hidden unless the browser supports WebAuthn) #}
   <div class="p9-passkey-signin" data-passkey-scope data-passkey-only hidden>
     <div class="p9-or" aria-hidden="true"><span>or</span></div>
