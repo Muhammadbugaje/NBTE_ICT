@@ -43,10 +43,11 @@ urlpatterns = [
     path("org/", include("org.urls")),  # Phase B: departments, divisions, offices, grade levels
     path("portal/", include("portal.urls", namespace="portal")),
     path("showcase/", include("showcase.urls")),
-    # NBTE Digital QA System — internal screens (Master Plan §13). The QA
-    # portal host is served by qa_core.portal_urls, never by this file.
-     # WORKAROUND FOR RENDER: Serve the QA Portal on a /portal/ path
+    
+    # WORKAROUND FOR RENDER: Serve the QA Portal on a /qa-portal/ path
     path("qa-portal/", include("qa_core.portal_urls")),
+    
+    # NBTE Digital QA System — internal screens (Master Plan §13)
     path("qa/", include("qa_core.urls")),
     path("qa/", include("assignments.urls")),  # v2.1 Phase P: my work, grants log, who can see
     # QA Phase 2: institutions (§6), onboarding applications (SOP-01), Finance (QA), settings tables
@@ -76,28 +77,24 @@ urlpatterns = [
     path("qa/documents/", include("documents.register_urls")),  # v2.1 Phase F (X24-X26): issued documents
     path("scan/", include("documents.scan_urls")),  # v2.1 Phase F (X26): Scan and verify
     path("v/<str:token>/", documents_scan.verify_token, name="verify_document"),  # the URL inside every QR
-    # Old memo links (/messaging/memos/<pk>/) stored in notifications before
-    # the fix point at a URL that never existed — send them to /messages/.
+    # Old memo links stored in notifications before the fix point at a URL that never existed — send them to /messages/.
     re_path(r"^messaging/(?P<rest>.*)$",
             RedirectView.as_view(url="/messages/%(rest)s", query_string=True, permanent=False)),
     # Phase 9: public check of a scanned digital staff ID (internal host only, no login)
     path("verify/staff/<str:token>/", staff_verify, name="staff_verify"),
-    path("api/v1/", include("api.urls_staff", namespace="api")),  # Phase 9: mobile API (staff door)
+    
+    # FIXED: Changed namespace from "api" to "api_staff" to resolve the urls.W005 warning
+    path("api/v1/", include("api.urls_staff", namespace="api_staff")),  
+    
     path("", include("core.urls")),
 ]
 
-# Phase 0 (U3): the development media server refuses the same private
-# folders nginx refuses (deploy/nginx.conf), so a stale file left in a
-# restricted folder of MEDIA_ROOT is never served.
 PRIVATE_MEDIA_RE = r"^%s(workflow/attachments|workflow/records|tasks|tickets|assets/attachments|messaging|import-tmp)/" % (
     settings.MEDIA_URL.lstrip("/"))
 
-
 def _private_media(request, *args, **kwargs):
     from django.http import Http404
-
     raise Http404
-
 
 if settings.DEBUG or getattr(settings, "SERVE_FILES_LOCALLY", False):
     urlpatterns += [re_path(PRIVATE_MEDIA_RE, _private_media)]
@@ -105,8 +102,6 @@ if settings.DEBUG or getattr(settings, "SERVE_FILES_LOCALLY", False):
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 elif getattr(settings, "SERVE_FILES_LOCALLY", False):
-    # Development with DEBUG=False (to see the real 404/500 pages): keep the
-    # styling. Never on in production, where nginx serves these.
     from django.contrib.staticfiles.views import serve as serve_static
     from django.views.static import serve as serve_media
     urlpatterns += [
