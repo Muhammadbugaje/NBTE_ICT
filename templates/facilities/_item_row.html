@@ -1,0 +1,11 @@
+<tr class="fe-row{% if saved %} is-saved{% endif %}{% if not i.is_active %} is-inactive{% endif %}" id="fe-item-{{ i.pk }}">
+  <td>{{ i.name }}{% if i.is_critical %} <span class="badge badge-danger" title="Counts double in the SSQ shortfall score">Critical</span>{% endif %}{% if i.remarks %}<br><small class="muted">{{ i.remarks }}</small>{% endif %}</td>
+  {% if can_manage %}
+  <td class="num"><input class="input fe-qty" name="nd_qty" value="{{ i.nd_qty }}" aria-label="ND quantity for {{ i.name }}" hx-post="{% url 'facilities:item_update' i.pk %}" hx-trigger="change" hx-target="#fe-item-{{ i.pk }}" hx-swap="outerHTML" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'></td>
+  <td class="num"><input class="input fe-qty" name="hnd_qty" value="{{ i.hnd_qty }}" aria-label="HND quantity for {{ i.name }}" hx-post="{% url 'facilities:item_update' i.pk %}" hx-trigger="change" hx-target="#fe-item-{{ i.pk }}" hx-swap="outerHTML" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'></td>
+  <td class="num"><input type="checkbox" name="is_critical" {% if i.is_critical %}checked{% endif %} aria-label="Critical" hx-post="{% url 'facilities:item_update' i.pk %}" hx-vals='js:{is_critical: event.target.checked ? "on" : "off"}' hx-trigger="change" hx-target="#fe-item-{{ i.pk }}" hx-swap="outerHTML" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'></td>
+  <td class="num"><input type="checkbox" name="is_active" {% if i.is_active %}checked{% endif %} aria-label="In use" hx-post="{% url 'facilities:item_update' i.pk %}" hx-vals='js:{is_active: event.target.checked ? "on" : "off"}' hx-trigger="change" hx-target="#fe-item-{{ i.pk }}" hx-swap="outerHTML" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'></td>
+  {% else %}
+  <td class="num">{{ i.nd_qty|default:"–" }}</td><td class="num">{{ i.hnd_qty|default:"–" }}</td>
+  {% endif %}
+</tr>

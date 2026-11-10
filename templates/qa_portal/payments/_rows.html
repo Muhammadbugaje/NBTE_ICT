@@ -1,12 +1,12 @@
-{% load qa_tags %}
+{% load qa_tags portal_journey_tags %}
 {% if page.rows %}
   <ul class="qa-rowlist" role="list">{% for ob in page.rows %}
     <li><a class="qa-rowlink" href="{% url 'qa_portal:payment' ob.pk %}" hx-get="{% url 'qa_portal:payment' ob.pk %}" hx-target="#qa-main" hx-push-url="true">
       <span class="qa-rowlink__badge qa-rowlink__badge--money">₦</span>
-      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ ob.description }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ ob.reference }}</span><span>· issued {{ ob.created_at|date:"j M Y" }}</span>{% if ob.balance and ob.status != "confirmed" %}<span>· due {{ ob.due_at|date:"j M Y" }}</span>{% endif %}</span></span>
-      <span class="qa-rowlink__side"><span class="qa-rowlink__amount">{{ ob.amount|naira }}</span><span class="qa-chip {{ ob.status|tone }}">{{ ob.public_label }}</span></span></a></li>{% endfor %}
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ ob.description|plain }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ ob.reference }}</span><span>· issued {{ ob.created_at|date:"j M Y" }}</span>{% if ob.balance and ob.status != "confirmed" %}<span>· due {{ ob.due_at|date:"j M Y" }}</span>{% endif %}</span></span>
+      <span class="qa-rowlink__side"><span class="qa-rowlink__amount">{{ ob.amount|naira }}</span><span class="qa-chip {{ ob.status|tone }}">{{ ob.public_label }}</span>{% if ob.status == "awaiting_payment" or ob.status == "rejected" or ob.status == "partially_paid" %}<span class="btn btn-primary btn-sm">{% icon "card" 14 %} Pay now</span>{% endif %}</span></a></li>{% endfor %}
   </ul>
   {% include "qa_core/partials/_pagination.html" with target="#qa-pay-rows" %}
 {% else %}
-  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "card" 28 %}</span><h3 class="nbte-empty-state__title">{% if filters.q or filters.group or filters.fee or filters.period %}No bills match these filters{% else %}No bills yet{% endif %}</h3><p class="nbte-empty-state__body">NBTE issues a bill when your application reaches a fee stage — for example, once all four departments clear it.</p></div>
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "card" 28 %}</span><h3 class="nbte-empty-state__title">{% if filters.q or filters.group or filters.fee or filters.period %}No bills match these filters{% else %}No bills yet{% endif %}</h3><p class="nbte-empty-state__body">NBTE issues a bill when your application reaches a fee stage. It appears here, and on your dashboard, the moment it is issued.</p></div>
 {% endif %}

@@ -1,0 +1,181 @@
+{% extends "qa_core/_shell.html" %}
+{% load static qa_tags %}
+{% block qa_title %}{{ file.institution.name }} · Honorarium file{% endblock %}
+{% block qa_page_title %}Honoraria{% endblock %}
+{% block panel %}
+<div class="uxf">
+<header class="ux-hero uxf-hero">
+  <div>
+    <span class="ux-hero__eyebrow">Honorarium file · {{ file.reference }}</span>
+    <h1 data-qa-focus>{{ file.institution.name }}</h1>
+    <p>Everyone who worked on this institution from SOP-01 to SOP-03, with what each is owed. New stages add to this same file; paid lines stay as history.</p>
+  </div>
+  <div class="uxf-hero__figure">
+    <span>Owed now</span>
+    <strong>{{ summary.outstanding|naira }}</strong>
+    <small>of {{ summary.total|naira }} earned · {{ summary.people }} person{{ summary.people|pluralize }}</small>
+  </div>
+</header>
+<nav class="uxf-tabs" aria-label="Honoraria"><a href="{% url 'honoraria_sched:files' %}">← All institution files</a></nav>
+{% if messages %}{% for m in messages %}<div class="uxf-flash uxf-flash--{{ m.tags }}" role="status">{{ m }}</div>{% endfor %}{% endif %}
+
+<ol class="ux-steps uxf-steps" aria-label="Where this file stands">
+  {% for s in steps %}<li class="ux-step{% if s.done %} is-done{% elif s.current %} is-current{% endif %}"><strong>{{ s.label }}</strong>
+    <small>{% if s.key == "generated" %}{{ summary.counts.pending }} ready{% elif s.key == "prepared" %}{{ summary.counts.prepared }} in a batch{% elif s.key == "approved" %}{{ summary.counts.approved }} approved{% elif s.key == "paid" %}{{ summary.counts.paid }} awaiting receipt{% else %}{{ summary.counts.confirmed|add:summary.counts.settled }} confirmed{% endif %}</small></li>{% endfor %}
+</ol>
+
+{# ---- the one thing to do now ---- #}
+{% if next.kind == "approve" %}
+<div class="ux-next uxf-next--approve">
+  <span class="ux-next__badge" aria-hidden="true">✓</span>
+  <div><h3>Approve {{ next.batch.reference }} — {{ next.batch.total|naira }}</h3>
+    <p>Prepared by {{ next.batch.created_by.get_full_name|default:"Finance" }} on {{ next.batch.created_at|date:"j M, H:i" }}{% if next.batch.funding_account %} · from {{ next.batch.funding_account.bank_name }} ••{{ next.batch.funding_account.account_number|slice:"-4:" }}{% endif %}{% if next.batch.payment_reference %} · ref {{ next.batch.payment_reference }}{% endif %}. Approving records it paid and asks each payee to confirm receipt.</p></div>
+  <form method="post" action="{% url 'honoraria_sched:batch_approve' next.batch.pk %}" data-confirm data-confirm-title="Approve and record as paid?" data-confirm-body="{{ next.batch.reference }}: {{ next.batch.total|naira }}. It is posted to the ledger and each payee is told 'Paid — please confirm receipt'." data-confirm-label="Approve &amp; pay" data-confirm-variant="neutral">{% csrf_token %}
+    {% if not next.batch.funding_account and funding_accounts|length > 1 %}<label class="sr-only" for="ap-fund">Paid from</label><select class="input input-sm" id="ap-fund" name="funding_account" required><option value="">Paid from…</option>{% for a in funding_accounts %}<option value="{{ a.pk }}">{{ a.bank_name }} ••{{ a.account_number|slice:"-4:" }}</option>{% endfor %}</select>{% endif %}
+    <button class="btn ux-btn-approve" type="submit">Approve &amp; mark paid</button>
+  </form>
+</div>
+{% elif next.kind == "prepare" %}
+<div class="ux-next">
+  <span class="ux-next__badge" aria-hidden="true">→</span>
+  <div><h3>{{ next.count }} item{{ next.count|pluralize }} ready to pay — {{ next.total|naira }}</h3>
+    <p>Tick the people below and press <strong>Prepare batch</strong>.{% if not is_dof %} The Director of Finance approves it with one click.{% endif %}</p></div>
+  <a class="btn btn-primary" href="#prepare">Choose who to pay</a>
+</div>
+{% elif next.kind == "waiting_dof" %}
+<div class="ux-next"><span class="ux-next__badge" aria-hidden="true">⏳</span>
+  <div><h3>{{ next.batch.reference }} is with the Director of Finance</h3><p>{{ next.batch.total|naira }} prepared {{ next.batch.created_at|timesince }} ago. You will be notified when it is approved.</p></div><span></span></div>
+{% elif next.kind == "bank" %}
+<div class="ux-next"><span class="ux-next__badge" aria-hidden="true">!</span>
+  <div><h3>{{ next.count }} item{{ next.count|pluralize }} cannot be paid yet</h3><p>The people below have no confirmed bank details. They are asked on their profile; only they can add or change them.</p></div><span></span></div>
+{% elif next.kind == "confirm" %}
+<div class="ux-next"><span class="ux-next__badge" aria-hidden="true">✉</span>
+  <div><h3>Waiting for {{ next.count }} payee{{ next.count|pluralize }} to confirm receipt</h3><p>Each was told "Paid — please confirm receipt". Their lines turn green as they confirm.</p></div><span></span></div>
+{% elif next.kind == "done" %}
+<div class="ux-next"><span class="ux-next__badge" aria-hidden="true">✓</span>
+  <div><h3>Everything on this file is settled</h3><p>New stages for {{ file.institution.name }} will add to this file automatically.</p></div><span></span></div>
+{% endif %}
+
+<div class="ux-grid uxf-top">
+    <section class="ux-card ux-span-4">
+      <div class="ux-card__head"><div><h3>Earned by stage</h3><p>{{ summary.percent }}% paid</p></div></div>
+      <div class="ux-chart ux-chart--sm"><canvas data-ux-chart="file-stage" aria-label="Earned by stage"></canvas></div>
+      <div class="ux-progress ux-mt" aria-hidden="true"><i style="width: {{ summary.percent }}%"></i></div>
+      <dl class="uxf-facts">
+        <div><dt>Ready to pay</dt><dd>{{ summary.pending|naira }}</dd></div>
+        <div><dt>In a batch</dt><dd>{{ summary.prepared|naira }}</dd></div>
+        <div><dt>Paid · to confirm</dt><dd>{{ summary.paid|naira }}</dd></div>
+        <div><dt>Confirmed</dt><dd>{{ summary.confirmed|naira }}</dd></div>
+      </dl>
+    </section>
+
+    <section class="ux-card ux-card--accent ux-span-4">
+      <div class="ux-card__head"><div><h3>Pay officer</h3><p>Prepares with masked bank numbers only.</p></div></div>
+      {% if officer %}<div class="uxf-person"><span class="ux-avatar ux-avatar--gold" aria-hidden="true">{{ officer.first_name|slice:":1" }}{{ officer.last_name|slice:":1" }}</span><div><strong>{{ officer.get_full_name|default:officer.email }}</strong><small>{% if file.pay_officer_id %}For this file{% else %}Standing pay officer{% endif %}</small></div></div>
+      {% else %}<p class="ux-muted">None — the Director of Finance prepares and approves.</p>{% endif %}
+      {% if is_dof %}
+      <form method="post" action="{% url 'honoraria_sched:pay_officer' %}" class="uxf-inline-form">{% csrf_token %}
+        <input type="hidden" name="file" value="{{ file.pk }}">
+        <label class="sr-only" for="po-file">Pay officer for this file</label>
+        <select class="input" id="po-file" name="officer" required><option value="">Choose…</option>{% for u in candidates %}<option value="{{ u.pk }}"{% if officer and officer.pk == u.pk %} selected{% endif %}>{{ u.get_full_name|default:u.email }}</option>{% endfor %}</select>
+        <button class="btn btn-primary btn-sm" type="submit">Assign</button>
+        <label class="uxf-check"><input type="checkbox" name="standing" value="1"> Also for every other file</label>
+      </form>
+      {% endif %}
+    </section>
+
+    <section class="ux-card ux-span-4">
+      <div class="ux-card__head"><div><h3>Batches</h3><p>Prepared → approved → paid</p></div></div>
+      {% if batches %}
+      <ul class="ux-list">
+        {% for b in batches %}
+        <li class="uxf-batch">
+          <div><a href="{% url 'honoraria_sched:detail' b.pk %}" class="qa-mono">{{ b.reference }}</a>
+            <small>{{ b.line_count }} line{{ b.line_count|pluralize }} · {{ b.total|naira }}{% if b.status == "paid" %} · {{ b.confirmed }}/{{ b.line_count }} confirmed{% endif %}</small></div>
+          {% if b.status == "draft" %}<span class="ux-chip ux-chip--blue">Awaiting approval</span>{% elif b.status == "approved" %}<span class="ux-chip ux-chip--blue">Approved</span>{% else %}<span class="ux-chip ux-chip--green">Paid {{ b.paid_at|date:"j M" }}</span>{% endif %}
+          {% if b.status == "draft" and is_dof %}
+          <div class="uxf-batch__actions">
+            <form method="post" action="{% url 'honoraria_sched:batch_approve' b.pk %}" data-confirm data-confirm-title="Approve and record as paid?" data-confirm-body="{{ b.reference }}: {{ b.total|naira }}." data-confirm-label="Approve &amp; pay" data-confirm-variant="neutral">{% csrf_token %}<button class="btn btn-sm ux-btn-approve" type="submit">Approve &amp; pay</button></form>
+            <form method="post" action="{% url 'honoraria_sched:batch_cancel' b.pk %}" data-confirm data-confirm-title="Withdraw this batch?" data-confirm-body="Its lines become ready to pay again." data-confirm-label="Withdraw">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit">Withdraw</button></form>
+          </div>
+          {% elif b.status == "draft" and b.created_by_id == request.user.pk %}
+          <form method="post" action="{% url 'honoraria_sched:batch_cancel' b.pk %}" data-confirm data-confirm-title="Withdraw this batch?" data-confirm-body="Its lines become ready to pay again." data-confirm-label="Withdraw">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit">Withdraw</button></form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="ux-muted">No batch yet.</p>{% endif %}
+    </section>
+</div>
+<div class="uxf-stages">
+    {% for st in stages %}
+    <section class="ux-card uxf-stage" aria-labelledby="st-{{ st.code }}">
+      <div class="ux-card__head">
+        <div class="ux-card__title"><span class="uxf-stage__badge uxf-stage__badge--{{ st.code }}">{{ st.short }}</span>
+          <div><h2 id="st-{{ st.code }}">{{ st.label }}</h2>
+            <p>{% if st.code == "sop01" %}Documents reviewed by internal officers{% elif st.code == "sop02" %}SSQ reviews — internal officers and external resource persons{% else %}Visit personnel per day at the state rates on the case cost sheet, and academic resource persons{% endif %}</p></div></div>
+        <div class="uxf-stage__sum"><strong>{{ st.total|naira }}</strong><small>{% if st.owed %}{{ st.owed|naira }} owed{% elif st.lines %}all settled{% else %}nothing yet{% endif %}</small></div>
+      </div>
+      {% if st.lines %}
+      <div class="uxf-table-wrap"><table class="uxf-table">
+        <thead><tr>{% if can_prepare %}<th scope="col" class="uxf-col-pick"><span class="sr-only">Pay</span></th>{% endif %}<th scope="col">Person</th><th scope="col">Work</th><th scope="col" class="ux-num">Qty × rate</th><th scope="col" class="ux-num">Amount</th><th scope="col">Bank</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+        {% for line in st.lines %}
+          <tr class="uxf-line uxf-line--{{ line.status }}">
+            {% if can_prepare %}<td class="uxf-col-pick">{% if line.selectable %}<input type="checkbox" class="uxf-pick" name="line" value="{{ line.pk }}" form="prepare-form" data-amount="{{ line.amount }}" checked aria-label="Pay {{ line.name }}">{% endif %}</td>{% endif %}
+            <td><div class="uxf-person"><span class="ux-avatar{% if line.resource_person_id %} ux-avatar--violet{% endif %}" aria-hidden="true">{{ line.name|slice:":1" }}</span><div><strong>{{ line.name }}</strong><small>{{ line.role|default:"—" }}</small></div></div></td>
+            <td class="uxf-work">{{ line.work_item|default:"—" }}<small>{{ line.accrued_at|date:"j M Y" }}</small></td>
+            <td class="ux-num">{{ line.quantity|floatformat:"-1" }} × {{ line.rate|naira }}</td>
+            <td class="ux-num"><strong>{{ line.amount|naira }}</strong></td>
+            <td>
+              {% if line.bank %}<span class="uxf-bank{% if line.bank_ok %} is-ok{% else %} is-warn{% endif %}" title="{% if line.bank_ok %}Confirmed by the owner{% else %}Not yet confirmed by the owner{% endif %}">{{ line.bank.bank.name }} <span class="qa-mono">{{ line.bank.masked }}</span></span>
+                {% if can_view_bank %}<div id="bank-{{ line.pk }}" class="uxf-reveal"><button type="button" class="uxf-link" hx-post="{% url 'honoraria_sched:roller_bank' %}" hx-vals='{"payee": "{{ line.payee_key }}", "reason": "honorarium file {{ file.reference }}"}' hx-target="#bank-{{ line.pk }}" hx-swap="innerHTML" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>View full number (logged)</button></div>{% endif %}
+              {% else %}<span class="uxf-bank is-missing">No bank details</span>{% endif %}
+            </td>
+            <td>{% include "honoraria/_status_chip.html" with status=line.status %}{% if line.note %}<small class="uxf-note">{{ line.note }}</small>{% endif %}{% if line.schedule_line and line.status != "pending" %}<small class="uxf-note">{{ line.schedule_line.schedule.reference }}</small>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}
+      <p class="ux-muted uxf-empty-line">Nothing earned at this stage yet. It fills in automatically when the stage completes.</p>
+      {% endif %}
+    </section>
+    {% endfor %}
+
+    {% if can_prepare and ready_ok %}
+    <form id="prepare-form" method="post" action="{% url 'honoraria_sched:file_prepare' file.pk %}" class="uxf-footbar uxf-prepare" data-confirm data-confirm-title="Prepare this payment batch?" data-confirm-body="The ticked people go into one batch{% if not is_dof %} and the Director of Finance is asked to approve it{% endif %}." data-confirm-label="Prepare batch" data-confirm-variant="neutral">{% csrf_token %}
+      <a id="prepare" class="uxf-anchor"></a>
+      <div class="uxf-prepare__sum"><span class="ux-kicker">Batch</span><strong><span data-uxf-count>{{ ready_ok }}</span> item(s) · <span data-uxf-total>{{ next.total|naira }}</span></strong>{% if missing_bank %}<small>{{ missing_bank }} waiting for bank details</small>{% endif %}</div>
+      <div class="uxf-prepare__fields">
+        <label class="sr-only" for="pf-fund">Paid from</label>
+        <select class="input" id="pf-fund" name="funding_account"><option value="">Paid from (DoF can choose)</option>{% for a in funding_accounts %}<option value="{{ a.pk }}"{% if funding_accounts|length == 1 %} selected{% endif %}>{{ a.bank_name }} · ••{{ a.account_number|slice:"-4:" }}</option>{% endfor %}</select>
+        <label class="sr-only" for="pf-ref">Transfer / batch reference</label>
+        <input class="input" id="pf-ref" name="payment_reference" maxlength="100" placeholder="Transfer reference (optional)">
+      </div>
+      <button class="btn {% if is_dof %}ux-btn-approve{% else %}btn-primary{% endif %}" type="submit">Prepare batch</button>
+    </form>
+    {% endif %}
+  </div>
+{{ charts|json_script:"ux-chart-data" }}
+<script src="{% static 'js/ux-charts.js' %}" data-chart-lib="{% static 'vendor/chart-4.4.1.umd.js' %}" defer></script>
+<script>
+(function () {
+  var form = document.getElementById("prepare-form");
+  if (!form) return;
+  var fmt = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 2 });
+  function update() {
+    var picks = document.querySelectorAll(".uxf-pick:checked"), total = 0;
+    picks.forEach(function (p) { total += parseFloat(p.dataset.amount || "0"); });
+    var c = form.querySelector("[data-uxf-count]"), t = form.querySelector("[data-uxf-total]");
+    if (c) c.textContent = picks.length;
+    if (t) t.textContent = fmt.format(total).replace("NGN", "₦");
+    var btn = form.querySelector("button[type=submit]");
+    if (btn) btn.disabled = picks.length === 0;
+  }
+  document.querySelectorAll(".uxf-pick").forEach(function (p) { p.addEventListener("change", update); });
+  update();
+})();
+</script>
+</div>
+{% endblock %}

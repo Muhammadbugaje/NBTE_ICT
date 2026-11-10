@@ -145,7 +145,10 @@ def test_ranking_fewest_visits_first(p5):
     assert ranked.index("Dr. Chukwuma Obi") < ranked.index("Dr. Zainab Abdullahi")
 
 
-def test_finder_screen_lists_eligible_people_with_filters(p5):
+def test_finder_screen_lists_eligible_people_with_filters(p5, department_mode):
+    # The finder's rows resolve through the viewer's institution scope; the
+    # deployed department privacy mode (dev DB) shows them to DPAP. A fresh
+    # install defaults to assignment mode (v2.1 X1).
     from qa_core.tests.phase4_fixtures import staff_client
 
     c = staff_client(p5.people.desk_officer)

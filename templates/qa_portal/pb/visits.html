@@ -1,0 +1,78 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Visits · {{ body.acronym|default:body.name }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} Professional body portal</span>
+    <h1 data-qa-focus>Visits</h1>
+    <p>Exercises that concern your programmes. Put your representative on each visit; they write the body's report, you review it, NBTE reads it.</p>
+  </header>
+  {% include "qa_portal/pb/_tabs.html" with section_key="visits" %}
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+
+  {% if invitations %}
+  <section class="qa-card qa-mt" aria-labelledby="pb-invit-h">
+    <header class="qa-card__head"><div><h2 id="pb-invit-h">Invitations waiting for your reply</h2><p>Confirm attendance from the Invitations section — your registrar's reply becomes the member of record when you assign them below.</p></div></header>
+    <ul class="qa-rowlist" role="list">{% for i in invitations %}
+      <li><a class="qa-rowlink" href="{% url 'qa_portal:visit_invitation_respond' i.pk %}">
+        <span class="qa-rowlink__badge">{% icon "mail" 14 "2.2" %}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ i.case.institution.name }}</span>
+        <span class="qa-rowlink__meta">{{ i.case.reference }}{% if i.visit_start %} · {{ i.visit_start|date:"d M Y H:i" }}{% endif %}</span></span></a></li>
+    {% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  <section class="qa-card qa-mt" aria-labelledby="pb-upcoming-h">
+    <header class="qa-card__head"><div><h2 id="pb-upcoming-h">Upcoming visits</h2><p>Assign your representative: they get the visit details, write the report, and you approve it before it reaches NBTE.</p></div></header>
+    {% if upcoming %}
+    <ul class="qa-rowlist" role="list">
+      {% for r in upcoming %}
+      <li class="qa-rowlink qa-rowlink--nobadge qa-stack-sm">
+        <span class="qa-rowlink__main">
+          <span class="qa-rowlink__title"><a href="{% url 'qa_portal:pb_dashboard' %}#">{{ r.case.institution.name }}</a> <span class="qa-chip">{{ r.inspection.scheduled_start|date:"d M Y" }}</span></span>
+          <span class="qa-rowlink__meta">{{ r.case.reference }} · {{ r.case.qa_request.qa_type.name|default:"QA" }}{% if r.rep %} · <strong>your representative: {{ r.rep.name }}</strong>{% endif %}</span>
+        </span>
+        {% if can_assign %}
+        <form class="qa-form" method="post" action="{% url 'qa_portal:pb_assign_rep' r.case.pk %}">{% csrf_token %}
+          <div class="qa-fields">
+            <div class="qa-field"><label for="rep-{{ r.case.pk }}">Representative</label>
+              <select class="input qa-select" id="rep-{{ r.case.pk }}" name="member" required>
+                {% for c in r.choices %}<option value="{{ c.user_id }}"{% if r.rep and c.user_id == r.rep.user_id %} selected{% endif %}>{{ c.name }}{% if c.job_title %} ({{ c.job_title }}){% endif %}</option>{% empty %}<option value="" disabled>No one on your people list yet</option>{% endfor %}
+              </select></div>
+            <div class="qa-field"><label for="rmk-{{ r.case.pk }}">Note to NBTE (optional)</label>
+              <input class="input" id="rmk-{{ r.case.pk }}" name="remark" maxlength="255"></div>
+          </div>
+          <div class="qa-form-actions">{% if r.choices %}<button class="btn btn-primary btn-sm" type="submit">{% icon "user" 14 %} {% if r.rep %}Change representative{% else %}Assign representative{% endif %}</button>{% endif %}</div>
+        </form>
+        {% else %}
+        <span class="qa-muted qa-small">Only the body's administrator assigns representatives.</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="qa-card__body qa-muted qa-small">Nothing coming up for your programmes right now.</p>{% endif %}
+  </section>
+
+  {% if awaiting %}
+  <section class="qa-card" aria-labelledby="pb-await-h">
+    <header class="qa-card__head"><div><h2 id="pb-await-h">Visits without a report yet</h2><p>Your representative attended but our report is missing. Draft it in Reports.</p></div></header>
+    <ul class="qa-rowlist" role="list">{% for case, member_row in awaiting %}
+      <li><a class="qa-rowlink" href="{% url 'qa_portal:pb_reports' %}">
+        <span class="qa-rowlink__badge">{% icon "edit" 14 "2.2" %}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ case.institution.name }}</span>
+        <span class="qa-rowlink__meta">{{ case.reference }} · representative: {{ member_row.name }}</span></span></a></li>
+    {% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  {% if past %}
+  <section class="qa-card" aria-labelledby="pb-past-h">
+    <header class="qa-card__head"><div><h2 id="pb-past-h">Past visits</h2></div></header>
+    <ul class="qa-rowlist" role="list">{% for i in past %}<li class="qa-rowlink qa-rowlink--nobadge">
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ i.case.institution.name }}</span>
+      <span class="qa-rowlink__meta">{{ i.case.reference }} · {{ i.scheduled_start|date:"d M Y" }}</span></span></li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

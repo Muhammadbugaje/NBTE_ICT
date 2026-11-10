@@ -6,7 +6,7 @@
 <div class="qa-snap">
   {% for s in sections %}
     <section class="qa-card qa-snap__section" aria-labelledby="snap-{{ s.key }}">
-      <header class="qa-card__head"><h3 id="snap-{{ s.key }}">{{ forloop.counter }}. {{ s.title }}</h3></header>
+      <header class="qa-card__head"><div class="qa-snap__head"><span class="qa-snap__no" aria-hidden="true">{{ forloop.counter }}</span><h3 id="snap-{{ s.key }}">{{ s.title }}</h3></div></header>
       <dl class="qa-snap__fields">
         {% for f in s.fields %}
           <div class="qa-snap__row{% if f.type == 'table' or f.type == 'catalogue' %} qa-snap__row--wide{% endif %}">
@@ -15,8 +15,9 @@
               {% if f.type == "catalogue" %}
                 {% if f.rows %}
                 <div class="qa-table-wrap"><table class="qa-table qa-table--compact">
-                  <thead><tr><th>Item (from the catalogue)</th><th class="qa-num">Required</th><th class="qa-num">Available</th><th>Unit</th></tr></thead>
-                  <tbody>{% for r in f.rows %}<tr class="{% if r.short %}is-short{% endif %}"><td data-label="Item">{{ r.name }}</td><td data-label="Required" class="qa-num">{{ r.required|floatformat:"-2" }}</td><td data-label="Available" class="qa-num">{{ r.quantity|default:"—" }}{% if r.short %} <span class="qa-chip qa-tone-warn">Short</span>{% endif %}</td><td data-label="Unit">{{ r.unit }}</td></tr>{% endfor %}</tbody>
+                  {% comment %}X35: the portal (institution) never sees the Required column or Short flags.{% endcomment %}
+                  <thead><tr><th>Item (from the catalogue)</th>{% if not portal %}<th class="qa-num">Required</th>{% endif %}<th class="qa-num">Available</th><th>Unit</th></tr></thead>
+                  <tbody>{% for r in f.rows %}<tr class="{% if r.short and not portal %}is-short{% endif %}"><td data-label="Item">{{ r.name }}</td>{% if not portal %}<td data-label="Required" class="qa-num">{{ r.required|floatformat:"-2" }}</td>{% endif %}<td data-label="Available" class="qa-num">{{ r.quantity|default:"—" }}{% if r.short and not portal %} <span class="qa-chip qa-tone-warn">Short</span>{% endif %}</td><td data-label="Unit">{{ r.unit }}</td></tr>{% endfor %}</tbody>
                 </table></div>
                 {% else %}<span class="qa-muted">No catalogue items for this programme.</span>{% endif %}
               {% elif f.type == "table" %}

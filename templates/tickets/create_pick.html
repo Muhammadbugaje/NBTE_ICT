@@ -1,21 +1,17 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 
 {% block title %}Raise a ticket · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Raise a ticket{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="tk-page">
-  <header class="tk-page-head">
-    <div>
-      <h1>What do you need help with?</h1>
-      <p>Pick a category — the ticket routes to the right team automatically.</p>
-    </div>
-  </header>
+<div class="tk-page wk-page" data-qa-area="tickets">
+  {% url 'tickets:my_tickets' as back_url %}
+  {% include "partials/hero.html" with area="tickets" icon="plus" eyebrow="Tickets · New ticket" title="What do you need help with?" lede="Pick a category. The ticket routes to the right team automatically and the SLA clock starts." back_url=back_url back_label="My tickets" %}
 
   {% if categories %}
     <div class="tk-cat-grid">

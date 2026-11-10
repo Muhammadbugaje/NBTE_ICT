@@ -1,0 +1,76 @@
+{% load qa_tags %}{% load ux_tags %}
+{% comment %}
+  The bare-minimum counter (accreditation/onboarding_check.py): the score,
+  every check, what NBTE already holds about the institution and the
+  programme, and what this self-study is measured against. Read it before
+  acting on the cards below. Context: study, inst, check, check_labels.
+{% endcomment %}
+<section class="qa-card sf-band--{{ check.band }}" aria-labelledby="ob-check-h">
+  <header class="qa-card__head">
+    <div>
+      <span class="qa-eyebrow">Smart counter · bare minimum</span>
+      <h2 id="ob-check-h">Does this self-study reach the bare minimum?</h2>
+      <p>Scored from what {{ inst.name }} submitted and cross-checked against what NBTE already holds for the
+        institution and for {{ study.programme.name }}.</p>
+    </div>
+  </header>
+  <div class="qa-card__body qa-stack">
+    <div class="sf-head">
+      <span class="sf-score">{{ check.score }}<span class="qa-small qa-muted"> / 100</span></span>
+      <span class="sf-bar" role="img" aria-label="Score {{ check.score }} out of 100"><span style="width: {{ check.score }}%"></span></span>
+      <span class="qa-chip {% if check.meets %}qa-tone-success{% else %}qa-tone-danger{% endif %}">{{ check.verdict }}</span>
+    </div>
+    <p class="qa-small qa-muted">{{ check.passed }} of {{ check.checks_total }} check{{ check.checks_total|pluralize }}
+      met · {{ check.warned }} warning{{ check.warned|pluralize }} · {{ check.failed }} failing.
+      Meets the bare minimum from {{ check.threshold }}/100 with nothing failing; a warning counts half.</p>
+
+    {% if not check.meets %}
+    <div class="qa-callout qa-callout--danger" role="alert">{% icon "alert" 18 "2.2" %}
+      <div><strong>Below the bare minimum — {{ check.score }}/100</strong>
+        <p>You can still send it to the director: tick the override box in the assessment below and say why.
+          That override is recorded with your name and the reason, and the director is told.</p>
+        <ul class="qa-problems">{% for c in check.failed_checks %}<li><strong>{{ c.label }}</strong> — {{ c.detail }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <ul class="sf-list" role="list">
+      {% for c in check.checks %}
+      <li>
+        <span><strong>{{ c.label }}</strong><br><span class="qa-small qa-muted">{{ c.detail }}</span></span>
+        <span class="qa-chip {% if c.status == 'pass' %}qa-tone-success{% elif c.status == 'warn' %}qa-tone-warn{% else %}qa-tone-danger{% endif %}">{{ c.status_label }}</span>
+      </li>
+      {% empty %}
+      <li><span class="qa-muted">No check could run against this self-study.</span></li>
+      {% endfor %}
+    </ul>
+
+    {% if check.facts.institution %}
+    <div>
+      <h3 class="qa-h3">What NBTE already holds — {{ inst.name }}</h3>
+      <dl class="qa-dl">{% for label, value in check.facts.institution %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+    </div>
+    {% endif %}
+
+    {% if check.facts.programme %}
+    <div>
+      <h3 class="qa-h3">Programme record — {{ study.programme.name }}</h3>
+      <dl class="qa-dl">{% for label, value in check.facts.programme %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+    </div>
+    {% endif %}
+
+    {% if check.compare %}
+    <div>
+      <h3 class="qa-h3">Compared with</h3>
+      {% if check.compare.note %}<p class="qa-small qa-muted">{{ check.compare.note }}</p>{% endif %}
+      {% if check.compare.rows %}
+      <ul class="sf-list" role="list">
+        {% for row in check.compare.rows %}<li>
+          <span><strong>{{ row.label }}</strong><br><span class="qa-small qa-muted">{{ row.detail }}</span></span>
+        </li>{% endfor %}
+      </ul>
+      {% elif not check.compare.note %}<p class="qa-small qa-muted">Nothing else to compare against yet.</p>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>

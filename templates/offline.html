@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>You're offline · Digital NBTE</title>
+  {# Self-contained on purpose: shown by the service worker when nothing else can load. #}
+  <style>
+    :root { --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --primary: #1e6b3a; --primary-fg: #ffffff;
+            --border: #e5e5ea; --soft: #e8f3ec; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #000000; --card: #1c1c1e; --text: #f5f5f7; --muted: #a1a1a6; --primary: #34a35a; --border: #2c2c2e;
+              --soft: #12301d; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+           background: var(--bg); color: var(--text);
+           font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .card { width: 100%; max-width: 440px; padding: 36px 28px 30px; text-align: center; background: var(--card);
+            border: 1px solid var(--border); border-radius: 22px; box-shadow: 0 18px 48px -24px rgba(0, 0, 0, .25); }
+    .logo { width: 84px; height: 84px; object-fit: contain; }
+    .brand { margin: 10px 0 22px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+    .badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+             background: var(--soft); color: var(--primary); font-size: 13px; font-weight: 700; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .3; } }
+    @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+    h1 { margin: 16px 0 8px; font-size: 26px; letter-spacing: -.02em; }
+    p { margin: 0 0 22px; color: var(--muted); }
+    button { min-height: 46px; padding: 0 26px; border: 0; border-radius: 999px; background: var(--primary);
+             color: var(--primary-fg); font: inherit; font-weight: 700; cursor: pointer; }
+    button:focus-visible { outline: 3px solid var(--soft); outline-offset: 3px; }
+    .foot { margin-top: 22px; font-size: 12.5px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <img loading="lazy" decoding="async" class="logo" src="{{ logo }}" alt="NBTE logo" width="84" height="84">
+    <div class="brand">National Board for Technical Education</div>
+    <span class="badge"><span class="dot" aria-hidden="true"></span> No connection</span>
+    <h1>You're offline</h1>
+    <p>Digital NBTE can't reach the network right now. Check your Wi-Fi or data, then try again. Nothing you saved is lost.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+    <div class="foot">This page reloads by itself when you're back online.</div>
+  </main>
+  <script>window.addEventListener("online", function () { location.reload(); });</script>
+</body>
+</html>

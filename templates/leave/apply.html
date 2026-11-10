@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Apply for leave · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Apply for leave{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/hr-leave.css' %}">{% endblock %}
+
+{% block content %}
+<main class="hrd-page lv-apply">
+  <header class="hrd-head">
+    <div>
+      <span class="hrd-eyebrow">Leave</span>
+      <h1>Apply for leave</h1>
+      <p>Pick the kind of leave. Some types ask for dates; others ask how many days you need and work out the last day for you, skipping weekends and public holidays.</p>
+    </div>
+    <div class="btn-group btn-group--end">
+      <a class="btn btn-ghost" href="{% url 'attendance:home' %}">My attendance</a>
+    </div>
+  </header>
+
+  {% if not staff %}
+    <div class="alert alert-warn"><div class="alert-body">Your account is not linked to a staff record, so you can't apply yet. Contact HR.</div></div>
+  {% elif not request_type_open %}
+    <div class="alert alert-warn"><div class="alert-body">Leave applications are closed at the moment. Contact HR.</div></div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="hrd-split" novalidate
+        hx-get="{% url 'leave:apply_fields' %}" hx-trigger="change from:.lv-types" hx-target="#lv-fields" hx-swap="outerHTML"
+        hx-include="this">
+    {% csrf_token %}
+    <section class="hrd-card">
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger" role="alert"><div class="alert-body">{{ form.non_field_errors|join:" " }}</div></div>
+      {% endif %}
+      <fieldset class="lv-types">
+        <legend>Type of leave</legend>
+        {% for t in types %}
+          <label class="lv-type">
+            <input type="radio" name="leave_type" value="{{ t.code }}" {% if leave_type and t.pk == leave_type.pk %}checked{% endif %}>
+            <span>{{ t.name }}{% if not t.paid %} <small>· unpaid</small>{% endif %}</span>
+          </label>
+        {% endfor %}
+      </fieldset>
+      {% if form.leave_type.errors %}<span class="field-error">{{ form.leave_type.errors|join:" " }}</span>{% endif %}
+
+      {% include "leave/_apply_fields.html" %}
+
+      <div class="field hrd-mt">
+        <label for="{{ form.reason.id_for_label }}">{{ form.reason.label }}</label>
+        {{ form.reason }}
+        <span class="hint">Optional. Your approvers see it with the request.</span>
+      </div>
+
+      <div class="btn-group btn-group--end hrd-mt">
+        <a class="btn btn-ghost" href="{% url 'attendance:home' %}">Cancel</a>
+        <button class="btn btn-primary" type="submit" {% if not staff or not request_type_open %}disabled{% endif %}>Send for approval</button>
+      </div>
+    </section>
+
+    <aside class="hrd-card hrd-sticky" aria-labelledby="lv-balance-title">
+      <h2 id="lv-balance-title">{{ leave_type.name|default:"Leave" }} balance · {{ year }}</h2>
+      <div id="lv-balance">
+        {% include "leave/_apply_balance.html" %}
+      </div>
+      <p class="hrd-sub hrd-mt">Approved leave shows on your attendance for every day it covers, so you are never marked absent.</p>
+    </aside>
+  </form>
+</main>
+{% endblock %}

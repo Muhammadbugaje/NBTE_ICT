@@ -65,28 +65,79 @@ if QA_PORTAL_HOST and QA_PORTAL_HOST.split(":")[0] not in ALLOWED_HOSTS:
 QA_SCOPING_STRICT = os.environ.get("QA_SCOPING_STRICT", "True") == "True"
 # Remita / Paystack keys are usually absent on a developer machine: use the
 # in-process payment simulator unless real sandbox keys are set.
-QA_PAYMENTS_SIMULATE = os.environ.get("QA_PAYMENTS_SIMULATE", "True") == "True"
+QA_PAYMENTS_SIMULATE = False
 QA_PORTAL_URL = os.environ.get("QA_PORTAL_URL", "http://qa.localhost:8000").strip()
 
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
-if os.environ.get("DATABASE_URL"):
-    import dj_database_url
-    DATABASES = {"default": dj_database_url.parse(os.environ["DATABASE_URL"])}
+from django.core.exceptions import ImproperlyConfigured
 
-CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+_database_backend = os.environ.get("DATABASE_BACKEND", "").strip().lower()
+_database_url = os.environ.get("DATABASE_URL", "").strip()
+if not _database_backend:
+    _database_backend = "url" if _database_url else "sqlite"
+
+if _database_backend == "sqlite":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+            # SQLite answers "database is locked" the moment a second writer
+            # arrives while one write holds the file (dev runs stage tasks
+            # inline and the bell polls at the same time). ``timeout`` makes a
+            # competing connection WAIT up to 30 s for the lock instead of
+            # failing immediately. WAL mode + a per-connection busy timeout
+            # are set in core/apps.py on every connection.
+            "OPTIONS": {"timeout": 30},
+        }
+    }
+elif _database_backend == "url":
+    if not _database_url:
+        raise ImproperlyConfigured("DATABASE_BACKEND=url requires DATABASE_URL.")
+    import dj_database_url
+
+    DATABASES = {"default": dj_database_url.parse(_database_url, conn_max_age=600)}
+else:
+    raise ImproperlyConfigured("DATABASE_BACKEND must be 'sqlite' or 'url'.")
+
+# v2.3: find out what is actually running on this machine. REDIS_URL may be
+# set (copied from the server's .env) while no Redis runs locally: probe it
+# once at start-up (a fast socket check) and fall back to an in-memory cache
+# instead of failing every page with "Connection refused".
+def _redis_reachable(url, timeout=0.4):
+    import socket
+    from urllib.parse import urlparse
+
+    try:
+        u = urlparse(url)
+        if u.scheme == "unix":
+            return os.path.exists(u.path)
+        with socket.create_connection((u.hostname or "localhost", u.port or 6379), timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+_redis_url = os.environ.get("REDIS_URL", "").strip()
+REDIS_AVAILABLE = bool(_redis_url) and _redis_reachable(_redis_url)
+if REDIS_AVAILABLE:
+    CACHES = {"default": {"BACKEND": "core.cache_backends.ResilientRedisCache",
+                          "LOCATION": _redis_url, "KEY_PREFIX": "nbte", "TIMEOUT": 300,
+                          "OPTIONS": {"socket_connect_timeout": 1, "socket_timeout": 1}}}
+else:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    if _redis_url and os.environ.get("RUN_MAIN") != "true":  # say it once, not per autoreload
+        import sys
+
+        print(f"[dev] Redis at {_redis_url.split('@')[-1]} is not running: using the in-memory cache "
+              "and running background tasks inline.", file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # Email
 # ---------------------------------------------------------------------------
-# Temporary passwords are printed to the runserver console in dev.
+# QA e-mail delivery is controlled by QA_EMAIL_DELIVERY (provider delivery by
+# default; set it to "console" explicitly for a log-only local run).
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "NBTE ICT <no-reply@localhost>")
 SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000")
 
@@ -94,6 +145,9 @@ SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000")
 # Celery
 # ---------------------------------------------------------------------------
 CELERY_TASK_ALWAYS_EAGER = os.environ.get("CELERY_EAGER", "True") == "True"
+_broker = os.environ.get("CELERY_BROKER_URL", "").strip() or _redis_url or "redis://localhost:6379/0"
+if not CELERY_TASK_ALWAYS_EAGER and _broker.startswith("redis") and not _redis_reachable(_broker):
+    CELERY_TASK_ALWAYS_EAGER = True   # no broker running here: run tasks inline instead of hanging
 
 # ---------------------------------------------------------------------------
 # CSRF
@@ -138,3 +192,7 @@ USE_X_FORWARDED_HOST = True
 # Dev only — never enable in production.
 SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = False
+# v2.1 X33: without FIELD_ENCRYPTION_KEY in .env, development (and the test
+# runner, which forces DEBUG off) derives a key from SECRET_KEY. Production
+# refuses to start without the real key (prod.py REQUIRED_ENV).
+FIELD_ENCRYPTION_DEV_FALLBACK = True

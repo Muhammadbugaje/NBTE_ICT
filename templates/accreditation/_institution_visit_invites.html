@@ -1,0 +1,15 @@
+{% load visit_notice_tags %}{% institution_visit_invites inst as ivi %}
+{% if ivi %}
+<section class="qa-card" aria-labelledby="ov-invites">
+  <header class="qa-card__head"><div><h2 id="ov-invites">Visit invitations</h2><p>Professional bodies and resource persons invited to upcoming visits.</p></div></header>
+  <ul class="qa-rowlist" role="list">
+    {% for r in ivi %}
+    <li><a class="qa-rowlink" href="/qa/cases/{{ r.case.pk }}/?tab=visit#vin">
+      <span class="qa-rowlink__badge">{{ r.visit_start|date:"M j" }}</span>
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.case.reference }}</span>
+        <span class="qa-rowlink__meta">{{ r.summary.confirmed }} of {{ r.summary.total }} confirmed{% if r.summary.declined %} · {{ r.summary.declined }} declined{% endif %}{% if r.summary.problems %} · {{ r.summary.problems }} not delivered{% endif %}</span></span>
+    </a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}

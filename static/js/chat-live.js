@@ -105,8 +105,13 @@
     var body = root.querySelector('[data-reply-body]');
     var replyField = root.querySelector('[data-reply-to-field]');
 
-    var VISIBLE_MS = 3000, HIDDEN_MS = 15000, MAX_FAILURES = 5;
+    var VISIBLE_MS = 3000, IDLE_MS = 5000, IDLE_AFTER_MS = 60000, HIDDEN_MS = 15000, MAX_FAILURES = 5;
+    var lastActivity = Date.now();
     var timer = null, inflight = false, failures = 0, stopped = false;
+    // v2.1 L9: version token of the last answer; the server answers
+    // {"unchanged": true} (no database work) while it still matches.
+    var version = root.dataset.version || '';
+    var wantHead = false;
     var deferred = {};
 
     function messageEl(id) {
@@ -213,8 +218,35 @@
       }
     }
 
+    function applyHead(head) {
+      if (!head) return;
+      var sub = root.querySelector('[data-head-subtitle]');
+      if (sub && root.dataset.isGroup === '1' && head.subtitle) sub.textContent = head.subtitle;
+      if (head.can_pin) root.setAttribute('data-can-pin', ''); else root.removeAttribute('data-can-pin');
+      var form = root.querySelector('[data-reply-form]');
+      var note = root.querySelector('[data-readonly-note]');
+      if (form) form.hidden = !head.can_send;
+      if (note) {
+        note.hidden = !!head.can_send;
+        var t = note.querySelector('[data-readonly-text]');
+        if (t) t.textContent = head.read_only ? 'This group is archived. You can read it, but nobody can post.'
+                                              : 'Only admins can send messages in this group.';
+      }
+      if (typeof head.pinned_html === 'string') {
+        var bar = root.querySelector('[data-pinned-bar]');
+        var fresh = htmlToElement(head.pinned_html);
+        if (bar && fresh) bar.replaceWith(fresh);
+      }
+    }
+    root.chatApplyHead = applyHead;
+
     function applyUpdates(data) {
       if (!data || !data.ok) return;
+      if (data.v) version = data.v;
+      if (data.typing && data.typing.length) lastActivity = Date.now();
+      if (data.unchanged) { applyTyping(data.typing); return; }
+      lastActivity = Date.now();
+      applyHead(data.head);
       var stick = nearBottom();
       var arrivedFromOthers = false;
       (data.new || []).forEach(function (item) {
@@ -236,15 +268,46 @@
     }
 
     function nextDelay() {
-      var base = document.hidden ? HIDDEN_MS : VISIBLE_MS;
+      // Hidden tab with the shared poller: no own polling - the shared inbox
+      // stream (one per browser) wakes this tab when this chat changes.
+      if (document.hidden && sharedInbox) return null;
+      // Quiet chat: 5 s instead of 3 s (activity brings it back to 3 s).
+      var base = document.hidden ? HIDDEN_MS
+        : (Date.now() - lastActivity > IDLE_AFTER_MS ? IDLE_MS : VISIBLE_MS);
       if (failures) base = Math.min(30000, base * Math.pow(2, failures));
       return base;
     }
 
     function schedule(ms) {
       clearTimeout(timer);
-      if (!stopped) timer = setTimeout(poll, ms);
+      if (!stopped && ms != null) timer = setTimeout(poll, ms);
     }
+
+    // v2.1 L9: watch this chat's row in the shared inbox stream.
+    // Only while this tab is hidden: a visible chat polls itself anyway.
+    var sharedInbox = null, inboxSub = null, lastRow = null;
+    function watchInbox(on) {
+      if (!window.NBTEPoll || !root.dataset.inboxUpdatesUrl) return;
+      sharedInbox = true;
+      if (on && !inboxSub) {
+        lastRow = null;
+        inboxSub = window.NBTEPoll.subscribe('chat-inbox', {
+          url: root.dataset.inboxUpdatesUrl, visibleMs: 10000, hiddenMs: 20000,
+          onData: function (d) {
+            var row = null;
+            (d.threads || []).forEach(function (t) { if (String(t.id) === String(threadId)) row = t; });
+            var sig = row ? (row.last_at + '|' + row.unread + '|' + row.title) : 'gone';
+            if (lastRow !== null && sig !== lastRow && !inflight) schedule(50);
+            lastRow = sig;
+          },
+        });
+      } else if (!on && inboxSub) {
+        inboxSub.stop();
+        inboxSub = null;
+      }
+    }
+    watchInbox(document.hidden);
+    root.chatWantHead = function () { wantHead = true; schedule(50); };
 
     function setLiveStatus(show) {
       if (liveStatus) liveStatus.hidden = !show;
@@ -255,7 +318,10 @@
       inflight = true;
       var url = updatesUrl + '?after=' + lastId +
         '&since=' + encodeURIComponent(since || '') +
-        '&visible=' + (document.hidden ? '0' : '1');
+        '&visible=' + (document.hidden ? '0' : '1') +
+        (version ? '&v=' + encodeURIComponent(version) : '') +
+        (wantHead ? '&head=1' : '');
+      wantHead = false;
       fetch(url, {
         credentials: 'same-origin',
         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -282,14 +348,16 @@
     }
 
     document.addEventListener('visibilitychange', function () {
+      watchInbox(document.hidden);
       if (stopped) return;
-      schedule(document.hidden ? HIDDEN_MS : 200);
+      if (!document.hidden) lastActivity = Date.now();
+      schedule(document.hidden ? nextDelay() : 200);
     });
     var retry = root.querySelector('[data-live-retry]');
     if (retry) retry.addEventListener('click', function () {
       stopped = false; failures = 0; setLiveStatus(false); schedule(0);
     });
-    document.addEventListener('chat:sent', function () { schedule(800); });
+    document.addEventListener('chat:sent', function () { lastActivity = Date.now(); schedule(800); });
     root.chatPollNow = function () { schedule(50); };
     schedule(VISIBLE_MS);
 
@@ -741,6 +809,7 @@
   // ================================================================== INBOX
   function initInbox(root) {
     var url = root.dataset.inboxUpdatesUrl;
+    // (inbox poll: shared across tabs when shared-poller.js is loaded)
     if (!url) return;
     var timer = null, failures = 0, stopped = false, inflight = false;
     var totalEl = root.querySelector('[data-total-unread]');
@@ -808,6 +877,16 @@
       return done.then(function () { root.dispatchEvent(new CustomEvent('messages:refilter')); });
     }
 
+    // v2.1 L9: one shared inbox stream per browser (shared-poller.js).
+    if (window.NBTEPoll) {
+      var sub = window.NBTEPoll.subscribe('chat-inbox', {
+        url: url, visibleMs: 10000, hiddenMs: 20000,
+        onData: function (d) { if (d && d.threads) apply(d); },
+      });
+      root.inboxPollNow = function () { sub.kick(); };
+      bindRowMenus();
+      return;
+    }
     function schedule(ms) { clearTimeout(timer); if (!stopped) timer = setTimeout(poll, ms); }
     function poll() {
       if (inflight || stopped) return;
@@ -824,15 +903,32 @@
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden && !stopped) schedule(300);
     });
-    document.addEventListener('click', function (e) {
-      if (!e.target.closest('[data-row-menu]')) {
-        root.querySelectorAll('[data-row-menu][open]').forEach(function (d) { d.open = false; });
-      }
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') root.querySelectorAll('[data-row-menu][open]').forEach(function (d) { d.open = false; });
-    });
+    bindRowMenus();
     schedule(10000);
+
+    function bindRowMenus() {
+      document.addEventListener('click', function (e) {
+        if (!e.target.closest('[data-row-menu]')) {
+          root.querySelectorAll('[data-row-menu][open]').forEach(function (d) { d.open = false; });
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') root.querySelectorAll('[data-row-menu][open]').forEach(function (d) { d.open = false; });
+      });      // One menu at a time; flip it upward when there is no room below
+      // (last rows, the mobile tab bar). `toggle` does not bubble: capture.
+      root.addEventListener('toggle', function (e) {
+        var d = e.target;
+        if (!d.matches || !d.matches('[data-row-menu]') || !d.open) return;
+        root.querySelectorAll('[data-row-menu][open]').forEach(function (o) { if (o !== d) o.open = false; });
+        d.classList.remove('is-up');
+        var panel = d.querySelector('.msg-chat-menu-panel');
+        if (!panel) return;
+        var r = panel.getBoundingClientRect();
+        var bar = document.querySelector('[data-tabbar]');
+        var limit = bar && bar.offsetParent ? bar.getBoundingClientRect().top : window.innerHeight;
+        if (r.bottom > limit - 8 && d.getBoundingClientRect().top - r.height > 70) d.classList.add('is-up');
+      }, true);
+    }
   }
 
   function boot() {

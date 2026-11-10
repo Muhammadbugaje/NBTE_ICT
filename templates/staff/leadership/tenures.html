@@ -1,35 +1,29 @@
 {% extends "base.html" %}
-{% load static staff_tags %}
+{% load static staff_tags qa_tags %}
 
 {% block title %}Tenure records · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Tenure records{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="lead-page">
 
-  <a href="{% url 'staff:leadership_panel' %}" class="lead-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Leadership panel
-  </a>
-
-  <header class="lead-hero lead-hero-manage">
+  <header class="qa-hero nbte-hero">
     <div>
+      <a class="nbte-hero__back" href="{% url 'staff:leadership_panel' %}">{% icon "back" 14 "2.4" %} Leadership panel</a>
+      <span class="qa-eyebrow">{% icon "flag" 14 "2.2" %} User management · Leadership</span>
       <h1>Tenure records</h1>
-      <p>Every executive tenure — current and historical.</p>
+      <p>Every executive tenure, current and historical.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'staff:tenure_create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New tenure</a>
+        <a href="{% url 'staff:public_leadership' %}" class="btn btn-subtle" target="_blank" rel="noopener">{% icon "external" 16 "2.2" %} View public page</a>
+      </div>
     </div>
-    <div class="lead-hero-actions">
-      <a href="{% url 'staff:public_leadership' %}" class="btn btn-ghost" target="_blank" rel="noopener">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        View public page
-      </a>
-      <a href="{% url 'staff:tenure_create' %}" class="btn btn-primary">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New tenure
-      </a>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ page.paginator.count }}</strong><span>{% if q or position_id or current_only %}Matching{% else %}Tenures{% endif %}</span></div>
     </div>
   </header>
 
@@ -76,17 +70,17 @@
           {# ---- Avatar ---- #}
           <div class="lead-tenure-avatar">
             {% if t.photo %}
-              <img src="{{ t.photo_thumb_url }}" alt="">
+              <img loading="lazy" decoding="async" src="{{ t.photo_thumb_url }}" alt="">
             {% elif t.staff.photo %}
-              <img src="{{ t.staff.photo_thumb_url }}" alt="">
+              <img loading="lazy" decoding="async" src="{{ t.staff.photo_thumb_url }}" alt="">
             {% else %}
-              {% staff_avatar_fallback t.staff %}
+              {% if t.staff %}{% staff_avatar_fallback t.staff %}{% else %}<span class="lead-avatar-initials">{{ t.person_initials }}</span>{% endif %}
             {% endif %}
           </div>
 
           {# ---- Person + position ---- #}
           <div class="lead-tenure-info">
-            <div class="lead-tenure-name">{{ t.staff.full_name }}</div>
+            <div class="lead-tenure-name">{{ t.person_name }}</div>
             <div class="lead-tenure-position">
               {{ t.position.name }}
               {% if t.is_acting %}<span class="lead-manage-tag">Acting</span>{% endif %}

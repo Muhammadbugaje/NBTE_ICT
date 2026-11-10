@@ -1,5 +1,5 @@
 {% extends base_template %}
-{% load qa_tags %}
+{% load qa_tags portal_journey_tags %}
 {% block title %}{{ p }} · {{ portal_name }}{% endblock %}
 {% block content %}
 <div class="qa-portal-page">
@@ -21,8 +21,11 @@
     {% if rows %}<ul class="qa-rowlist" role="list">{% for r in rows %}<li><a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_portal:qa_request' r.qa_request.pk %}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.qa_request.qa_type.name }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ r.qa_request.reference }}</span><span>· {{ r.qa_request.created_at|date:"j M Y" }}</span></span></span><span class="qa-rowlink__side"><span class="qa-chip">{{ r.public_status|humanize_code }}</span></span></a></li>{% endfor %}</ul>
     {% else %}<p class="qa-card__body qa-muted qa-small">This programme has not been in a QA request yet.</p>{% endif %}
   </section>
+  {% if body_letters or p.awaiting_body_letter %}<section class="qa-card" aria-labelledby="pp-bl"><header class="qa-card__head"><div><h2 id="pp-bl">Professional body letters</h2>{% if p.awaiting_body_letter %}<p>Waiting for {{ p.professional_body.name }} to upload its approval letter.</p>{% endif %}</div></header>
+    {% if body_letters %}<ul class="qa-rowlist" role="list">{% for l in body_letters %}<li><a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_portal:file' 'institutions.bodyletter' l.pk %}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ l.get_kind_display }} · {{ l.body.acronym|default:l.body.name }}</span><span class="qa-rowlink__meta">{{ l.reference|default:l.original_name }} · {{ l.created_at|date:"j M Y" }}</span></span></a></li>{% endfor %}</ul>{% endif %}
+  </section>{% endif %}
   <section class="qa-card" aria-labelledby="pp-tl"><header class="qa-card__head"><h2 id="pp-tl">History</h2></header>
-    <ol class="qa-tl qa-card__body">{% for e in events %}<li><span class="qa-tl__text">{{ e.public_text }}</span><small>{{ e.at|date:"j M Y" }}</small></li>{% empty %}<li><span class="qa-tl__text qa-muted">Nothing recorded yet.</span></li>{% endfor %}</ol>
+    <ol class="qa-tl qa-card__body">{% for e in events %}<li><span class="qa-tl__text">{{ e.public_text|plain }}</span><small>{{ e.at|date:"j M Y" }}</small></li>{% empty %}<li><span class="qa-tl__text qa-muted">Nothing recorded yet.</span></li>{% endfor %}</ol>
   </section>
 </div>
 {% endblock %}

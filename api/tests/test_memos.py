@@ -61,7 +61,10 @@ def test_door_and_auth(staff_api, portal_api, institution_user, make_user):
     assert staff_api.get(M).status_code == 401
     r = bearer(staff_api, institution_user).get(M)
     assert r.status_code == 403 and err(r)["code"] == "wrong_door"
-    assert bearer(portal_api, institution_user).get(M).status_code == 404
+    # v2.1 Phase E (M4): on the portal door /memos/ is the institution's own
+    # Memos inbox (memos from NBTE), not the staff memo list.
+    r = bearer(portal_api, institution_user).get(M)
+    assert r.status_code == 200 and r.json()["results"] == [] and "counts" not in r.json()
     temp = make_user("temp.memo@t.local", must_change=True)
     r = api(temp).get(M)
     assert r.status_code == 403 and err(r)["code"] == "password_change_required"
@@ -280,7 +283,7 @@ def test_list_validation_and_search(org):
     row = client.get(M + "?tab=sent").json()["results"][0]
     assert set(row) == {"id", "reference", "subject", "summary", "priority", "status", "status_label", "sender",
                         "audience", "created_at", "published_at", "updated_at", "requires_acknowledgment",
-                        "unread", "acknowledged", "current_step", "attachment_count"}
+                        "unread", "acknowledged", "current_step", "attachment_count", "kind"}
     assert row["audience"] == "Rita Test"
 
 
@@ -292,3 +295,10 @@ def test_counts_match_the_website(client, org):
     for tab in ("inbox", "awaiting", "archived"):
         assert data["counts"][tab] == page.context["counts"][tab]
     assert memo_service.memo_tab_counts(org["director"])["awaiting"] == 1
+
+
+@pytest.fixture(autouse=True)
+def _signatures_not_enforced(monkeypatch):
+    """X23: these API memo tests predate the director-signature rule (it has its
+    own tests in messaging/test_x23_memo_signature.py)."""
+    monkeypatch.setattr("documents.signature.blocking_enabled", lambda: False)

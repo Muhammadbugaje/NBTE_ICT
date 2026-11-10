@@ -1,0 +1,101 @@
+{% load qa_tags static %}
+<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
+{% with fin_tab="reconciliation" fin_title="Ledger and reconciliation" fin_lead="Every bill, confirmed payment and waiver is posted to a double-entry ledger. Each night the system asks Paystack and Remita about every recent online payment, compares them with NBTE's records and the ledger, corrects what it safely can and lists the rest here." %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
+
+<section class="rec-cards" aria-label="Ledger summary">
+  <article class="rec-card rec-card--bank"><span class="rec-card__label">{% icon "bank" 15 "2.2" %} Bank (TSA)</span><strong class="qa-num">{{ cards.bank|naira }}</strong><small>Money received, account 1000</small></article>
+  <article class="rec-card rec-card--due"><span class="rec-card__label">{% icon "card" 15 "2.2" %} Owed by institutions</span><strong class="qa-num">{{ cards.receivable|naira }}</strong><small>Receivables, account 1100</small></article>
+  <article class="rec-card rec-card--income"><span class="rec-card__label">{% icon "trend" 15 "2.2" %} QA fee income</span><strong class="qa-num">{{ cards.income|naira }}</strong><small>Account 4000{% if cards.waived %} · {{ cards.waived|naira }} waived{% endif %}</small></article>
+  <article class="rec-card{% if tb.balanced %} rec-card--ok{% else %} rec-card--bad{% endif %}"><span class="rec-card__label">{% if tb.balanced %}{% icon "check" 15 "2.4" %}{% else %}{% icon "alert" 15 "2.2" %}{% endif %} Ledger</span><strong>{% if tb.balanced %}Balanced{% else %}Off by {{ tb.difference|naira }}{% endif %}</strong><small>Debits {{ tb.debit|naira }} · Credits {{ tb.credit|naira }}</small></article>
+  <article class="rec-card{% if open_issues %} rec-card--warn{% else %} rec-card--ok{% endif %}"><span class="rec-card__label">{% icon "flag" 15 "2.2" %} Open issues</span><strong class="qa-num">{{ open_issues }}</strong><small>{% if run %}Last run {{ run.started_at|date:"j M, H:i" }}{% else %}No run yet{% endif %}</small></article>
+</section>
+
+<section class="qa-card rec-tb-card" aria-labelledby="tb-h">
+  <header class="qa-card__head"><div><h2 id="tb-h">{% icon "sheet" 18 %} Trial balance</h2><p>{{ tb.accounts }} account{{ tb.accounts|pluralize }}, grouped by type. Debits always equal credits; open a group to see its accounts.</p></div>
+    <span class="qa-chip {% if tb.balanced %}qa-tone-success{% else %}qa-tone-danger{% endif %}">{% if tb.balanced %}{% icon "check" 12 "2.6" %} Balanced{% else %}Not balanced{% endif %}</span></header>
+  <div class="rec-tb-wrap">
+    <table class="rec-tb" id="rec-tb">
+      <caption class="sr-only">Trial balance by account</caption>
+      <thead><tr><th scope="col">Account</th><th scope="col" class="qa-num">Debit</th><th scope="col" class="qa-num">Credit</th><th scope="col" class="qa-num">Balance</th></tr></thead>
+      {% for g in tb.groups %}
+      <tbody class="rec-tb__group" data-rec-group>
+        <tr class="rec-tb__ghead">
+          <th scope="rowgroup"><button type="button" class="rec-tb__toggle" aria-expanded="true" aria-controls="rec-g-{{ g.kind }}" data-rec-toggle>{% icon "arrow" 14 "2.4" %}<span>{{ g.title }}</span><small>{{ g.rows|length }}</small></button></th>
+          <td class="qa-num" data-label="Debit">{{ g.debit|naira }}</td><td class="qa-num" data-label="Credit">{{ g.credit|naira }}</td><td class="qa-num" data-label="Balance"><strong>{{ g.balance|naira }}</strong></td>
+        </tr>
+      </tbody>
+      <tbody id="rec-g-{{ g.kind }}" class="rec-tb__rows">
+        {% for r in g.rows %}
+        <tr><th scope="row"><span class="qa-mono rec-tb__code">{{ r.acct.code }}</span> <span class="rec-tb__name">{{ r.acct.name }}</span></th>
+          <td class="qa-num{% if not r.debit %} is-zero{% endif %}" data-label="Debit">{{ r.debit|naira }}</td>
+          <td class="qa-num{% if not r.credit %} is-zero{% endif %}" data-label="Credit">{{ r.credit|naira }}</td>
+          <td class="qa-num" data-label="Balance"><strong>{{ r.balance|naira }}</strong></td></tr>
+        {% endfor %}
+      </tbody>
+      {% endfor %}
+      <tfoot><tr class="rec-tb__total"><th scope="row">Total</th><td class="qa-num" data-label="Debit">{{ tb.debit|naira }}</td><td class="qa-num" data-label="Credit">{{ tb.credit|naira }}</td><td class="qa-num" data-label="Difference">{% if tb.balanced %}<span class="rec-ok">{% icon "check" 14 "2.6" %} 0.00</span>{% else %}<span class="rec-bad">{{ tb.difference|naira }}</span>{% endif %}</td></tr></tfoot>
+    </table>
+  </div>
+</section>
+
+<section class="qa-card rec-run" aria-labelledby="rec-h">
+  <header class="qa-card__head"><div><h2 id="rec-h">{% icon "rotate" 18 %} {% if run %}Reconciliation run · {{ run.started_at|date:"j M Y, H:i" }}{% else %}No reconciliation run yet{% endif %}</h2>
+    <p>{% if run %}{{ run.get_trigger_display|default:run.trigger|capfirst }}{% if run.run_by %} by {{ run.run_by.get_full_name|default:run.run_by.email }}{% endif %}.{% else %}Reconciliation runs every night at 01:45.{% endif %}</p></div>
+    {% if can_run %}<form method="post" action="{% url 'qa_fin:reconciliation_run' %}" hx-post="{% url 'qa_fin:reconciliation_run' %}" hx-target="#qa-panel" data-needs-network>{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit">{% icon "rotate" 14 %} Run now</button></form>{% endif %}
+  </header>
+  {% if run %}
+  <dl class="rec-runstats">
+    <div><dt>Bills checked</dt><dd class="qa-num">{{ run.checked_obligations }}</dd></div>
+    <div><dt>Online payments checked</dt><dd class="qa-num">{{ run.checked_attempts }}</dd></div>
+    <div class="{% if run.issues_found %}is-warn{% endif %}"><dt>Issues found</dt><dd class="qa-num">{{ run.issues_found }}</dd></div>
+    <div class="is-ok"><dt>Corrected automatically</dt><dd class="qa-num">{{ run.auto_fixed }}</dd></div>
+  </dl>
+  {% endif %}
+  {% if issues %}
+  <div class="rec-sev" aria-label="Open issues by severity">
+    {% if severity.critical %}<span class="qa-chip qa-tone-danger">{{ severity.critical }} critical</span>{% endif %}
+    {% if severity.warning %}<span class="qa-chip qa-tone-warn">{{ severity.warning }} warning{{ severity.warning|pluralize }}</span>{% endif %}
+    {% if severity.info %}<span class="qa-chip qa-tone-info">{{ severity.info }} info</span>{% endif %}
+    {% if fixed %}<span class="qa-chip qa-tone-success">{{ fixed }} fixed / resolved</span>{% endif %}
+  </div>
+  <ul class="rec-issues" role="list">
+  {% for i in issues %}
+    <li class="rec-issue rec-issue--{{ i.severity }}{% if i.auto_fixed or i.resolved_at %} is-closed{% endif %}">
+      <div class="rec-issue__head">
+        <strong>{{ i.get_kind_display }}</strong>
+        <span class="rec-issue__chips">
+          <span class="qa-chip {% if i.severity == 'critical' %}qa-tone-danger{% elif i.severity == 'warning' %}qa-tone-warn{% else %}qa-tone-info{% endif %}">{{ i.get_severity_display }}</span>
+          {% if i.auto_fixed %}<span class="qa-chip qa-tone-success">Fixed automatically</span>{% elif i.resolved_at %}<span class="qa-chip qa-tone-success">Resolved</span>{% else %}<span class="qa-chip">Open</span>{% endif %}
+        </span>
+      </div>
+      <p class="qa-small">{{ i.message }}{% if i.obligation %} · <a class="qa-mono" href="{% url 'qa_fin:obligation' i.obligation.pk %}">{{ i.obligation.reference }}</a>{% endif %}</p>
+      {% if i.resolved_at and not i.auto_fixed %}<p class="qa-small qa-muted">{{ i.resolved_by.get_full_name }} · {{ i.resolved_at|date:"j M, H:i" }} — {{ i.resolution }}</p>{% endif %}
+      {% if can_run and not i.resolved_at and not i.auto_fixed %}
+      <form class="rec-resolve" method="post" action="{% url 'qa_fin:reconciliation_resolve' i.pk %}" hx-post="{% url 'qa_fin:reconciliation_resolve' i.pk %}" hx-target="#qa-panel">{% csrf_token %}
+        <label class="sr-only" for="res-{{ i.pk }}">What was done</label>
+        <input class="input" id="res-{{ i.pk }}" name="resolution" placeholder="What was done (e.g. refunded ₦…, confirmed with bank)" required minlength="5">
+        <button class="btn btn-subtle btn-sm" type="submit">Mark resolved</button></form>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+  {% elif run %}<div class="qa-card__body">{% include "qa_core/partials/_callout.html" with kind="success" title="Everything matches" message="NBTE's records, the providers and the ledger agree." %}</div>{% endif %}
+  {% if runs|length > 1 %}
+  <details class="rec-history"><summary>Earlier runs ({{ runs|length }})</summary>
+    <ul role="list">{% for r in runs %}<li><a href="{% url 'qa_fin:reconciliation_detail' r.pk %}" hx-get="{% url 'qa_fin:reconciliation_detail' r.pk %}" hx-target="#qa-panel" hx-push-url="true"{% if r.pk == run.pk %} aria-current="true"{% endif %}>{{ r.started_at|date:"j M Y, H:i" }}</a><span class="qa-small qa-muted">{{ r.issues_found }} issue{{ r.issues_found|pluralize }} · {{ r.get_trigger_display|default:r.trigger }}</span></li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</section>
+<script>
+(function () {
+  if (window.__recTb) return; window.__recTb = true;
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-rec-toggle]"); if (!b) return;
+    var open = b.getAttribute("aria-expanded") !== "true";
+    b.setAttribute("aria-expanded", open);
+    var rows = document.getElementById(b.getAttribute("aria-controls"));
+    if (rows) rows.hidden = !open;
+  });
+})();
+</script>

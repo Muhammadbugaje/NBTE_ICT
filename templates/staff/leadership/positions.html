@@ -5,24 +5,14 @@
 {% block page_title %}Leadership positions{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="lead-page">
 
-  <a href="{% url 'staff:leadership_panel' %}" class="lead-back">← Leadership panel</a>
-
-  <header class="lead-hero">
-    <div>
-      <h1>Positions</h1>
-      <p>Define every leadership role in the organisation.</p>
-    </div>
-    <a href="{% url 'staff:position_create' %}" class="btn btn-primary">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      New position
-    </a>
-  </header>
+  {% url 'staff:leadership_panel' as back_url %}{% url 'staff:position_create' as new_url %}
+  {% include "partials/hero.html" with icon="flag" eyebrow="User management · Leadership" title="Positions" lede="Define every leadership role in the organisation." back_url=back_url back_label="Leadership panel" action_url=new_url action_label="New position" action_icon="plus" s1=page.paginator.count s1_label="Positions" %}
 
   <form method="get" class="pf-bar">
     <div class="pf-bar-inner">

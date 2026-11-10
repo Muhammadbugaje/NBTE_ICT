@@ -105,7 +105,15 @@ def detail(ticket, user, request=None):
         "activity": [activity_ref(a) for a in activity],
         "actions": {k: flags[k] for k in (
             "is_raiser", "is_assignee", "can_assign", "can_start", "can_await", "can_resolve", "can_signoff",
-            "can_close", "can_reopen", "can_cancel", "can_comment", "can_internal", "can_attach")},
+            "can_close", "can_reopen", "can_cancel", "can_comment", "can_internal", "can_attach",
+            "can_route", "can_accept_division", "can_request_funds", "can_rate")},
+        # v2.1 Phase C
+        "division": ({"id": ticket.division_id, "name": ticket.division.name, "state": ticket.division_state}
+                     if ticket.division_id else None),
+        "funds": ({"state": ticket.funds_state, "amount": str(ticket.funds_amount) if ticket.funds_amount else None,
+                   "request": ticket.funds_request.reference if ticket.funds_request_id else None,
+                   "note": ticket.funds_decision_note or ""} if ticket.funds_state else None),
+        "report_pdf_url": f"/api/v1/tickets/{ticket.pk}/report.pdf",
     })
     return data
 

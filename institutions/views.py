@@ -27,11 +27,13 @@ from qa_core.models import ActionPolicy, PendingAction, TimelineEvent
 from qa_core.permissions import can_view_institutions, can_view_qa_settings, require, require_or_404
 from qa_core.ui import is_htmx, paginate, render_qa, toast
 
+from . import change_requests as change_requests_service
 from . import forms, services
 from .handlers import latest_impersonation
 from .models import (
     DocumentRequirement,
     Institution,
+    InstitutionChangeRequest,
     InstitutionCategory,
     InstitutionDocument,
     InstitutionImportBatch,
@@ -73,6 +75,10 @@ def action_menu(user, institution=None):
             continue
         can_initiate = bool(user.is_superuser or not policy.initiate_permission
                             or user.has_perm(policy.initiate_permission))
+        can_confirm = bool(policy.requires_second_officer and (user.is_superuser or (
+            policy.confirm_permission and user.has_perm(policy.confirm_permission))))
+        if not (can_initiate or can_confirm):
+            continue  # X47 / rule 5: actions you hold no permission for are not shown at all
         enabled, reason = policy.is_enabled, ("" if policy.is_enabled else policy.description)
         if enabled and institution is not None and hasattr(handler, "available_for"):
             enabled, reason = handler.available_for(institution)
@@ -127,6 +133,8 @@ def institution_list(request):
         "can_export": request.user.has_perm("institutions.export_institutions") or request.user.is_superuser,
         "can_import": request.user.has_perm("institutions.initiate_bulk_import") or request.user.is_superuser,
         "can_add": request.user.has_perm("institutions.initiate_add_tvet") or request.user.is_superuser,
+        "can_review_change_requests": (change_requests_service.is_lead(request.user)
+                                       or change_requests_service.is_ict_reviewer(request.user)),
     }
     return render_qa(request, "institutions/list.html", ctx, {"qa-panel": "institutions/_list_panel.html",
                                                                "qa-rows": "institutions/_rows.html"})
@@ -135,9 +143,42 @@ def institution_list(request):
 # ===========================================================================
 # Detail (tabs)
 # ===========================================================================
-TABS = [("overview", "Overview"), ("programmes", "Programmes"), ("documents", "Documents"), ("users", "Users"),
+TABS = [("overview", "Overview"), ("programmes", "Programmes"), ("documents", "Documents"),
+        ("issued", "Issued documents"), ("users", "Users"),
         ("applications", "Applications"), ("payments", "Payments"), ("changes", "Changes"),
         ("timeline", "Timeline")]
+
+
+def _visible_document_checklist(request, inst):
+    """v2.2: only the reviewing department's people see a document; others
+    get a locked row (name and department only). ES, super admin and the
+    Director of ICT see all; the assigned ICT officer sees all, read-only."""
+    from . import document_access
+
+    rows, _hidden = document_access.filter_rows(request.user, inst, services.checklist(inst))
+    return rows
+
+
+TAB_ICONS = {"overview": "home", "programmes": "layers", "documents": "file", "issued": "qr", "users": "users",
+             "applications": "sheet", "payments": "card", "changes": "edit", "timeline": "clock"}
+
+
+def _hero_progress(inst, variant):
+    """v2.3: the onboarding journey for the hero (plain-words steps only; the
+    SOP-03 stage name is shown to full-journey viewers)."""
+    try:
+        from qa_core import spotlight
+
+        if inst.status not in spotlight.ONBOARDING_STATUSES:
+            return None   # approved / delisted files show their status, not onboarding
+        out = dict(spotlight.progress(inst))
+    except Exception:
+        return None
+    if not out.get("steps"):
+        return None
+    if variant not in (None, "full"):
+        out["case"] = ""
+    return out
 
 
 @require(can_view_institutions)
@@ -147,11 +188,232 @@ def institution_detail(request, code):
     tab = request.GET.get("tab", "overview")
     if tab not in dict(TABS):
         tab = "overview"
-    ctx = {"inst": inst, "tab": tab, "tabs": TABS, "menu": action_menu(request.user, inst)}
+    # v2.1 P.6 (X2/X3): full journey / your department's part / my work.
+    from assignments import journey
+    jctx = journey.context(request.user, inst, request=request)
+    tabs = journey.allowed_tabs(request.user, inst, TABS, jctx.get("variant"))
+    tabs = _with_issued_tab(request.user, inst, tabs)
+    if tab not in dict(tabs):
+        tab = "overview"
+    ctx = {"inst": inst, "tab": tab, "tabs": tabs, "menu": action_menu(request.user, inst), "journey": jctx,
+           "tab_icons": TAB_ICONS}
+    if request.headers.get("HX-Target") not in ("qa-tab", "qa-prog-rows"):
+        ctx["inst_progress"] = _hero_progress(inst, jctx.get("variant"))
+        if jctx.get("variant") in (None, "full"):  # SOP-03 redesign: straight to the case cockpit
+            try:
+                from accreditation import case_services as qcs
+
+                ctx["open_case"] = (qcs.visible_cases(request.user).filter(institution=inst)
+                                    .exclude(status="closed").order_by("-pk").first())
+            except Exception:  # noqa: BLE001 — never break the institution page over this link
+                ctx["open_case"] = None
     ctx.update(_tab_context(request, inst, tab))
+    if tab == "overview":
+        ctx.update(_oversight_context(request.user, inst))
     return render_qa(request, "institutions/detail.html", ctx, {"qa-panel": "institutions/_detail_panel.html",
                                                                  "qa-tab": f"institutions/tabs/_{tab}.html",
                                                                  "qa-prog-rows": "institutions/tabs/_programme_rows.html"})
+
+
+@require_or_404(can_view_institutions)
+@require_POST
+def chief_executive_action(request, code, verb):
+    """v2.2: NBTE side of the Chief Executive's account — e-mail the set-up
+    link to the CE, reveal it once to send another way, or issue a one-time
+    password. ES, super admin, Director of ICT and the assigned ICT officer."""
+    inst = _institution_or_404(request, code)
+    if getattr(request, "is_impersonating", False) or not services.can_manage_ce_access(request.user, inst):
+        raise PermissionDenied
+    result, error = {}, ""
+    try:
+        if verb == "email":
+            result = services.nbte_send_ce_link(inst, actor=request.user, request=request)
+        elif verb == "reveal":
+            result = services.nbte_send_ce_link(inst, actor=request.user, request=request, reveal=True)
+        elif verb == "password":
+            result = {"password": services.nbte_issue_ce_password(inst, actor=request.user)}
+        else:
+            raise Http404
+    except ValidationError as exc:
+        error = " ".join(exc.messages)
+    response = render(request, "institutions/_ce_access.html", {
+        "inst": inst, "ce": services.ce_status(inst), "can_manage_ce": True, "result": result, "verb": verb,
+        "error": error, "ce_auto_email": services.ce_auto_email()})
+    response["Cache-Control"] = "no-store, private"
+    if error:
+        return toast(response, "error", "Not done", error)
+    titles = {"email": "Set-up link e-mailed to the Chief Executive", "reveal": "Set-up link ready (shown once)",
+              "password": "One-time password issued (shown once)"}
+    return toast(response, "success", titles[verb], "Recorded in the institution's audit trail.")
+
+
+def _can_assign_oversight(user):
+    import org
+    from qa_core.departments import qa_department
+
+    ict = qa_department("ict")
+    return bool(ict and (user.is_superuser or org.is_es(user) or org.is_super_admin(user)
+                         or org.is_director(user, ict)))
+
+
+def _oversight_context(user, inst):
+    from accounts.models import User
+    from assignments.models import WorkAssignment
+    from qa_core.departments import qa_department
+
+    ict = qa_department("ict")
+    can_assign = bool(inst.status in ("proposed", "under_review") and ict and _can_assign_oversight(user))
+    assignments = WorkAssignment.objects.filter(
+        institution=inst, kind=WorkAssignment.OVERSIGHT_ICT, status__in=WorkAssignment.OPEN)
+    if not _can_assign_oversight(user):
+        assignments = assignments.filter(assignee=user)
+    current = assignments.select_related("assignee").order_by("-assigned_at").first()
+    candidates = []
+    suggestion = None
+    if can_assign:
+        from accounts.audience import nbte_staff_users_q
+
+        candidates = list(User.objects.filter(nbte_staff_users_q())
+                          .filter(Q(department=ict) | Q(staff_profile__department=ict))
+                          .select_related("role").distinct().order_by("first_name", "last_name", "email"))
+        if current is None:  # X19: the rotation suggests the next ICT officer
+            try:
+                import assignments.rotation as rotation
+
+                s = rotation.suggest_ict_supervisor(inst, record=False)
+                suggestion = s.suggested.user if s.suggested is not None else None
+            except Exception:
+                suggestion = None
+    return {"oversight_assignment": current, "oversight_candidates": candidates, "oversight_suggestion": suggestion,
+            "can_assign_oversight": can_assign}
+
+
+@require(can_view_institutions)
+@require_POST
+def assign_oversight(request, code):
+    from accounts.models import User
+    from assignments import work
+    from assignments.models import WorkAssignment
+    from qa_core.departments import qa_department
+
+    inst = _institution_or_404(request, code)
+    if not _can_assign_oversight(request.user) or inst.status not in ("proposed", "under_review"):
+        raise Http404
+    ict = qa_department("ict")
+    target = User.objects.filter(pk=request.POST.get("assignee"), is_active=True, user_type=User.STAFF).filter(
+        Q(department=ict) | Q(staff_profile__department=ict)).first()
+    if target is None:
+        messages.error(request, "Choose an active ICT staff member to supervise this institution.")
+        from core.urlsafe import safe_next
+
+        return redirect(safe_next(request, request.POST.get("next"),
+                                  f"{reverse('qa_inst:detail', args=[inst.code])}?tab=overview"))
+    existing = (WorkAssignment.objects.filter(
+        institution=inst, kind=WorkAssignment.OVERSIGHT_ICT, status__in=WorkAssignment.OPEN)
+        .order_by("-assigned_at").first())
+    if existing is not None and existing.assignee_id == target.pk:
+        messages.info(request, f"{target.get_full_name() or target.email} is already supervising {inst.name}.")
+    elif existing is not None:
+        work.reassign(existing, target, request.user)
+        _close_oversight_task(request, inst)
+        messages.success(request, f"{target.get_full_name() or target.email} is assigned to supervise {inst.name}.")
+    else:
+        work.assign(inst, WorkAssignment.OVERSIGHT_ICT, target, subject=inst, department=ict,
+                    assigned_by=request.user, role_on_work="supervisor",
+                    meta={"registration_oversight": True})
+        _close_oversight_task(request, inst)
+        messages.success(request, f"{target.get_full_name() or target.email} is assigned to supervise {inst.name}.")
+    nxt = request.POST.get("next") or ""
+    from django.utils.http import url_has_allowed_host_and_scheme
+
+    if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}):
+        return redirect(nxt)   # v2.2: assigned from the dashboard spotlight
+    return redirect(f"{reverse('qa_inst:detail', args=[inst.code])}?tab=overview")
+
+
+def _close_oversight_task(request, inst):
+    """X19: the "Assign an ICT supervisor" task closes itself in QA."""
+    from qa_core import task_bridge
+
+    task_bridge.close_for_stage(inst, "oversight_ict", reason="supervisor appointed", actor=request.user)
+
+
+@require(lambda user: can_view_institutions(user) or change_requests_service.is_ict_reviewer(user))
+def change_request_list(request):
+    if change_requests_service.is_lead(request.user):
+        rows = InstitutionChangeRequest.unscoped.select_related("institution", "requested_by", "assigned_to")
+    elif change_requests_service.is_ict_reviewer(request.user):
+        rows = InstitutionChangeRequest.unscoped.filter(assigned_to=request.user).select_related(
+            "institution", "requested_by", "assigned_to")
+    else:
+        raise Http404
+    return render_qa(request, "institutions/change_requests.html",
+                     {"requests": rows, "can_assign": change_requests_service.is_lead(request.user)})
+
+
+@require(lambda user: can_view_institutions(user) or change_requests_service.is_ict_reviewer(user))
+@require_http_methods(["GET", "POST"])
+def change_request_detail(request, pk):
+    row = InstitutionChangeRequest.unscoped.select_related(
+        "institution", "requested_by", "assigned_to", "assigned_by", "decided_by").filter(pk=pk).first()
+    if row is None:
+        raise Http404
+    is_lead = change_requests_service.is_lead(request.user)
+    if not is_lead and row.assigned_to_id != request.user.pk:
+        raise Http404
+    if request.method == "POST":
+        try:
+            if request.POST.get("action") == "assign" and is_lead:
+                assignee = change_requests_service.reviewer_candidates().filter(
+                    pk=request.POST.get("assignee")).first()
+                if assignee is None:
+                    raise ValidationError({"assignee": "Choose an active ICT staff member."})
+                change_requests_service.assign(row, actor=request.user, assignee=assignee)
+                messages.success(request, f"{row.reference} was assigned to {assignee.get_full_name() or assignee.email}.")
+            elif request.POST.get("action") in ("review", "approve", "reject"):
+                decision = request.POST["action"]
+                change_requests_service.decide(row, actor=request.user, decision=decision,
+                                              note=request.POST.get("note", ""))
+                if decision == "review":
+                    messages.success(request, f"{row.reference} was sent for senior NBTE approval.")
+                else:
+                    messages.success(request, f"{row.reference} was {('approved' if decision == 'approve' else 'not approved')}.")
+            else:
+                raise PermissionDenied("You cannot perform that action on this request.")
+        except (ValidationError, PermissionDenied) as exc:
+            messages.error(request, " ".join(getattr(exc, "messages", [str(exc)])))
+        return redirect("qa_inst:change_request_detail", pk=pk)
+    reviewers = change_requests_service.reviewer_candidates() if is_lead else []
+    if row.change_type == InstitutionChangeRequest.PROFILE and is_lead:
+        reviewers = [user for user in reviewers if not change_requests_service.is_lead(user)]
+    profile_request = row.change_type == InstitutionChangeRequest.PROFILE
+    return render_qa(request, "institutions/change_request_detail.html",
+                     {"change_request": row, "can_assign": is_lead,
+                      "can_review_profile": (profile_request and row.status == InstitutionChangeRequest.ASSIGNED
+                                             and row.assigned_to_id == request.user.pk),
+                      "can_final_profile_decide": (profile_request and row.status == InstitutionChangeRequest.REVIEWED
+                                                    and is_lead),
+                      "can_decide": (not profile_request and row.status == InstitutionChangeRequest.ASSIGNED
+                                     and (is_lead or row.assigned_to_id == request.user.pk)),
+                      "reviewers": reviewers})
+
+
+def _with_issued_tab(user, inst, tabs):
+    """Issued documents: also for the handling department's Director / the ES
+    even when the journey variant hides it."""
+    keys = [k for k, _label in tabs]
+    if "issued" in keys:
+        return tabs
+    from documents import official_letters, services as doc_services
+
+    if not (doc_services.can_view_register(user) or official_letters.is_full(user)
+            or (inst.handling_department_id and official_letters.directed_department(user) is not None
+                and official_letters.directed_department(user).pk == inst.handling_department_id)):
+        return tabs
+    out = list(tabs)
+    at = keys.index("documents") + 1 if "documents" in keys else len(out)
+    out.insert(at, ("issued", "Issued documents"))
+    return out
 
 
 def _tab_context(request, inst, tab):
@@ -160,11 +422,12 @@ def _tab_context(request, inst, tab):
     lifecycle = services.lifecycle(inst)
     ctx["lifecycle_label"] = inst.status_label
     if tab == "overview":
+        checklist = _visible_document_checklist(request, inst)
         ctx.update({
             "contacts": services.contacts_of(inst), "addresses": services.addresses_of(inst),
             "primary_user": inst.primary_user(),
             "programme_count": Programme.objects.for_user(user).filter(institution=inst).exclude(status="dropped").count(),
-            "doc_summary": services.checklist_summary(services.checklist(inst)),
+            "doc_summary": services.checklist_summary(checklist),
             "pending_here": _pending_for(request, inst)[:5],
             "recent": list(TimelineEvent.objects.for_user(user).filter(institution=inst)[:6]),
             "impersonation": latest_impersonation(user, inst),
@@ -172,14 +435,40 @@ def _tab_context(request, inst, tab):
     elif tab == "programmes":
         ctx.update(_programme_tab(request, inst))
     elif tab == "documents":
-        ctx.update({"rows": services.checklist(inst),
-                    "history": list(InstitutionDocument.objects.for_user(user).filter(institution=inst)
-                                    .select_related("kind", "uploaded_by", "reviewed_by")
-                                    .order_by("kind__name", "-version")[:200])})
+        from . import document_access
+
+        rows = _visible_document_checklist(request, inst)
+        ctx.update({"rows": rows, "locked_count": sum(1 for r in rows if r.get("locked")),
+                    "doc_watcher": document_access.is_watcher(user, inst)
+                    and not document_access.is_full_viewer(user),
+                    "history": list(document_access.filter_documents(
+                        user, inst, InstitutionDocument.objects.for_user(user).filter(institution=inst))
+                        .select_related("kind", "uploaded_by", "reviewed_by")
+                        .order_by("kind__name", "-version")[:200])})
+    elif tab == "issued":
+        from documents import official_letters
+
+        issued = official_letters.institution_documents(user, inst)
+        ctx.update({"issued": issued, "issued_counts": official_letters.institution_counts(issued),
+                    "issued_sla": official_letters.sla_days(),
+                    "outcome_letters": _outcome_letters(user, inst)})
     elif tab == "users":
-        ctx.update({"members": services.members_of(inst),
+        from .models import ManagementStaff
+
+        team = list(ManagementStaff.unscoped.filter(institution=inst, is_current=True).select_related("role")
+                    .order_by("role__sort_order", "role__name"))
+        phones = {t.user_id: t.phone for t in team if t.user_id and t.phone}
+        emails = {t.email.lower(): t.phone for t in team if t.email and t.phone}
+        members = services.members_of(inst)
+        for m in members:
+            m.phone = phones.get(m.user_id) or emails.get((m.user.email or "").lower(), "")
+        ctx.update({"members": members, "team": team,
+                    "contacts": services.contacts_of(inst),
                     "contact_history": services.contact_history(inst),
-                    "address_history": services.addresses_of(inst, current=False)})
+                    "address_history": services.addresses_of(inst, current=False),
+                    "ce": services.ce_status(inst),
+                    "can_manage_ce": services.can_manage_ce_access(user, inst),
+                    "ce_auto_email": services.ce_auto_email()})
     elif tab == "applications":
         from accreditation.models import Application
 
@@ -208,6 +497,37 @@ def _tab_context(request, inst, tab):
     return ctx
 
 
+def _outcome_letters(user, inst):
+    """Programme decision letters (original + duplicate) the user may open."""
+    try:
+        from accreditation.models import OutcomeLetter
+
+        rows = list(OutcomeLetter.objects.for_user(user).filter(case__institution=inst)
+                    .select_related("programme", "decision").prefetch_related("copies").order_by("-generated_at")[:100])
+    except Exception:
+        return []
+    for row in rows:
+        row.visible_copies = [c for c in row.copies.all() if c.can_download(user)]
+    return rows
+
+
+# v2.3: programme status groups for the filter pills (code, label, chip tone).
+PROGRAMME_GROUPS = [("approved", "Approved / accredited", "green"),
+                    ("commence", "Approval to commence", "teal"),
+                    ("interim", "Interim", "violet"),
+                    ("pending", "Pending", "gold"),
+                    ("denied", "Denied", "red"),
+                    ("expired", "Expired", "amber"),
+                    ("dropped", "Dropped", "plain")]
+PROGRAMME_GROUP_STATUSES = {"approved": ("accredited", "approved_pending_body_letter"),
+                            "commence": ("approval_to_commence",), "interim": ("interim",),
+                            "pending": ("proposed", "resource_inspected"), "denied": ("denied",),
+                            "expired": ("expired",), "dropped": ("dropped",)}
+PROGRAMME_STATUS_CHIP = {"accredited": "green", "approved_pending_body_letter": "green",
+                         "approval_to_commence": "blue", "interim": "violet", "proposed": "gold",
+                         "resource_inspected": "gold", "denied": "red", "expired": "red", "dropped": "plain"}
+
+
 def _programme_tab(request, inst):
     """Phase 8: every programme of the institution — search, filters (status,
     level, category, professional body, expiring within N days, in an open
@@ -225,6 +545,11 @@ def _programme_tab(request, inst):
         qs = qs.filter(Q(name__icontains=q) | Q(category__name__icontains=q))
     if f.get("pstatus"):
         qs = qs.filter(status=f["pstatus"])
+    pgroup = f.get("pgroup", "")
+    if pgroup in PROGRAMME_GROUP_STATUSES:
+        qs = qs.filter(status__in=PROGRAMME_GROUP_STATUSES[pgroup])
+    else:
+        pgroup = ""
     if f.get("level"):
         qs = qs.filter(level__code=f["level"])
     if f.get("category"):
@@ -250,14 +575,41 @@ def _programme_tab(request, inst):
         p.work = work.get(p.pk)
         p.expiry_info = programme_info.expiry(p)
         p.approval_type_name = programme_info.approval_type_name(p)
+        p.chip = PROGRAMME_STATUS_CHIP.get(p.status, "plain")
     all_ids = list(base.values_list("pk", flat=True))
-    return {"page": page, "filters": f, "pstatus": f.get("pstatus", ""),
+    # v2.3: status groups and levels with counts (pills, stat strip and bar).
+    by_status = {r["status"]: r["n"] for r in base.order_by().values("status").annotate(n=Count("pk"))}
+    total = len(all_ids)
+
+    def link(**changes):
+        params = request.GET.copy()
+        for key in ("page", "all", "pstatus"):
+            params.pop(key, None)
+        params["tab"] = "programmes"
+        for key, value in changes.items():
+            params.pop(key, None)
+            if value:
+                params[key] = value
+        return f"?{params.urlencode()}"
+
+    groups = [{"code": "", "label": "All", "count": total, "url": link(pgroup=""), "tone": "all"}]
+    for code, label, tone in PROGRAMME_GROUPS:
+        n = sum(by_status.get(st, 0) for st in PROGRAMME_GROUP_STATUSES[code])
+        groups.append({"code": code, "label": label, "count": n, "url": link(pgroup=code), "tone": tone,
+                       "pct": round(100 * n / total, 1) if total else 0})
+    level_counts = sorted((r["level__code"] or "", r["n"]) for r in
+                          base.order_by().values("level__code").annotate(n=Count("pk")))
+    level_pills = [{"code": "", "label": "All levels", "count": total, "url": link(level="")}] + [
+        {"code": code, "label": code.upper(), "count": n, "url": link(level=code)} for code, n in level_counts if code]
+    return {"page": page, "filters": f, "pstatus": f.get("pstatus", ""), "pgroup": pgroup,
+            "programme_groups": groups, "level_pills": level_pills if len(level_pills) > 2 else [],
+            "advanced_filter": any(f.get(k) for k in ("category", "body", "expiring", "open")),
             "programme_statuses": Programme.STATUS_CHOICES,
             "levels": ProgrammeLevel.objects.filter(is_active=True),
             "categories": ProgrammeCategory.objects.filter(programmes__in=all_ids).distinct().order_by("name"),
             "bodies": ProfessionalBody.objects.filter(is_active=True).order_by("name"),
             "programme_total": len(all_ids), "any_filter": any(f.get(k) for k in (
-                "pq", "pstatus", "level", "category", "body", "expiring", "open"))}
+                "pq", "pstatus", "pgroup", "level", "category", "body", "expiring", "open"))}
 
 
 def _pending_for(request, inst, all_statuses=False):
@@ -287,8 +639,11 @@ def _policy_or_404(code):
 def _form_for(handler, request, institution, data=None):
     cls = getattr(handler, "form_class", forms.InstitutionActionForm)
     if cls is forms.AddTvetForm:
-        return cls(data)
-    return cls(data, institution=institution, user=request.user)
+        return cls(data, request.FILES or None) if data is not None else cls()
+    initial = None
+    if data is None and request.GET:  # v2.1 R.7 X48: inline Edit / Drop pre-select the programme
+        initial = {k: (request.GET.getlist(k) if k == "programmes" else request.GET.get(k)) for k in request.GET}
+    return cls(data, institution=institution, user=request.user, initial=initial)
 
 
 @require(can_view_institutions)
@@ -309,6 +664,9 @@ def add_tvet(request):
 def _action_page(request, policy, handler, inst):
     user = request.user
     allowed = user.is_superuser or not policy.initiate_permission or user.has_perm(policy.initiate_permission)
+    if not allowed:
+        # The page itself is refused (not only the POST): no form, no hint of the action.
+        raise PermissionDenied("You cannot start this action.")
     available, why = True, ""
     if not policy.is_enabled:
         available, why = False, policy.description
@@ -394,6 +752,9 @@ def _after_initiate(request, policy, pa, inst):
 def launcher(request, action_code):
     """Choose the institution for a TVET Support action (sidebar entry)."""
     policy, handler = _policy_or_404(action_code)
+    user = request.user
+    if not (user.is_superuser or not policy.initiate_permission or user.has_perm(policy.initiate_permission)):
+        raise PermissionDenied("You cannot start this action.")
     qs = _scoped(request)
     q = (request.GET.get("q") or "").strip()
     if q:
@@ -425,6 +786,9 @@ def lga_options(request):
     from staff.models import StateOfOrigin
 
     state = StateOfOrigin.objects.filter(pk=request.GET.get("state") or 0).first()
+    if request.GET.get("select"):  # v2.1 R.7: <select> options for the Add TVET LGA dropdown
+        return render(request, "qa_portal/_lga_select_options.html", {"lgas": services.lgas_for(state),
+                                                                      "state": state})
     return render(request, "qa_core/partials/_lga_options.html", {"lgas": services.lgas_for(state)})
 
 

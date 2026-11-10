@@ -44,6 +44,13 @@ def test_programmes_tab_lists_filters_and_shows_open_case(p4, body):
     assert c.get(base + "&expiring=30&level=nd&pstatus=accredited").status_code == 200
 
 
+def test_institution_detail_renders_without_oversight_assignment(qa_seed, make_user, make_institution):
+    inst = make_institution("OVR")
+    admin = make_user("oversight.admin@t.local", superuser=True)
+    response = staff_client(admin).get(f"/qa/institutions/{inst.code}/")
+    assert response.status_code == 200
+
+
 def test_programme_detail_page_and_jump_button(p4, body):
     b, p = body
     c = staff_client(p4.people.director)
@@ -135,9 +142,10 @@ def test_record_zip_contains_the_files(p4):
     kind = DocumentKind.objects.first()
     InstitutionDocument.unscoped.create(institution=p4.inst, kind=kind, status="accepted",
                                         file=SimpleUploadedFile("cac.pdf", b"%PDF-1.4 test", "application/pdf"))
-    files = record.files_for(p4.inst, p4.people.director)
+    # v2.2: documents are department-only; the ES sees every department's files.
+    files = record.files_for(p4.inst, p4.people.es)
     assert any(folder == "Documents" for folder, _n, _f in files)
-    data = record.record_zip(p4.inst, p4.people.director)
+    data = record.record_zip(p4.inst, p4.people.es)
     names = zipfile.ZipFile(io.BytesIO(data)).namelist()
     assert any(n.startswith("Documents/") and n.endswith(".pdf") for n in names)
 
@@ -157,7 +165,7 @@ def test_payment_statement_needs_payment_permission(p4, make_user):
         assert r.status_code == 200
     else:
         assert r.status_code == 403
-    fin = make_user("fin.stmt@t.local", role="qa-finance-director", dept="dpap")
+    fin = make_user("fin.stmt@t.local", role="director", dept="finance")
     r = staff_client(fin).get(f"/qa/institutions/{p4.inst.code}/payments/statement/?format=pdf")
     assert r.status_code in (200, 403, 404)
     if r.status_code == 200:

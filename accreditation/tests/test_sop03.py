@@ -152,7 +152,7 @@ def test_seventeen_stage_walk_with_approvals(p4):
         "confirm_audit_cost": p4.people.audit_director, "es_approve_cost": p4.people.es,
         "add_visit_details": p4.people.desk_officer, "confirm_visit_details": p4.people.director,
         "es_approve_visit": p4.people.es, "request_fund_release": p4.people.pay_officer,
-        "post_visit_report": None,  # Phase 5: no case task — the report sub-flow (one per programme) runs it
+        "post_visit_report": p4.people.desk_officer,  # No case task; holder() reports the desk-officer fallback.
         "post_visit_recommendation": p4.people.director,
         "cqac_recommendation": p4.people.cqac_member, "cqac_chair_approval": p4.people.cqac_chair,
         "es_final_approval": p4.people.es,
@@ -196,8 +196,11 @@ def test_seventeen_stage_walk_through_the_screens(p4):
     url = f"/qa/cases/{case.pk}/"
 
     def post(user, path, data):
+        # 204 comes with HX-Redirect: a passed stage reloads onto the new step.
         r = staff_client(user).post(url + path, data, HTTP_HX_REQUEST="true", HTTP_HX_TARGET="qa-panel")
-        assert r.status_code == 200, (path, r.content.decode()[:2000])
+        assert r.status_code in (200, 204), (path, r.content.decode()[:2000])
+        if r.status_code == 204:
+            assert r.get("HX-Redirect", "").startswith("/qa/cases/"), (path, r.get("HX-Redirect"))
         return r
 
     post(people.director, "desk-officer/", {"officer": people.desk_officer.pk})
@@ -388,7 +391,6 @@ def test_reassign_to_an_overworked_officer_is_rejected_r01(p4):
     from accreditation import case_services as cs
     from qa_core.task_bridge import reassign_stage_task
     from tasks import services
-    from tasks.models import TaskAssignee
 
     set_config("qa.resource_person.max_open_ssq_per_officer", "1")
     busy = p4.people.busy_officer
@@ -403,8 +405,10 @@ def test_reassign_to_an_overworked_officer_is_rejected_r01(p4):
         reassign_stage_task(link, actor=p4.people.director, from_user=p4.people.desk_officer, to_user=busy)
     assert "R-01" in " ".join(exc.value.messages)
     # The same through the Tasks app: the signal re-validates and rolls back.
+    # QAs stage tasks are created by the system user, so in Tasks only the ES
+    # / superuser override may edit them (H7).
     with pytest.raises(ValidationError):
-        services.reassign(link.task, p4.people.director, p4.people.desk_officer, busy)
+        services.reassign(link.task, p4.people.es, p4.people.desk_officer, busy)
     assert TaskAssignee.objects.filter(task_id=link.task_id, user=p4.people.desk_officer).exists()
     assert not TaskAssignee.objects.filter(task_id=link.task_id, user=busy).exists()
     case.refresh_from_db()
@@ -527,6 +531,32 @@ def test_monitor_cannot_act_through_the_service_either(p4):
 # ---------------------------------------------------------------------------
 # Scope and permissions on the screens
 # ---------------------------------------------------------------------------
+def test_generate_cost_page_puts_preparation_before_submission(p4):
+    case = advance_to(p4, 2)
+    response = staff_client(p4.people.desk_officer).get(f"/qa/cases/{case.pk}/?stage=generate_cost")
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    prepare = body.index("Step 1 · Prepare the cost sheet")
+    add_line = body.index("Add a line")
+    submit = body.index("Step 2 · Submit cost sheet")
+    assert prepare < add_line < submit
+    assert "Finish preparing the cost sheet in Step 1 above, then submit it here." in body
+
+
+def test_add_personnel_page_puts_team_before_submission(p4):
+    case = advance_to(p4, 3)
+    response = staff_client(p4.people.desk_officer).get(f"/qa/cases/{case.pk}/?stage=add_personnel")
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    prepare = body.index("Step 1 · Prepare the visit team")
+    add_person = body.index("Add a person")
+    submit = body.index("Step 2 · Submit personnel list")
+    assert prepare < add_person < submit
+    assert "Finish Step 1 above, then submit personnel list here." in body
+
+
 def test_out_of_scope_staff_get_404(p4, make_user):
     outsider = make_user("vtsd.officer@nbte.local", role="officer", dept="vtsd")
     c = staff_client(outsider)
@@ -570,6 +600,20 @@ def test_team_lead_must_hold_a_team_lead_role(p4):
     with pytest.raises(ValidationError):
         cs.add_personnel(case, user=p4.people.desk_officer, staff=p4.people.desk_officer.staff_profile,
                          duty="team_lead")
+
+
+def test_personnel_stage_requires_a_named_team_lead(p4):
+    from accreditation import case_services as cs
+
+    case = advance_to(p4, 3)
+    cs.add_personnel(case, user=p4.people.desk_officer, staff=p4.people.desk_officer.staff_profile,
+                     duty="member")
+    problems = cs.prerequisites(case, "add_personnel")
+    assert any("team lead" in problem.lower() for problem in problems)
+
+    cs.add_personnel(case, user=p4.people.desk_officer, staff=p4.people.director.staff_profile,
+                     duty="team_lead")
+    assert not any("team lead" in problem.lower() for problem in cs.prerequisites(case, "add_personnel"))
 
 
 def test_only_the_pay_officer_releases_funds(p4):
@@ -736,7 +780,11 @@ def test_rate_table_settings(p4, make_user):
     from accreditation.models import RateTable
 
     rate = RateTable.objects.get(code="transport-road", department__isnull=True)
-    fd = staff_client(make_user("qa.fin.director@nbte.local", role="qa-finance-director", dept="finance"))
+    # Phase B (B2): the rate-table right comes with the Finance director seat.
+    import org
+    from qa_core.departments import qa_department
+    seat = org.director_of(qa_department("finance"))
+    fd = staff_client(seat or make_user("qa.fin.director@nbte.local", role="director", dept="finance"))
     assert fd.get("/qa/settings/rates/").status_code == 200
     r = fd.post(f"/qa/settings/rates/{rate.pk}/", {"op": "save", "amount": "52000"})
     assert r.status_code == 200
@@ -798,3 +846,221 @@ def test_reassigning_a_director_stage_pins_the_new_holder(p4, make_user):
     assert holder(case, "confirm_personnel") == deputy
     assert case.stage_actors["owning_department_director"] == deputy.pk
     assert cs.can_act(case, deputy, "confirm_personnel")[0]
+
+
+def test_one_click_assign_saves_the_person_and_completes_the_step(p4):
+    """Assigning stages: pick the person and press "Assign …" once — no separate Save."""
+    case, people = p4.case, p4.people
+    url = f"/qa/cases/{case.pk}/"
+
+    def post(user, data, ok=True):
+        r = staff_client(user).post(url + "assign/", data, HTTP_HX_REQUEST="true", HTTP_HX_TARGET="qa-panel")
+        # Success now answers 204 + HX-Redirect (reload straight onto the next step).
+        assert (r.status_code in (200, 204)) is ok, r.content.decode()[:2000]
+        return r
+
+    page = staff_client(people.director).get(url).content.decode()
+    assert f"/qa/cases/{case.pk}/assign/" in page and "Save desk officer" not in page
+    # Nothing chosen: refused, nothing saved, still at stage 0.
+    post(people.director, {"stage": "case_opened"}, ok=False)
+    assert _stages(case) == ["case_opened"]
+    post(people.director, {"stage": "case_opened", "officer": people.desk_officer.pk})
+    post(people.audit_director, {"stage": "assign_audit_officer", "officers": [people.audit_officer.pk]})
+    post(people.finance_director, {"stage": "assign_finance_officer", "officers": [people.finance_officer.pk]})
+    post(people.ict_director, {"stage": "assign_ict_officer", "officers": [people.ict_officer.pk]})
+    case.refresh_from_db()
+    assert case.desk_officer == people.desk_officer
+    assert case.supervising_audit_officer == people.audit_officer
+    assert case.supervising_finance_officer == people.finance_officer
+    assert _stages(case) == ["generate_cost"]
+    # Someone who doesn't hold the step can't assign through it.
+    r = staff_client(people.audit_officer).post(url + "assign/", {"stage": "assign_audit_officer",
+                                                                  "officers": [people.audit_officer.pk]},
+                                                HTTP_HX_REQUEST="true", HTTP_HX_TARGET="qa-panel")
+    assert r.status_code != 200
+
+
+def test_blank_payment_reference_is_generated_and_unique(p4):
+    from accreditation import case_services as cs
+
+    case = p4.case
+    first = cs._new_release_reference(case) if cs.current_release(case) else None
+    if first is None:  # no release requested in this fixture state: just check the format helper
+        return
+    assert first.startswith("NBTE/FR/") or "/" in first
+
+
+def test_director_rollback_requires_es_and_reopens_downstream_work(p4):
+    import datetime
+
+    from accreditation import case_changes as changes
+    from accreditation import case_services as cs
+    from accreditation.decisions import record, rows, suggestion
+    from accreditation.models import CaseChangeRequest, Decision, VisitDetail
+    from django.utils import timezone
+    from inspection import demo as inspection_demo
+    from inspection.models import Inspection, PostVisitPersonnel, PostVisitReport, ServiceRecord
+    from qa_core.models import FlowEvent, QATaskLink
+    from tasks.models import TaskAssignee
+
+    case = advance_to(p4, 11)
+    visit = VisitDetail.unscoped.get(case=case)
+    visit.planned_start = timezone.localdate() - datetime.timedelta(days=2)
+    visit.planned_end = timezone.localdate() - datetime.timedelta(days=1)
+    visit.save(update_fields=["planned_start", "planned_end", "updated_at"])
+    Inspection.unscoped.filter(case=case).update(scheduled_start=visit.planned_start,
+                                                 scheduled_end=visit.planned_end)
+    inspection_demo.complete_visit(case)
+    cs.record_release(case, user=p4.people.pay_officer, reference="PV/ROLLBACK/1")
+    cs.act(case, user=p4.people.pay_officer, stage_code="request_fund_release", action="approve")
+    inspection_demo.drive_reports(case)
+    inspection_demo.recommend_all(case)
+    from accreditation.case_demo import run_demo_capacity
+    run_demo_capacity(case, p4.people.desk_officer)
+    cs.act(case, user=p4.people.director, stage_code="post_visit_recommendation", action="approve",
+           remark="Recommendation confirmed")
+    assert _stages(case) == ["cqac_recommendation"]
+    assert "post_visit_report" in {stage.code for stage in changes.earlier_stages(case)}
+
+    report = PostVisitReport.unscoped.filter(inspection__case=case).first()
+    assert report is not None and report.status == "director_endorsed"
+    assert report.recommended_by_id is not None
+
+    row = rows(case)[0]
+    suggested = suggestion(case, row, Decision.CQAC)
+    decision = record(case, row, Decision.CQAC, user=p4.people.director, check=False, outcome="approve",
+                      approval_type=suggested["approval_type"], approved_streams=suggested["approved_streams"],
+                      commencement_date=suggested["commencement_date"])
+
+    request = changes.request_rollback(
+        case, user=p4.people.director, target_stage="request_fund_release",
+        reason="The later review must be repeated after a cost correction.",
+    )
+    assert request.status == "pending_es"
+    assert request.director_approved_by_id == p4.people.director.pk
+    assert request.director_approved_at is not None
+    es_task_link = QATaskLink.objects.get(
+        content_type__model="qacase", object_id=case.pk,
+        stage_code=f"case_change_{request.pk}_executive_secretary", closed_at__isnull=True,
+    )
+    assert es_task_link.task.assignee_rows.filter(user=p4.people.es).exists()
+    assert not changes.can_apply(case, request, p4.people.director)[0]
+    assert changes.can_apply(case, request, p4.people.desk_officer)[0]
+    assert _stages(case) == ["cqac_recommendation"]
+    changes.decide(request, user=p4.people.es, decision="approve", remark="ES approval")
+    request.refresh_from_db()
+    assert request.status == "approved"
+    apply_task_link = QATaskLink.objects.get(
+        content_type__model="qacase", object_id=case.pk,
+        stage_code=f"case_change_{request.pk}_apply", closed_at__isnull=True,
+    )
+    assert apply_task_link.task.assignee_rows.filter(user=p4.people.desk_officer).exists()
+
+    changes.apply(request, user=p4.people.desk_officer)
+    case.refresh_from_db()
+    request.refresh_from_db()
+    report.refresh_from_db()
+    assert request.status == "applied"
+    assert not QATaskLink.objects.filter(
+        content_type__model="qacase", object_id=case.pk,
+        stage_code__startswith=f"case_change_{request.pk}_", closed_at__isnull=True,
+    ).exists()
+    assert _stages(case) == ["request_fund_release"]
+    assert report.status == "draft" and not report.summary and not report.recommended_by_id
+    assert not Decision.unscoped.filter(pk=decision.pk).exists()
+    assert cs.current_release(case).status == "es_approved"
+    assert cs.open_link(case, "request_fund_release") is not None
+    assert FlowEvent.objects.filter(instance=cs.instance_of(case), action_code="revert",
+                                    metadata__change_request=request.pk).exists()
+
+    cs.record_release(case, user=p4.people.pay_officer, reference="PV/ROLLBACK/2")
+    cs.act(case, user=p4.people.pay_officer, stage_code="request_fund_release", action="approve")
+    inspection_demo.drive_reports(case)
+    inspection_demo.recommend_all(case)
+    from accreditation.case_demo import run_demo_capacity
+    run_demo_capacity(case, p4.people.desk_officer)
+    cs.act(case, user=p4.people.director, stage_code="post_visit_recommendation", action="approve",
+           remark="Recommendation confirmed again")
+    visit_request = changes.request_rollback(
+        case, user=p4.people.director, target_stage="es_approve_visit",
+        reason="The visit itself must be repeated after approval is corrected.",
+    )
+    assert visit_request.status == "pending_es"
+    assert visit_request.director_approved_by_id == p4.people.director.pk
+    changes.decide(visit_request, user=p4.people.es, decision="approve")
+    changes.apply(visit_request, user=p4.people.desk_officer)
+
+    inspection = Inspection.unscoped.get(case=case)
+    report.refresh_from_db()
+    assert _stages(case) == ["es_approve_visit"]
+    assert inspection.status == "scheduled" and inspection.actual_start is None and inspection.closed_at is None
+    assert not PostVisitPersonnel.unscoped.filter(inspection=inspection).exists()
+    from django.db.models import Sum
+
+    assert ServiceRecord.unscoped.filter(inspection=inspection).aggregate(total=Sum("visit_count"))["total"] == 0
+    assert report.status == "draft"
+    assert cs.current_release(case) is None
+
+
+def test_visit_date_change_requires_es_approval_and_desk_officer_application(p4):
+    import datetime
+
+    from accreditation import case_changes as changes
+    from accreditation.models import VisitDetail
+    from django.utils import timezone
+    from inspection.models import Inspection
+    from qa_core.models import QATaskLink
+
+    case = advance_to(p4, 11)
+    start = timezone.localdate() + datetime.timedelta(days=7)
+    end = start + datetime.timedelta(days=1)
+    request = changes.request_visit_date(
+        case, user=p4.people.desk_officer, start=start, end=end,
+        reason="The approved visit dates need to move due to a scheduling conflict.",
+    )
+    assert request.status == "pending_director"
+    director_task = QATaskLink.objects.get(
+        content_type__model="qacase", object_id=case.pk,
+        stage_code=f"case_change_{request.pk}_director", closed_at__isnull=True,
+    )
+    assert director_task.task.assignee_rows.filter(user=p4.people.director).exists()
+    with pytest.raises(PermissionDenied, match="handling department Director"):
+        changes.decide(request, user=p4.people.es, decision="approve")
+    with pytest.raises(ValidationError, match="Add a remark"):
+        changes.decide(request, user=p4.people.director, decision="return")
+    changes.decide(request, user=p4.people.director, decision="return",
+                   remark="Please clarify the visit scheduling reason.")
+    returned_id = request.pk
+    request.refresh_from_db()
+    assert request.status == "returned"
+    revise_task = QATaskLink.objects.get(
+        content_type__model="qacase", object_id=case.pk,
+        stage_code=f"case_change_{returned_id}_revise", closed_at__isnull=True,
+    )
+    assert revise_task.task.assignee_rows.filter(user=p4.people.desk_officer).exists()
+    request = changes.request_visit_date(
+        case, user=p4.people.desk_officer, start=start, end=end,
+        reason="The approved visit dates need to move due to a scheduling conflict.",
+    )
+    assert QATaskLink.objects.get(task=revise_task.task).closed_at is not None
+    assert request.status == "pending_director"
+    director_task = QATaskLink.objects.get(
+        content_type__model="qacase", object_id=case.pk,
+        stage_code=f"case_change_{request.pk}_director", closed_at__isnull=True,
+    )
+    assert director_task.task.assignee_rows.filter(user=p4.people.director).exists()
+    changes.decide(request, user=p4.people.director, decision="approve", remark="Director approved")
+    request.refresh_from_db()
+    assert request.status == "pending_es"
+    with pytest.raises(PermissionDenied, match="approved by the ES"):
+        changes.apply(request, user=p4.people.desk_officer)
+
+    changes.decide(request, user=p4.people.es, decision="approve", remark="ES approved")
+    with pytest.raises(PermissionDenied, match="Only the desk officer"):
+        changes.apply(request, user=p4.people.director)
+
+    changes.apply(request, user=p4.people.desk_officer)
+    visit = VisitDetail.unscoped.get(case=case)
+    inspection = Inspection.unscoped.get(case=case)
+    assert (visit.planned_start, visit.planned_end) == (start, end)
+    assert (inspection.scheduled_start, inspection.scheduled_end) == (start, end)

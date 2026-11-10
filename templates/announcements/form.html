@@ -1,30 +1,21 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}{% if mode == 'create' %}New announcement{% else %}Edit announcement{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Announcements{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/announcements.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/announcements.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="ann-page">
-  <a href="{% if a %}{% url 'announcements:detail' a.pk %}{% else %}{% url 'announcements:list' %}{% endif %}" class="ann-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    {% if a %}Back to the announcement{% else %}All announcements{% endif %}
-  </a>
-
-  <header class="ann-hero">
-    <div class="ann-hero-title">
-      <span class="ann-hero-mark" aria-hidden="true">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-      </span>
-      <div>
-        <span class="ann-hero-eyebrow">NBTE Announcements</span>
-        <h1>{% if mode == 'create' %}New announcement{% else %}Edit announcement{% endif %}</h1>
-        <p>{% if a and a.is_published %}Already published — changes show straight away; nobody is notified again.{% else %}One-way notice to staff. Save a draft first if you are not ready to publish.{% endif %}</p>
-      </div>
+  <header class="qa-hero nbte-hero ann-qa-hero" data-qa-area="announcements">
+    <div>
+      <a class="nbte-hero__back" href="{% if a %}{% url 'announcements:detail' a.pk %}{% else %}{% url 'announcements:list' %}{% endif %}">{% icon "back" 14 "2.4" %} {% if a %}Back to the announcement{% else %}All announcements{% endif %}</a>
+      <span class="qa-eyebrow">{% icon "edit" 14 "2.2" %} Communication · Announcements</span>
+      <h1>{% if mode == 'create' %}New announcement{% else %}Edit announcement{% endif %}</h1>
+      <p>{% if a and a.is_published %}Already published — changes show straight away; nobody is notified again.{% else %}One-way notice to staff. Save a draft first if you are not ready to publish.{% endif %}</p>
     </div>
   </header>
 
@@ -147,5 +138,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/announcements.js' %}?v=1" defer></script>
+  <script src="{% static 'js/announcements.js' %}" defer></script>
 {% endblock %}

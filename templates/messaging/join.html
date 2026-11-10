@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Join {{ thread.subject|default:"group" }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Group invite{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/messaging.css' %}">{% endblock %}
+{% block content %}
+<div class="msg-page msg-page-narrow">
+  <a href="{% url 'messaging:inbox' %}" class="msg-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Inbox
+  </a>
+  <section class="msg-join-card">
+    <span class="msg-avatar msg-ginfo-avatar msg-avatar-c5" aria-hidden="true">{{ thread.subject|default:"G"|slice:":2"|upper }}</span>
+    <h1>{{ thread.subject|default:"Group chat" }}</h1>
+    <p class="muted">Group · {{ counts.members }} member{{ counts.members|pluralize }}</p>
+    {% if thread.description %}<p class="msg-ginfo-desc">{{ thread.description|linebreaksbr }}</p>{% endif %}
+    {% for message in messages %}<div class="msg-inline-error" role="alert">{{ message }}</div>{% endfor %}
+    {% if state == "ok" %}
+      <p>You've been invited to join this group. Expires {{ invite.expires_at|date:"D j M, H:i" }}.</p>
+      <form method="post" class="btn-group btn-group--end">
+        {% csrf_token %}
+        <a class="btn btn-ghost" href="{% url 'messaging:inbox' %}">Not now</a>
+        <button type="submit" class="btn btn-primary">Join group</button>
+      </form>
+    {% elif state == "not_staff" %}
+      <p>Group invite links are for NBTE staff accounts only.</p>
+    {% elif state == "closed" %}
+      <p>This group no longer accepts new members by link.</p>
+    {% else %}
+      <p>This invite link has expired or was revoked. Ask a group admin for a new one.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

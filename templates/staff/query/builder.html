@@ -1,27 +1,29 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Advanced query · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Advanced query{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="nbr-page qb-page">
-  <header class="nbte-page-header nbr-header">
-    <div class="nbte-page-header__text">
-      <span class="nbte-page-header__eyebrow">People</span>
-      <h1 class="nbte-page-header__title">{% if saved %}{{ saved.name }}{% else %}Advanced query{% endif %}</h1>
-      <p class="nbte-page-header__description">{% if saved and saved.description %}{{ saved.description }}{% else %}Combine conditions to find exactly the staff you need, then save the query or export the result as a nominal roll.{% endif %}</p>
+  <header class="qa-hero nbte-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "search" 14 "2.2" %} User management · Advanced query</span>
+      <h1>{% if saved %}{{ saved.name }}{% else %}Advanced query{% endif %}</h1>
+      <p>{% if saved and saved.description %}{{ saved.description }}{% else %}Combine conditions to find exactly the staff you need, then save the query or export the result.{% endif %}</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'staff:query_saved' %}" class="btn btn-subtle">{% icon "copy" 16 "2.2" %} Saved queries</a>
+      </div>
     </div>
-    <div class="nbte-page-header__actions">
-      <a href="{% url 'staff:query_saved' %}" class="btn btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-        Saved queries
-      </a>
+    {% if page %}
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ page.paginator.count }}</strong><span>Matching staff</span></div>
     </div>
+    {% endif %}
   </header>
 
   {% if saved_queries %}
@@ -195,5 +197,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/query-builder.js' %}?v=1" defer></script>
+  <script src="{% static 'js/query-builder.js' %}" defer></script>
 {% endblock %}

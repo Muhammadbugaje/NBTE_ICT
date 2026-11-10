@@ -39,7 +39,14 @@ def make_user(db):
         user.save()
         for name in groups:
             user.groups.add(Group.objects.get(name=name))
-        return User.objects.get(pk=user.pk)  # fresh: no stale permission cache
+        user = User.objects.get(pk=user.pk)  # fresh: no stale permission cache
+        # v2.1 X23: Directors and above sign generated documents; fixtures give
+        # them a (generated) signature like the demo seed does. Tests of the
+        # "no signature" block retire it (documents/tests/test_x23_x24_*).
+        from documents.testing import give_if_required
+
+        give_if_required(user)
+        return user
 
     return _make
 

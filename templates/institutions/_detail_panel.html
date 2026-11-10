@@ -4,21 +4,27 @@
   <span aria-hidden="true">/</span><span aria-current="page">{{ inst.code }}</span>
 </nav>
 
-<header class="qa-inst-head">
-  <span class="qa-inst-head__code" aria-hidden="true">{{ inst.code }}</span>
-  <div>
-    <h1 data-qa-focus>{{ inst.name }}</h1>
-    <div class="qa-inst-head__meta">
-      <span class="qa-chip {{ inst.status|tone }}">{{ inst.status_label }}</span>
-      {% if not inst.portal_enabled %}<span class="qa-chip qa-tone-danger">Portal access off</span>{% endif %}
-      <span>{% icon "building" 14 %} {{ inst.ownership.name|default:"—" }} · {{ inst.institution_type.name|default:"—" }}</span>
-      <span>{% icon "layers" 14 %} {{ inst.category.name|default:"No category" }}</span>
-      <span>{% icon "map" 14 %} {% if inst.state %}{{ inst.lga }}, {{ inst.state.name }} ({{ inst.zone }}){% else %}Location not set{% endif %}</span>
-      <span>{% icon "users" 14 %} Handled by {{ inst.handling_department.name }}</span>
+<header class="ix-hero">
+  <div class="ix-hero__art" aria-hidden="true"></div>
+  <div class="ix-hero__id">
+    <span class="ix-hero__code" aria-hidden="true">{{ inst.code }}</span>
+    <div class="ix-hero__text">
+      <span class="ix-hero__eyebrow">Institution file · <span class="ix-mono">{{ inst.code }}</span></span>
+      <h1 data-qa-focus>{{ inst.name }}</h1>
+      <div class="ix-hero__chips">
+        <span class="ix-status ix-status--{{ inst.status }}">{{ inst.status_label }}</span>
+        {% if not inst.portal_enabled %}<span class="ix-status ix-status--off">Portal access off</span>{% endif %}
+        <span class="ix-meta">{% icon "users" 14 %} Handled by <strong>{{ inst.handling_department.name|default:"—" }}</strong></span>
+      </div>
+      <ul class="ix-hero__facts" role="list">
+        <li>{% icon "building" 14 %} {{ inst.ownership.name|default:"—" }} · {{ inst.institution_type.name|default:"—" }}</li>
+        <li>{% icon "layers" 14 %} {{ inst.category.name|default:"No category" }}</li>
+        <li>{% icon "map" 14 %} {% if inst.state %}{{ inst.lga }}, {{ inst.state.name }} ({{ inst.zone }}){% else %}Location not set{% endif %}</li>
+      </ul>
+      {% if inst.former_names %}<p class="ix-hero__former">Formerly: {% for n in inst.former_names %}{{ n.name }}{% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
     </div>
-    {% if inst.former_names %}<p class="qa-small qa-muted qa-mt-sm">Formerly: {% for n in inst.former_names %}{{ n.name }}{% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
   </div>
-  <div class="qa-inst-head__tools">
+  <div class="ix-hero__tools">
     <details class="qa-export-menu">
       <summary class="btn btn-subtle" aria-label="Download the institutional record">{% icon "download" 16 %} Download record</summary>
       <ul class="qa-export-menu__list" role="list">
@@ -28,13 +34,27 @@
     </details>
     {% include "institutions/_actions_menu.html" %}
   </div>
+  {% if inst_progress %}
+  <div class="ix-journey" aria-label="Onboarding journey">
+    <div class="ix-journey__head">
+      <span><strong>{% if inst_progress.pct == 100 %}Onboarding complete{% else %}Onboarding journey{% endif %}</strong>{% if inst_progress.current %} · now: {{ inst_progress.current }}{% endif %}</span>
+      <b>{{ inst_progress.pct }}%</b>
+    </div>
+    <ol class="ix-journey__steps" role="list">
+      {% for st in inst_progress.steps %}<li class="is-{{ st.state }}" title="{{ st.label }}{% if st.note %} — {{ st.note }}{% endif %}"><i aria-hidden="true"></i><span>{{ st.label }}</span></li>{% endfor %}
+    </ol>
+    {% if inst_progress.case or open_case %}<p class="ix-journey__case">{% icon "flag" 13 %} {{ inst_progress.case }}{% if open_case %} <a class="btn btn-xs btn-primary" href="{% url 'qa_case:detail' open_case.pk %}">Open case {{ open_case.reference }} {% icon "arrow" 12 "2.4" %}</a>{% endif %}</p>{% endif %}
+  </div>
+  {% endif %}
 </header>
 
-<nav class="qa-tabs" aria-label="Institution sections">
+{% include "assignments/_journey_banner.html" %}
+
+<nav class="qa-tabs ix-tabs" aria-label="Institution sections">
   {% for key, label in tabs %}
     <a href="{% url 'qa_inst:detail' inst.code %}?tab={{ key }}" hx-get="{% url 'qa_inst:detail' inst.code %}?tab={{ key }}" hx-target="#qa-tab" hx-push-url="true"
        class="{% if tab == key %}is-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}
-       hx-on::after-request="this.parentElement.querySelectorAll('a').forEach(a=>{a.classList.remove('is-active');a.removeAttribute('aria-current')});this.classList.add('is-active');this.setAttribute('aria-current','page')">{{ label }}</a>
+       hx-on::after-request="this.parentElement.querySelectorAll('a').forEach(a=>{a.classList.remove('is-active');a.removeAttribute('aria-current')});this.classList.add('is-active');this.setAttribute('aria-current','page')">{% with ic=tab_icons|get_item:key %}{% icon ic|default:"file" 15 %}{% endwith %}<span>{{ label }}</span></a>
   {% endfor %}
 </nav>
 

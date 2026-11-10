@@ -22,6 +22,19 @@
         {% endif %}
 
         <div class="qa-edit__row">
+          {% if e.key == "qa.cqac.recommendation_mode" %}
+            <fieldset class="qa-mode-toggle" aria-label="CQAC recommendation mode">
+              <legend class="sr-only">Choose how the CQAC panel records its recommendation</legend>
+              <label class="qa-mode-toggle__option">
+                <input type="radio" name="value" value="shared"{% if value == "shared" %} checked{% endif %} data-qa-focus>
+                <span><strong>Shared recommendation</strong><small>Any assigned member may submit one recommendation for the panel.</small></span>
+              </label>
+              <label class="qa-mode-toggle__option">
+                <input type="radio" name="value" value="individual"{% if value == "individual" %} checked{% endif %}>
+                <span><strong>Individual votes</strong><small>The full panel decides outcomes; approval details use the majority of approving votes. Ties return for review.</small></span>
+              </label>
+            </fieldset>
+          {% else %}
           <label class="sr-only" for="qa-value-{{ e.pk }}">New value for {{ e.key }}</label>
           {% if e.value_type == "bool" %}
             <input type="hidden" name="value" value="false">
@@ -40,6 +53,7 @@
             <input class="input qa-edit__value" type="date" id="qa-value-{{ e.pk }}" name="value" value="{{ value }}" data-qa-focus>
           {% else %}
             <input class="input qa-edit__value" type="text" id="qa-value-{{ e.pk }}" name="value" value="{{ value }}" data-qa-focus>
+          {% endif %}
           {% endif %}
         </div>
 

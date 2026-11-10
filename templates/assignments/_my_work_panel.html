@@ -1,0 +1,125 @@
+{% load qa_tags %}
+<header class="ux-hero mw-hero">
+  <div>
+    <span class="ux-hero__eyebrow">Quality Assurance · My work</span>
+    <h1 data-qa-focus>My work</h1>
+    <p>{% if show == "closed" %}Work you have finished. Access to an institution ends when the work is done.{% elif work_summary.total %}{{ work_summary.total }} thing{{ work_summary.total|pluralize }} waiting for you. Every button opens the task itself — the document, the SSQ, the case stage — with the institution one click away.{% else %}You are all caught up. New work appears here the moment it is assigned.{% endif %}</p>
+  </div>
+  <div class="ux-hero__actions">
+    <nav class="mw-switch" aria-label="Show">
+      <a href="{% url 'assignments:my_work' %}" hx-get="{% url 'assignments:my_work' %}" hx-target="#qa-panel" hx-push-url="true" class="{% if show != 'closed' %}is-active{% endif %}"{% if show != 'closed' %} aria-current="page"{% endif %}>Open{% if show != 'closed' %} <b>{{ work_summary.total }}</b>{% endif %}</a>
+      <a href="{% url 'assignments:my_work' %}?show=closed" hx-get="{% url 'assignments:my_work' %}?show=closed" hx-target="#qa-panel" hx-push-url="true" class="{% if show == 'closed' %}is-active{% endif %}"{% if show == 'closed' %} aria-current="page"{% endif %}>Finished</a>
+    </nav>
+    <a class="btn btn-ghost" href="{% url 'honoraria_earnings:list' %}">₦ My earnings</a>
+  </div>
+</header>
+
+{% if show != "closed" %}
+<div class="ux-stats mw-stats" aria-label="Summary">
+  <a class="ux-stat" href="#your-work"><span class="ux-stat__label">Waiting for you</span><span class="ux-stat__value">{{ work_summary.total }}</span><span class="ux-stat__hint">tasks across all queues</span></a>
+  <a class="ux-stat ux-stat--red" href="#your-work"><span class="ux-stat__label">Overdue</span><span class="ux-stat__value">{{ work_summary.overdue }}</span><span class="ux-stat__hint">{% if work_summary.overdue %}do these first{% else %}nothing late{% endif %}</span></a>
+  {% if work_summary.decide %}<a class="ux-stat ux-stat--gold" href="#your-work"><span class="ux-stat__label">Decisions</span><span class="ux-stat__value">{{ work_summary.decide }}</span><span class="ux-stat__hint">{{ work_summary.bulk|length }} ready for group approval</span></a>{% endif %}
+  <a class="ux-stat ux-stat--blue" href="#mw-h"><span class="ux-stat__label">Offered to you</span><span class="ux-stat__value">{{ offered_count }}</span><span class="ux-stat__hint">accept or decline</span></a>
+  <a class="ux-stat ux-stat--violet" href="#mw-g"><span class="ux-stat__label">Temporary access</span><span class="ux-stat__value">{{ grants|length }}</span><span class="ux-stat__hint">read access with your work</span></a>
+</div>
+
+{% if next_up %}
+<section class="ux-next mw-next" aria-labelledby="mw-next-h">
+  <span class="ux-next__badge" aria-hidden="true">{{ next_up.icon }}</span>
+  <div>
+    <span class="ux-kicker">Do this next{% if next_up.overdue %} · overdue{% endif %}</span>
+    <h3 id="mw-next-h">{{ next_up.verb }} · {{ next_up.title }}</h3>
+    <p>{% if next_up.institution %}{{ next_up.institution.name }}{% endif %}{% if next_up.sub %} · {{ next_up.sub }}{% endif %}{% if next_up.due %} · due {{ next_up.due|date:"j M" }}{% endif %}</p>
+  </div>
+  <div class="ux-actions mw-next__actions">
+    <a class="btn btn-primary" href="{{ next_up.url }}">{{ next_up.verb }} →</a>
+    {% if next_up.inst_url %}<a class="btn btn-subtle" href="{{ next_up.inst_url }}">Institution</a>{% endif %}
+  </div>
+</section>
+{% endif %}
+{% endif %}
+
+<div class="ux-grid mw-grid">
+  <div class="ux-span-8 mw-main">
+    {% if show != "closed" and work_rows %}{% include "partials/_work_inbox.html" with inbox_title="Everything waiting for you" inbox_hide_all_link=True %}{% endif %}
+
+    {% if show != "closed" and not groups and work_rows %}
+    <p class="mw-compact" id="mw-h">{% icon "check" 15 %} Nothing assigned to you as an officer right now — the list above is everything waiting for you.</p>
+    {% else %}
+    <section class="ux-card mw-assigned" aria-labelledby="mw-h">
+      <header class="ux-card__head"><div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">{% icon "check" 18 %}</span>
+        <div><h2 id="mw-h">{% if show == "closed" %}Finished work{% else %}Assigned to you{% endif %}</h2><p>{% if show == "closed" %}Your completed, declined and returned assignments.{% else %}Accept new work, open it, or hand it back with a reason.{% endif %}</p></div></div></header>
+      {% for kind, items in groups %}
+        <div class="mw-group">
+          <h3 class="mw-group__title">{{ kind }} <span>{{ items|length }}</span></h3>
+          <ul class="ux-list" role="list">
+            {% for wa in items %}
+              <li class="ux-row mw-row{% if wa.status == 'offered' or wa.status == 'suggested' %} is-offered{% endif %}{% if not wa.is_open %} ux-row--done{% endif %}">
+                <span class="ux-row__icon{% if wa.status == 'offered' or wa.status == 'suggested' %} ux-row__icon--gold{% elif wa.due_at and wa.is_open and wa.due_at < now %} ux-row__icon--red{% endif %}" aria-hidden="true">{% if wa.status == "offered" or wa.status == "suggested" %}★{% elif not wa.is_open %}✓{% else %}{{ wa.institution.code|slice:":2" }}{% endif %}</span>
+                <div class="ux-row__main">
+                  <span class="ux-row__title">{{ wa.institution.name }}{% if wa.subject_label and wa.subject_label != wa.institution.name %} · {{ wa.subject_label }}{% endif %}</span>
+                  <div class="ux-row__meta">
+                    <span class="ux-chip {% if wa.status == 'offered' or wa.status == 'suggested' %}ux-chip--gold{% elif wa.is_open %}ux-chip--green{% endif %}">{{ wa.get_status_display }}</span>
+                    {% if wa.due_at and wa.is_open and wa.due_at < now %}<span class="ux-chip ux-chip--red">Past due</span>{% endif %}
+                    <span>{% icon "building" 13 %} {{ wa.institution.code }}</span>
+                    {% if wa.department %}<span>For {{ wa.department.name }}</span>{% endif %}
+                    <span>Assigned {{ wa.assigned_at|date:"j M Y" }}</span>
+                    {% if wa.due_at %}<span>Due {{ wa.due_at|date:"j M Y" }}</span>{% endif %}
+                    {% if wa.locked_at %}<span>{% icon "lock" 13 %} Locked</span>{% endif %}
+                  </div>
+                </div>
+                <div class="ux-row__actions">
+                  {% if wa.status == "offered" or wa.status == "suggested" %}
+                    <button class="btn btn-sm btn-primary" type="button" hx-post="{% url 'assignments:work_action' wa.pk 'accept' %}" hx-target="#qa-panel">{% icon "check" 14 %} Accept</button>
+                    <button class="btn btn-sm btn-subtle" type="button" hx-post="{% url 'assignments:work_action' wa.pk 'decline' %}" hx-target="#qa-panel" hx-confirm="Decline this work? Your director will be told." data-confirm-title="Decline this work?" data-confirm-label="Decline" data-confirm-tone="danger" data-confirm-note="{{ wa.get_kind_display }} · {{ wa.institution.name }}">Decline</button>
+                  {% elif wa.is_open %}
+                    {% if wa.task_link %}<a class="btn btn-sm btn-primary" href="{{ wa.task_link }}">{{ wa.task_verb }} →</a>{% endif %}
+                    {% if wa.kind == "ssq_review" %}<details class="mw-return"><summary class="btn btn-sm btn-subtle">Return</summary>
+                      <form class="mw-return__sheet" method="post" action="{% url 'assignments:work_action' wa.pk 'return' %}" hx-post="{% url 'assignments:work_action' wa.pk 'return' %}" hx-target="#qa-panel">{% csrf_token %}
+                        <label for="mw-ret-{{ wa.pk }}"><strong>Why are you returning this SSQ review?</strong> Your director will be told.</label>
+                        <textarea class="input" id="mw-ret-{{ wa.pk }}" name="reason" required minlength="3" rows="3" placeholder="e.g. conflict of interest, on leave until…"></textarea>
+                        <div class="ux-actions"><button class="btn btn-sm btn-danger" type="submit">Return to director</button></div>
+                      </form></details>{% endif %}
+                    <a class="btn btn-sm btn-subtle" href="{% url 'qa_inst:detail' wa.institution.code %}">Institution</a>
+                  {% endif %}
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% empty %}
+        <div class="ux-empty" data-qa-announce="No work">
+          <div class="ux-empty__art">✓</div>
+          <strong>{% if show == "closed" %}Nothing finished yet{% else %}Nothing assigned to you{% endif %}</strong>
+          <span>When your director assigns you a document, SSQ, visit or complaint it appears here.</span>
+        </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="ux-span-4 mw-side">
+    <section class="ux-card" aria-labelledby="mw-g">
+      <header class="ux-card__head"><div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">{% icon "unlock" 18 %}</span>
+        <div><h2 id="mw-g">Temporary access</h2><p>Read access that comes with your work. Every view is logged.</p></div></div></header>
+      <ul class="mw-grants" role="list">
+        {% for g in grants %}
+          <li><strong>{{ g.get_scope_display }}{% if g.institution %} · {{ g.institution.name }}{% endif %}</strong>
+            <span class="ux-chip ux-chip--violet ux-chip--plain">{% if g.expires_at %}until {{ g.expires_at|date:"j M" }}{% else %}while assigned{% endif %}</span>
+            {% if g.reason %}<small>{{ g.reason }}</small>{% endif %}</li>
+        {% empty %}<li class="mw-grants__none">None right now.</li>{% endfor %}
+      </ul>
+    </section>
+    <section class="ux-card" aria-labelledby="mw-l">
+      <header class="ux-card__head"><div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">{% icon "eye" 18 %}</span><h2 id="mw-l">Who sees what</h2></div></header>
+      <ul class="mw-legend" role="list">
+        <li><span>Assigned ICT supervisor</span><span class="ux-chip ux-chip--green">Whole journey</span></li>
+        <li><span>ES, Director of ICT, super admin</span><span class="ux-chip ux-chip--green">Whole journey</span></li>
+        <li><span>Directors</span><span class="ux-chip ux-chip--blue">Own department</span></li>
+        <li><span>Staff</span><span class="ux-chip ux-chip--gold">Assigned items only</span></li>
+        <li><span>Institution</span><span class="ux-chip">Plain-words steps</span></li>
+      </ul>
+      {% if mode != "assignment" %}<p class="ux-muted mw-note">Need-to-know is not switched on yet: your department still sees its institutions.</p>{% endif %}
+    </section>
+  </aside>
+</div>

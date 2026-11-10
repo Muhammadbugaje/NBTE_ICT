@@ -1,0 +1,87 @@
+{% extends base_template %}
+{% load qa_tags portal_journey_tags %}
+{% block title %}Programme self-study · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page qa-stack" id="qa-onboarding-ssq">
+  <nav class="qa-crumbs" aria-label="Breadcrumb">
+    <a href="{% url 'qa_portal:application' %}" hx-get="{% url 'qa_portal:application' %}" hx-target="#qa-main" hx-push-url="true">Application {{ app.reference }}</a>
+    <span aria-hidden="true">/</span><span aria-current="page">{{ programme.name }}</span>
+  </nav>
+  <header class="qa-page-head qa-ssq-head">
+    <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Programme self-study</span>
+    <h1 data-qa-focus>{{ programme.name }}</h1>
+    <p>{{ programme.level.name }} · {{ template.name|plain }}</p>
+    {% if submitted %}<p class="qa-small qa-row qa-gap-sm"><span class="qa-chip qa-tone-success">Submitted</span> {{ ssq.submitted_at|date:"j M Y, H:i" }}</p>{% endif %}
+  </header>
+
+  {% if returned_for_correction %}{% with notes=ssq|correction_notes %}
+  <section class="lj-fix" role="alert" aria-labelledby="lj-fix-h">
+    <p class="lj-fix__kicker">{% icon "alert" 15 "2.4" %} Needs your action</p>
+    <h2 id="lj-fix-h">NBTE sent this self-study back — please correct it and resubmit</h2>
+    {% if notes %}<blockquote class="lj-fix__notes"><span>NBTE's notes</span>{{ notes|linebreaksbr }}</blockquote>
+    {% else %}<p>{{ review_stage.public|plain }}</p>{% endif %}
+    <ol class="lj-fix__steps">
+      <li>Change the answers below — they are open for editing again — and press <b>Save self-study</b>.</li>
+      <li>Your Chief Executive ticks the declaration and presses <b>Resubmit to NBTE</b> at the bottom of this page.</li>
+      <li>Only this programme goes back to NBTE for review. We'll notify you of the result.</li>
+    </ol>
+    <a class="btn btn-primary" href="#lj-resubmit">{% icon "arrow" 16 "2.4" %} Go to Resubmit</a>
+  </section>
+  {% endwith %}{% elif review_stage.public and submitted %}
+  <p class="qa-small"><span class="qa-chip qa-tone-info">{{ review_stage.public|plain }}</span></p>
+  {% endif %}
+
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Self-study not saved" message=error %}{% endif %}
+  {% if submitted %}<p class="qa-small qa-muted">{% icon "lock" 14 %} This questionnaire is a read-only record of the submitted answers.</p>{% endif %}
+
+  <form class="qa-stack" method="post" action="{% url 'qa_portal:application_ssq_save' ssq.pk %}" data-qa-no-overlay>
+    {% csrf_token %}
+    {% for section in sections %}
+      <section class="qa-card qa-ssq__form" aria-labelledby="ssq-sec-{{ section.key }}">
+        <header class="qa-card__head"><div><h2 id="ssq-sec-{{ section.key }}">{{ section.title }}</h2>{% if section.description %}<p>{{ section.description }}</p>{% endif %}</div></header>
+        <div class="qa-card__body qa-ssq__fields">
+          <fieldset class="qa-ssq__fieldset"{% if not editable %} disabled{% endif %}><legend class="sr-only">{{ section.title }}</legend>
+            {% for f in fields_by_section|get_item:section.key %}
+              {% if f.type == "file" %}
+                <div class="qa-field qa-ssq-field qa-ssq-field--file">
+                  <span class="qa-label">{{ f.label }}{% if f.required %} <span class="qa-req" aria-label="required">*</span>{% endif %}</span>
+                  {% if f.help %}<p class="qa-help">{{ f.help }}</p>{% endif %}
+                  {% if f.documents %}
+                    <ul class="qa-snap__files" role="list">{% for doc in f.documents %}
+                      <li>{% icon "file" 14 %} <a href="{{ doc.portal_download_url }}">{{ doc.display_name }}</a> <span class="qa-chip qa-tone-info">NBTE accepted</span></li>
+                    {% endfor %}</ul>
+                  {% else %}
+                    <p class="qa-small qa-muted">No accepted document matches this evidence field. <a href="{% url 'qa_portal:documents' %}">Review the document checklist</a>.</p>
+                  {% endif %}
+                </div>
+              {% else %}
+                {% include "qa_portal/ssq/_field.html" %}
+                {% if field_errors|get_item:f.key %}<p class="qa-small qa-tone-danger" role="alert">{{ field_errors|get_item:f.key }}</p>{% endif %}
+              {% endif %}
+            {% endfor %}
+          </fieldset>
+        </div>
+      </section>
+    {% endfor %}
+    {% if editable %}
+      <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "check" 16 %} Save self-study</button>
+        <a class="btn btn-subtle" href="{% url 'qa_portal:application' %}">Back to application</a></div>
+    {% else %}
+      <a class="btn btn-subtle" href="{% url 'qa_portal:application' %}">Back to application</a>
+    {% endif %}
+  </form>
+
+  {% if returned_for_correction %}
+  <section class="lj-fix lj-fix--submit" id="lj-resubmit" aria-labelledby="lj-resubmit-h">
+    <h2 id="lj-resubmit-h">Resubmit to NBTE</h2>
+    {% if problems %}<p>{% icon "alert" 16 %} {{ problems|length }} required item{{ problems|length|pluralize }} still to complete. Save your changes first.</p>
+    {% else %}<p>{% icon "check" 16 "2.4" %} Every required item is complete.</p>{% endif %}
+    <form method="post" action="{% url 'qa_portal:application_ssq_resubmit' ssq.pk %}">{% csrf_token %}
+      <label class="pp-declare"><input type="checkbox" name="declaration" required> <span>I confirm the corrected self-study for {{ programme.name }} is complete and accurate, and I am authorised to resubmit it for {{ app.institution.name }}.</span></label>
+      {% if not can_submit %}<div class="pp-note pp-note--lock" role="note">{% icon "lock" 16 %}<span>Only the Chief Executive can resubmit. Ask your Chief Executive to sign in and press Resubmit to NBTE.</span></div>{% endif %}
+      <div class="qa-form-actions"><button class="btn btn-primary btn-lg" type="submit"{% if problems or not can_submit or request.is_impersonating %} disabled{% endif %}>{% icon "arrow" 16 "2.4" %} Resubmit to NBTE</button></div>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

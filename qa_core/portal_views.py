@@ -10,12 +10,15 @@ partial (`#qa-main`) for boosted navigation (§20).
 """
 from __future__ import annotations
 
+import hashlib
+
 from django.contrib import messages
 from django.contrib.auth import logout, update_session_auth_hash
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.views import redirect_to_login
 from django.core.cache import cache
-from django.http import HttpResponseRedirect
+from django.db.models import Max
+from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -112,13 +115,24 @@ NAV_ICONS = {
                   '<polyline points="2 12 12 17 22 12"/>',
     "qa_requests": '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     "queries": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    "memos": '<path d="M4 4h16v16H4z"/><polyline points="4 4 12 13 20 4"/>',
     "engagements": '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
     "service": '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>',
     "profile": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
     "inspections": '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     "programmes": '<path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
     "letters": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+    "scan": '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/>'
+            '<path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/>',
     "account": '<circle cx="12" cy="8" r="4"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
+    "visit_invitations": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',  # visit invitations
+    "pb_institutions": '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/>',
+    "pb_visits": '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>',
+    "pb_reports": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>'
+                  '<polyline points="14 2 14 8 20 8"/>',
+    "pb_people": '<circle cx="9" cy="8" r="4"/><path d="M2 21v-2a7 7 0 0 1 14 0v2"/>'
+                 '<circle cx="18" cy="8" r="3"/><path d="M17 13a5 5 0 0 1 5 5v3"/>',
+    "pb_requests": '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     "complaints": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'
                   '<line x1="12" y1="7" x2="12" y2="11"/><line x1="12" y1="14" x2="12.01" y2="14"/>',
 }
@@ -134,6 +148,14 @@ NAV_HUES = {
     "complaints": ("orange", "Raise an issue and follow it"), "engagements": ("teal", "Visits and reviews you are mapped to"),
     "service": ("slate", "QA exercises you served on"), "profile": ("slate", "Your resource-person profile"),
     "account": ("slate", "Password and sign-in"), "dashboard": ("green", ""),
+    "memos": ("indigo", "Memos and letters from NBTE"),
+    "visit_invitations": ("teal", "Visit invitations to confirm"),
+    "pb_institutions": ("blue", "Institutions running programmes under your body"),
+    "pb_visits": ("teal", "Visits coming up and your representative on them"),
+    "pb_reports": ("orange", "Your body's visit reports: write, review, send to NBTE"),
+    "pb_people": ("slate", "The body's own portal accounts"),
+    "pb_requests": ("indigo", "Ask NBTE to put a programme under your body"),
+    "scan": ("slate", "Check an NBTE receipt or letter is genuine"),
 }
 
 
@@ -150,7 +172,9 @@ def portal_nav(user, institution, section):
             items.append(("inspections", "Inspections", reverse("qa_portal:inspections")))  # Phase 5
             # Phase 8: programme status board and outcome letters
             items.append(("programmes", "Programmes", reverse("qa_portal:programme_board")))
-            items.append(("letters", "Outcome letters", reverse("qa_portal:letters")))
+        # v2.1 Phase F (X25): generated letters (registration, clearance) arrive before approval too
+        items.append(("letters", "Letters", reverse("qa_portal:letters")))
+        items.append(("memos", "Memos", reverse("qa_portal:memos")))  # v2.1 Phase E (M4)
         items += [
             ("documents", "Documents", reverse("qa_portal:documents")),
             ("payments", "Payments", reverse("qa_portal:payments")),
@@ -164,11 +188,22 @@ def portal_nav(user, institution, section):
     if getattr(user, "user_type", "") in ("institution", "resource_person") and (
             institution is not None or getattr(user, "user_type", "") == "resource_person"):
         items.append(("complaints", "Complaints", reverse("qa_portal:complaints")))  # Phase 7
+    if getattr(user, "user_type", "") == "professional_body":  # v2.6: the body's own pages
+        items += [("pb_institutions", "Institutions", reverse("qa_portal:pb_institutions")),
+                  ("pb_visits", "Visits", reverse("qa_portal:pb_visits")),
+                  ("pb_reports", "Reports", reverse("qa_portal:pb_reports")),
+                  ("pb_people", "People", reverse("qa_portal:pb_people")),
+                  ("pb_requests", "Requests", reverse("qa_portal:pb_requests"))]
+    if getattr(user, "user_type", "") in ("resource_person", "professional_body"):  # SOP-03 visit invitations
+        items.append(("visit_invitations", "Invitations", reverse("qa_portal:visit_invitations")))
+    items.append(("scan", "Scan", reverse("qa_portal:scan")))  # v2.1 Phase F (X26)
     items.append(("account", "Account", reverse("qa_portal:account")))
     many = len(items) > 3
-    secondary = {"timeline", "account"}
+    secondary = {"timeline", "account", "scan"}
     if any(k == "qa_requests" for k, _l, _u in items):
-        secondary |= {"institution", "queries", "inspections", "letters"}  # Phase 3: keep the top bar to five links
+        secondary |= {"institution", "queries", "inspections", "letters", "memos"}  # Phase 3: keep the top bar to five links
+    if any(k == "pb_reports" for k, _l, _u in items):  # v2.6: the body's bar stays lean too
+        secondary |= {"pb_requests", "pb_institutions"}
     if sum(1 for k, _l, _u in items if k not in secondary) > 5:
         secondary.add("complaints")  # Phase 7: still five links; Complaints moves to the user menu
     # Phase 7: the phone tab bar shows the four most-used sections the user has.
@@ -233,6 +268,52 @@ def institution_required(view):
     wrapped.__name__ = view.__name__
     wrapped.__doc__ = view.__doc__
     return wrapped
+
+
+def _live_token(parts):
+    """A short, stable fingerprint of the values that make a page stale."""
+    raw = "|".join("" if p is None else str(p) for p in parts)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:20]
+
+
+# ---------------------------------------------------------------------------
+# Live updates (v2.8): one tiny JSON endpoint per shell
+# ---------------------------------------------------------------------------
+@portal_login_required
+@require_http_methods(["GET"])
+def live(request):
+    """Version stamp for the signed-in portal page.
+
+    The portal shell polls this instead of a full page. It changes when the
+    viewer's notifications, QA requests or payment obligations change, which
+    is enough to know the visible page may need a refresh. ``?v=`` makes the
+    poll a no-op (``{"unchanged": true}``) when nothing moved.
+    """
+    from notifications.models import Notification
+
+    user = request.user
+    mine = Notification.objects.filter(recipient=user)
+    unread = mine.filter(is_read=False).count()
+    latest = mine.aggregate(latest=Max("created_at"))["latest"]
+    parts = [unread, latest]
+    if getattr(user, "user_type", "") == "institution":
+        from accreditation.models import QARequest
+        from payments.models import PaymentObligation
+
+        for model in (QARequest, PaymentObligation):
+            try:
+                parts.append(model.objects.for_user(user).aggregate(latest=Max("updated_at"))["latest"])
+            except Exception:  # a future model without the scope path must not break polling
+                parts.append(None)
+    token = _live_token(parts)
+    if request.GET.get("v") == token:
+        return JsonResponse({"v": token, "unchanged": True})
+    return JsonResponse({
+        "v": token,
+        "unread": unread,
+        "latest": latest.isoformat() if latest else None,
+    })
+
 
 
 # ---------------------------------------------------------------------------
@@ -364,23 +445,37 @@ def password_set_done(request):
 def password_change(request):
     forced = bool(request.user.must_change_password)
     form = PortalPasswordChangeForm(request.user, request.POST or None, forced=forced)
+    from .ui import toast
+
     if request.method == "POST" and form.is_valid():
         form.save()
         update_session_auth_hash(request, request.user)
+        if not forced and is_htmx(request):
+            # The card is swapped in place: a toast, not a message that would
+            # linger until the next full page load.
+            response = render(request, "qa_portal/_password_card.html",
+                              _shell_context(request, "account", password_form=PortalPasswordChangeForm(request.user),
+                                             password_saved=True))
+            return toast(response, "success", "Password updated", "Use the new password next time you sign in.")
         messages.success(request, "Your password has been updated.")
         if forced:
             return redirect("qa_portal:dashboard")
-        if is_htmx(request):
-            return render(request, "qa_portal/_password_card.html",
-                          _shell_context(request, "account", password_form=PortalPasswordChangeForm(request.user),
-                                         password_saved=True))
         return redirect("qa_portal:account")
     if is_htmx(request) and request.headers.get("HX-Target") == "qa-password-card":
-        return render(request, "qa_portal/_password_card.html",
-                      _shell_context(request, "account", password_form=form))
+        response = render(request, "qa_portal/_password_card.html",
+                          _shell_context(request, "account", password_form=form))
+        if request.method == "POST":
+            toast(response, "error", "Password not changed", "Check the highlighted fields.")
+        return response
     template = "qa_portal/password_change.html" if forced else "qa_portal/account.html"
     ctx = _shell_context(request, "account", form=form, password_form=form, forced=forced,
                          profile_form=AccountProfileForm(instance=request.user))
+    if not forced:
+        # account.html includes the devices/passkeys card, which needs p9_urls.
+        from accounts.security_views import security_context
+        from notifications.settings_views import preference_form
+        ctx.update(security_context(request))
+        ctx["notification_form"] = preference_form(request.user, "portal")
     return render(request, template, ctx)
 
 
@@ -402,6 +497,10 @@ def dashboard(request):
 
         ctx = _shell_context(request, "dashboard", **staff_dashboard_context(request))
         return render(request, "qa_portal/staff_dashboard.html", ctx)
+    if user.user_type == "professional_body":  # v2.1 R.5 X43
+        from institutions.pb_portal import pb_dashboard
+
+        return pb_dashboard(request)
     if user.user_type == "institution":
         recent = list(TimelineEvent.objects.for_user(user).filter(visibility="public")[:6])
         institution = _institution_for(user)
@@ -411,8 +510,14 @@ def dashboard(request):
 
             extra = dashboard_context(request, institution)
             extra["action_items"] = qa_action_items(request, institution) + extra.get("action_items", [])
+            from payments.portal_views import welcome_context  # v2.1 F.4 (P10)
+
+            extra["payment_welcome"] = welcome_context(request)
     ctx = _shell_context(request, "dashboard", recent_activity=recent,
                          is_resource_person=user.user_type == "resource_person", **extra)
+    from public.hero import hero_context  # v2.1 A7: crest watermark behind the welcome card
+
+    ctx["show_crest"] = hero_context("portal.home").get("crest", True)
     return render(request, "qa_portal/dashboard.html", ctx)
 
 
@@ -422,7 +527,9 @@ def dashboard(request):
 PORTAL_FILE_MODELS = ("institutions.institutiondocument", "accreditation.evidence", "accreditation.response",
                       "payments.paymentslip", "payments.paymentadvice",
                       "payments.proofofpayment",
-                      "accreditation.outcomelettercopy")  # Phase 8: outcome letters
+                      "accreditation.outcomelettercopy",  # Phase 8: outcome letters
+                      "documents.issueddocument", "documents.officialcopy",  # v2.1 Phase F (X25)
+                      "institutions.bodyletter")  # v2.1 R.5 X43: professional body letters
 
 
 @portal_login_required
@@ -461,6 +568,9 @@ def portal_file_response(request, obj, *, channel="portal"):
     audit.log("other", obj, actor=getattr(request, "impersonator", None) or request.user,
               note=file_preview.audit_note(inline) + f" ({channel}" + (
                   ", impersonation" if getattr(request, "is_impersonating", False) else "") + ")")
+    from assignments.access import record_event  # v2.1 P.4: access event on every QA download
+    record_event(getattr(request, "impersonator", None) or request.user, obj, "preview" if inline else "download",
+                 request=request)
     if getattr(dj_settings, "USE_X_ACCEL_REDIRECT", False):
         response = HttpResponse(content_type=ctype)
         response["X-Accel-Redirect"] = dj_settings.PROTECTED_MEDIA_URL + quote(obj.file.name)
@@ -507,9 +617,12 @@ def account(request):
     if is_htmx(request) and request.headers.get("HX-Target") == "qa-profile-card":
         response = render(request, "qa_portal/_profile_card.html",
                           _shell_context(request, "account", profile_form=profile_form, profile_saved=saved))
+        from .ui import toast
+
         if saved:
-            from .ui import toast
             toast(response, "success", "Your details have been saved")
+        elif request.method == "POST":
+            toast(response, "error", "Not saved", "Check the highlighted fields.")
         return response
     ctx = _shell_context(request, "account", profile_form=profile_form,
                          password_form=PortalPasswordChangeForm(request.user))

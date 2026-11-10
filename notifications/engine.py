@@ -148,6 +148,7 @@ def send(
     trail=None,
     from_email=None,
     reply_to=None,
+    attachments=None,
 ):
     """Send now, synchronously. Returns the provider name that delivered it.
     If `trail` (a list) is given, every provider tried is appended to it as
@@ -191,6 +192,8 @@ def send(
             )
             if html:
                 msg.attach_alternative(html, "text/html")
+            for name, content, mimetype in attachments or ():  # (filename, bytes, mime type)
+                msg.attach(name, content, mimetype)
             sent = msg.send()
             if not sent:
                 raise AllProvidersFailed(f"{provider}: backend returned 0 sent messages")

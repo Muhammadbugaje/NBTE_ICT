@@ -1,0 +1,134 @@
+{% load qa_tags %}
+{% comment %}
+  v2.7 — controlled changes (Director → ES). Included on the Visit tab
+  (dates) and the Overview tab (rollback). `change_kind` says which form to
+  show: "visit_date" or "rollback".
+{% endcomment %}
+<section class="c3-sec c3-change{% if change_kind == 'rollback' %} c3-change--rollback{% endif %}" aria-labelledby="c3-change-h">
+  <header class="c3-sec__head">
+    <span class="c3-sec__num">{% icon "shield" 14 "2.4" %}</span>
+    <div>
+      <h2 id="c3-change-h">{% if change_kind == "visit_date" %}Change the visit dates{% else %}Request to return to an earlier stage{% endif %}</h2>
+      <p>{% if change_kind == "visit_date" %}The dates are fixed once the ES approves them. Ask here: the handling Director approves, then the ES, and only then does the desk officer apply the new dates.{% else %}Choose where work should restart. The Handling Director reviews the request, then the Executive Secretary approves it. After approval, the desk officer applies it. The selected stage and every later stage will reopen and must be completed again.{% endif %}</p>
+    </div>
+    {% if open_change %}<span class="qa-chip qa-tone-warn c3-sec__chip">{{ open_change.get_status_display }}</span>{% endif %}
+  </header>
+
+  {% if open_change %}
+    <div class="c3-change__card is-open" id="change-request-{{ open_change.pk }}">
+      <div class="c3-change__top">
+        <div>
+          <strong>{{ open_change.get_kind_display }}</strong>
+          <span class="c3-muted">Asked by {{ open_change.requested_by|who|default:"—" }} · {{ open_change.requested_at|date:"j M Y, H:i" }}</span>
+        </div>
+        <span class="qa-chip {% if open_change.status == 'approved' %}qa-tone-success{% elif open_change.status == 'pending_es' %}qa-tone-info{% else %}qa-tone-warn{% endif %}">{{ open_change.get_status_display }}</span>
+      </div>
+      <p class="c3-prose">{{ open_change.reason|linebreaksbr }}</p>
+      {% if change_kind == "visit_date" %}
+        <div class="c3-facts c3-facts--tight">
+          <div><span>Current</span><strong>{% if visit.planned_start %}{{ visit.planned_start|date:"j M Y" }} – {{ visit.planned_end|date:"j M Y" }}{% else %}Not set{% endif %}</strong></div>
+          <div><span>Proposed</span><strong>{{ open_change.proposed_start|date:"j M Y" }} – {{ open_change.proposed_end|date:"j M Y" }}</strong></div>
+        </div>
+      {% else %}
+        <div class="c3-facts c3-facts--tight"><div><span>Move back to</span><strong>{{ open_change.target_stage|humanize_code }}</strong></div></div>
+      {% endif %}
+
+      <ol class="c3-approvals" role="list">
+        <li class="is-{% if open_change.director_approved_at %}done{% elif open_change.status == 'pending_director' %}current{% else %}todo{% endif %}">
+          <span class="c3-approvals__dot" aria-hidden="true">{% if open_change.director_approved_at %}{% icon "check" 12 "3" %}{% else %}1{% endif %}</span>
+          <span><strong>Handling Director</strong><em>{% if open_change.director_approved_by %}{{ open_change.director_approved_by|who }} · {{ open_change.director_approved_at|date:"j M Y" }}{% elif open_change.status == 'pending_director' %}Waiting{% else %}Skipped{% endif %}</em></span>
+        </li>
+        <li class="is-{% if open_change.es_approved_at %}done{% elif open_change.status == 'pending_es' %}current{% elif open_change.status == 'pending_director' %}todo{% else %}todo{% endif %}">
+          <span class="c3-approvals__dot" aria-hidden="true">{% if open_change.es_approved_at %}{% icon "check" 12 "3" %}{% else %}2{% endif %}</span>
+          <span><strong>Executive Secretary</strong><em>{% if open_change.es_approved_by %}{{ open_change.es_approved_by|who }} · {{ open_change.es_approved_at|date:"j M Y" }}{% elif open_change.status == 'pending_es' %}Waiting{% else %}Not yet{% endif %}</em></span>
+        </li>
+      </ol>
+
+      {% if open_change.status == "pending_director" and can_director_approve or open_change.status == "pending_es" and can_es_approve %}
+      <form class="c3-change__actions" method="post" action="{% url 'qa_case:change_decide' case.pk open_change.pk %}"
+            hx-post="{% url 'qa_case:change_decide' case.pk open_change.pk %}" hx-target="#qa-panel">{% csrf_token %}
+        <input class="input" name="remark" placeholder="Remark (required when returning)" maxlength="300">
+        <button class="btn btn-primary" type="submit" name="decision" value="approve">{% icon "check" 16 "2.4" %} Approve</button>
+        <button class="btn btn-ghost" type="submit" name="decision" value="return">Return for revision</button>
+        <button class="btn btn-ghost" type="submit" name="decision" value="reject">Reject</button>
+      </form>
+      {% endif %}
+
+      {% if open_change.status == "approved" %}
+        {% if can_apply_change and change_kind == "visit_date" %}
+          <form method="post" action="{% url 'qa_case:change_apply' case.pk open_change.pk %}"
+                hx-post="{% url 'qa_case:change_apply' case.pk open_change.pk %}" hx-target="#qa-panel">{% csrf_token %}
+            <button class="btn btn-primary" type="submit">{% icon "calendar" 16 "2.2" %} Apply the new dates</button>
+            <span class="c3-small c3-muted">The desk officer applies it; the team and invitations are updated.</span>
+          </form>
+        {% elif can_apply_change %}
+          <form method="post" action="{% url 'qa_case:change_apply' case.pk open_change.pk %}"
+                hx-post="{% url 'qa_case:change_apply' case.pk open_change.pk %}" hx-target="#qa-panel">{% csrf_token %}
+            <button class="btn btn-primary" type="submit">{% icon "arrow" 16 "2.2" %} Apply the rollback</button>
+            <span class="c3-small c3-muted">Every later step will be closed and must be repeated.</span>
+          </form>
+        {% else %}
+          <p class="c3-change__next" role="status">
+            {% icon "clock" 15 "2.2" %}
+            <span><strong>Approved and ready to apply.</strong> The assigned desk officer{% if case.desk_officer %}, {{ case.desk_officer|who }},{% endif %} must apply this change. The workflow will update only after they do.</span>
+          </p>
+        {% endif %}
+      {% endif %}
+
+      {% if open_change.status != "applied" and can_request_change %}
+      <form method="post" action="{% url 'qa_case:change_cancel' case.pk open_change.pk %}"
+            hx-post="{% url 'qa_case:change_cancel' case.pk open_change.pk %}" hx-target="#qa-panel" class="c3-change__cancel">{% csrf_token %}
+        <button class="btn btn-subtle btn-sm" type="submit">Cancel this request</button>
+      </form>
+      {% endif %}
+    </div>
+  {% elif can_request_change %}
+    <form class="c3-form c3-form--grid c3-change__form" method="post" action="{% url 'qa_case:change_request' case.pk %}"
+          hx-post="{% url 'qa_case:change_request' case.pk %}" hx-target="#qa-panel">{% csrf_token %}
+      <input type="hidden" name="kind" value="{{ change_kind }}">
+      {% if change_kind == "visit_date" %}
+        <div class="qa-field"><label for="cc-start">New first day</label><input class="input" type="date" id="cc-start" name="start" min="{{ min_visit_date }}" required></div>
+        <div class="qa-field"><label for="cc-end">New last day</label><input class="input" type="date" id="cc-end" name="end" min="{{ min_visit_date }}" required></div>
+      {% else %}
+        <div class="qa-field c3-form__wide"><label for="cc-stage">Choose the stage to restart from</label>
+          <select class="input" id="cc-stage" name="target_stage" required>
+            <option value="">Select an earlier SOP-03 stage…</option>
+            {% for s in earlier_stages %}<option value="{{ s.code }}">Stage {{ s.sop_stage_no }} — {{ s.label }}</option>{% endfor %}
+          </select>
+          <span class="c3-small c3-muted">The selected stage and all later stages will be reset and need to be done again.</span>
+        </div>
+      {% endif %}
+      <div class="qa-field c3-form__wide"><label for="cc-reason">Why is this needed?</label>
+        <textarea class="input" id="cc-reason" name="reason" rows="3" minlength="10" required placeholder="The approvers see this."></textarea></div>
+      <div class="c3-form__row">
+        <button class="btn btn-primary" type="submit">{% icon "arrow" 16 "2.2" %} Submit for approval</button>
+        <span class="c3-change__route">{% icon "shield" 14 "2.2" %}
+          {% if is_owning_director %}Director review recorded on submission{% else %}Handling Director review{% endif %}
+          <span aria-hidden="true">→</span> Executive Secretary approval <span aria-hidden="true">→</span> desk officer applies.
+        </span>
+      </div>
+    </form>
+  {% elif change_kind == "visit_date" %}
+    <p class="c3-muted c3-small">Only the desk officer or the handling Director can ask for a date change.</p>
+  {% else %}
+    <p class="c3-muted c3-small">Only the desk officer or the handling Director can ask for a rollback.</p>
+  {% endif %}
+
+  {% if change_requests %}
+  <details class="c3-change__history">
+    <summary>Change history ({{ change_requests|length }})</summary>
+    <ul class="c3-change__list" role="list">
+      {% for r in change_requests %}
+      <li id="change-request-{{ r.pk }}">
+        <span class="qa-chip {% if r.status == 'applied' %}qa-tone-success{% elif r.status == 'pending_es' %}qa-tone-info{% elif r.status == 'pending_director' or r.status == 'returned' %}qa-tone-warn{% elif r.status == 'rejected' %}qa-tone-danger{% else %}qa-tone-neutral{% endif %}">{{ r.get_status_display }}</span>
+        <strong>{{ r.get_kind_display }}</strong>
+        <span class="c3-muted">{{ r.requested_by|who|default:"—" }} · {{ r.requested_at|date:"j M Y" }}</span>
+        {% if r.kind == "visit_date" %}<span>{{ r.proposed_start|date:"j M Y" }} – {{ r.proposed_end|date:"j M Y" }}</span>{% else %}<span>{{ r.target_stage|humanize_code }}</span>{% endif %}
+        <p class="c3-small c3-muted">{{ r.reason|truncatechars:180 }}</p>
+        {% if r.status == "returned" %}<p class="c3-small c3-muted">Returned for revision: {{ r.director_remark|default:r.es_remark|default:"No additional remark."|truncatechars:180 }} Submit a revised request when ready.</p>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</section>

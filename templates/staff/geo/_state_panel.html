@@ -1,0 +1,68 @@
+<section class="pf-card geo-panel" id="geo-panel" aria-live="polite">
+  {% if state %}
+  {% url 'geo:lga_save' state.code as lga_save_url %}
+  <header class="pf-card__head">
+    <span class="pf-card__icon pf-card__icon--green" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+    <div><h2>{{ state.name|title }}</h2><p>{{ state.get_zone_display|default:"No zone" }} · code {{ state.code }} · {{ lgas|length }} LGA{{ lgas|length|pluralize }}{% if not state.is_active %} · inactive{% endif %}</p></div>
+  </header>
+  {% if notice %}<div class="pf-alert pf-alert--ok" role="status">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="pf-alert pf-alert--danger" role="alert">{{ error }}</div>{% endif %}
+
+  <details class="geo-add">
+    <summary>Edit state</summary>
+    <form method="post" action="{% url 'geo:state_save' %}" class="pf-form">
+      {% csrf_token %}<input type="hidden" name="id" value="{{ state.pk }}">
+      <div class="pf-form__grid">
+        <div class="pf-form__row"><label for="es-name">Name</label><input class="input" id="es-name" name="name" value="{{ state.name }}" required></div>
+        <div class="pf-form__row"><label for="es-code">Code</label><input class="input" id="es-code" name="code" value="{{ state.code }}" maxlength="8" required></div>
+        <div class="pf-form__row"><label for="es-zone">Zone</label><select class="input" id="es-zone" name="zone">{% for v, l in zones %}<option value="{{ v }}" {% if v == state.zone %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+        <div class="pf-form__row"><label for="es-travel">Visit travel (X38)</label><select class="input" id="es-travel" name="travel_mode"><option value="road" {% if state.travel_mode == "road" %}selected{% endif %}>Road</option><option value="air" {% if state.travel_mode == "air" %}selected{% endif %}>Air</option></select></div>
+        <div class="pf-form__row"><label for="es-km">Distance from NBTE HQ (km)</label><input class="input" id="es-km" name="distance_from_hq_km" inputmode="numeric" value="{{ state.distance_from_hq_km|default_if_none:'' }}"></div>
+      </div>
+      <p class="pf-hint" style="font-size:.85rem;opacity:.75">Used by the visit cost calculator: air states get the airport taxi line; road states don't.</p>
+      <label class="pf-check"><input type="checkbox" name="is_active" {% if state.is_active %}checked{% endif %}> Active (shown in forms)</label>
+      <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">Save state</button></div>
+    </form>
+  </details>
+
+  <form method="post" action="{{ lga_save_url }}" class="geo-lga-add" hx-post="{{ lga_save_url }}" hx-target="#geo-panel" hx-swap="outerHTML">
+    {% csrf_token %}
+    <label class="sr-only" for="lga-new">New LGA name</label>
+    <input class="input" id="lga-new" name="name" placeholder="New LGA in {{ state.name|title }}" value="{% if not edit_id %}{{ values.name }}{% endif %}" required>
+    <label class="sr-only" for="lga-new-hq">Headquarters</label>
+    <input class="input" id="lga-new-hq" name="headquarters" placeholder="Headquarters (optional)">
+    <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">Add LGA</button></div>
+  </form>
+
+  <ul class="geo-lgas">
+    {% for l in lgas %}
+    <li class="geo-lga{% if not l.is_active %} is-off{% endif %}">
+      <details{% if edit_id == l.pk %} open{% endif %}>
+        <summary>
+          <span class="geo-lga__name">{{ l.name }}</span>
+          <span class="muted geo-lga__hq">{{ l.headquarters }}</span>
+          {% if not l.is_active %}<span class="pf-chip">Inactive</span>{% endif %}
+          <span class="geo-lga__edit">Edit</span>
+        </summary>
+        <form method="post" action="{{ lga_save_url }}" class="pf-form geo-lga__form" hx-post="{{ lga_save_url }}" hx-target="#geo-panel" hx-swap="outerHTML">
+          {% csrf_token %}<input type="hidden" name="id" value="{{ l.pk }}">
+          <div class="pf-form__grid">
+            <div class="pf-form__row"><label for="lga-{{ l.pk }}-n">Name</label><input class="input" id="lga-{{ l.pk }}-n" name="name" value="{{ l.name }}" required></div>
+            <div class="pf-form__row"><label for="lga-{{ l.pk }}-h">Headquarters</label><input class="input" id="lga-{{ l.pk }}-h" name="headquarters" value="{{ l.headquarters }}"></div>
+          </div>
+          <label class="pf-check"><input type="checkbox" name="is_active" {% if l.is_active %}checked{% endif %}> Active (shown in dropdowns)</label>
+          <div class="btn-group">
+            <button class="btn btn-primary btn-sm" type="submit">Save</button>
+          </div>
+        </form>
+        <form method="post" action="{% url 'geo:lga_delete' state.code l.pk %}" class="geo-lga__del" hx-post="{% url 'geo:lga_delete' state.code l.pk %}" hx-target="#geo-panel" hx-swap="outerHTML" hx-confirm="Delete {{ l.name }}? If an institution uses it, it is deactivated instead.">
+          {% csrf_token %}<div class="btn-group"><button class="btn btn-subtle btn-sm btn-danger" type="submit">Delete</button></div>
+        </form>
+      </details>
+    </li>
+    {% empty %}<li class="pf-empty">No LGAs yet for {{ state.name|title }}.</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="pf-empty">No states yet. Run <code>python manage.py seed_nbte --only geo</code> or add one.</p>
+  {% endif %}
+</section>

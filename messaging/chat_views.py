@@ -63,7 +63,7 @@ def _fail(request, thread_pk, exc, status=400):
 
 def _back(request, thread_pk, fallback="thread"):
     nxt = request.POST.get("next") or ""
-    if nxt.startswith("/messages/") and "//" not in nxt:
+    if nxt.startswith("/messages/") and "//" not in nxt and "\\" not in nxt:
         return redirect(nxt)
     if fallback == "inbox":
         return redirect("messaging:inbox")
@@ -82,7 +82,11 @@ def thread_updates(request, pk):
         after_id=request.GET.get("after"),
         since=request.GET.get("since"),
         visible=request.GET.get("visible", "1") != "0",
+        version=request.GET.get("v") or None,
     )
+    if data.get("unchanged"):
+        return _no_store(JsonResponse({"ok": True, "unchanged": True, "v": data["v"],
+                                       "typing": data["typing"]}))
     participants = chat_services.thread_participants(thread)
     new_html = _render_messages(request, thread, data["new"], participants)
     changed_html = _render_messages(request, thread, data["changed"], participants)
@@ -102,14 +106,20 @@ def thread_updates(request, pk):
         ],
         "receipts": {str(k): v for k, v in data["receipts"].items()},
         "typing": data["typing"],
+        "v": data["v"],
     }
+    if data["new"] or data["changed"] or request.GET.get("head") == "1":
+        from .group_views import head_state
+
+        payload["head"] = head_state(request, thread)
     return _no_store(JsonResponse(payload))
 
 
 @login_required
 @require_GET
 def inbox_updates(request):
-    return _no_store(JsonResponse(chat_services.inbox_updates(request.user)))
+    return _no_store(JsonResponse(chat_services.inbox_updates(request.user,
+                                                              version=request.GET.get("v") or None)))
 
 
 @login_required

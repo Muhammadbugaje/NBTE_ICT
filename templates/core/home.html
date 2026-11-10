@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% load static %}
 {% load dash_extras %}
+{% load who from qa_tags %}
 
 {% block title %}Home · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Home{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/home.css' %}?v=8">
+  <link rel="stylesheet" href="{% static 'css/home.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -14,10 +15,12 @@
 
   {# ============================= HERO ============================= #}
   <header class="home-hero">
+    {# v2.1 A9: hero scene from Settings → Appearance (appearance.scene; colours follow the palette) #}
+    {% if nbte_prefs.scene and nbte_prefs.scene != "none" %}<div class="scene scene--{{ nbte_prefs.scene }} home-hero-scene" aria-hidden="true"><i></i><i></i><i></i><i></i></div>{% endif %}
     <div class="home-hero-greeting">
       <div class="home-hero-avatar">
         {% if request.user.staff_profile.photo %}
-          <img src="{{ request.user.staff_profile.photo_thumb_url }}" alt="">
+          <img loading="lazy" decoding="async" src="{{ request.user.staff_profile.photo_thumb_url }}" alt="">
         {% else %}
           {{ request.user.first_name|slice:":1"|upper }}{{ request.user.last_name|slice:":1"|upper }}
         {% endif %}
@@ -44,11 +47,14 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         New message
       </a>
+      <a href="{% url 'honoraria_earnings:list' %}" class="btn btn-ghost">My earnings</a>
     </div>
   </header>
 
   {# Phase 9: announcements — newest unacknowledged action-needed notice #}
   {% load announcement_tags %}{% announcement_banner %}
+  {# v2.1 Phase E (L10): latest announcements, pinned first #}
+  {% announcements_panel %}
 
   {# ============================= ROLE DASHBOARD CTA ============================= #}
   {% if dashboard %}
@@ -75,13 +81,13 @@
   {% endif %}
 
   {# ============================= KPI STRIP ============================= #}
-  <div class="home-kpis">
+  <div class="home-kpis m-stagger">
     <a href="{% url 'messaging:inbox' %}" class="kpi-card {% if unread_messages %}kpi-card-active{% endif %}">
       <div class="kpi-card-icon kpi-icon-primary">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       </div>
       <div class="kpi-card-body">
-        <div class="kpi-num">{{ unread_messages }}</div>
+        <div class="kpi-num" data-count="{{ unread_messages }}">{{ unread_messages }}</div>
         <div class="kpi-lbl">Unread message{{ unread_messages|pluralize }}</div>
       </div>
       <span class="kpi-arrow">
@@ -94,7 +100,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </div>
       <div class="kpi-card-body">
-        <div class="kpi-num">{{ unread_notifications }}</div>
+        <div class="kpi-num" data-count="{{ unread_notifications }}">{{ unread_notifications }}</div>
         <div class="kpi-lbl">Unread notification{{ unread_notifications|pluralize }}</div>
       </div>
       <span class="kpi-arrow">
@@ -108,7 +114,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
         <div class="kpi-card-body">
-          <div class="kpi-num">{{ staff_count }}</div>
+          <div class="kpi-num" data-count="{{ staff_count }}">{{ staff_count }}</div>
           <div class="kpi-lbl">{{ staff_label }}</div>
         </div>
         <span class="kpi-arrow">
@@ -127,7 +133,7 @@
       <p class="muted">Jump into any module from here.</p>
     </header>
 
-    <div class="module-grid">
+    <div class="module-grid m-stagger">
       {% for card in module_cards %}
         {% if card.url %}
           <a href="{{ card.url }}" class="module-card">
@@ -206,7 +212,7 @@
                   </div>
                   <div class="home-thread-preview">
                     {% if t.last_msg %}
-                      <span class="muted">{{ t.last_msg.sender.get_full_name|default:t.last_msg.sender.email|default:"System" }}:</span>
+                      <span class="muted">{{ t.last_msg.sender|who:"System" }}:</span>
                       {{ t.last_msg.body|truncatechars:72 }}
                     {% else %}
                       <em class="muted">No messages yet</em>

@@ -116,7 +116,7 @@ class Command(BaseCommand):
             lines.line([(0, y), (w, y)], fill=(255, 255, 255, 8), width=1)
         img = Image.alpha_composite(img, layer)
         # Faded NBTE logo, bottom right
-        logo_path = settings.BASE_DIR / "static" / "img" / "MBTE_logo.png"
+        logo_path = settings.BASE_DIR / "static" / "img" / "brand" / "nbte-logo-512.png"
         try:
             logo = Image.open(logo_path).convert("RGBA")
             size = int(h * 0.62)

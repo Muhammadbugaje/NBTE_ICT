@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Check the import · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Import from Excel{% endblock %}
+{% block extra_css %}{# v21-platform.css: in the finish bundle #}{% endblock %}
+{% block content %}
+<div class="pf-page idiff">
+  <nav class="pf-crumbs" aria-label="Breadcrumb"><a href="{% url 'core:import_upload' spec.name %}">{{ spec.label }} import</a><span aria-hidden="true">›</span><span>Check</span></nav>
+  <header class="pf-head">
+    <h1>Check before anything changes</h1>
+    <p>Every import is matched against what is already here. Nothing is duplicated and nothing is deleted. Tick the changes you want, then confirm.</p>
+  </header>
+
+  <section class="pf-card idiff-file">
+    <span class="idiff-file__badge" aria-hidden="true">XLSX</span>
+    <div class="idiff-file__text">
+      <strong>{{ run.original_name|default:"upload.xlsx" }}</strong>
+      <span class="muted">{{ summary.new|add:summary.changed|add:summary.unchanged|add:summary.error }} rows · uploaded {{ run.created_at|date:"j M Y, H:i" }} · {{ run.get_status_display }}</span>
+    </div>
+    <div class="idiff-file__match"><span class="muted">{{ spec.match_note }}</span></div>
+    <div class="btn-group"><a class="btn btn-ghost btn-sm" href="{% url 'core:import_upload' spec.name %}">Upload another file</a></div>
+  </section>
+
+  <div class="idiff-stats" role="list">
+    <a role="listitem" class="idiff-stat idiff-stat--new" href="?tab=new"><b>{{ summary.new }}</b><span>New</span><small>Will be added</small></a>
+    <a role="listitem" class="idiff-stat idiff-stat--changed" href="?tab=changed"><b>{{ summary.changed }}</b><span>Changed</span><small>{{ summary.total_changes }} field{{ summary.total_changes|pluralize }}, you choose</small></a>
+    <a role="listitem" class="idiff-stat" href="?tab=unchanged"><b>{{ summary.unchanged }}</b><span>Unchanged</span><small>Nothing to do</small></a>
+    <a role="listitem" class="idiff-stat idiff-stat--missing" href="?tab=missing"><b>{{ summary.missing }}</b><span>Missing from file</span><small>Never deleted</small></a>
+  </div>
+
+  <div class="pf-tabs idiff-tabs" role="tablist" aria-label="Rows by result">
+    <div class="pf-tabs__track">
+    {% for t in tabs %}
+      <a class="pf-tabs__tab{% if t.active %} is-active{% endif %}" role="tab" aria-selected="{% if t.active %}true{% else %}false{% endif %}"
+         href="?tab={{ t.key }}" hx-get="{% url 'core:import_preview_tab' run.pk t.key %}" hx-target="#idiff-tab" hx-swap="outerHTML" hx-push-url="?tab={{ t.key }}">
+        <span>{{ t.label }}</span><span class="pf-tabs__badge">{{ t.count }}</span></a>
+    {% endfor %}
+    </div>
+  </div>
+
+  {% include "core/importdiff/_tab.html" %}
+  {% include "core/importdiff/_footer.html" %}
+</div>
+{% endblock %}

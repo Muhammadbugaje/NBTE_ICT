@@ -10,7 +10,7 @@
     Use the email address NBTE registered for you. First time here? Use the set-password link NBTE emailed you.
   </div>
 
-  <form method="post" action="{% url 'qa_portal:login' %}" novalidate>
+  <form method="post" action="{% url 'qa_portal:login' %}" novalidate data-loading-text="Signing you in…" data-busy-text="Signing in…">
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ next|default:'' }}">
 
@@ -22,7 +22,7 @@
       <label for="id_username">Email address</label>
       <input class="input{% if form.username.errors %} error{% endif %}" type="email" name="username" id="id_username"
              autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required
-             placeholder="registrar@yourinstitution.edu.ng" value="{{ form.username.value|default:'' }}"
+             placeholder="registrar@yourinstitution.edu.ng" value="{{ form.username.value|default:request.GET.username|default:'' }}"
              {% if form.username.errors %}aria-invalid="true" aria-describedby="id_username_error"{% endif %}>
       {% if form.username.errors %}<span class="error" id="id_username_error">{{ form.username.errors|join:" " }}</span>{% endif %}
     </div>
@@ -30,7 +30,7 @@
     <div class="field">
       <div class="auth-label-row">
         <label for="id_password">Password</label>
-        <a href="{% url 'qa_portal:password_forgot' %}" class="auth-forgot">Forgot password?</a>
+        <a href="{% url 'qa_portal:password_forgot' %}?email={{ request.GET.username|urlencode }}" class="auth-forgot">First sign-in / forgot password?</a>
       </div>
       <div class="input-group">
         <input class="input{% if form.password.errors %} error{% endif %}" type="password" name="password" id="id_password"
@@ -56,8 +56,8 @@
     </button>
     <p class="p9-status" data-passkey-status role="status" aria-live="polite" hidden></p>
   </div>
-  <link rel="stylesheet" href="{% static 'css/account-security.css' %}?v=1">
-  <script src="{% static 'js/passkeys.js' %}?v=1" defer></script>
+  <link rel="stylesheet" href="{% static 'css/account-security.css' %}">
+  <script src="{% static 'js/passkeys.js' %}" defer></script>
 
   <p class="auth-register">New TVET institution? <a href="{% url 'qa_portal:register' %}">Register with NBTE</a></p>
 </div>

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Import {{ spec.label|lower }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Import from Excel{% endblock %}
+{% block extra_css %}{# v21-platform.css: in the finish bundle #}{% endblock %}
+{% block content %}
+<div class="pf-page idiff">
+  <nav class="pf-crumbs" aria-label="Breadcrumb"><a href="{% url 'core:import_export' %}">Import &amp; export</a><span aria-hidden="true">›</span><span>{{ spec.label }}</span></nav>
+  <header class="pf-head">
+    <h1>Import {{ spec.label|lower }} from Excel</h1>
+    <p>Every import is matched against what is already here. You see what is new, what changed and what is missing before anything is saved. Nothing is duplicated and nothing is deleted.</p>
+  </header>
+  <section class="pf-card idiff-upload">
+    {% if error %}<div class="pf-alert pf-alert--danger" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" enctype="multipart/form-data" class="pf-form">
+      {% csrf_token %}
+      <div class="pf-form__row">
+        <label for="idiff-file">Excel file (.xlsx)</label>
+        <input class="input" type="file" id="idiff-file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+        <span class="hint">{{ spec.match_note }}. Tip: export first, edit the file, then import it back.</span>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" type="submit">Check the file</button>
+        <a class="btn btn-ghost" href="{% url 'core:import_export_diff' spec.name %}">Export current {{ spec.label|lower }}</a>
+      </div>
+    </form>
+  </section>
+  {% if recent %}
+  <section class="pf-card pf-card--quiet">
+    <h3 class="pf-side__title">Your recent imports</h3>
+    <ul class="pf-history">
+      {% for r in recent %}<li><a href="{% url 'core:import_preview' r.pk %}">{{ r.original_name|default:"upload.xlsx" }}</a><span class="pf-chip">{{ r.get_status_display }}</span><time class="muted">{{ r.created_at|date:"j M Y, H:i" }}</time></li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -253,16 +253,19 @@ class IssueBillHandler(FinanceHandler):
         return schedule
 
     def _amount(self, target, payload):
-        from qa_core.formula import FormulaError, evaluate_setting
+        from qa_core.formula import FormulaError
 
         from .money import to_money
 
         schedule = self._schedule(payload)
         try:
-            snap = evaluate_setting(schedule.formula, services.fee_variables(target, **(payload.get("variables") or {})))
+            from . import billing
+
+            _snap, base = billing.formula_base(schedule, services.fee_variables(
+                target, **(payload.get("variables") or {})))
         except FormulaError as exc:
             raise ValidationError(f"The fee formula could not be worked out: {exc}") from None
-        return schedule, to_money(snap["result"])
+        return schedule, to_money(base)
 
     def validate(self, target, payload):
         if target is None or target.status == "delisted":

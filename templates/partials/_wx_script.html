@@ -1,0 +1,36 @@
+{# v2.3: select-all + filter pills for [data-wx] lists (Your work, document review). Installed once. #}
+<script>
+(function () {
+  if (window.__nbteWorkInbox) return; window.__nbteWorkInbox = true;
+  function sync(root) {
+    var form = root.querySelector("[data-wx-bulk]"); if (!form) return;
+    var items = [].slice.call(root.querySelectorAll("[data-wx-item]"));
+    var n = items.filter(function (i) { return i.checked; }).length;
+    var c = form.querySelector("[data-wx-count]"); if (c) c.textContent = n;
+    var badge = form.querySelector("[data-wx-n]"); if (badge) badge.textContent = n;
+    var all = form.querySelector("[data-wx-all]");
+    if (all) { all.checked = n === items.length; all.indeterminate = n > 0 && n < items.length; }
+    var b = form.querySelector("[data-wx-submit]"); if (b) b.disabled = n === 0;
+    form.dataset.confirmTitle = "Approve " + n + " document" + (n === 1 ? "" : "s") + "?";
+  }
+  document.addEventListener("change", function (e) {
+    var root = e.target.closest("[data-wx]"); if (!root) return;
+    if (e.target.matches("[data-wx-all]")) {
+      root.querySelectorAll("[data-wx-item]").forEach(function (i) { i.checked = e.target.checked; });
+    }
+    if (e.target.matches("[data-wx-all], [data-wx-item]")) sync(root);
+  });
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-wx-filter]"); if (!b) return;
+    var root = b.closest("[data-wx]"), key = b.dataset.wxFilter, shown = 0;
+    root.querySelectorAll("[data-wx-filter]").forEach(function (x) {
+      var on = x === b; x.classList.toggle("is-active", on); x.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    root.querySelectorAll("[data-wx-row]").forEach(function (row) {
+      var ok = !key || (key === "overdue" ? row.hasAttribute("data-wx-overdue") : row.dataset.wxRow === key);
+      row.hidden = !ok; if (ok) shown++;
+    });
+    var none = root.querySelector("[data-wx-none]"); if (none) none.hidden = shown > 0;
+  });
+})();
+</script>

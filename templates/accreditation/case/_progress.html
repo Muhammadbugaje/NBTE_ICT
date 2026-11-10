@@ -1,0 +1,31 @@
+{% load qa_tags %}{# SOP-03 progress: every passed step shows a green check, the current step(s) are highlighted, upcoming steps are muted. #}
+<section class="c3-prog" aria-labelledby="c3-prog-h">
+  <div class="c3-prog__head">
+    <div class="c3-prog__now">
+      <h2 id="c3-prog-h" class="sr-only">SOP-03 progress</h2>
+      {% if progress.current %}
+        <span class="c3-prog__kicker">Now at stage {% for r in progress.current %}{% if r.no %}{{ r.no }}{% else %}0 (start){% endif %}{% if not forloop.last %} and {% endif %}{% endfor %} of {{ progress.last_no }}</span>
+        <strong>{% for r in progress.current %}{{ r.label }}{% if not forloop.last %} · {% endif %}{% endfor %}</strong>
+      {% elif case.status == "closed" or case.completed_at %}
+        <span class="c3-prog__kicker">SOP-03 complete</span><strong>All {{ progress.total }} stages are done</strong>
+      {% else %}
+        <span class="c3-prog__kicker">SOP-03</span><strong>Not started</strong>
+      {% endif %}
+    </div>
+    <div class="c3-prog__meter" role="img" aria-label="{{ progress.done }} of {{ progress.total }} stages done">
+      <span class="c3-prog__count"><b>{{ progress.done }}</b> of {{ progress.total }} stages done</span>
+      <span class="c3-prog__bar"><span style="width: {{ progress.pct }}%"></span></span>
+    </div>
+  </div>
+  <ol class="c3-steps">
+    {% for st in stepper %}
+    <li class="c3-steps__item is-{{ st.state }}{% if st.parts %} has-parts{% endif %}" title="{% if st.no %}Stage {{ st.no }}: {% endif %}{{ st.label }}"{% if st.state == "current" %} aria-current="step"{% endif %}>
+      <span class="c3-steps__dot" aria-hidden="true">{% if st.state == "done" %}{% icon "check" 14 "3" %}{% elif st.no == 0 %}{% icon "flag" 13 "2.4" %}{% else %}{{ st.no }}{% endif %}</span>
+      <span class="c3-steps__label"><span class="sr-only">{% if st.state == "done" %}Done: {% elif st.state == "current" %}Current: {% else %}Upcoming: {% endif %}{% if st.no %}stage {{ st.no }}, {% endif %}</span>{{ st.label }}</span>
+      {% if st.parts and st.state == "current" %}
+      <span class="c3-steps__parts">{% for p in st.parts %}<span class="c3-part is-{{ p.state }}" title="{{ p.label }}">{% if p.state == "done" %}{% icon "check" 10 "3" %}{% endif %}{% if p.code == "assign_audit_officer" %}Audit{% elif p.code == "assign_finance_officer" %}Finance{% elif p.code == "assign_ict_officer" %}ICT{% else %}{{ p.label }}{% endif %}<span class="sr-only"> ({{ p.state }})</span></span>{% endfor %}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>

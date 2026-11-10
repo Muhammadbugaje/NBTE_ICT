@@ -56,8 +56,10 @@ def _money(value):
 
 
 def _logo():
-    path = Path(getattr(settings, "PDF_LOGO_PATH", "") or (Path(settings.BASE_DIR) / "static" / "img" / "NBTE_logo.png"))
-    return str(path) if path.exists() else None
+    from config.branding import pdf_logo_path  # v2.1 A5: formal brand slot
+
+    path = pdf_logo_path("formal")
+    return str(path) if path else None
 
 
 def _qr_image(payload):
@@ -190,6 +192,44 @@ class _Doc:
         return self.buf.getvalue()
 
 
+def _breakdown(doc, x, y, width, lines, total, *, total_label="Total"):
+    """F.4 (P1): the bill lines (institution fee + processing fee …) and the
+    total, as on the portal bill. Returns the new y."""
+    for line in lines:
+        doc.text(x, y, str(line["label"]), size=10)
+        doc.text(x + width, y, _money(line["amount"]), size=10, bold=True, align="right")
+        if line.get("description"):
+            doc.text(x, y - 12, str(line["description"])[:90], size=8, color=MUTED)
+            y -= 12
+        y -= 10
+        doc.c.setStrokeColor(doc.color(LINE))
+        doc.c.setLineWidth(0.5)
+        doc.c.setDash(2, 2)
+        doc.c.line(x, y, x + width, y)
+        doc.c.setDash()
+        y -= 14
+    doc.c.setStrokeColor(doc.color(INK))
+    doc.c.setLineWidth(1.4)
+    doc.c.line(x, y + 8, x + width, y + 8)
+    doc.text(x, y - 6, total_label, size=11, bold=True)
+    doc.text(x + width, y - 6, _money(total), size=11, bold=True, align="right")
+    return y - 26
+
+
+def _stamp(doc, cx, cy, text="PAID"):
+    c = doc.c
+    c.saveState()
+    c.translate(cx, cy)
+    c.rotate(10)
+    c.setStrokeColor(doc.color(GREEN))
+    c.setFillColor(doc.color(GREEN))
+    c.setLineWidth(2.4)
+    c.roundRect(-38, -15, 76, 30, 7, stroke=1, fill=0)
+    c.setFont(doc.f["bold"], 15)
+    c.drawCentredString(0, -5, text)
+    c.restoreState()
+
+
 def _barcode(doc, value, x, y, width):
     from reportlab.graphics.barcode import code128
 
@@ -230,8 +270,14 @@ def render_slip(slip):
     doc.text(m + 16, y - 46, ob.reference, size=19, mono=True, color=INK)
     _barcode(doc, slip.barcode_value, m + 16, y - card_h + 14, card_w - 32)
     doc.c.drawImage(_qr_image(slip.qr_payload), doc.w - m - qr_size, y - qr_size + 6, width=qr_size, height=qr_size)
-    doc.text(doc.w - m - qr_size / 2, y - qr_size - 6, "Scan to confirm this", size=7.5, color=MUTED, align="center")
-    doc.text(doc.w - m - qr_size / 2, y - qr_size - 16, "slip is genuine", size=7.5, color=MUTED, align="center")
+    if getattr(slip, "short_code", ""):  # v2.1 X26: the short code is typed on the Scan page
+        doc.text(doc.w - m - qr_size / 2, y - qr_size - 6, "Scan to verify, or enter", size=7.5, color=MUTED,
+                 align="center")
+        doc.text(doc.w - m - qr_size / 2, y - qr_size - 17, slip.short_code, size=8, bold=True, align="center")
+    else:
+        doc.text(doc.w - m - qr_size / 2, y - qr_size - 6, "Scan to confirm this", size=7.5, color=MUTED,
+                 align="center")
+        doc.text(doc.w - m - qr_size / 2, y - qr_size - 16, "slip is genuine", size=7.5, color=MUTED, align="center")
     y -= card_h + 26
 
     # Amount
@@ -244,7 +290,10 @@ def render_slip(slip):
     doc.text(m + full_w / 2, wy, "In words", size=8.5, color=MUTED)
     for i, line in enumerate(words[:3]):
         doc.text(m + full_w / 2, wy - 15 - i * 13, line, size=10, color=INK)
-    y -= amount_h + 22
+    y -= amount_h + 18
+    lines = ob.breakdown
+    if len(lines) > 1:
+        y = _breakdown(doc, m, y, full_w, lines, slip.amount if slip.amount == ob.amount else ob.amount)
 
     # Pay to
     doc.text(m, y, "PAY TO", size=8.5, bold=True, color=GREEN)
@@ -293,14 +342,16 @@ def render_slip(slip):
 # Payment Advice (A4/R-26)
 # ---------------------------------------------------------------------------
 def render_advice(advice):
+    """The official receipt (design 08b): crest, receipt number, who paid,
+    what for, method, confirmation, the bill lines, PAID stamp and QR."""
     ob = advice.obligation
     inst = ob.institution
     item = advice.verification
-    doc = _Doc(f"Payment advice {advice.reference}", "NBTE Quality Assurance payment advice")
+    doc = _Doc(f"Official receipt {advice.reference}", "NBTE Quality Assurance official receipt")
     doc.watermark()
     m = doc.margin
     full_w = doc.w - 2 * m
-    y = doc.header("PAYMENT ADVICE", f"{advice.reference} · {timezone.localtime(advice.generated_at):%d %b %Y}")
+    y = doc.header("OFFICIAL RECEIPT", f"{advice.reference} · {timezone.localtime(advice.generated_at):%d %b %Y}")
 
     banner_h = 54
     doc.rect(m, y - banner_h, full_w, banner_h, fill=GREEN_SOFT, stroke=GREEN_LINE)
@@ -309,34 +360,48 @@ def render_advice(advice):
     doc.text(doc.w - m - 16, y - 41, advice.reference, size=12, mono=True, align="right")
     y -= banner_h + 22
 
-    y = doc.row(m, y, "Institution", f"{inst.name} ({inst.code})", bold=True, size=11)
-    y = doc.row(m, y, "Payment reference", ob.reference, mono=True)
+    qr_size = 104
+    y0 = y
+    right = doc.w - m - qr_size
+    doc.c.drawImage(_qr_image(advice.qr_payload), right, y - qr_size + 8, width=qr_size, height=qr_size)
+    _stamp(doc, right + qr_size / 2, y - qr_size - 26)
+    kv_w = full_w - qr_size - 24
+    y = doc.row(m, y, "Receipt no.", advice.reference, mono=True, width=kv_w - 118)
+    y = doc.row(m, y, "Paid by", f"{inst.name} ({inst.code})", bold=True, width=kv_w - 118)
+    y = doc.row(m, y, "For", " + ".join(str(line["label"]).lower() if i else str(line["label"])
+                                       for i, line in enumerate(ob.breakdown)), width=kv_w - 118)
+    y = doc.row(m, y, "Payment reference", ob.reference, mono=True, width=kv_w - 118)
     if ob.source_reference:
-        y = doc.row(m, y, "Application / request", ob.source_reference, mono=True)
-    y = doc.row(m, y, "Fee", ob.description)
-    y = doc.row(m, y, "Amount of the bill", _money(ob.amount))
-    y = doc.row(m, y, "Amount received", f"{_money(advice.amount)} — {ob.amount_in_words if advice.amount == ob.amount else ''}"
-                .rstrip(" —"))
+        y = doc.row(m, y, "Application / request", ob.source_reference, mono=True, width=kv_w - 118)
+    method = ""
+    if item is not None and item.attempt_id:
+        method = f"{item.attempt.get_provider_display().split(' (')[0]}, ref {item.attempt.provider_reference}"
+    elif item is not None:
+        method = dict(item.SOURCE_CHOICES).get(item.source, item.source)
+    y = doc.row(m, y, "Method", method or "—", width=kv_w - 118)
+    if item is not None and item.final_decided_at:
+        y = doc.row(m, y, "Confirmed", timezone.localtime(item.final_decided_at).strftime("%d %b %Y, %H:%M"),
+                    width=kv_w - 118)
+    if item is not None and item.final_approver_id:
+        approver = item.final_approver.get_full_name() or item.final_approver.email
+        y = doc.row(m, y, "Confirmed by", f"{approver}, Director of Finance", width=kv_w - 118)
+    y = min(y, y0 - qr_size - 62) - 6
+
+    lines = ob.breakdown
+    if advice.amount == ob.amount:
+        y = _breakdown(doc, m, y, full_w, lines, advice.amount, total_label="Total paid")
+    else:
+        y = _breakdown(doc, m, y, full_w, lines, ob.amount, total_label="Bill total")
+        y = doc.row(m, y, "Received now", _money(advice.amount), bold=True)
     from .money import amount_in_words
 
     y = doc.row(m, y, "In words", amount_in_words(advice.amount))
     if ob.balance and ob.balance > 0:
         y = doc.row(m, y, "Balance outstanding", _money(ob.balance), bold=True)
-    if item is not None:
-        source = dict(item.SOURCE_CHOICES).get(item.source, item.source)
-        y = doc.row(m, y, "Evidence", source)
-        if item.final_approver_id:
-            approver = item.final_approver.get_full_name() or item.final_approver.email
-            y = doc.row(m, y, "Confirmed by", f"{approver}, Director of Finance")
-        if item.final_decided_at:
-            y = doc.row(m, y, "Confirmed on", timezone.localtime(item.final_decided_at).strftime("%d %b %Y, %H:%M"))
-    y -= 8
-    qr_size = 110
-    doc.c.drawImage(_qr_image(advice.qr_payload), m, y - qr_size, width=qr_size, height=qr_size)
-    lines = _wrap("Scan the code to confirm on NBTE’s verification page that this advice is genuine. This advice "
-                  "is issued automatically when the Director of Finance confirms a payment; keep it with your "
-                  "records.", doc.f["regular"], 9.5, full_w - qr_size - 24)
-    for i, line in enumerate(lines):
-        doc.text(m + qr_size + 18, y - 24 - i * 13, line, size=9.5, color=MUTED)
+    y -= 6
+    for i, line in enumerate(_wrap("Scan the code to confirm on NBTE’s verification page that this receipt is "
+                                   "genuine. It is issued automatically when the Director of Finance confirms a "
+                                   "payment; keep it with your records.", doc.f["regular"], 9, full_w)):
+        doc.text(m, y - i * 12, line, size=9, color=MUTED)
     doc.footer(advice.reference)
     return doc.finish()

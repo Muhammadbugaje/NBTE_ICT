@@ -17,21 +17,27 @@ from __future__ import annotations
 
 import calendar
 import datetime
+import hashlib
 from functools import wraps
 
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import Max, Q, Sum
-from django.http import Http404, HttpResponse
+from django.db.models import Count, Max, Q, Sum
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
+from tasks.services import visible_comments as task_visible_comments  # Phase 0 (H18)
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from accreditation import case_services as cs
+from qa_core import flow
 from qa_core.permissions import require, require_or_404
 from qa_core.ui import paginate, render_qa, toast
 
 from . import forms, rules, services
-from .models import DUTY_CHOICES, PostVisitReport, QAMapping, QAPersonnel, ResourcePerson, ServiceRecord
+from .models import (
+    DUTY_CHOICES, PostVisitMemberReport, PostVisitPersonnel, PostVisitReport, QAMapping, QAPersonnel,
+    ResourcePerson, ServiceRecord,
+)
 
 
 def _msg(exc):
@@ -63,6 +69,12 @@ def _date(raw):
         return datetime.date.fromisoformat((raw or "").strip())
     except ValueError:
         return None
+
+
+def _live_token(parts):
+    """A short, stable fingerprint of the values that make a page stale."""
+    raw = "|".join("" if p is None else str(p) for p in parts)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:20]
 
 
 def _hx_rows(request, full, ctx, panel, rows_partial):
@@ -395,8 +407,9 @@ def finder_map(request):
 def mappings(request):
     f = request.GET
     qs = (services.visible_mappings(request.user)
-          .select_related("case__institution", "qa_request_programme__programme", "resource_person",
-                          "qa_personnel__staff").order_by("-from_date", "-pk"))
+          .select_related("case__institution", "case__owning_department", "case__institution__handling_department",
+                          "qa_request_programme__programme", "resource_person", "qa_personnel__staff")
+          .order_by("-from_date", "-pk"))
     q = (f.get("q") or "").strip()
     if q:
         qs = qs.filter(Q(resource_person__full_name__icontains=q) | Q(qa_personnel__staff__first_name__icontains=q)
@@ -411,8 +424,36 @@ def mappings(request):
     elif f.get("kind") == "qa_personnel":
         qs = qs.filter(qa_personnel__isnull=False)
     ctx = {"page": paginate(request, qs), "filters": f, "statuses": QAMapping.STATUS_CHOICES, "duties": DUTY_CHOICES}
+    for m in ctx["page"]["rows"]:
+        m.approval_state, m.approval_label = services.mapping_approval_state(m)
+        m.can_director_approve = services.can_approve_mapping(m, request.user, "director")[0]
+        m.can_es_approve = services.can_approve_mapping(m, request.user, "es")[0]
     return _hx_rows(request, "inspection/mappings.html", ctx, "inspection/_mappings_panel.html",
                     "inspection/_mappings_rows.html")
+
+
+@require(cs.can_view_cases)
+@require_POST
+def mapping_decide(request, pk):
+    """v2.7: the Director then the ES approve (or send back) a mapping."""
+    from django.http import HttpResponse
+    from django.urls import reverse
+
+    mapping = services.visible_mappings(request.user).filter(pk=pk).first()
+    if mapping is None:
+        raise Http404
+    layer = request.POST.get("layer", "director")
+    approve = request.POST.get("decision") != "reject"
+    try:
+        services.approve_mapping(mapping, actor=request.user, layer=layer, approve=approve,
+                                 remark=request.POST.get("remark", ""))
+    except (PermissionDenied, ValidationError) as exc:
+        response = HttpResponse(status=422)
+        response["HX-Redirect"] = reverse("qa_insp:mappings")
+        return response
+    response = HttpResponse(status=204)
+    response["HX-Redirect"] = reverse("qa_insp:mappings")
+    return response
 
 
 # ===========================================================================
@@ -453,6 +494,18 @@ def inspections(request):
 
 @require(cs.can_view_cases)
 @require_GET
+def inspections_live(request):
+    """Cheap version stamp for the inspections list (polled)."""
+    agg = services.visible_inspections(request.user).aggregate(
+        latest=Max("updated_at"), closed=Max("closed_at"), total=Count("pk"))
+    token = _live_token([agg["latest"], agg["closed"], agg["total"]])
+    if request.GET.get("v") == token:
+        return JsonResponse({"v": token, "unchanged": True})
+    return JsonResponse({"v": token})
+
+
+@require(cs.can_view_cases)
+@require_GET
 def visit_calendar(request):
     today = timezone.localdate()
     try:
@@ -482,6 +535,18 @@ def visit_calendar(request):
     ctx = {"weeks": weeks, "first": first, "prev": f"{prev_month:%Y-%m}", "next": f"{next_month:%Y-%m}",
            "visits": visits, "filters": request.GET, "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
     return render_qa(request, "inspection/calendar.html", ctx, {"qa-panel": "inspection/_calendar_panel.html"})
+
+
+@require(cs.can_view_cases)
+@require_GET
+def calendar_live(request):
+    """Cheap version stamp for the visit calendar (polled)."""
+    agg = services.visible_inspections(request.user).aggregate(
+        latest=Max("updated_at"), closed=Max("closed_at"), total=Count("pk"))
+    token = _live_token([agg["latest"], agg["closed"], agg["total"]])
+    if request.GET.get("v") == token:
+        return JsonResponse({"v": token, "unchanged": True})
+    return JsonResponse({"v": token})
 
 
 def _inspection_or_404(request, pk):
@@ -520,6 +585,39 @@ def inspection_detail(request, pk):
     inspection = _inspection_or_404(request, pk)
     return render_qa(request, "inspection/inspection_detail.html", _inspection_ctx(request, inspection),
                      {"qa-panel": "inspection/_inspection_panel.html"})
+
+
+@require_or_404(cs.can_view_cases)
+@require_GET
+def inspection_live(request, pk):
+    """Cheap version stamp for the inspection panel (polled, never cached).
+
+    Covers the visit itself, its planned team, the recorded attendance, the
+    post-visit reports and endorsements, and the service history it wrote.
+    The client only swaps the panel when this stamp moves and the viewer is
+    not editing.
+    """
+    from accreditation.models import VisitConflictDeclaration, VisitFinding
+
+    from .models import InspectionTeamMember, PostVisitPersonnel, ReportEndorsement
+
+    inspection = _inspection_or_404(request, pk)
+    parts = [inspection.updated_at, inspection.status, inspection.actual_start, inspection.actual_end,
+             inspection.closed_at, inspection.completed_by_id]
+    for model, lookup, field in (
+        (InspectionTeamMember, {"inspection": inspection}, "updated_at"),
+        (PostVisitPersonnel, {"inspection": inspection}, "updated_at"),
+        (PostVisitReport, {"inspection": inspection}, "updated_at"),
+        (ReportEndorsement, {"report__inspection": inspection}, "at"),
+        (ServiceRecord, {"inspection": inspection}, "created_at"),
+        (VisitConflictDeclaration, {"inspection": inspection}, "updated_at"),
+        (VisitFinding, {"report__inspection": inspection}, "updated_at"),
+    ):
+        parts.append(model.unscoped.filter(**lookup).aggregate(latest=Max(field))["latest"])
+    token = _live_token(parts)
+    if request.GET.get("v") == token:
+        return JsonResponse({"v": token, "unchanged": True})
+    return JsonResponse({"v": token, "status": inspection.status})
 
 
 @require_or_404(cs.can_view_cases)
@@ -588,35 +686,125 @@ def _report_or_404(request, pk):
 
 
 def _report_ctx(request, report, **extra):
+    from accreditation import visit_report
+
     user = request.user
     can_write, write_why = services.can_write(report, user)
     can_endorse, endorse_why = services.can_endorse(report, user)
+    can_review_members = bool(user.is_superuser or report.inspection.team_lead_id == user.pk)
+    member_roster = services.member_report_roster(report, user=user)
+    bound_member_form = extra.get("member_form")
+    for row in member_roster:
+        row.can_edit = bool(row.member_report and services.can_write_member_report(row.member_report, user)[0])
+        if row.can_edit:
+            row.form = (bound_member_form if row.member_report.author_id == user.pk and bound_member_form
+                        else forms.MemberReportForm(member_report=row.member_report))
+        else:
+            row.form = None
     holders, link = services.report_holders(report)
-    pinned = list(link.task.comments.filter(is_pinned=True).select_related("author").order_by("-pinned_at")[:3]) \
+    pinned = list(task_visible_comments(link.task, user).filter(is_pinned=True).select_related("author")
+                  .order_by("-pinned_at")[:3]) \
         if link else []
+    member_counts = services.member_report_counts(report)
+    my_member_row = next((row for row in member_roster
+                          if getattr(row.attendee.user, "pk", None) == user.pk), None)
+    skipped_rows = [row for row in member_roster
+                    if row.member_report and row.member_report.status == "skipped"]
     ctx = {"report": report, "inspection": report.inspection, "case": report.inspection.case,
            "can_write": can_write, "write_why": write_why, "can_endorse": can_endorse, "endorse_why": endorse_why,
+           "can_preview_compiled_pdf": bool(
+               (report.status == "deputy_verified" and can_endorse)
+               or (report.status == "director_endorsed"
+                   and services.can_review_cqac_evidence(report.inspection.case, user))),
            "holders": holders, "link": link, "pinned": pinned,
+           "member_roster": member_roster, "can_review_members": can_review_members,
+           "member_counts": member_counts, "skipped_rows": skipped_rows,
+           "is_team_lead": bool(user.is_superuser or report.inspection.team_lead_id == user.pk),
+           "my_member_row": my_member_row,
+           "member_review_form": extra.get("member_review_form") or forms.MemberReviewForm(),
+           "review_member_pk": extra.get("review_member_pk"),
+           "review_attendee_pk": extra.get("review_attendee_pk"),
+           "compile_pending": services.member_reports_ready(report),
            "layer": services.LAYER_LABEL.get(services.LAYER_FOR_STAGE.get(report.status, ""), ""),
            "form": forms.ReportForm(report=report), "endorse_form": forms.EndorseForm(),
            "sections": forms.REPORT_SECTIONS,
            "endorsements": services.endorsements_of(report),
            "rp_findings": services.rp_findings_for(report),
+           "source_ssq": visit_report.submitted_ssq(report.qa_request_programme)[0],
            "chain": _chain(report), "monitor": services.is_monitor(user)}
+    ctx.update(_vvt_ctx(report, user))
+    from accreditation.report_form_views import summary_for  # v2.4: template-driven report forms
+
+    ctx["report_forms"] = summary_for(report)
     ctx.update(extra)
     return ctx
 
 
-CHAIN = [("draft", "Team (attendees)"), ("submitted", "Division Head"), ("division_endorsed", "Deputy Director"),
-         ("deputy_verified", "Director"), ("director_endorsed", "Endorsed")]
+def _vvt_ctx(report, user):
+    """v2.2 X40: the VVT/001 parts of the report page (never breaks the page)."""
+    try:
+        from accreditation import visit_report as vr
+        from accreditation.models import VisitFinding
+
+        can_write, write_why = services.can_write(report, user)
+        declared = vr.declarations(report.inspection)
+        people = []
+        for p in vr.panel_people(report.inspection):
+            key = vr._key(staff=p.staff, resource_person=p.resource_person)
+            people.append({"p": p, "d": declared.get(key)})
+        return {"vvt": {"form": report.FORM_REFERENCE, "prefill": vr.prefill(report), "people": people,
+                        "can_write": can_write, "write_why": write_why,
+                        "missing": len(vr.missing_declarations(report.inspection)),
+                        "conflicts": len(vr.conflicting(report.inspection)),
+                        "rows": vr.catalogue_rows(report),
+                        "extra_findings": list(VisitFinding.unscoped.filter(report=report, item__isnull=True)),
+                        "can_fine": bool(user.is_superuser or user.has_perm("payments.view_obligation")),
+                        "fine_rate": vr.config.get("qa.visit.fine_per_falsified_item", 500000),
+                        "gps_auto": bool(vr.config.get("qa.visit.gps_auto_capture", True)),
+                        "gps_max_km": vr.config.get("qa.visit.gps_max_km", 5),
+                        "gps_offset_m": vr.config.get("qa.visit.gps_offset_m", 200),
+                        "gps_accuracy_max_m": vr.config.get("qa.visit.gps_accuracy_max_m", 150)}}
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("VVT/001 context failed for report %s", report.pk)
+        return {"vvt": None}
+
+
+CHAIN_LABELS = {"submitted": "Division Head", "division_endorsed": "Deputy Director",
+                "deputy_verified": "Director", "director_endorsed": "Endorsed"}
 
 
 def _chain(report):
-    order = [c for c, _l in CHAIN]
-    current = "draft" if report.status == "returned" else report.status
-    idx = order.index(current) if current in order else 0
-    return [{"code": c, "label": label, "state": "done" if i < idx else ("current" if i == idx else "todo")}
-            for i, (c, label) in enumerate(CHAIN)]
+    stages = services.REPORT_ENDORSEMENT_STAGES
+    current = report.status
+    if current in ("draft", "returned"):
+        first = services._report_submission_stage(report)
+        route = ["draft", first]
+        route.extend(code for code in stages[stages.index(first) + 1:]
+                     if services._report_stage_users(report, code))
+    else:
+        instance = flow.instance_for(report, "post_visit_report")
+        visited = list(instance.events.order_by("at", "pk").values_list("to_stage", flat=True)) \
+            if instance is not None else []
+        route = ["draft"] if "draft" in visited else []
+        route.extend(code for code in stages if code in visited or code == current)
+        if current in stages:
+            route.extend(code for code in stages[stages.index(current) + 1:]
+                         if services._report_stage_users(report, code))
+        if current == "director_endorsed":
+            route.append(current)
+    if not route:
+        route = ["draft"]
+    labels = {"draft": "Team Lead compilation", "returned": "Returned to Team Lead",
+              **CHAIN_LABELS}
+    current_code = "draft" if current == "returned" else current
+    order = list(dict.fromkeys(route))
+    idx = order.index(current_code) if current_code in order else -1
+    return [{"code": code, "label": labels.get(code, code), "state":
+             "done" if index < idx or current == "director_endorsed" else
+             ("current" if code == current_code else "todo")}
+            for index, code in enumerate(order)]
 
 
 @require_or_404(cs.can_view_cases)
@@ -625,6 +813,150 @@ def report_detail(request, pk):
     report = _report_or_404(request, pk)
     return render_qa(request, "inspection/report.html", _report_ctx(request, report),
                      {"qa-panel": "inspection/_report_panel.html"})
+
+
+@require_or_404(cs.can_view_cases)
+@require_GET
+def report_live(request, pk):
+    """Cheap version stamp for the post-visit report panel (polled)."""
+    from accreditation.models import VisitConflictDeclaration, VisitFinding
+
+    from .models import PostVisitMemberReport, PostVisitMemberReview, PostVisitPersonnel, ReportEndorsement
+
+    report = _report_or_404(request, pk)
+    inspection = report.inspection
+    parts = [report.updated_at, report.status, report.version, report.submitted_at, report.recommendation,
+             report.recommendation_note, report.fines_total, report.gps_at,
+             inspection.updated_at, inspection.status, inspection.actual_start, inspection.actual_end,
+             inspection.closed_at]
+    for model, lookup, field in (
+        (ReportEndorsement, {"report": report}, "at"),
+        (PostVisitMemberReport, {"report": report}, "updated_at"),
+        (PostVisitMemberReview, {"member_report__report": report}, "at"),
+        (VisitFinding, {"report": report}, "updated_at"),
+        (VisitConflictDeclaration, {"inspection": inspection}, "updated_at"),
+        (PostVisitPersonnel, {"inspection": inspection}, "updated_at"),
+    ):
+        parts.append(model.unscoped.filter(**lookup).aggregate(latest=Max(field))["latest"])
+    token = _live_token(parts)
+    if request.GET.get("v") == token:
+        return JsonResponse({"v": token, "unchanged": True})
+    return JsonResponse({"v": token, "status": report.status})
+
+
+@require_or_404(cs.can_view_cases)
+@require_GET
+def report_pdf(request, pk):
+    """Preview or download the compiled report at its authorised decision stage."""
+    from accreditation.models import VisitFinding
+    from core import audit
+    from qa_core.pdf_report import Report, pdf_response
+
+    report = _report_or_404(request, pk)
+    director_review = (report.status == "deputy_verified"
+                       and services.can_endorse(report, request.user)[0])
+    decision_review = (report.status == "director_endorsed"
+                       and services.can_review_cqac_evidence(report.inspection.case, request.user))
+    if not (director_review or decision_review):
+        raise Http404
+
+    inspection = report.inspection
+    case = inspection.case
+    institution = case.institution
+    programme = report.qa_request_programme.programme
+    rep = Report(f"Post-visit report — {programme}", subject=institution.name, generated_by=request.user,
+                 cover=False)
+    rep.h1("Compiled post-visit report")
+    rep.para("Restricted decision copy. Review access is limited to the assigned Director before endorsement "
+             "and active CQAC/Executive Secretary decision holders after Director endorsement.")
+    rep.kv([
+        ("Institution", institution.name),
+        ("Institution code", institution.code),
+        ("Programme", programme.name),
+        ("Case", case.reference),
+        ("Visit", inspection.reference),
+        ("Visit dates", f"{inspection.actual_start or inspection.scheduled_start or '—'} – "
+                        f"{inspection.actual_end or inspection.scheduled_end or '—'}"),
+        ("Status", report.status),
+        ("Version", report.version),
+        ("Submitted by", report.submitted_by or "—"),
+        ("Submitted on", report.submitted_at or "—"),
+    ])
+
+    if report.form_reference:
+        rep.h2(report.form_reference)
+    sections = report.sections if isinstance(report.sections, dict) else {}
+    for section, content in sections.items():
+        rep.h2(f"Visit report — section {section}")
+        if isinstance(content, dict):
+            rep.kv([(str(key).replace("_", " ").title(), _pdf_report_value(value))
+                    for key, value in content.items()])
+        else:
+            rep.para(_pdf_report_value(content))
+
+    from .forms import REPORT_SECTIONS
+
+    rep.h2("Team Lead's programme compilation")
+    rep.table(["Section", "Findings"],
+              [[label, (report.findings or {}).get(key, "") or "—"] for key, label, _help in REPORT_SECTIONS],
+              widths=[0.25, 0.75])
+    rep.kv([("Summary", report.summary or "—"),
+            ("Team recommendation", report.get_recommendation_display() or "—")], cols=1)
+
+    member_rows = services.member_report_roster(report, user=request.user)
+    if member_rows:
+        rep.h2("Attendee and member contributions")
+        rep.table(
+            ["Attendee", "Status", "Recommendation", "Summary", "Team Lead review"],
+            [[str(row.person), row.member_report.get_status_display() if row.member_report else
+              ("Absent" if not row.attendee.attended else "No report"),
+              row.member_report.get_recommendation_display() if row.member_report else "—",
+              row.member_report.summary if row.member_report else "—",
+              row.member_report.review_note if row.member_report else "—"]
+             for row in member_rows],
+            widths=[0.17, 0.13, 0.16, 0.3, 0.24])
+        for row in member_rows:
+            member_report = row.member_report
+            if member_report is None or not member_report.findings:
+                continue
+            rep.h2(f"Contribution — {row.person}")
+            rep.table(["Section", "Finding"],
+                      [[label, member_report.findings.get(key, "") or "—"]
+                       for key, label, _help in REPORT_SECTIONS], widths=[0.25, 0.75])
+
+    findings = list(VisitFinding.unscoped.filter(report=report).order_by("kind", "name"))
+    if findings:
+        rep.h2("Facilities and equipment verified")
+        rep.table(
+            ["Item", "Type", "Declared", "Found", "Finding", "Remark"],
+            [[item.name, item.get_kind_display(), item.declared_quantity, item.found_quantity,
+              "Falsified" if item.is_falsified else "Verified", item.remark or "—"] for item in findings],
+            widths=[0.27, 0.12, 0.12, 0.12, 0.14, 0.23])
+
+    endorsements = services.endorsements_of(report)
+    if endorsements:
+        rep.h2("Endorsement history")
+        rep.table(["Office", "Action", "Officer", "Date", "Remark"],
+                  [[row.get_layer_display(), row.get_action_display(), row.actor or "—", row.at,
+                    row.content or "—"] for row in endorsements],
+                  widths=[0.15, 0.14, 0.2, 0.2, 0.31])
+
+    data = rep.build()
+    audit.log("other", request.user, actor=request.user,
+              note=f"generated the pre-approval post-visit report PDF {report.pk} (case {case.reference})")
+    response = pdf_response(
+        f"compiled-report-{report.pk}.pdf", data, inline=request.GET.get("download") != "1")
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+def _pdf_report_value(value):
+    if isinstance(value, dict):
+        return "; ".join(f"{key}: {_pdf_report_value(item)}" for key, item in value.items()) or "—"
+    if isinstance(value, (list, tuple)):
+        return "; ".join(_pdf_report_value(item) for item in value) or "—"
+    return "—" if value is None or value == "" else str(value)
 
 
 @require_or_404(cs.can_view_cases)
@@ -651,6 +983,95 @@ def report_save(request, pk):
                          "Your task closed; the Division Head has a new one." if submit else "")
     response = render(request, "inspection/_report_panel.html", _report_ctx(request, report, form=form), status=422)
     return toast(response, "error", "Not saved", "Check the highlighted fields.")
+
+
+@require_or_404(cs.can_view_cases)
+@require_POST
+@writer
+def member_report_save(request, pk):
+    report = _report_or_404(request, pk)
+    member_report = next((item for item in services.ensure_member_reports(report)
+                          if item.author_id == request.user.pk), None)
+    if member_report is None:
+        raise Http404("There is no attendee report assigned to your account for this programme.")
+    form = forms.MemberReportForm(request.POST, member_report=member_report)
+    submit = request.POST.get("op") == "submit"
+    if form.is_valid():
+        try:
+            services.save_member_report(
+                member_report, user=request.user, summary=form.cleaned_data["summary"],
+                findings=form.findings(), recommendation=form.cleaned_data["recommendation"], submit=submit)
+        except PermissionDenied as exc:
+            form.add_error(None, str(exc))
+        except ValidationError as exc:
+            _attach(form, exc)
+        else:
+            report.refresh_from_db()
+            response = render(request, "inspection/_report_panel.html", _report_ctx(request, report))
+            title = "Your report was sent to the Team Lead" if submit else "Your draft was saved"
+            return toast(response, "success", title, "")
+    response = render(request, "inspection/_report_panel.html",
+                      _report_ctx(request, report, member_form=form), status=422)
+    return toast(response, "error", "Not saved", "Check the highlighted fields.")
+
+
+@require_or_404(cs.can_view_cases)
+@require_POST
+@writer
+def member_report_review(request, pk, member_pk):
+    report = _report_or_404(request, pk)
+    member_report = PostVisitMemberReport.unscoped.filter(pk=member_pk, report=report).first()
+    if member_report is None:
+        raise Http404
+    form = forms.MemberReviewForm(request.POST)
+    if form.is_valid():
+        try:
+            services.review_member_report(
+                member_report, user=request.user, action=form.cleaned_data["action"],
+                content=form.cleaned_data.get("content", ""))
+        except PermissionDenied as exc:
+            form.add_error(None, str(exc))
+        except ValidationError as exc:
+            _attach(form, exc)
+        else:
+            report.refresh_from_db()
+            response = render(request, "inspection/_report_panel.html", _report_ctx(request, report))
+            title = "Attendee report accepted" if form.cleaned_data["action"] == "accept" else \
+                "Attendee report returned"
+            return toast(response, "success", title, "")
+    response = render(request, "inspection/_report_panel.html",
+                      _report_ctx(request, report, member_review_form=form, review_member_pk=member_report.pk),
+                      status=422)
+    return toast(response, "error", "Review not saved", "Check the highlighted fields.")
+
+
+@require_or_404(cs.can_view_cases)
+@require_POST
+@writer
+def member_attendee_skip(request, pk, attendee_pk):
+    """Team Lead skips an attendee who has no report row yet (e.g. no portal
+    account or never started). The note is kept for the CQAC audit trail."""
+    report = _report_or_404(request, pk)
+    attendee = PostVisitPersonnel.unscoped.filter(pk=attendee_pk, inspection=report.inspection).first()
+    if attendee is None:
+        raise Http404
+    form = forms.MemberReviewForm(request.POST)
+    if form.is_valid():
+        try:
+            services.skip_attendee_report(report, attendee=attendee, user=request.user,
+                                          content=form.cleaned_data.get("content", ""))
+        except PermissionDenied as exc:
+            form.add_error(None, str(exc))
+        except ValidationError as exc:
+            _attach(form, exc)
+        else:
+            report.refresh_from_db()
+            response = render(request, "inspection/_report_panel.html", _report_ctx(request, report))
+            return toast(response, "success", "Attendee skipped", "The reason is kept for the CQAC.")
+    response = render(request, "inspection/_report_panel.html",
+                      _report_ctx(request, report, member_review_form=form, review_attendee_pk=attendee_pk),
+                      status=422)
+    return toast(response, "error", "Skip not saved", "Add a note explaining the decision.")
 
 
 @require_or_404(cs.can_view_cases)
@@ -711,6 +1132,18 @@ def endorsements(request):
            "recommendations": PostVisitReport.RECOMMENDATION_CHOICES}
     return _hx_rows(request, "inspection/endorsements.html", ctx, "inspection/_endorsements_panel.html",
                     "inspection/_endorsements_rows.html")
+
+
+@require(cs.can_view_cases)
+@require_GET
+def endorsements_live(request):
+    """Cheap version stamp for the endorsement queue (polled)."""
+    agg = services.visible_reports(request.user).aggregate(
+        latest=Max("updated_at"), submitted=Max("submitted_at"), total=Count("pk"))
+    token = _live_token([agg["latest"], agg["submitted"], agg["total"]])
+    if request.GET.get("v") == token:
+        return JsonResponse({"v": token, "unchanged": True})
+    return JsonResponse({"v": token})
 
 
 # ===========================================================================
@@ -805,3 +1238,67 @@ def service_export_pdf(request):
               widths=[0.15, 0.11, 0.17, 0.14, 0.08, 0.08, 0.06, 0.06, 0.15])
     audit.log("other", request.user, actor=request.user, note="exported the service history (PDF)")
     return pdf_response(f"service-history-{timezone.localdate().isoformat()}.pdf", rep.build())
+
+
+# ===========================================================================
+# v2.2 — structured visit report NBTE/QA/ICT/VVT/001 (X40)
+# ===========================================================================
+@require_or_404(cs.can_view_cases)
+@require_POST
+@writer
+def report_vvt(request, pk):
+    """Declarations, found-vs-declared findings, GPS and the falsification fine."""
+    from django.http import Http404 as _404
+
+    from accreditation import visit_report as vr
+
+    report = _report_or_404(request, pk)
+    op = request.POST.get("op", "")
+    can_write, why = services.can_write(report, request.user)
+    try:
+        if report.inspection.status != "closed":
+            raise PermissionDenied("Record the visit before completing its post-visit report.")
+        if op == "declare":
+            from inspection.models import ResourcePerson
+            from staff.models import Staff
+
+            staff = Staff.objects.filter(pk=request.POST.get("staff") or 0).first()
+            rp = ResourcePerson.objects.filter(pk=request.POST.get("rp") or 0).first()
+            if not can_write and not (staff and staff.user_id == request.user.pk) \
+                    and not (rp and rp.user_id == request.user.pk):
+                raise PermissionDenied(why or "You cannot declare for this person.")
+            vr.declare(report.inspection, user=request.user, staff=staff, resource_person=rp,
+                       has_conflict=request.POST.get("has_conflict") == "yes", details=request.POST.get("details", ""))
+            ok = ("Declaration recorded", "")
+        elif op == "findings":
+            if not can_write:
+                raise PermissionDenied(why)
+            rows = []
+            for key in request.POST:
+                if key.startswith("found_"):
+                    item_id = key.split("_", 1)[1]
+                    rows.append({"item_id": item_id, "name": request.POST.get(f"name_{item_id}", ""),
+                                 "declared_quantity": request.POST.get(f"declared_{item_id}") or 0,
+                                 "found_quantity": request.POST.get(key),
+                                 "is_falsified": request.POST.get(f"falsified_{item_id}") == "on",
+                                 "remark": request.POST.get(f"remark_{item_id}", "")})
+            vr.save_findings(report, user=request.user, rows=rows)
+            ok = ("Findings saved", f"Fine so far: ₦{report.fines_total:,.2f}" if report.fines_total else "")
+        elif op == "gps":
+            if not can_write:
+                raise PermissionDenied(why)
+            vr.record_gps(report, user=request.user, lat=request.POST.get("lat"), lng=request.POST.get("lng"),
+                          accuracy=request.POST.get("accuracy"), point=request.POST.get("point", ""))
+            ok = ("Location recorded", "Flagged: far from the institution's recorded site." if report.gps_flag else "")
+        elif op == "fine":
+            vr.raise_fine(report, user=request.user)
+            ok = ("Fine billed", "The institution sees the bill on its portal.")
+        else:
+            raise _404
+    except (ValidationError, PermissionDenied) as exc:
+        report.refresh_from_db()
+        response = render(request, "inspection/_report_panel.html", _report_ctx(request, report), status=422)
+        return toast(response, "error", "Not saved", " ".join(getattr(exc, "messages", [str(exc)])))
+    report.refresh_from_db()
+    response = render(request, "inspection/_report_panel.html", _report_ctx(request, report))
+    return toast(response, "success", *ok)

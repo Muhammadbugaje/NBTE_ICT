@@ -1,34 +1,31 @@
 {% extends "base.html" %}
-{% load static staff_tags %}
+{% load static staff_tags qa_tags %}
 
 {% block title %}Staff directory · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Staff directory{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/staff.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/hr.css' %}">
+  <link rel="stylesheet" href="{% static 'css/staff.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="staff-page">
 
   {# ---------- HERO ---------- #}
-  <header class="staff-hero">
+  <header class="qa-hero nbte-hero">
     <div>
+      <span class="qa-eyebrow">{% icon "users" 14 "2.2" %} User management · NBTE staff</span>
       <h1>Staff directory</h1>
-      <p>
-        {{ total }} staff member{{ total|pluralize }}
-        {% if request.user.department and not is_all_departments %}
-          in {{ request.user.department.name }}
-        {% endif %}
-      </p>
-    </div>
-    <div class="staff-hero-actions">
+      <p>{% if request.user.department and not is_all_departments %}Everyone on record in {{ request.user.department.name }}. Search by name, file number or designation.{% else %}Everyone on the NBTE staff record. Search by name, file number, department or status.{% endif %}</p>
       {% if can_create %}
-        <a href="{% url 'staff:create' %}" class="btn btn-primary">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add staff
-        </a>
+      <div class="qa-hero__actions">
+        <a href="{% url 'staff:create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} Add staff</a>
+      </div>
       {% endif %}
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ total }}</strong><span>{% if filters_active %}Matching{% else %}Staff member{{ total|pluralize }}{% endif %}</span></div>
     </div>
   </header>
 
@@ -80,6 +77,7 @@
   {% if page.object_list %}
     <div class="staff-grid">
       {% for s in page.object_list %}
+        {% if quick_actions %}<div class="staff-card-wrap">{% endif %}
         <a href="{% url 'staff:detail' s.pk %}" class="staff-card">
           <div class="staff-card-photo">
             {% if s.photo %}
@@ -107,8 +105,29 @@
             </div>
           </div>
         </a>
+        {% if quick_actions %}
+          <div class="staff-card-actions btn-group">
+            {% if can_print_ids and s.user_id %}
+              <label class="check staff-card-pick"><input type="checkbox" name="ids" value="{{ s.pk }}" form="id-print-form" data-id-pick aria-label="Select {{ s.full_name }} for ID printing"><span>Select</span></label>
+            {% endif %}
+            {% if can_manage_roles and s.user_id %}
+              <a href="{% url 'staff:detail' s.pk %}?tab=access&amp;manage=1" class="btn btn-ghost btn-sm">Manage role</a>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
       {% endfor %}
     </div>
+    {% if can_print_ids %}
+      <form method="get" action="{% url 'staff:id_print' %}" id="id-print-form" class="hr-printbar" target="_blank" data-id-printbar hidden>
+        <span><strong data-id-count>0</strong> selected for ID cards</span>
+        <label class="nbr-sr" for="id-print-style">Print format</label>
+        <select id="id-print-style" name="style" class="input">
+          {% for st in id_styles %}<option value="{{ st.key }}">{{ st.name }} · {{ st.size_label }}</option>{% endfor %}
+        </select>
+        <div class="btn-group"><button type="submit" class="btn btn-primary btn-sm">Print IDs</button></div>
+      </form>
+    {% endif %}
 
     {% if page.has_other_pages %}
       <nav class="staff-pagination" aria-label="Pagination">
@@ -175,4 +194,21 @@
   {% endif %}
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+  <script>
+  /* E4: tick staff on the directory, then Print IDs. */
+  (function () {
+    var bar = document.querySelector("[data-id-printbar]");
+    if (!bar) return;
+    function sync() {
+      var n = document.querySelectorAll("[data-id-pick]:checked").length;
+      bar.hidden = n === 0;
+      bar.querySelector("[data-id-count]").textContent = n;
+    }
+    document.addEventListener("change", function (e) { if (e.target.matches("[data-id-pick]")) sync(); });
+    sync();
+  })();
+  </script>
 {% endblock %}

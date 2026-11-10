@@ -3,6 +3,7 @@ urls_portal). Door rules are enforced by the authentication and permission
 classes, not by which file a route is in."""
 from django.urls import path
 
+from .views import appearance as appearance_views
 from .views import auth, home, me, misc
 from .views import notifications as notifications_views
 
@@ -21,6 +22,7 @@ def common_patterns(urlconf):
         # Profile
         path("me/", me.MeView.as_view(), name="me"),
         path("me/preferences/", me.PreferencesView.as_view(), name="me_preferences"),
+        path("me/appearance/", appearance_views.MyAppearanceView.as_view(), name="me_appearance"),  # v2.1 A10
         path("me/devices/", me.DevicesView.as_view(), name="me_devices"),
         path("me/devices/revoke-others/", me.DevicesRevokeOthersView.as_view(), name="me_devices_revoke_others"),
         path("me/devices/<int:pk>/", me.DeviceDetailView.as_view(), name="me_device"),

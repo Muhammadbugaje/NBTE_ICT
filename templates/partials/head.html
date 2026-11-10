@@ -1,4 +1,4 @@
-{% load static %}{# Shared <head> contents for base.html and base_public.html (UI overhaul v5) #}
+{% load static nbte_assets %}{# Shared <head> contents for base.html and base_public.html (UI overhaul v5) #}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
@@ -8,17 +8,19 @@
   <meta property="og:site_name" content="{% firstof site_info.organisation_name SITE_NAME "NBTE" %}">
   <meta property="og:title" content="{% firstof og_title SITE_NAME "NBTE ICT Directorate" %}">
   <meta property="og:description" content="{{ site_info.department_name }} — helpdesk, assets, staff records, approvals and internal communication.">
-  {% if request %}<meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'img/NBTE_logo.png' %}">
+  {% if request %}<meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'img/brand/nbte-icon-512.png' %}">
   <meta property="og:url" content="{{ request.build_absolute_uri }}">{% endif %}
   <meta name="twitter:card" content="summary">
-  <link rel="icon" href="{% static 'img/NBTE_logo.png' %}" type="image/png">
-  <link rel="apple-touch-icon" href="{% static 'img/NBTE_logo.png' %}">
+  {% load brand %}<link rel="icon" href="{% brand_logo_url 'app_icon' %}" type="image/svg+xml">
+  <link rel="icon" href="{% static 'img/brand/nbte-icon-32.png' %}" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="{% static 'img/brand/nbte-icon-180.png' %}">
+  {# v2.1 A9/A10: site appearance + the user's own choices, applied by theme-init.js before first paint #}
+  {{ nbte_prefs|json_script:"nbte-prefs" }}
+  {% if appearance_custom %}<style id="nbte-custom-pair">:root{--custom-primary:{{ appearance_custom.primary }};--custom-accent:{{ appearance_custom.accent }}}</style>{% endif %}
+  {# v2.1 X52: button gap from appearance.button_gap (8px default, 6-24 accepted) #}
+  {% if appearance.button_gap and appearance.button_gap != 8 %}<style>:root { --btn-gap: {{ appearance.button_gap }}px; }</style>{% endif %}
   <script src="{% static 'js/theme-init.js' %}?v=2"></script>
-  {# Design system — order matters #}
-  <link rel="stylesheet" href="{% static 'css/tokens.css' %}?v=14">
-  <link rel="stylesheet" href="{% static 'css/base.css' %}?v=13">
-  <link rel="stylesheet" href="{% static 'css/layout.css' %}?v=2">
-  <link rel="stylesheet" href="{% static 'css/components.css' %}?v=14">
-  <link rel="stylesheet" href="{% static 'css/utilities.css' %}?v=2">
-  <link rel="stylesheet" href="{% static 'css/animations.css' %}?v=2">
-  <link rel="stylesheet" href="{% static 'css/ux.css' %}?v=3">
+  {# NBTE service worker: our own offline page; replaces a worker another app left on this address #}
+  <script>if ("serviceWorker" in navigator) { window.addEventListener("load", function () { navigator.serviceWorker.register("/sw.js", {scope: "/"}).catch(function () {}); }); }</script>
+  {# Design system: one bundle in cascade layers tokens, base, components (incl. components-buttons.css), motion, pages (brand.css) — core/css_bundles.py; ui.legacy_css = the old files #}
+  {% css_bundle "core" %}

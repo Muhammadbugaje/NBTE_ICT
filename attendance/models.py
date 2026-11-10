@@ -141,6 +141,7 @@ class AttendanceRecord(TimeStampedModel):
     EXCUSED = "excused"
     HOLIDAY = "holiday"
     ON_LEAVE = "on_leave"
+    ON_DUTY = "on_duty"  # v2.1 Phase D (G7): official QA visit
 
     STATUS_CHOICES = [
         (PRESENT, "Present"),
@@ -149,16 +150,24 @@ class AttendanceRecord(TimeStampedModel):
         (EXCUSED, "Excused"),
         (HOLIDAY, "Holiday"),
         (ON_LEAVE, "On approved leave"),
+        (ON_DUTY, "On official duty"),
     ]
 
     STATUSES_PRESENT = {PRESENT, LATE}
     STATUSES_ABSENT = {ABSENT}
+    # Days the system writes for the person (leave, visit); a real check-in
+    # may still replace them.
+    STATUSES_SYSTEM = {ON_LEAVE, ON_DUTY}
 
     SOURCE_GPS = "gps"
     SOURCE_EXCEL = "excel"
     SOURCE_MANUAL = "manual"
     SOURCE_AUTO = "auto"
     SOURCE_LEAVE = "leave"
+    SOURCE_QR = "qr"
+    SOURCE_CODE = "code"
+    SOURCE_VISIT = "visit"
+    SOURCE_HOLIDAY = "holiday"
 
     SOURCE_CHOICES = [
         (SOURCE_GPS, "GPS check-in"),
@@ -166,6 +175,18 @@ class AttendanceRecord(TimeStampedModel):
         (SOURCE_MANUAL, "Manual entry"),
         (SOURCE_AUTO, "Automatic"),
         (SOURCE_LEAVE, "Approved leave"),
+        (SOURCE_QR, "Office QR scan"),
+        (SOURCE_CODE, "Office code"),
+        (SOURCE_VISIT, "QA visit"),
+        (SOURCE_HOLIDAY, "Public holiday"),
+    ]
+    # How a check-out was verified (G1, G2).
+    CHECKOUT_SOURCE_CHOICES = [
+        (SOURCE_GPS, "GPS"),
+        (SOURCE_CODE, "Office code"),
+        (SOURCE_QR, "Office QR scan"),
+        (SOURCE_MANUAL, "Recorded by an administrator"),
+        (SOURCE_EXCEL, "Excel upload"),
     ]
 
     # ---- Identity -------------------------------------------------------
@@ -202,6 +223,16 @@ class AttendanceRecord(TimeStampedModel):
         related_name="records",
     )
 
+    # ---- Check-out (v2.1 Phase D, G1-G3) ----------------------------------
+    check_out_at = models.DateTimeField(null=True, blank=True)
+    check_out_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    check_out_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    check_out_distance_meters = models.PositiveIntegerField(null=True, blank=True)
+    check_out_source = models.CharField(max_length=10, choices=CHECKOUT_SOURCE_CHOICES, blank=True, default="")
+    missing_checkout = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Checked in but never checked out (set by the nightly job). The day still counts.")
+
     # ---- Provenance -----------------------------------------------------
     source = models.CharField(
         max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUAL,
@@ -219,6 +250,13 @@ class AttendanceRecord(TimeStampedModel):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="attendance_records",
+    )
+    duty_inspection = models.ForeignKey(
+        "inspection.Inspection",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="The QA visit behind an 'On official duty' day (G7).",
     )
     notes = models.TextField(blank=True)
 
@@ -248,6 +286,21 @@ class AttendanceRecord(TimeStampedModel):
     @property
     def is_absent(self):
         return self.status in self.STATUSES_ABSENT
+
+    @property
+    def status_label(self):
+        """Status with the leave type ("On maternity leave", F6) or the visit."""
+        if self.status == self.ON_LEAVE and self.leave_application_id:
+            lt = getattr(self.leave_application, "leave_type", None)
+            if lt is not None:
+                return lt.attendance_label
+        if self.status == self.ON_DUTY:
+            return "On official duty (QA visit)"
+        return self.get_status_display()
+
+    @property
+    def can_check_out(self):
+        return self.status in self.STATUSES_PRESENT and self.check_in_at is not None and self.check_out_at is None
 
 
 # ===========================================================================

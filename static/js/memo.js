@@ -24,7 +24,12 @@
         var value = visibility.value;
         panels.forEach(function (el) {
           var matches = el.getAttribute("data-target-panel") === value;
+          var wasHidden = el.hidden;
           el.hidden = !matches;
+          // v2.1 Phase E: refresh a live count when its panel appears.
+          if (matches && wasHidden && el.hasAttribute("hx-get") && window.htmx) {
+            window.htmx.trigger(el, "change");
+          }
         });
       }
 
@@ -210,6 +215,75 @@
   }
 
   // -----------------------------------------------------------------
+  // v2.1 Phase E: memo type (internal / external / general) and the
+  // institution scope (all / selected / filter builder)
+  // -----------------------------------------------------------------
+  function initMemoKind() {
+    document.querySelectorAll("[data-memo-form]").forEach(function (form) {
+      var kinds = form.querySelectorAll('input[name="kind"]');
+      var staff = form.querySelector("[data-staff-audience]");
+      var inst = form.querySelector("[data-inst-section]");
+      var label = form.querySelector("[data-send-label]");
+      var btn = label ? label.closest("button") : null;
+
+      function currentKind() {
+        var k = "internal";
+        kinds.forEach(function (r) { if (r.checked) k = r.value; });
+        return k;
+      }
+      function syncKind() {
+        var k = currentKind();
+        form.setAttribute("data-kind", k);
+        form.querySelectorAll("[data-kind-card]").forEach(function (c) {
+          c.classList.toggle("is-selected", c.getAttribute("data-kind-card") === k);
+        });
+        if (staff) staff.hidden = (k === "external");
+        if (inst) {
+          var wasHidden = inst.hidden;
+          inst.hidden = (k === "internal");
+          if (!inst.hidden && wasHidden && window.htmx) window.htmx.trigger(inst, "change");
+        }
+        if (label && btn) {
+          label.textContent = btn.getAttribute(k === "internal" ? "data-send-label-internal" : "data-send-label-outbound");
+        }
+      }
+      if (kinds.length) {
+        if (!currentKind() || !Array.prototype.some.call(kinds, function (r) { return r.checked; })) {
+          kinds[0].checked = true;
+        }
+        kinds.forEach(function (r) { r.addEventListener("change", syncKind); });
+      }
+      syncKind();
+
+      if (!inst) return;
+      var scopes = inst.querySelectorAll('input[name="institution_scope"]');
+      var panels = inst.querySelectorAll("[data-inst-panel]");
+      function syncScope() {
+        var v = "";
+        scopes.forEach(function (r) { if (r.checked) v = r.value; });
+        panels.forEach(function (p) { p.hidden = p.getAttribute("data-inst-panel") !== v; });
+        inst.querySelectorAll(".memo-scope-pill").forEach(function (pill) {
+          var input = pill.querySelector("input");
+          pill.classList.toggle("is-selected", !!(input && input.checked));
+        });
+      }
+      scopes.forEach(function (r) { r.addEventListener("change", syncScope); });
+      syncScope();
+
+      var search = inst.querySelector("[data-inst-search]");
+      var list = inst.querySelector("[data-inst-list]");
+      if (search && list) {
+        search.addEventListener("input", function () {
+          var q = search.value.trim().toLowerCase();
+          list.querySelectorAll("label[data-search-text]").forEach(function (row) {
+            row.hidden = q && row.getAttribute("data-search-text").indexOf(q) === -1;
+          });
+        });
+      }
+    });
+  }
+
+  // -----------------------------------------------------------------
   // Boot
   // -----------------------------------------------------------------
   function onReady(fn) {
@@ -225,6 +299,7 @@
     try { initMemoUserPicker(); }  catch (e) { console.error("[NBTE memo] user picker:", e); }
     try { initActionModals(); }    catch (e) { console.error("[NBTE memo] modals:", e); }
     try { initAckBar(); }          catch (e) { console.error("[NBTE memo] ack bar:", e); }
+    try { initMemoKind(); }        catch (e) { console.error("[NBTE memo] kind:", e); }
   });
 
   window.NBTEMemo = {

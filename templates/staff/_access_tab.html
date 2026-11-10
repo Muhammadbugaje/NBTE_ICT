@@ -1,0 +1,39 @@
+{% comment %}
+  B.8 (C1/C2): the Access tab — role plus the effective permissions, read only.
+  Region #staff-access; returned by staff:access (HTMX) and staff:role (after a save).
+{% endcomment %}
+{% if oob_chip %}{% include "staff/_role_chip.html" with oob=True %}{% endif %}
+<section id="staff-access" class="staff-card staff-detail-card staff-detail-card-wide hr-access" aria-labelledby="access-title">
+  <div class="hr-access__head">
+    <div>
+      <h3 class="staff-card-title" id="access-title">Access</h3>
+      <p class="hr-muted">What {{ staff.first_name|default:staff.full_name }} can see and do. The role is the main source; groups and individual grants add to it.</p>
+    </div>
+    {% if can_manage_role %}
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary btn-sm" data-modal-open="role-modal">Manage role</button>
+      </div>
+    {% endif %}
+  </div>
+  {% if not account %}
+    <p class="hr-muted">No sign-in account yet, so no role. Create the account from Edit.</p>
+  {% elif access %}
+    <dl class="hr-access__facts">
+      <div><dt>Role</dt><dd>{% if access.role %}<span class="hr-chip hr-chip--role">{{ access.role.name }}</span> <span class="hr-muted">rank {{ access.role.rank }}</span>{% else %}<span class="hr-muted">No role</span>{% endif %}</dd></div>
+      <div><dt>Groups</dt><dd>{% for g in access.groups %}<span class="hr-chip">{{ g.name }}</span> {% empty %}<span class="hr-muted">None</span>{% endfor %}</dd></div>
+      <div><dt>Effective permissions</dt><dd>{% if access.superuser %}Superuser — every permission{% else %}{{ access.count }}{% endif %}</dd></div>
+    </dl>
+    {% if access.by_app %}
+      <div class="hr-perms">
+        {% for app, perms in access.by_app %}
+          <details class="hr-perms__app"{% if forloop.first %} open{% endif %}>
+            <summary><span>{{ app|capfirst }}</span> <span class="hr-tabs__n">{{ perms|length }}</span></summary>
+            <ul>{% for p in perms %}<li><span>{{ p.name }}</span> <code>{{ p.label }}</code></li>{% endfor %}</ul>
+          </details>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% else %}
+    <p class="hr-muted">You can't see this person's access.</p>
+  {% endif %}
+</section>

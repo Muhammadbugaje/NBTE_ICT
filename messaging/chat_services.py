@@ -29,10 +29,11 @@ from django.http import Http404
 from django.urls import reverse
 from django.utils import timezone
 
+from . import live
 from .models import (
     REACTION_EMOJIS, ChatPoll, ChatPollOption, ChatPollVote, Message,
     MessageAttachment, MessageDeletion, MessageReaction, MessageRead,
-    MessageStar, Thread, ThreadParticipant, VoiceNote, VoiceNotePlay,
+    MessageReminder, MessageStar, Thread, ThreadParticipant, VoiceNote, VoiceNotePlay,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,8 @@ def message_queryset(thread, user):
             Prefetch("reactions", queryset=MessageReaction.objects.select_related("user")),
             Prefetch("stars", queryset=MessageStar.objects.filter(user=user),
                      to_attr="viewer_stars"),
+            Prefetch("reminders", queryset=MessageReminder.objects.filter(user=user, sent_at__isnull=True),
+                     to_attr="viewer_reminders"),
             "poll__options", "poll__votes__user",
             "voice_note__plays",
         )
@@ -199,7 +202,10 @@ def _after_post(thread, participant, now):
 def send_message(thread, user, *, body="", reply_to_id=None, uploads=(),
                  forwarded=False):
     """Post a text message (with optional attachments). Returns the Message."""
+    from .group_services import ensure_can_send
+
     participant = get_participant(thread, user)
+    ensure_can_send(thread, participant)
     body = (body or "").strip()
     uploads = list(uploads or [])
     check_attachment_sizes(uploads)
@@ -268,8 +274,12 @@ def delete_message(message, user, scope):
 def mark_delivered(participant, now=None):
     """The user's client has fetched the thread: everything so far is delivered."""
     now = now or timezone.now()
+    previous = participant.last_delivered_at
     ThreadParticipant.objects.filter(pk=participant.pk).update(last_delivered_at=now)
     participant.last_delivered_at = now
+    last = Thread.objects.filter(pk=participant.thread_id).values_list("last_message_at", flat=True).first()
+    if last and (previous is None or previous < last):
+        live.bump_thread(participant.thread_id)  # senders' ticks change
     return now
 
 
@@ -292,6 +302,7 @@ def mark_read(thread, user, participant=None, now=None):
             [MessageRead(message_id=pk, user=user, read_at=now) for pk in ids],
             ignore_conflicts=True,
         )
+        live.bump_thread(thread.pk)  # senders' ticks turn blue
     participant.last_read_at = now
     participant.last_delivered_at = now
     participant.save(update_fields=["last_read_at", "last_delivered_at"])
@@ -517,6 +528,13 @@ def forward_message(message, user, thread_ids):
     )
     if len(targets) != len(ids):
         raise ValidationError("You can only forward to your own conversations.")
+    from .group_services import ensure_can_send
+
+    for target in targets:
+        try:
+            ensure_can_send(target, get_participant(target, user))
+        except ValidationError:
+            raise ValidationError(f"You can't send messages in \"{target.display_title_for(user)}\".")
 
     attachments = [(a.original_name or "attachment", _copy_file(a.file))
                    for a in message.attachments.all() if a.file]
@@ -666,8 +684,20 @@ def inbox_threads(user, *, kind="all", archived=False):
     return threads
 
 
-def inbox_updates(user):
-    """Compact data for the inbox short-poll (and the app's chat list)."""
+def inbox_updates(user, *, version=None):
+    """Compact data for the inbox short-poll (and the app's chat list).
+
+    v2.1 L9: answers ``{"unchanged": true, "v": ...}`` (no database work) when
+    the client's ``version`` is still current; otherwise the payload comes from
+    a 5-second cache keyed by the version (messaging/live.py)."""
+    current = live.inbox_version(user.pk)
+    if version and version == current:
+        return {"unchanged": True, "v": current, "server_time": timezone.now().isoformat()}
+    current, payload = live.cached_inbox_payload(user, lambda: _inbox_payload(user))
+    return {**payload, "v": current}
+
+
+def _inbox_payload(user):
     rows = []
     for t in inbox_threads(user):
         last = t.last_msg
@@ -799,7 +829,10 @@ def link_message_to_memo(message_id, memo, user):
 # Polls
 # ===========================================================================
 def create_poll(thread, user, *, question, options, allow_multiple=False, closes_at=None):
+    from .group_services import ensure_can_send
+
     participant = get_participant(thread, user)
+    ensure_can_send(thread, participant)
     if thread.thread_type != Thread.GROUP:
         raise ValidationError("Polls are available in group chats.")
     question = (question or "").strip()
@@ -946,6 +979,11 @@ def prepare_message(message, viewer, participants, *, is_group=None, q=""):
         message.voice_played = message.is_mine or any(
             p.user_id == viewer.pk for p in voice.plays.all())
         message.voice_bars = voice.waveform or [8] * 48
+    reminders = getattr(message, "viewer_reminders", None)
+    if reminders is None:
+        reminders = list(MessageReminder.objects.filter(message=message, user=viewer, sent_at__isnull=True))
+    message.my_reminder = reminders[0] if reminders else None
+    message.is_pinned_msg = message.pinned_at is not None and not message.is_deleted_for_everyone
     message.search_q = q
     message._prepared_for = viewer.pk
     return message
@@ -1034,6 +1072,8 @@ def message_payload(message, viewer, participants=None):
             "reference": message.linked_memo.reference,
             "url": reverse("messaging:memo_detail", args=[message.linked_memo_id]),
         },
+        "pinned_at": message.pinned_at.isoformat() if message.is_pinned_msg else None,
+        "my_reminder_at": message.my_reminder.remind_at.isoformat() if message.my_reminder else None,
         "can_edit": message.can_change_for_everyone,
         "can_delete_for_everyone": message.can_change_for_everyone,
     }
@@ -1045,6 +1085,7 @@ def message_payload(message, viewer, participants=None):
 def open_thread(thread, user, *, q=""):
     """Everything a client needs to show a thread; marks delivered + read."""
     participant = get_participant(thread, user)
+    version = live.thread_version(thread.pk)
     now = timezone.now()
     mark_read(thread, user, participant, now)
     participants = thread_participants(thread)
@@ -1057,6 +1098,7 @@ def open_thread(thread, user, *, q=""):
         "participants": participants,
         "messages": messages,
         "search_ids": search_message_ids(thread, user, q) if q else [],
+        "v": version,
         "server_time": now,
         "is_group": is_group,
     }
@@ -1079,13 +1121,20 @@ def parse_since(value):
     return parsed
 
 
-def thread_updates(thread, user, *, after_id=0, since=None, visible=True):
+def thread_updates(thread, user, *, after_id=0, since=None, visible=True, version=None):
     """One short-poll answer. Never waits.
 
     Returns Message objects (prepared for `user`) under "new"/"changed" so a
     web view can render HTML; API callers map them through message_payload().
+
+    v2.1 L9: when the client's ``version`` token is still current nothing in
+    the thread changed, so the answer is ``unchanged`` (typing only): no
+    message queries and no read-receipt write.
     """
     participant = get_participant(thread, user)
+    current = live.thread_version(thread.pk)
+    if version and version == current and since:
+        return {"unchanged": True, "v": current, "typing": typing_users(thread, user)}
     now = timezone.now()
     if visible:
         mark_read(thread, user, participant, now)
@@ -1122,6 +1171,7 @@ def thread_updates(thread, user, *, after_id=0, since=None, visible=True):
 
     last_id = max([after_id] + [m.pk for m in new])
     return {
+        "v": current,
         "server_time": now,
         "new": new,
         "changed": changed,

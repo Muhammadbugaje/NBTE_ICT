@@ -15,6 +15,10 @@ urlpatterns = [
     path("<int:pk>/message/", views.staff_message,   name="message"),
     path("<int:pk>/notify/",  views.staff_notify,    name="notify"),
     path("<int:pk>/transfer/", lv.staff_transfer,    name="transfer"),
+    path("<int:pk>/id-card/",  views.staff_id_card,  name="id_card"),
+    path("id-cards/print/",    views.staff_id_print, name="id_print"),
+    path("<int:pk>/access/",   views.staff_access,   name="access"),
+    path("<int:pk>/role/",     views.staff_role,     name="role"),
 
     # Public leadership
     path("leadership/",           views.public_leadership,       name="public_leadership"),
@@ -51,6 +55,7 @@ urlpatterns = [
     path("promotions/cascade-count/",     lv.promotion_cascade_count, name="promotion_cascade_count"),
     path("promotions/apply/",             lv.promotion_apply,      name="promotion_apply"),
     path("promotions/history/",           lv.promotion_history,    name="promotion_history"),
+    path("promotions/id-filter/",         lv.promotion_id_filter,  name="promotion_id_filter"),
     path("promotions/<int:pk>/rollback/", lv.promotion_rollback,   name="promotion_rollback"),
 
     # Advanced query

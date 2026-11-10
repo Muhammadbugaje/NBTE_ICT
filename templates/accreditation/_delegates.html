@@ -1,0 +1,22 @@
+{% load qa_tags %}
+{% if delegation %}
+<section class="qa-card" id="qa-delegates" aria-labelledby="qa-delegates-h">
+  <header class="qa-card__head"><div><h2 id="qa-delegates-h">Clearance delegates · {{ delegation.department.name }}</h2>
+    <p>Only you (the director) and the people you name here can clear or return applications for {{ delegation.department.name }}.</p></div></header>
+  <div class="qa-card__body qa-stack">
+    {% if delegation.error %}<div class="qa-callout qa-callout--danger" role="alert"><div><p>{{ delegation.error }}</p></div></div>{% endif %}
+    {% if delegation.delegates %}
+      <ul class="qa-rowlist" role="list">{% for d in delegation.delegates %}<li><div class="qa-rowlink"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ d.user|who }}</span><span class="qa-rowlink__meta">Since {{ d.created_at|date:"j M Y" }}{% if d.expires_at %} · until {{ d.expires_at|date:"j M Y" }}{% endif %}{% if d.note %} · {{ d.note }}{% endif %}</span></span>
+        <span class="qa-rowlink__side"><form method="post" action="{% url 'qa_app:delegate_revoke' d.pk %}" hx-post="{% url 'qa_app:delegate_revoke' d.pk %}" hx-target="#qa-delegates" hx-swap="outerHTML">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit">Remove</button></form></span></div></li>{% endfor %}</ul>
+    {% else %}<p class="qa-small qa-muted">No delegates. Officers can review documents but cannot clear or return.</p>{% endif %}
+    {% if delegation.candidates %}
+      <form class="qa-toolbar" method="post" action="{% url 'qa_app:delegate_add' %}" hx-post="{% url 'qa_app:delegate_add' %}" hx-target="#qa-delegates" hx-swap="outerHTML">{% csrf_token %}
+        <label class="sr-only" for="dl-user">Staff member</label>
+        <select class="input qa-select" id="dl-user" name="user" required><option value="">Choose a staff member</option>{% for u in delegation.candidates %}<option value="{{ u.pk }}">{{ u|who }}</option>{% endfor %}</select>
+        <label class="sr-only" for="dl-note">Note</label><input class="input" id="dl-note" name="note" placeholder="Note (optional)" maxlength="255" autocomplete="off">
+        <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">{% icon "plus" 14 %} Add delegate</button></div>
+      </form>
+    {% endif %}
+  </div>
+</section>
+{% endif %}

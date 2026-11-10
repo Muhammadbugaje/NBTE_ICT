@@ -1,41 +1,38 @@
 {% extends "base.html" %}
-{% load static staff_tags %}
+{% load static staff_tags qa_tags %}
 
-{% block title %}{{ tenure.staff.full_name }} · {{ tenure.position.name }}{% endblock %}
+{% block title %}{{ tenure.person_name }} · {{ tenure.position.name }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="lead-page lead-page-narrow">
 
-  <a href="{% url 'staff:public_leadership' %}" class="lead-back">
-    ← Leadership
-  </a>
-
-  <article class="lead-profile">
-    <header class="lead-profile-head">
-      <div class="lead-profile-photo">
-        {% if tenure.photo %}
-          <img src="{{ tenure.photo.url }}" alt="">
-        {% elif tenure.staff.photo %}
-          <img src="{{ tenure.staff.photo.url }}" alt="">
-        {% else %}
-          {% staff_avatar_fallback tenure.staff %}
-        {% endif %}
-      </div>
-      <div class="lead-profile-info">
-        <div class="lead-profile-position">{{ tenure.position.name }}</div>
-        <h1>{{ tenure.staff.full_name }}</h1>
-        <div class="lead-profile-tenure">
-          {{ tenure.started_on|date:"F j, Y" }}
-          {% if tenure.ended_on %} → {{ tenure.ended_on|date:"F j, Y" }}{% else %} — Present{% endif %}
-          <span class="lead-profile-duration">· {{ tenure.duration_years }} years</span>
-          {% if tenure.is_acting %}<span class="lead-profile-tag">Acting</span>{% endif %}
+  <header class="qa-hero nbte-hero lead-person-hero">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'staff:public_leadership' %}">{% icon "back" 14 "2.4" %} Leadership</a>
+      <span class="qa-eyebrow">{% icon "flag" 14 "2.2" %} Leadership · {{ tenure.position.name }}</span>
+      <div class="lead-person-hero__id">
+        <div class="lead-profile-photo">
+          {% if tenure.photo %}
+            <img loading="lazy" decoding="async" src="{{ tenure.photo.url }}" alt="">
+          {% elif tenure.staff.photo %}
+            <img loading="lazy" decoding="async" src="{{ tenure.staff.photo.url }}" alt="">
+          {% else %}
+            {% if tenure.staff %}{% staff_avatar_fallback tenure.staff %}{% else %}<span class="lead-avatar-initials">{{ tenure.person_initials }}</span>{% endif %}
+          {% endif %}
+        </div>
+        <div class="lead-person-hero__text">
+          <h1>{{ tenure.person_name }}</h1>
+          <p>{{ tenure.position.name }}, {{ tenure.started_on|date:"F j, Y" }}{% if tenure.ended_on %} to {{ tenure.ended_on|date:"F j, Y" }}{% else %} to present{% endif %} · {{ tenure.duration_years }} years{% if tenure.is_acting %} <span class="lead-profile-tag">Acting</span>{% endif %}</p>
         </div>
       </div>
-    </header>
+    </div>
+  </header>
+
+  <article class="lead-profile">
 
     {% if tenure.bio %}
       <section class="lead-profile-section">

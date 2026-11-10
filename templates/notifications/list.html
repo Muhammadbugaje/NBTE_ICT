@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 {% load list_tags %}
 {% load ux_tags %}
 
@@ -7,47 +7,32 @@
 {% block page_title %}Notifications{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/notifications.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/notifications.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="notif-page">
-<header class="notif-page-hero">
-  <div class="notif-page-title">
-    <span class="notif-page-mark" aria-hidden="true">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10 21h4"/></svg>
-    </span>
-    <div>
-      <span class="notif-page-eyebrow">Your activity</span>
-      <h1>Notifications</h1>
-      <p>Important updates and activity from across your workspace.</p>
+<header class="qa-hero nbte-hero notif-qa-hero" data-qa-area="notifications">
+  <div>
+    <span class="qa-eyebrow">{% icon "bell" 14 "2.2" %} Communication · Your activity</span>
+    <h1>Notifications</h1>
+    <p>Important updates and activity from across your workspace.</p>
+    <div class="qa-hero__actions">
+      <form class="m-0" method="post"
+            action="{% url 'notifications:mark_all_read' %}"
+            data-notification-mark-all
+            {% if not unread_count %}hidden{% endif %}
+           >
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">{% icon "check" 15 "2.4" %} Mark all read</button>
+      </form>
+      <a href="{% url 'notifications:settings' %}" class="btn btn-subtle notif-settings-link">{% icon "settings" 15 "2.2" %} Settings</a>
     </div>
   </div>
-  <div class="notif-page-stats">
-    <div class="notif-stat">
-      <strong data-notif-total-count>{{ page.paginator.count }}</strong>
-      <span>in this view</span>
-    </div>
-    <div class="notif-stat notif-stat-unread">
-      <strong data-notif-unread-count>{{ unread_count }}</strong>
-      <span>unread</span>
-    </div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <div class="qa-stat"><strong data-notif-total-count>{{ page.paginator.count }}</strong><span>In this view</span></div>
+    <div class="qa-stat qa-stat--info"><strong data-notif-unread-count>{{ unread_count }}</strong><span>Unread</span></div>
   </div>
-  <a href="{% url 'notifications:settings' %}" class="btn btn-ghost notif-settings-link">{# Phase 9 #}
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    Settings
-  </a>
-  <form class="m-0" method="post"
-        action="{% url 'notifications:mark_all_read' %}"
-        data-notification-mark-all
-        {% if not unread_count %}hidden{% endif %}
-       >
-    {% csrf_token %}
-    <button type="submit" class="btn btn-primary">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-      Mark all read
-    </button>
-  </form>
 </header>
 
 {# ---------- Filter tabs (HTMX) ---------- #}
@@ -202,5 +187,5 @@
   {% endblock %}
 
   {% block extra_js %}
-    <script src="{% static 'js/notifications-list.js' %}?v=1" defer></script>
+    <script src="{% static 'js/notifications-list.js' %}" defer></script>
 {% endblock %}

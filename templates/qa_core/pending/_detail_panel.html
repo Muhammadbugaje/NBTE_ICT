@@ -90,6 +90,29 @@
       </div>
     </section>
 
+    {# X47: who initiated, confirmed, approved — and earlier changes to the same record #}
+    <section class="qa-card" aria-labelledby="pa-trail-title">
+      <header class="qa-card__head"><h2 id="pa-trail-title">Trail</h2>
+        <p>{% if layers == 3 %}Three layers: initiate → confirm → approve.{% elif layers == 2 %}Two layers: initiate → confirm.{% else %}Applies at once.{% endif %}{% if pa.is_open and pa.stage == "approve" %} Waiting for approval.{% elif pa.is_open %} Waiting for confirmation.{% endif %}</p></header>
+      <div class="qa-card__body">
+        <ol class="qa-timeline">
+          {% for when, who, what in trail %}
+            <li><strong>{{ what }}</strong> <span class="qa-muted">· {% if who %}{{ who.get_full_name|default:who.email }}{% else %}System{% endif %}</span>
+              <time datetime="{{ when|date:'c' }}">{{ when|date:"j M Y, H:i" }}</time></li>
+          {% endfor %}
+        </ol>
+        {% if record_history %}
+          <h3 class="qa-small qa-mt">Earlier changes to this record</h3>
+          <ul class="qa-list" role="list">
+            {% for other in record_history %}
+              <li><a href="{% url 'qa:pending_detail' other.pk %}">{{ other.reference }}</a> · {{ other.policy.label }} · {{ other.get_status_display }}
+                · {{ other.initiated_by.get_full_name|default:other.initiated_by.email }} · {{ other.initiated_at|date:"j M Y" }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </section>
+
     {% if history %}
       <section class="qa-card" aria-labelledby="pa-history-title">
         <header class="qa-card__head"><h2 id="pa-history-title">History</h2></header>
@@ -112,7 +135,7 @@
     <header class="qa-card__head"><h2 id="pa-decide-title">Decision</h2></header>
     <div class="qa-card__body qa-stack">
       {% if can_decide %}
-        <p class="qa-small qa-muted">You are the second officer. Confirming applies the change at once, inside one transaction.</p>
+        <p class="qa-small qa-muted">{% if pa.stage == "approve" %}You are the approver (third layer). Approving applies the change at once, inside one transaction.{% elif layers == 3 %}You are the confirmer. After you confirm, a third person approves before it takes effect.{% else %}You are the second officer. Confirming applies the change at once, inside one transaction.{% endif %}</p>
         <label class="field">
           <span>Remark <span class="qa-muted">(required to reject)</span></span>
           <textarea class="input" id="pa-remark" name="remark" rows="3" maxlength="2000"
@@ -123,14 +146,14 @@
                 hx-post="{% url 'qa:pending_confirm' pa.pk %}" hx-target="#qa-panel" hx-trigger="qa:confirmed"
                 hx-include="#pa-remark"
                 data-qa-confirm="This applies “{{ pa.policy.label }}” on {{ pa.target_label|default:'the item' }} now."
-                data-qa-confirm-title="Confirm {{ pa.reference }}?" data-qa-confirm-label="Confirm and apply">
+                data-qa-confirm-title="{% if pa.stage == 'approve' %}Approve{% else %}Confirm{% endif %} {{ pa.reference }}?" data-qa-confirm-label="{% if pa.stage == 'approve' %}Approve and apply{% elif layers == 3 %}Confirm{% else %}Confirm and apply{% endif %}">
             {% csrf_token %}
             {% if confirm_options %}<ul class="qa-checks qa-mb" role="list">{% for o in confirm_options %}
               <li><label><input type="checkbox" name="opt_{{ o.name }}" value="1"{% if o.checked %} checked{% endif %}><span><strong>{{ o.label }}</strong>{% if o.help %}<br><span class="qa-small qa-muted">{{ o.help }}</span>{% endif %}</span></label></li>{% endfor %}</ul>
               <input type="hidden" name="has_options" value="1">{% endif %}
             <button type="submit" class="btn btn-primary btn-block">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-              Confirm
+              {% if pa.stage == "approve" %}Approve{% else %}Confirm{% endif %}
             </button>
           </form>
           <form method="post" action="{% url 'qa:pending_reject' pa.pk %}"

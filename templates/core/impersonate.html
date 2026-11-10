@@ -1,38 +1,43 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Act as user · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Act as user{% endblock %}
 
-{% block content %}
-<div class="wf-page-head">
-  <div>
-    <h1>Act as user</h1>
-    <p>Sign in as another user to test or support them. Only superusers see this page.</p>
-  </div>
-</div>
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/hr.css' %}">
+{% endblock %}
 
-<div class="wf-list">
-  {% for u in users %}
-    <div class="wf-card cursor-default">
-      <div class="wf-card-ref">
-        <strong>{{ u.first_name|slice:":1"|upper }}{{ u.last_name|slice:":1"|upper }}</strong>
-      </div>
-      <div class="wf-card-body">
-        <div class="wf-card-title">{{ u.get_full_name|default:u.email }}</div>
-        <div class="wf-card-meta">
-          <span>{{ u.email }}</span>
-          {% if u.role %}<span class="muted">· {{ u.role.name }}</span>{% endif %}
-          {% if u.department %}<span class="muted">· {{ u.department.name }}</span>{% endif %}
-        </div>
-      </div>
-      <div class="wf-card-badges">
-        <form method="post" action="{% url 'core:impersonate_start' u.pk %}">
-          {% csrf_token %}
-          <button class="btn btn-ghost btn-sm" type="submit">Act as</button>
-        </form>
+{% block content %}
+<div class="hr-page">
+  {% url 'core:impersonate_pick' as pick_url %}
+  <header class="qa-hero nbte-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "eye" 14 "2.2" %} Administration · Act as user</span>
+      <h1>{% if segment == 'institution' %}Act as an institution user{% elif segment == 'external' %}Act as a resource person or professional body{% else %}Act as NBTE staff{% endif %}</h1>
+      <p>{% if segment == 'institution' %}Opens the QA portal as that exact institution account — a time-boxed, audited session with an amber banner (read-only unless write mode is allowed). The internal system is never used as an institution account.{% elif segment == 'external' %}Portal accounts for resource persons and professional bodies. Their screens are on the QA portal; stop acting as them to return to the internal system.{% else %}Sign in as an NBTE staff member to test or support them. Only NBTE staff are listed here — institution users are in their own list. Every switch is recorded.{% endif %}</p>
+      <div class="qa-hero__actions">
+        {% if segment == 'nbte' %}
+          <a class="btn btn-primary" href="{{ pick_url }}?segment=institution">{% icon "building" 16 "2.2" %} Show institution users</a>
+        {% else %}
+          <a class="btn btn-primary" href="{{ pick_url }}">{% icon "users" 16 "2.2" %} Show NBTE staff</a>
+        {% endif %}
+        {% if segment != 'external' and segment_counts.external %}<a class="btn btn-subtle" href="{{ pick_url }}?segment=external">{% icon "user" 16 "2.2" %} Other portal accounts</a>{% endif %}
       </div>
     </div>
-  {% endfor %}
+    <div class="qa-hero__stats um-tiles" aria-label="Summary">
+      <a class="qa-stat qa-stat--link{% if segment == 'nbte' %} is-current{% endif %}"{% if segment == 'nbte' %} aria-current="true"{% endif %} href="{{ pick_url }}"><strong>{{ segment_counts.nbte }}</strong><span>NBTE staff</span></a>
+      <a class="qa-stat qa-stat--link{% if segment == 'institution' %} is-current{% endif %}"{% if segment == 'institution' %} aria-current="true"{% endif %} href="{{ pick_url }}?segment=institution"><strong>{{ segment_counts.institution }}</strong><span>Institution users</span></a>
+      {% if segment_counts.external %}<a class="qa-stat qa-stat--link{% if segment == 'external' %} is-current{% endif %}"{% if segment == 'external' %} aria-current="true"{% endif %} href="{{ pick_url }}?segment=external"><strong>{{ segment_counts.external }}</strong><span>Resource persons &amp; bodies</span></a>{% endif %}
+    </div>
+  </header>
+
+
+  {% include "accounts/users/_filters.html" with action=pick_url target="#actas-list" form_id="actas-filters" hide_status=True keep_segment=True clear_url=pick_url|add:segment_query %}
+  {% include "core/_impersonate_list.html" %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/hr.js' %}" defer></script>
 {% endblock %}

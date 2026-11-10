@@ -15,6 +15,9 @@ app_name = "qa_set"
 
 urlpatterns = [
     path("fees/", payment_views.settings_fees, name="fees"),
+    # v2.2: one table of fees per institution category
+    path("fees/categories/", payment_views.settings_type_fees, name="type_fees"),
+    path("fees/categories/<int:pk>/", payment_views.settings_type_fee_save, name="type_fee_save"),
     path("fees/bank/", payment_views.settings_bank_form, name="bank_form"),
     path("fees/schedule/<int:pk>/", payment_views.settings_fee_form, name="fee_form"),
     path("fees/new/", payment_views.settings_fee_new, name="fee_new"),  # Phase 8

@@ -1,14 +1,21 @@
 {% load qa_tags %}
-<header class="qa-hero">
+<header class="qa-hero fin-hero">
   <div>
-    <span class="qa-eyebrow">{% icon "bank" 14 "2.2" %} Finance (QA){% if hero.role == "director" %} · Director of Finance{% elif hero.role == "officer" %} · Finance officer{% endif %}</span>
+    <span class="qa-eyebrow">{% icon "bank" 14 "2.2" %} Finance (QA){% if hero.is_es and not hero.can_prepare %} · Executive Secretary{% elif hero.role == "director" %} · Director of Finance{% elif hero.role == "officer" %} · Finance officer{% endif %}</span>
     <h1 data-qa-focus>{{ fin_title }}</h1>
     <p>{{ fin_lead }}</p>
+    <div class="qa-hero__actions">
+      {% if hero.can_prepare and fin_tab != "bills" %}<a class="btn btn-primary" href="{% url 'qa_fin:issue_bill' %}" hx-get="{% url 'qa_fin:issue_bill' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "plus" 16 "2.4" %} Issue a bill</a>{% endif %}
+      {% if fin_tab != "approvals" and hero.bills_awaiting %}<a class="btn btn-subtle" href="{% url 'qa_fin:bill_requests' %}" hx-get="{% url 'qa_fin:bill_requests' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "shield" 16 %} {% if hero.is_es %}Approve bills{% else %}Bills awaiting the ES{% endif %} <span class="qa-chip">{{ hero.bills_awaiting }}</span></a>{% endif %}
+      {% if fin_tab != "queue" %}<a class="btn btn-subtle" href="{% url 'qa_fin:queue' %}" hx-get="{% url 'qa_fin:queue' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "inbox" 16 %} Verification queue</a>{% endif %}
+      {% if fin_tab == "bills" or fin_tab == "approvals" %}<a class="btn btn-subtle" href="{% url 'qa_fin:obligations' %}" hx-get="{% url 'qa_fin:obligations' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "card" 16 %} All bills</a>{% endif %}
+    </div>
   </div>
   <div class="qa-hero__stats" aria-label="Summary">
-    <a class="qa-stat qa-stat--info qa-stat--link" href="{% url 'qa_fin:queue' %}?stage=first"><strong>{{ hero.first }}</strong><span>Need first pass</span></a>
-    <a class="qa-stat qa-stat--success qa-stat--link" href="{% url 'qa_fin:queue' %}?stage=final"><strong>{{ hero.ready }}</strong><span>Ready for Director</span></a>
-    <a class="qa-stat{% if hero.overdue %} qa-stat--danger{% endif %} qa-stat--link" href="{% url 'qa_fin:queue' %}?stage=overdue"><strong>{{ hero.overdue }}</strong><span>Overdue</span></a>
+    <a class="qa-stat qa-stat--success qa-stat--link" href="{% url 'qa_fin:queue' %}" hx-get="{% url 'qa_fin:queue' %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ hero.open }}</strong><span>Awaiting Director</span></a>
+    <a class="qa-stat{% if hero.overdue %} qa-stat--danger{% endif %} qa-stat--link" href="{% url 'qa_fin:queue' %}?stage=overdue" hx-get="{% url 'qa_fin:queue' %}?stage=overdue" hx-target="#qa-panel" hx-push-url="true"><strong>{{ hero.overdue }}</strong><span>Overdue</span></a>
+    <a class="qa-stat{% if hero.bills_awaiting %} qa-stat--warn{% endif %} qa-stat--link" href="{% url 'qa_fin:bill_requests' %}" hx-get="{% url 'qa_fin:bill_requests' %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ hero.bills_awaiting|default:0 }}</strong><span>Bills awaiting ES</span></a>
+    <a class="qa-stat{% if hero.unmatched %} qa-stat--info{% endif %} qa-stat--link" href="{% url 'qa_fin:unmatched' %}" hx-get="{% url 'qa_fin:unmatched' %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ hero.unmatched|default:0 }}</strong><span>Unmatched lines</span></a>
   </div>
 </header>
-<div class="qa-rule qa-mb">{% icon "shield" 16 "2.2" %}<span><strong>Fixed by policy:</strong> a provider report, an uploaded proof or a statement match is evidence only. Every payment is confirmed or rejected by the Director of Finance, who cannot be the officer who did the first pass.</span></div>
+<div class="qa-rule qa-mb">{% icon "shield" 16 "2.2" %}<span><strong>Payment control:</strong> gateway callbacks are verified server-to-server and create evidence. Only the Director of Finance confirms or rejects a payment; a bill made by hand reaches the institution only after the Executive Secretary approves it.</span></div>

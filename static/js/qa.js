@@ -286,8 +286,7 @@
     var htmx = window.htmx;
     htmx.config.timeout = timeoutMs();
     htmx.config.defaultSettleDelay = 0;
-    htmx.config.historyCacheSize = 20;
-    htmx.config.refreshOnHistoryMiss = true;
+    // History settings (refreshOnHistoryMiss, historyCacheSize) live in app.js.
     htmx.config.scrollBehavior = "instant";
     // §20: validation errors come back as 422 with the form partial — swap it
     // in place (field errors visible) instead of treating it as a failure.
@@ -383,6 +382,130 @@
     }, true);
   }
 
+  /* ----------------------------------------------------------- SOP-3 pass (optimistic) */
+  // v2.6: stage-passing moves as fast as the click. On confirm (or submit for
+  // assign/start), the panel shows the pass instantly and the POST runs in
+  // the background; when the answer lands we follow it into the case AS IT
+  // IS NOW with a partial swap (no full reload). If it fails, the panel
+  // comes back with the server's own error — nothing is silently lost.
+  function panel() {
+    return document.getElementById("qa-panel");
+  }
+
+  function knockOutPassing() {
+    Array.prototype.forEach.call(document.querySelectorAll(".c3-stage.is-passing, .c3-start.is-passing"),
+      function (el) { el.classList.remove("is-passing"); el.classList.add("is-passed"); });
+  }
+
+  function swapPanel(html) {
+    var target = panel();
+    if (!target) { window.location.reload(); return; }
+    var tpl = document.createElement("template");
+    tpl.innerHTML = html;
+    target.innerHTML = "";
+    while (tpl.content.firstChild) target.appendChild(tpl.content.firstChild);
+    afterSwap({ detail: { target: target }, target: target });
+  }
+
+  function loadPanelPath(url) {
+    if (window.history && window.history.replaceState &&
+        window.location.pathname + window.location.search !== url) {
+      window.history.pushState({}, "", url);
+    }
+    if (window.htmx) {
+      var target = panel();
+      if (target) target.removeAttribute("aria-busy");
+      Array.prototype.forEach.call(document.querySelectorAll(".c3-stage.is-passing, .c3-start.is-passing"),
+        function (el) { el.classList.remove("is-passing"); });
+      window.htmx.ajax("GET", url, { target: "#qa-panel", swap: "innerHTML" });
+    } else {
+      window.location.href = url;
+    }
+  }
+
+  function passStage(form) {
+    if (form.__qaPassing) return;
+    form.__qaPassing = true;
+    var section = form.closest(".c3-stage") || form.closest(".c3-start");
+    if (section) section.classList.add("is-passing");
+    var kind = form.getAttribute("data-qa-stage-pass") || "approve";
+    var target = panel();
+    var payload = new FormData(form);
+    toast("info", kind === "approve" ? "Approving" : "Saving…", "Passing the stage — the page follows right away.");
+    if (target) {
+      target.setAttribute("aria-busy", "true");
+      target.innerHTML = '<section class="c3-stage c3-stage--pending" role="status" aria-live="polite">' +
+        '<div class="c3-stage__head"><div class="c3-stage__title"><span class="c3-stage__kicker">SOP-03 · Updating</span>' +
+        '<h2>Moving to the next step…</h2><p>Your action is being saved. The next step will open automatically.</p></div>' +
+        '</div></section>';
+    }
+    fetch(form.getAttribute("action"), {
+      method: "POST", body: payload, credentials: "same-origin",
+      headers: { "HX-Request": "true", "X-NBTE-Layout": layoutHint() }
+    }).then(function (r) {
+      form.__qaPassing = false;
+      var redirect = r.headers.get("HX-Redirect");
+      if (redirect) {
+        toast("success", "Stage passed", "Opening the case at its next step…");
+        loadPanelPath(redirect);
+        return null;
+      }
+      var status = r.status;
+      return r.text().then(function (html) {
+        if (status >= 200 && status < 300 && html && html.length > 40) {
+            if (panel()) panel().removeAttribute("aria-busy");
+            knockOutPassing();
+            swapPanel(html);
+        } else {
+          passFailed(section, status, html);
+        }
+      });
+    }).catch(function (err) {
+      form.__qaPassing = false;
+      passFailed(section, 0, "");
+      if (window.console && window.console.error) window.console.error("stage pass failed", err);
+    });
+  }
+
+  function passFailed(section, status, html) {
+    if (section) section.classList.remove("is-passing");
+    var target = panel();
+    if (target) target.removeAttribute("aria-busy");
+    var info = describe(status, null);
+    if (html && html.indexOf("qa-field") >= 0 && panel()) {
+      // validation/scope errors come back as the panel partial — show it.
+      toast("error", "Not passed", info[0] + ". " + info[1]);
+      swapPanel(html);
+      return;
+    }
+    toast("error", "Not passed — " + info[0].toLowerCase(), info[1] + " The case did not move; reload to retry.");
+    QA.announce("Your action did not go through. The case was not moved.", true);
+    if (window.htmx) {
+      window.htmx.ajax("GET", window.location.pathname + window.location.search, { target: "#qa-panel" });
+    } else {
+      window.location.reload();
+    }
+  }
+
+  function initStagePass() {
+    document.addEventListener("qa:confirmed", function (e) {
+      var form = e.target;
+      if (!(form instanceof HTMLFormElement) || form.getAttribute("data-qa-stage-pass") !== "approve") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();  // the request is ours; htmx must not double-fire
+      passStage(form);
+    }, true);
+    document.addEventListener("submit", function (e) {
+      var form = e.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      var kind = form.getAttribute("data-qa-stage-pass");
+      if (kind !== "assign" && kind !== "start") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();  // the request is ours; htmx must not double-fire
+      passStage(form);
+    }, true);
+  }
+
   // [data-qa-collapse="#id"] closes an expanded sub-row back to its empty slot.
   function initCollapse() {
     document.addEventListener("click", function (e) {
@@ -432,6 +555,7 @@
     initOptimistic();
     initCopyButtons();
     initDecisionForms();
+    initStagePass();
     initCollapse();
     initDetailsToggles();
     initBottomNavActive();

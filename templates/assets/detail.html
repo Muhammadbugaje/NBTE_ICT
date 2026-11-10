@@ -1,77 +1,74 @@
 {% extends "base.html" %}
-{% load ux_tags %}
+{% load ux_tags qa_tags %}
 {% load static %}
 
 {% block title %}{{ asset.asset_tag }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{{ asset.asset_tag }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/assets.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/assets.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="wf-page-head">
-    {% if from_scan %}
-        <div class="scan-return-bar">
-            <span>
-            <svg class="icon-inline" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            Looked up from scan
-            </span>
-            <a href="{% url 'assets:scan' %}">Scan another →</a>
-        </div>
-    {% endif %}
+{% if from_scan %}
+  <div class="scan-return-bar">
+    <span>
+    <svg class="icon-inline" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    Looked up from scan
+    </span>
+    <a href="{% url 'assets:scan' %}">Scan another →</a>
+  </div>
+{% endif %}
+<header class="qa-hero nbte-hero asset-qa-hero asset-qa-hero--detail" data-qa-area="assets">
   <div>
-    <a href="{% url 'assets:list' %}" class="btn btn-subtle btn-sm mb-3">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-      Back to assets
-    </a>
+    <a class="nbte-hero__back" href="{% url 'assets:list' %}">{% icon "back" 14 "2.4" %} Back to assets</a>
+    <span class="qa-eyebrow">{% icon "box" 14 "2.2" %} Assets · {{ asset.category.name }}</span>
+    <h1>{{ asset.display_name }}</h1>
+    <p class="asset-header-sub">{{ asset.asset_tag }}{% if asset.serial_number %} · SN {{ asset.serial_number }}{% endif %}</p>
+    <div class="wf-detail-badges asset-qa-badges">
+      <span class="badge badge-state-{{ asset.state }}">{{ asset.get_state_display }}</span>
+      <span class="badge">{{ asset.category.name }}</span>
+      <span class="badge badge-mode-{{ asset.assignment_mode }}" data-asset-mode="{{ asset.assignment_mode }}">{% if asset.is_shared %}Shared{% elif asset.is_department_mode %}Department{% else %}Individual{% endif %}</span>
+      {% if asset.owner_department %}
+        <span class="badge badge-info">{{ asset.owner_department.name }}</span>
+      {% endif %}
+      {% if asset.current_custodian %}
+        <span class="badge badge-success">Held by {{ asset.current_custodian.get_full_name|default:asset.current_custodian.email }}</span>
+      {% elif open_assignments %}
+        <span class="badge badge-success">{% if asset.is_department_mode %}Held by {{ open_assignments.0.holder_label }}{% else %}Shared by {{ open_assignments|length }} {{ open_assignments|length|pluralize:"person,people" }}{% endif %}</span>
+      {% endif %}
+    </div>
+    <div class="qa-hero__actions">
+      {% if can_edit %}<a href="{% url 'assets:edit' asset.asset_tag %}" class="btn btn-primary">{% icon "edit" 15 "2.2" %} Edit</a>{% endif %}
+      <a href="{% url 'assets:print_labels' %}?tags={{ asset.asset_tag }}" class="btn btn-subtle" target="_blank">{% icon "print" 15 "2.2" %} Print label</a>
+    </div>
   </div>
-  <div class="cluster">
-    <a href="{% url 'assets:print_labels' %}?tags={{ asset.asset_tag }}" class="btn btn-ghost" target="_blank">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      Print label
-    </a>
-    {% if can_edit %}
-      <a href="{% url 'assets:edit' asset.asset_tag %}" class="btn btn-primary">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        Edit
-      </a>
+  <div class="asset-header-qr">
+    {% if asset.qr_svg %}
+      {{ asset.qr_svg|safe }}
+    {% else %}
+      <div class="asset-qr-placeholder">Install <code>qrcode</code> for label generation</div>
     {% endif %}
   </div>
-</div>
+</header>
+
+{% if via_grant %}
+  <div class="access-banner" role="status" data-access-grant="{{ via_grant.pk }}">
+    <svg class="access-banner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+    <div class="min-w-0">
+      <strong>Temporary access</strong>
+      <p>You can see this asset because you are handling
+        {% if grant_ticket %}<a href="{% url 'tickets:detail' grant_ticket.pk %}">{{ grant_ticket.reference }}</a>{% else %}a ticket on it{% endif %}.
+        Access ends when the ticket is resolved{% if via_grant.expires_at %} (at the latest {{ via_grant.expires_at|date:"M j, Y · H:i" }}){% endif %}. Read only; this view is logged.</p>
+    </div>
+  </div>
+{% endif %}
 
 <div class="asset-detail-layout">
 
   {# ---------- Main ---------- #}
   <div class="asset-detail-main">
 
-    {# Header card with QR #}
-    <section class="asset-header-card">
-      <div class="asset-header-info">
-        <h1>{{ asset.display_name }}</h1>
-        <p class="asset-header-sub">
-          {{ asset.asset_tag }}
-          {% if asset.serial_number %} · SN {{ asset.serial_number }}{% endif %}
-        </p>
-        <div class="wf-detail-badges mt-4">
-          <span class="badge badge-state-{{ asset.state }}">{{ asset.get_state_display }}</span>
-          <span class="badge">{{ asset.category.name }}</span>
-          {% if asset.owner_department %}
-            <span class="badge badge-info">{{ asset.owner_department.name }}</span>
-          {% endif %}
-          {% if asset.current_custodian %}
-            <span class="badge badge-success">Held by {{ asset.current_custodian.get_full_name|default:asset.current_custodian.email }}</span>
-          {% endif %}
-        </div>
-      </div>
-      <div class="asset-header-qr">
-        {% if asset.qr_svg %}
-          {{ asset.qr_svg|safe }}
-        {% else %}
-          <div class="asset-qr-placeholder">Install <code>qrcode</code> for label generation</div>
-        {% endif %}
-      </div>
-    </section>
 
     {# Details #}
     <section class="wf-card-block">
@@ -115,7 +112,7 @@
               <div class="asset-timeline-dot"></div>
               <div class="asset-timeline-body">
                 <div class="asset-timeline-head">
-                  <strong>{{ a.assigned_to.get_full_name|default:a.assigned_to.email }}</strong>
+                  <strong>{{ a.holder_label }}</strong>
                   {% if a.is_open %}<span class="badge badge-success">Currently held</span>{% endif %}
                   {% if a.is_open and a.expected_return_at %}
                     <span class="badge {% if a.is_overdue %}badge-warn{% endif %}">
@@ -204,6 +201,25 @@
         </a>
     </section>
 
+    {# Past tickets (X5: shown to a ticket assignee with temporary access too) #}
+    <section class="wf-card-block" id="asset-tickets">
+      <h2 class="wf-block-title">Tickets on this asset</h2>
+      {% if asset_tickets %}
+        <ul class="asset-ticket-list">
+          {% for t in asset_tickets %}
+            <li>
+              <a href="{% url 'tickets:detail' t.pk %}" class="asset-ticket-ref">{{ t.reference }}</a>
+              <span class="asset-ticket-subject">{{ t.subject }}</span>
+              <span class="badge {% if t.is_open %}badge-warn{% else %}badge-success{% endif %}">{{ t.get_state_display }}</span>
+              <span class="asset-ticket-meta">{{ t.created_at|date:"M j, Y" }}{% if t.resolution_notes %} · {{ t.resolution_notes|truncatechars:90 }}{% endif %}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No tickets have been raised on this asset.</p>
+      {% endif %}
+    </section>
+
     {# Attachments #}
     <section class="wf-card-block">
       <h2 class="wf-block-title">Attachments</h2>
@@ -245,28 +261,39 @@
   <aside class="asset-detail-side">
 
     {% if can_edit %}
-      {% if open_assignment %}
-        <div class="wf-side-card">
-          <h3 class="wf-side-card-title">Currently assigned</h3>
-          <p class="wf-side-card-sub">
-            Held by <strong>{{ open_assignment.assigned_to.get_full_name|default:open_assignment.assigned_to.email }}</strong>
-            since {{ open_assignment.assigned_at|date:"M j, Y" }}.
-          </p>
-          <form class="vstack" method="post" action="{% url 'assets:return' asset.asset_tag %}">
-            {% csrf_token %}
-            <label class="wf-side-action-label">Condition on return</label>
-            {{ return_form.condition_on_return }}
-            {{ return_form.notes }}
-            <button class="btn btn-primary btn-sm" type="submit">Record return</button>
-          </form>
+      {% if open_assignments %}
+        <div class="wf-side-card" data-holders>
+          <h3 class="wf-side-card-title">{% if asset.is_shared %}Shared by{% else %}Currently assigned{% endif %}</h3>
+          <ul class="asset-holders">
+            {% for row in open_assignments %}
+              <li class="asset-holder">
+                <div class="min-w-0">
+                  <strong>{{ row.holder_label }}</strong>
+                  <span class="asset-holder-meta">since {{ row.assigned_at|date:"M j, Y" }}{% if row.expected_return_at %} · due {{ row.expected_return_at|date:"M j, Y" }}{% endif %}</span>
+                </div>
+                <details class="asset-holder-return">
+                  <summary class="link-btn">{% if asset.is_shared %}Return share{% else %}Record return{% endif %}</summary>
+                  <form class="vstack mt-2" method="post" action="{% url 'assets:return' asset.asset_tag %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="assignment" value="{{ row.pk }}">
+                    <label class="wf-side-action-label">Condition on return</label>
+                    {{ return_form.condition_on_return }}
+                    {{ return_form.notes }}
+                    <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">Record return</button></div>
+                  </form>
+                </details>
+              </li>
+            {% endfor %}
+          </ul>
         </div>
-      {% else %}
+      {% endif %}
+      {% if not open_assignments or asset.is_shared %}
         <div class="wf-side-card">
-          <h3 class="wf-side-card-title">Assign this asset</h3>
-          <p class="wf-side-card-sub">Hand it to a staff member.</p>
+          <h3 class="wf-side-card-title">{% if asset.is_shared and open_assignments %}Add a person{% else %}Assign this asset{% endif %}</h3>
+          <p class="wf-side-card-sub">{% if asset.is_department_mode %}Assign it to a whole department.{% elif asset.is_shared %}Several people can hold it at once.{% else %}Hand it to a staff member.{% endif %}</p>
           <form class="vstack" method="post" action="{% url 'assets:assign' asset.asset_tag %}">
             {% csrf_token %}
-            {{ assign_form.assigned_to }}
+            {% if asset.is_department_mode %}{{ assign_form.department }}{% else %}{{ assign_form.assigned_to }}{% endif %}
             <label class="wf-side-action-label" for="{{ assign_form.expected_return_at.id_for_label }}">
               {{ assign_form.expected_return_at.label }}
             </label>
@@ -275,10 +302,20 @@
             {{ assign_form.condition_on_assign }}
             {{ assign_form.location_on_assign }}
             {{ assign_form.notes }}
-            <button class="btn btn-primary btn-sm" type="submit">Assign</button>
+            <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">Assign</button></div>
           </form>
         </div>
       {% endif %}
+
+      <div class="wf-side-card">
+        <h3 class="wf-side-card-title">How it is held</h3>
+        <form class="vstack" method="post" action="{% url 'assets:set_mode' asset.asset_tag %}">
+          {% csrf_token %}
+          {{ mode_form.assignment_mode }}
+          <p class="wf-side-card-sub">Individual: one holder. Department: the whole department. Shared: several named people (printers, kettles, scanners). Change it while nobody holds the asset.</p>
+          <div class="btn-group"><button class="btn btn-ghost btn-sm" type="submit"{% if open_assignments %} disabled{% endif %}>Save</button></div>
+        </form>
+      </div>
 
       <div class="wf-side-card">
         <h3 class="wf-side-card-title">Change state</h3>

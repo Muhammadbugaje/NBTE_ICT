@@ -53,6 +53,51 @@ DATA_STAGES = {  # stage → which tab holds its work
 }
 
 
+# ---------------------------------------------------------------------------
+# v2.4 speed pass: per-request memos for the case screens (the stage loop asks
+# for the same open task link, holder rows and flow stages dozens of times).
+# Remembered on one thread for the life of one request only — cleared when the
+# request starts/ends and whenever a QATaskLink / TaskAssignee / FlowInstance /
+# FlowStage / QACase row is written (wired in accreditation/apps.py). Anywhere
+# else (Celery, shell, direct test calls) the data is read fresh every time.
+# ---------------------------------------------------------------------------
+import threading as _threading
+
+_MEMO_STATE = _threading.local()
+
+
+def _case_memo():
+    store = getattr(_MEMO_STATE, "store", None)
+    if store is None:
+        store = _MEMO_STATE.store = {}
+    return store
+
+
+def case_memo_started(*_args, **_kwargs):
+    """New web request on this thread: forget the previous request's memos."""
+    _MEMO_STATE.store = {}
+    _MEMO_STATE.in_request = True
+
+
+def case_memo_finished(*_args, **_kwargs):
+    _MEMO_STATE.store = {}
+    _MEMO_STATE.in_request = False
+
+
+def _memo(store_key, build):
+    """Per-request read-once memo (fresh when not inside a web request)."""
+    if not getattr(_MEMO_STATE, "in_request", False):
+        return build()
+    memo = _case_memo()
+    if store_key not in memo:
+        memo[store_key] = build()
+    return memo[store_key]
+
+
+def case_memo_bump(*_args, **_kwargs):
+    case_memo_started()
+
+
 def _int(key, default):
     try:
         return int(config.get(key, default))
@@ -84,8 +129,24 @@ def _name(user):
 # ===========================================================================
 # Starting a case and reading its state
 # ===========================================================================
+_FI_GEN = [0]  # bumped on any FlowInstance save/delete, so the per-case memo below never goes stale
+
+
+def _bump_fi_gen(**_kw):
+    _FI_GEN[0] += 1
+
+
 def instance_of(case):
-    return flow.instance_for(case, FLOW)
+    """The case's flow instance, read once per case object until any FlowInstance changes."""
+    memo = getattr(case, "_fi_memo", None)
+    if memo is not None and memo[0] == _FI_GEN[0]:
+        return memo[1]
+    inst = flow.instance_for(case, FLOW)
+    try:
+        case._fi_memo = (_FI_GEN[0], inst)
+    except AttributeError:
+        pass
+    return inst
 
 
 def current_stages(case):
@@ -97,7 +158,7 @@ def stage_objects(case):
     inst = instance_of(case)
     if inst is None:
         return []
-    by_code = {s.code: s for s in inst.flow_version.stages.all()}
+    by_code = {s.code: s for s in flow_stages(case)}
     return [by_code[c] for c in inst.current_stages if c in by_code]
 
 
@@ -149,17 +210,20 @@ def variables(case):
 # Actor resolution (used by the task bridge)
 # ===========================================================================
 def _role_users(role_code, department=None):
-    from accounts.models import User
+    import org
 
-    qs = User.objects.filter(is_active=True, user_type="staff", role__code=role_code).order_by("pk")
+    qs = org.users_with_role(role_code, staff_only=True).order_by("pk")
     if department is not None:
         qs = qs.filter(department=department)
     return list(qs)
 
 
 def _director_of(department):
-    users = _role_users("director", department)
-    return users[:1]
+    """Phase B: the department's one director (org.director_of)."""
+    import org
+
+    director = org.director_of(department) if department is not None else None
+    return [director] if director is not None else []
 
 
 def stage_department(case, stage):
@@ -225,6 +289,11 @@ def resolve_actors(case, stage, prefer_user=None):
     """(users, department, title) for the bridge."""
     dept = stage_department(case, stage)
     title = f"{case.institution.code} · {case.reference}"
+    if stage.code == "cqac_recommendation":
+        users = _role_users("cqac-member")
+        if users and users[0].department_id:
+            dept = users[0].department
+        return users, dept, title
     if prefer_user is not None and prefer_user.is_active:
         return [prefer_user], prefer_user.department or dept, title
     pinned = pinned_user(case, stage)
@@ -272,21 +341,72 @@ task_bridge.register_subject(QACase, _resolver)
 # ===========================================================================
 # Who may act; acting (approve / return)
 # ===========================================================================
-def open_link(case, stage_code):
+def _open_links_one_query(case):
+    """All open QATaskLinks of one case, with their tasks and assignee users,
+    read in ONE query (used by ``open_link`` / ``holders`` per stage)."""
     from django.contrib.contenttypes.models import ContentType
 
     from qa_core.models import QATaskLink
 
-    return (QATaskLink.objects.filter(content_type=ContentType.objects.get_for_model(QACase), object_id=case.pk,
-                                      stage_code=stage_code, closed_at__isnull=True)
-            .select_related("task").first())
+    return list(QATaskLink.objects
+                .filter(content_type=ContentType.objects.get_for_model(QACase),
+                        object_id=case.pk, closed_at__isnull=True)
+                .select_related("task").prefetch_related("task__assignee_rows__user")
+                .order_by("pk"))
+
+
+def _open_link_index(case):
+    """{stage_code: open QATaskLink the legacy ``.first()`` would return} for one
+    case, remembered for the life of the request. v2.4: served from the same
+    read ``case_links`` uses (one tasklink + one assignee query per case and
+    request instead of three separate reads)"""
+
+    def build():
+        links = case_links(case)
+        best = {}
+        for link in links:
+            if link.closed_at is None:
+                cur = best.get(link.stage_code)
+                if cur is None or link.pk < cur.pk:  # ascending pk = the rowid order the unordered `.first()` scanned
+                    best[link.stage_code] = link
+        return best
+
+    return _memo(("open_links", case.pk), build)
+
+
+def open_link(case, stage_code):
+    return _open_link_index(case).get(stage_code)
+
+
+def post_visit_fallback_holders(case):
+    """Return the case's active owner(s) when a legacy report task is unassigned."""
+    people = []
+    if case.desk_officer_id:
+        people.append(case.desk_officer)
+    visit = getattr(case, "visit", None)
+    lead = getattr(getattr(visit, "team_lead", None), "user", None) if visit is not None else None
+    if lead is not None and lead not in people:
+        people.append(lead)
+    people = [user for user in people if user is not None and user.is_active
+              and getattr(user, "user_type", "") == "staff"]
+    if not people:
+        department = case.owning_department or getattr(case.institution, "handling_department", None)
+        people = _director_of(department)
+    return people
 
 
 def holders(case, stage_code):
     link = open_link(case, stage_code)
-    if link is None:
-        return []
-    return [r.user for r in link.task.assignee_rows.select_related("user").exclude(state="declined")]
+    if link is not None:
+        rows = getattr(link.task, "_holder_rows", None)
+        if rows is None:
+            rows = list(link.task.assignee_rows.exclude(state="declined").select_related("user"))
+        users = [r.user for r in rows]
+        if users or stage_code != "post_visit_report":
+            return users
+    if stage_code == "post_visit_report":
+        return post_visit_fallback_holders(case)
+    return []
 
 
 def can_act(case, user, stage_code):
@@ -303,8 +423,34 @@ def can_act(case, user, stage_code):
         return False, "You do not hold accreditation.act_on_qa_stage."
     if user in holders(case, stage_code):
         return True, ""
+    if director_may_act(case, user, stage_code):
+        return True, ""
     names = ", ".join(_name(u) for u in holders(case, stage_code)) or "nobody yet (department queue)"
     return False, f"This stage is with {names}."
+
+
+def director_may_act(case, user, stage_code):
+    """v2.2: a stage given to a role inside a department (e.g. the Pay Officer
+    in Finance releasing funds) can always be done by that department's
+    director — the work never stalls because nobody holds the role."""
+    stage = next((s for s in stage_objects(case) if s.code == stage_code), None)
+    if stage is None or getattr(stage, "actor_kind", "") != "role_in_department":
+        return False
+    import org
+
+    dept = stage_department(case, stage)
+    return bool(dept is not None and org.is_director(user, dept))
+
+
+def can_release_funds(user, case=None):
+    """Pay Officer (accreditation.release_funds), the Director of Finance, or a superuser."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser or user.has_perm("accreditation.release_funds"):
+        return True
+    from payments.services import is_final_approver
+
+    return is_final_approver(user)
 
 
 def _require(case, user, stage_code):
@@ -330,9 +476,19 @@ def prerequisites(case, stage_code):
                         f"{case.programme_count} programme(s) (R-04).")
     elif stage_code == "generate_cost" and (sheet is None or not CostLine.unscoped.filter(sheet=sheet).exists()):
         problems.append("Add at least one line to the cost sheet.")
-    elif stage_code == "add_personnel" and (plist is None or not PersonnelEntry.unscoped.filter(personnel_list=plist).exclude(status="returned").exists()):
-        problems.append("Add at least one person to the personnel list.")
+    elif stage_code == "add_personnel":
+        entries = PersonnelEntry.unscoped.filter(personnel_list=plist).exclude(status="returned") if plist else \
+            PersonnelEntry.unscoped.none()
+        if not entries.exists():
+            problems.append("Add at least one person to the personnel list.")
+        if not entries.filter(duty="team_lead").exists():
+            problems.append("Assign a team lead in the personnel list before submitting it.")
     elif stage_code == "add_visit_details":
+        if not case.desk_officer_id:
+            problems.append("Assign the desk officer before preparing visit details.")
+        if not PersonnelEntry.unscoped.filter(personnel_list__case=case, duty="team_lead",
+                                               status="approved").exists():
+            problems.append("Confirm a team lead on the personnel list before preparing the visit.")
         if visit is None or not (visit.planned_start and visit.planned_end and visit.team_lead_id):
             problems.append("Enter the visit dates and choose the team lead.")
     elif stage_code == "request_fund_release":
@@ -340,14 +496,40 @@ def prerequisites(case, stage_code):
         if release is None or not release.released_reference:
             problems.append("Enter the payment reference of the release.")
     elif stage_code == "post_visit_report":  # Phase 5: the report sub-flow
-        from inspection.services import report_variables
+        from inspection.services import live_inspection, report_variables
 
+        if not case.desk_officer_id:
+            problems.append("Assign the desk officer responsible for the post-visit stage.")
+        if visit is None or not visit.team_lead_id:
+            problems.append("Assign the visit team lead responsible for recording and writing the post-visit report.")
+        insp = live_inspection(case)
+        if insp is not None and not insp.team_lead_id:
+            problems.append("Assign the inspection team lead before completing the post-visit stage.")
+        if insp is not None and insp.status != "closed":
+            problems.append("The Team Lead must record the visit first — the reports stay locked until then. "
+                            "The dates come prefilled from the approved schedule.")
         v = report_variables(case)
         if not v["reports_total"] or v["reports_open"]:
-            problems.append("Every post-visit report must be endorsed by the Director first (Reports tab).")
+            problems.append("Every programme report must first be compiled and submitted by the Team Lead, then "
+                            "endorsed by the Director (Reports tab) before this stage can be completed.")
     elif stage_code == "post_visit_recommendation":
+        from . import capacity, decisions
         from inspection.services import recommendation_problems
 
+        programme_rows = decisions.rows(case)
+        if not programme_rows:
+            problems.append("There are no active programmes to assess before the CQAC stage.")
+        missing = capacity.missing_assessments(programme_rows)
+        for row, kinds in missing:
+            labels = ", ".join(capacity.KIND_LABELS[kind] for kind in kinds)
+            problems.append(f"Complete the capacity assessment for {row.programme}: {labels} (Capacity tab).")
+        if programme_rows and not missing:
+            review_states = capacity.review_states(case, programme_rows)
+            unreviewed = [row for row in programme_rows if not review_states[row.pk]["is_current"]]
+            if unreviewed:
+                programmes = ", ".join(str(row.programme) for row in unreviewed)
+                problems.append(f"The owning department Director must confirm the current capacity assessments "
+                                f"for: {programmes} (Capacity tab).")
         problems += recommendation_problems(case)
     elif stage_code in ("cqac_recommendation", "cqac_chair_approval", "es_final_approval"):  # Phase 8
         from . import decisions
@@ -383,6 +565,10 @@ def act(case, *, user, stage_code, action, remark=""):
     if case.needs_reassignment:
         QACase.unscoped.filter(pk=case.pk).update(needs_reassignment=False)
     case.refresh_from_db()
+    if set(current_stages(case)).intersection({"post_visit_report", "post_visit_recommendation"}):
+        from . import capacity
+
+        capacity.ensure_assessment_task(case, actor=user)
     return case
 
 
@@ -390,8 +576,13 @@ def act(case, *, user, stage_code, action, remark=""):
 # Stage 0/1 — desk officer and supervising staff
 # ===========================================================================
 def _staff_user(user, dept=None, label="officer"):
-    if user is None or not user.is_active or getattr(user, "user_type", "") != "staff":
+    from accounts.audience import not_nbte_staff_reason
+
+    if user is None:
         raise ValidationError(f"Choose an active NBTE {label}.")
+    why = not_nbte_staff_reason(user, label)
+    if why:
+        raise ValidationError(why)
     if dept is not None and user.department_id != dept.pk:
         raise ValidationError(f"{_name(user)} is not in {dept.name}.")
     return user
@@ -432,21 +623,34 @@ def set_supervisor(case, *, user, kind, officers):
 
 
 def eligible_officers(case, kind):
+    import org
     from accounts.models import User
 
     dept = case.owning_department if kind == "desk" else qa_department(kind)
     if dept is None:
         return []
-    return list(User.objects.filter(is_active=True, user_type="staff", department=dept)
-                .exclude(role__code__in=("executive-secretary", "ict-qa-monitor")).select_related("role")
-                .order_by("first_name", "last_name"))
+    from accounts.audience import nbte_staff_users_q
+
+    def build():
+        return list(User.objects.filter(nbte_staff_users_q(), department=dept)
+                    .exclude(org.role_q("executive-secretary", "ict-qa-monitor")).select_related("role")
+                    .order_by("first_name", "last_name"))
+
+    # The stepper asks once per co-ordinating office ('desk', 'audit',
+    # 'finance', 'ict'); the list only changes when a User/role/department row
+    # is written, which never happens during one request.
+    return _memo(("eligible", case.pk, kind), build)
 
 
 # ===========================================================================
 # Cost sheet (stages 2, 5–7)
 # ===========================================================================
 def current_sheet(case):
-    return CostSheet.unscoped.filter(case=case, is_current=True).order_by("-version").first()
+    """The case's current cost sheet, remembered for the life of one request."""
+    def build():
+        return CostSheet.unscoped.filter(case=case, is_current=True).order_by("-version").first()
+
+    return _memo(("sheet", case.pk), build)
 
 
 def rates_for(case):
@@ -495,12 +699,21 @@ def _recompute(sheet):
 
 
 @transaction.atomic
-def add_cost_line(case, *, user, rate, days, role_on_exercise="", staff=None):
+def add_cost_line(case, *, user, rate, days, role_on_exercise="", staff=None, check_person=True):
     mode = cost_editor(case, user)
     if mode is None:
         raise PermissionDenied("The cost sheet is not open for you to edit.")
     if rate is None or not rate.is_active:
         raise ValidationError("Choose a rate from the rate table.")
+    if staff is not None:
+        require_nbte_staff(staff, "person on this line")
+    if staff is not None and check_person:
+        from . import visit_people
+
+        verdict = visit_people.check(case, staff, rate=rate, purpose="cost")
+        if verdict["locks"]:
+            name = f"{staff.first_name} {staff.last_name}".strip() or str(staff)
+            raise ValidationError(f"{name} cannot be costed for “{rate.role}”: " + "; ".join(verdict["locks"]) + ".")
     sheet = current_sheet(case)
     days = _days(days) if rate.unit == RateTable.PER_DAY else Decimal("1")
     role_text = (role_on_exercise or "").strip() or rate.role
@@ -560,8 +773,11 @@ def remove_cost_line(case, line, *, user, note=""):
 @transaction.atomic
 def add_personnel(case, *, user, staff, duty="member", remark=""):
     _require(case, user, "add_personnel")
+    if not case.desk_officer_id:
+        raise ValidationError("Choose the desk officer first (stage 1) — the visit team is built with them.")
     if staff is None:
         raise ValidationError("Choose a member of staff.")
+    require_nbte_staff(staff, "visit team member")
     plist, _ = PersonnelList.unscoped.get_or_create(case=case)
     if PersonnelEntry.unscoped.filter(personnel_list=plist, staff=staff).exists():
         raise ValidationError(f"{staff} is already on the list.")
@@ -570,9 +786,46 @@ def add_personnel(case, *, user, staff, duty="member", remark=""):
         raise ValidationError("Choose a duty.")
     if duty == "team_lead":
         _check_team_lead(staff)
+    _check_not_ssq_reviewer(case, staff)
     _check_visit_load(case, staff)
+    from . import visit_people  # the remaining "Not allowed" rules the picker shows (conflict, R-02 audit, …)
+
+    locks = visit_people.check(case, staff, purpose="personnel")["locks"]
+    if locks:
+        name = f"{staff.first_name} {staff.last_name}".strip() or str(staff)
+        raise ValidationError(f"{name} cannot join this visit: " + "; ".join(locks) + ".")
     return PersonnelEntry.unscoped.create(personnel_list=plist, staff=staff, duty=duty, remark=(remark or "")[:255],
                                           added_by=user)
+
+
+def _check_not_ssq_reviewer(case, staff):
+    """R-02: whoever reviewed this request's SSQs cannot join its visit panel —
+    enforced here, not only as a rotation suggestion (which can be overridden)."""
+    user = getattr(staff, "user", None)
+    if user is None:
+        return
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Q
+
+    from assignments.models import WorkAssignment
+    from assignments.rotation_load import reviewed_ssq_of
+
+    from .models import SSQ
+
+    req = case.qa_request
+    ssq_ids = [str(pk) for pk in SSQ.unscoped.filter(qa_request_programme__qa_request=req).values_list("pk", flat=True)]
+    reviewed = SSQ.unscoped.filter(qa_request_programme__qa_request=req, reviewed_by=user).exists()
+    reviewed = reviewed or reviewed_ssq_of(user, case.institution, case)
+    if not reviewed:
+        ssq_ct = ContentType.objects.get_for_model(SSQ, for_concrete_model=False)
+        inst_ct = ContentType.objects.get_for_model(case.institution, for_concrete_model=False)
+        reviewed = (WorkAssignment.objects.filter(assignee=user, kind=WorkAssignment.SSQ_REVIEW)
+                    .exclude(status__in=(WorkAssignment.DECLINED, WorkAssignment.CANCELLED))
+                    .filter(Q(subject_ct=ssq_ct, subject_id__in=ssq_ids)
+                            | Q(subject_ct=inst_ct, subject_id=str(case.institution_id),
+                                assigned_at__gte=req.created_at)).exists())
+    if reviewed:
+        raise ValidationError(f"{staff} reviewed this request's SSQ and cannot join the visit (R-02).")
 
 
 def _check_visit_load(case, staff):
@@ -611,8 +864,15 @@ def _check_team_lead(staff):
 def staff_choices(case):
     from staff.models import Staff
 
-    return list(Staff.objects.filter(user__isnull=False, user__is_active=True).select_related(
-        "user__role", "department").order_by("first_name", "last_name")[:500])
+    from accounts.audience import nbte_staff_users_q
+
+    def build():
+        return list(Staff.objects.filter(user__isnull=False).filter(nbte_staff_users_q("user__")).select_related(
+            "user__role", "user__department", "department", "designation", "grade").order_by("first_name", "last_name")[:500])
+
+    # Every picker on the case page ranks these staff rows; row data comes from
+    # Staff/designation/grade writes, which never happen during one request.
+    return _memo(("staff_choices", case.pk), build)
 
 
 # ===========================================================================
@@ -621,6 +881,8 @@ def staff_choices(case):
 @transaction.atomic
 def save_visit(case, *, user, planned_start, planned_end, team_lead, notes=""):
     _require(case, user, "add_visit_details")
+    if not case.desk_officer_id:
+        raise ValidationError("Choose the desk officer first (stage 1) — visit details are prepared by them.")
     if not planned_start or not planned_end:
         raise ValidationError("Enter both visit dates.")
     if planned_end < planned_start:
@@ -629,7 +891,11 @@ def save_visit(case, *, user, planned_start, planned_end, team_lead, notes=""):
         raise ValidationError("The visit cannot start in the past.")
     if team_lead is None:
         raise ValidationError("Choose the team lead.")
+    require_nbte_staff(team_lead, "team lead")
     _check_team_lead(team_lead)
+    if not PersonnelEntry.unscoped.filter(personnel_list__case=case, staff=team_lead, duty="team_lead",
+                                          status="approved").exists():
+        raise ValidationError("The team lead must be on the confirmed personnel list with the Team lead duty.")
     visit, _ = VisitDetail.unscoped.get_or_create(case=case)
     visit.planned_start, visit.planned_end, visit.team_lead = planned_start, planned_end, team_lead
     visit.logistics_notes = (notes or "").strip()
@@ -641,23 +907,65 @@ def save_visit(case, *, user, planned_start, planned_end, team_lead, notes=""):
 # Fund release (stage 11)
 # ===========================================================================
 def current_release(case):
-    return FundRelease.unscoped.filter(case=case).exclude(status="returned").order_by("-created_at").first()
+    """The case's last fund release that wasn't returned (per-request memo)."""
+    def build():
+        return FundRelease.unscoped.filter(case=case).exclude(status="returned").order_by("-created_at").first()
+
+    return _memo(("release", case.pk), build)
+
+
+def current_visit(case):
+    """The case's visit details row, remembered for the life of one request
+    (the personnel tab, the visit tab and the cost bundle each ask)."""
+    def build():
+        return VisitDetail.unscoped.filter(case=case).select_related("team_lead").first()
+
+    return _memo(("visit", case.pk), build)
 
 
 @transaction.atomic
 def record_release(case, *, user, reference, remark=""):
     _require(case, user, "request_fund_release")
-    if not (user.is_superuser or user.has_perm("accreditation.release_funds")):
-        raise PermissionDenied("Only the Pay Officer releases funds (accreditation.release_funds).")
+    if not can_release_funds(user, case):
+        raise PermissionDenied("Only the Pay Officer or the Director of Finance releases funds.")
     release = current_release(case)
     if release is None:
         raise ValidationError("No fund release has been requested for this case.")
     reference = (reference or "").strip()
-    if len(reference) < 4:
-        raise ValidationError("Enter the payment / voucher reference.")
+    if not reference:
+        reference = _new_release_reference(case)  # blank → generated, unique
+    elif len(reference) < 4:
+        raise ValidationError("A payment / voucher reference needs at least 4 characters (or leave it blank).")
+    elif type(release).unscoped.filter(released_reference__iexact=reference).exclude(pk=release.pk).exists():
+        raise ValidationError(f"The reference {reference} is already used on another fund release.")
     release.released_reference, release.remark, release.pay_officer = reference[:80], remark, user
     release.save(update_fields=["released_reference", "remark", "pay_officer", "updated_at"])
     return release
+
+
+
+def _new_release_reference(case):
+    """A unique payment reference: the 'fund_release' reference format when one
+    is configured (Settings → Reference formats), else NBTE/FR/<year>/<dept>/<n>."""
+    from django.utils import timezone
+
+    from qa_core import references
+
+    model = type(current_release(case))
+    dept = (getattr(case.owning_department, "code", "") or "QA").upper()
+    try:
+        ref = references.issue("fund_release", dept=dept)
+        if not model.unscoped.filter(released_reference__iexact=ref).exists():
+            return ref
+    except Exception:
+        pass
+    year = timezone.localdate().year
+    n = model.unscoped.filter(released_reference__startswith=f"NBTE/FR/{year}/").count() + 1
+    while True:
+        ref = f"NBTE/FR/{year}/{dept}/{n:05d}"
+        if not model.unscoped.filter(released_reference__iexact=ref).exists():
+            return ref
+        n += 1
 
 
 # ===========================================================================
@@ -770,6 +1078,22 @@ def on_completed(ctx):
     case = ctx.subject
     letters = decisions.apply_final(case, actor=ctx.actor)
     QACase.unscoped.filter(pk=case.pk).update(completed_at=timezone.now(), updated_at=timezone.now())
+    try:  # v2.3: a proposed institution approved in principle becomes Approved here
+        from . import onboarding_v4
+
+        onboarding_v4.finalise_institution(case, actor=ctx.actor)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("final institution approval failed for %s", case.reference)
+    try:  # v2.3: SOP-03 is complete — visit honoraria go to the institution's file
+        from honoraria import files as honoraria_files
+
+        honoraria_files.stage_completed(case.institution_id, "sop03")
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("honoraria hook failed for %s", case.reference)
     timeline.record(case.institution, "qa_case.completed", subject=case, actor=ctx.actor, visibility="internal",
                     internal_text=f"SOP-03 complete for {case.reference}: stage 17 updated the programme record(s) "
                                   f"and issued {len(letters)} outcome letter(s).")
@@ -812,9 +1136,29 @@ def open_case_load(user):
             .values("object_id").distinct().count())
 
 
+def require_nbte_staff(staff, label="person"):
+    """Refuse a Staff row whose account is not an active NBTE staff account
+    (institution / resource-person / professional-body / system accounts)."""
+    from accounts.audience import not_nbte_staff_reason
+
+    if staff is None:
+        return
+    user = getattr(staff, "user", None)
+    if user is None:
+        raise ValidationError(f"{staff} has no NBTE account — only NBTE staff can be chosen as the {label}.")
+    why = not_nbte_staff_reason(user, label)
+    if why:
+        raise ValidationError(why)
+
+
 def validate_assignee(case, stage, user):
     if user is None:
         raise ValidationError("Choose a person.")
+    from accounts.audience import not_nbte_staff_reason
+
+    why = not_nbte_staff_reason(user, "holder of this stage")
+    if why:
+        raise ValidationError(why)
     if getattr(getattr(user, "role", None), "code", "") == "ict-qa-monitor":
         raise ValidationError("The ICT monitor cannot hold QA work (R-13).")
     code = getattr(stage, "code", "")
@@ -910,7 +1254,7 @@ STAGE_GROUPS = [
 # ``scoped-by-caller`` — the visibility rule lives here, in one place)
 # ===========================================================================
 CROSS_DEPARTMENT_ROLES = ("executive-secretary", "pay-officer", "cqac-member", "cqac-chairman", "ict-qa-monitor",
-                          "qa-finance-director", "qa-finance-officer")
+                          "qa-finance-officer")
 SUPPORT_DEPARTMENTS = ("audit", "finance", "ict")
 
 
@@ -932,8 +1276,9 @@ def visible_cases(user):
     if user is None or not user.is_authenticated or getattr(user, "user_type", "staff") != "staff":
         return base.none()
     role = getattr(getattr(user, "role", None), "code", "")
+    has_case_permission = user.has_perm("accreditation.view_qa_case") or user.has_perm("accreditation.act_on_qa_stage")
     if user.is_superuser or role in CROSS_DEPARTMENT_ROLES or (
-            user.department_id and user.department_id in _support_department_ids()):
+            user.department_id and user.department_id in _support_department_ids()) or has_case_permission:
         qs = QACase.unscoped.all()
     else:
         ct = ContentType.objects.get_for_model(QACase)
@@ -958,32 +1303,53 @@ def is_monitor(user):
 def case_links(case, *, open_only=False):
     from django.contrib.contenttypes.models import ContentType
 
-    from qa_core.models import QATaskLink
+    from django.db.models import Prefetch
 
-    qs = (QATaskLink.objects.filter(content_type=ContentType.objects.get_for_model(QACase), object_id=case.pk)
-          .select_related("task").order_by("-opened_at", "-pk"))
-    if open_only:
-        qs = qs.filter(closed_at__isnull=True)
-    links = list(qs)
-    for link in links:
-        link.holders = [r.user for r in link.task.assignee_rows.select_related("user").exclude(state="declined")]
-    return links
+    from qa_core.models import QATaskLink
+    from tasks.models import TaskAssignee
+
+    def build():
+        qs = (QATaskLink.objects.filter(content_type=ContentType.objects.get_for_model(QACase),
+                                        object_id=case.pk)
+              .select_related("task", "content_type").order_by("-opened_at", "-pk"))
+        if open_only:
+            qs = qs.filter(closed_at__isnull=True)
+        links = list(qs)
+        if links:  # one query for every holder instead of one per link
+            from django.db.models import prefetch_related_objects
+
+            prefetch_related_objects([lk.task for lk in links], Prefetch(
+                "assignee_rows", queryset=TaskAssignee.objects.select_related("user").exclude(state="declined"),
+                to_attr="_holder_rows"))
+        for link in links:
+            link.holders = [r.user for r in link.task._holder_rows]
+        return links
+
+    if not open_only:  # the default full read: shared with open_link()/holders() for one request
+        return _memo(("links", case.pk), build)
+    return build()
 
 
 def case_bundle(case):
     """Everything the case screens show, read once."""
-    sheet = current_sheet(case)
+    sheets = list(CostSheet.unscoped.filter(case=case).order_by("-version"))
+    sheet = next((s for s in sheets if s.is_current), None)  # = current_sheet(case), from the already-read rows
     lines = list(CostLine.unscoped.filter(sheet=sheet).select_related("rate", "staff").order_by("sort_order", "pk")) \
         if sheet else []
     plist = PersonnelList.unscoped.filter(case=case).first()
     entries = list(PersonnelEntry.unscoped.filter(personnel_list=plist).select_related(
         "staff__user__role", "staff__department").order_by("duty", "pk")) if plist else []
-    sheets = list(CostSheet.unscoped.filter(case=case).order_by("-version"))
+    releases = list(FundRelease.unscoped.filter(case=case).select_related("pay_officer").order_by("-created_at"))
+    release = next((r for r in releases if r.status != "returned"), None)  # = current_release(case), from the list
+    if getattr(_MEMO_STATE, "in_request", False):  # remember both for later callers on the same request
+        memo = _case_memo()
+        memo.setdefault(("sheet", case.pk), sheet)
+        memo.setdefault(("release", case.pk), release)
     return {
         "sheet": sheet, "lines": lines, "sheets": sheets, "plist": plist, "entries": entries,
-        "visit": VisitDetail.unscoped.filter(case=case).select_related("team_lead").first(),
-        "releases": list(FundRelease.unscoped.filter(case=case).select_related("pay_officer").order_by("-created_at")),
-        "release": current_release(case),
+        "visit": current_visit(case),
+        "releases": releases,
+        "release": release,
         "tracking_ict": list(case.tracking_ict_officers.order_by("first_name")),
     }
 
@@ -1010,16 +1376,22 @@ def staff_by_pk(pk):
         return None
 
 
+# The "My stage work" filter groups (stage codes per kind).
+MY_STAGE_GROUPS = {"cost": ("generate_cost", "add_personnel", "confirm_personnel", "audit_personnel_cost",
+                            "confirm_audit_cost", "es_approve_cost"),
+                   "visit": ("add_visit_details", "confirm_visit_details", "es_approve_visit"),
+                   "funds": ("request_fund_release",),
+                   "decision": ("capacity_assessment", "post_visit_report", "post_visit_recommendation",
+                                "cqac_recommendation", "cqac_chair_approval", "es_final_approval")}
+
+
 def my_stage_links(user, *, kind=""):
-    """Open QA stage tasks ``user`` holds (the ES / Pay Officer queues)."""
+    """Open QA case tasks ``user`` holds, including the desk-officer capacity assignment."""
     from django.contrib.contenttypes.models import ContentType
 
     from qa_core.models import QATaskLink
 
-    groups = {"cost": ("generate_cost", "add_personnel", "confirm_personnel", "audit_personnel_cost",
-                       "confirm_audit_cost", "es_approve_cost"),
-              "visit": ("add_visit_details", "confirm_visit_details", "es_approve_visit"),
-              "funds": ("request_fund_release",)}
+    groups = MY_STAGE_GROUPS
     qs = (QATaskLink.objects.filter(content_type=ContentType.objects.get_for_model(QACase), closed_at__isnull=True,
                                     task__assignee_rows__user=user).select_related("task").order_by("due_at", "pk")
           .distinct())
@@ -1044,16 +1416,27 @@ def _published_flow():
 
 
 def flow_stages(case=None):
-    """The qa_case stages in order (the case's own version when it has one)."""
+    """The qa_case stages in order (the case's own version when it has one).
+    v2.4: the case's stage rows are read once and shared with stage_objects()
+    for the life of the request."""
     inst = instance_of(case) if case is not None else None
     flow_def = inst.flow_version if inst is not None else _published_flow()
-    return list(flow_def.stages.order_by("sort_order", "pk")) if flow_def else []
+    if flow_def is None:
+        return []
+    if inst is not None:
+        return _memo(("flow_stages", inst.pk), lambda: list(inst.flow_version.stages.order_by("sort_order", "pk")))
+    return list(flow_def.stages.order_by("sort_order", "pk"))
 
 
 def stage_label(code):
-    flow_def = _published_flow()
-    stage = flow_def.stages.filter(code=code).first() if flow_def else None
-    return stage.label if stage else code.replace("_", " ").capitalize()
+    from core import fastcache
+
+    def build():
+        flow_def = _published_flow()
+        return {st.code: st.label for st in flow_def.stages.all()} if flow_def else {}
+
+    label = fastcache.cached(fastcache.LOOKUPS, "qa_case_stage_labels", build, ttl=300).get(code)
+    return label or code.replace("_", " ").capitalize()
 
 
 def case_timeline(case, user):
@@ -1114,31 +1497,46 @@ def stage_actions(case, user, current=None):
     return rows
 
 
+PARALLEL_SUPERVISOR_STAGES = ("assign_audit_officer", "assign_finance_officer", "assign_ict_officer")
+
+
 def stepper(case, current):
-    """The 17-stage progress rows ({no, label, state, code}) of the case page."""
-    rows, seen_current = [], False
-    current_nos = [s.sop_stage_no for s in current if s.sop_stage_no is not None]
-    low = min(current_nos) if current_nos else None
+    """The 17-stage progress rows ({no, label, state, code, parts}) of the case page.
+
+    States follow the flow's *order* (sort_order), not ``sop_stage_no``: stage 0
+    ("case opened") has no SOP number, which used to leave it "todo" for ever.
+    The three parallel supervisor stages fold into one row with ``parts``."""
+    rows = []
+    stages = flow_stages(case)
+    order = {s.code: i for i, s in enumerate(stages)}
+    codes = {s.code for s in current}
+    positions = [order[c] for c in codes if c in order]
+    low = min(positions) if positions else None
     closed = case.status == "closed"
-    for stage in flow_stages(case):
+    for stage in stages:
         if stage.kind in ("parallel_gate", "join", "start", "end") and stage.code != "case_opened":
             continue
-        if stage.code in ("assign_finance_officer", "assign_ict_officer"):
+        if stage.code in PARALLEL_SUPERVISOR_STAGES[1:]:
             continue
         no = stage.sop_stage_no
+        group = PARALLEL_SUPERVISOR_STAGES if stage.code == "assign_audit_officer" else (stage.code,)
         label = "Assign supervising staff" if stage.code == "assign_audit_officer" else stage.label
         if closed:
             state = "done"
-        elif stage.code in [s.code for s in current] or (
-                stage.code == "assign_audit_officer" and any(s.code.startswith("assign_") for s in current)):
-            state, seen_current = "current", True
-        elif low is not None and no is not None and no < low:
+        elif codes & set(group):
+            state = "current"
+        elif low is not None and order[stage.code] < low:
             state = "done"
-        elif not seen_current and low is None and current and current[0].code == "case_opened":
-            state = "todo"
         else:
-            state = "todo" if (low is None or no is None or no > low) else "done"
-        rows.append({"no": no if no is not None else 0, "label": label, "state": state, "code": stage.code})
+            state = "todo"
+        row = {"no": no if no is not None else 0, "label": label, "state": state, "code": stage.code}
+        if len(group) > 1:
+            by_code = {s.code: s for s in stages}
+            row["parts"] = [{"code": c, "label": by_code[c].label if c in by_code else c,
+                             "state": ("current" if c in codes else
+                                       "done" if state in ("current", "done") else "todo")}
+                            for c in group]
+        rows.append(row)
     return rows
 
 
@@ -1181,8 +1579,11 @@ def decorate_stage_links(links, now=None):
     labels = {s.code: s for s in flow_stages()}
     for link in links:
         stage = labels.get(link.stage_code)
-        link.stage_label = stage.label if stage else link.stage_code
-        link.stage_no = stage.sop_stage_no if stage else None
+        if link.stage_code == "capacity_assessment":
+            link.stage_label, link.stage_no = "Capacity assessment", 12
+        else:
+            link.stage_label = stage.label if stage else link.stage_code
+            link.stage_no = stage.sop_stage_no if stage else None
         link.overdue = bool(link.due_at and link.due_at < now)
     return links
 

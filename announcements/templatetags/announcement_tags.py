@@ -24,3 +24,31 @@ def announcement_banner(context):
     except Exception:
         item = None
     return {"item": item}
+
+
+def panel_items(user, limit=3):
+    """v2.1 Phase E (L10): the newest announcements for ``user``, pinned first,
+    with read / acknowledged state; plus the unread count."""
+    from announcements.models import Announcement
+
+    qs = Announcement.objects.visible_to(user)
+    items = list(qs.with_user_state(user).order_by("-pinned", "-published_at")[:limit])
+    unread = qs.unread_for(user).count() if items else 0
+    return items, unread
+
+
+@register.inclusion_tag("announcements/_home_panel.html", takes_context=True)
+def announcements_panel(context, limit=3):
+    """Announcements on every staff dashboard (v2.1 L10, T-CONS-3): the latest
+    three, pinned first, unread dots and an Acknowledge button. Nothing for
+    non-staff."""
+    request = context.get("request")
+    user = getattr(request, "user", None)
+    items, unread = [], 0
+    try:
+        if getattr(user, "user_type", None) == "staff":
+            items, unread = panel_items(user, limit)
+    except Exception:
+        items, unread = [], 0
+    return {"items": items, "unread": unread, "request": request,
+            "is_staff_user": getattr(user, "user_type", None) == "staff"}

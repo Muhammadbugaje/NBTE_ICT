@@ -116,6 +116,16 @@ class AnnouncementForm(forms.ModelForm):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["visibility"].choices = _visibility_choices()
+        # v2.1 Phase E (T-CONS-3): staff notices live in Communication ->
+        # Announcements now; the portal keeps public notices (and notes to
+        # named people) only.
+        from .models import Scope
+        keep = {Scope.PUBLIC, Scope.INDIVIDUAL}
+        if self.instance and self.instance.pk:
+            keep.add(self.instance.visibility)
+        self.fields["visibility"].choices = [c for c in self.fields["visibility"].choices if c[0] in keep]
+        self.fields["visibility"].help_text = ("Notices for staff are posted in Communication → Announcements, "
+                                               "which shows them on every staff dashboard.")
         self.fields["publish_at"].input_formats = ["%Y-%m-%dT%H:%M"]
         self.fields["expires_at"].input_formats = ["%Y-%m-%dT%H:%M"]
 

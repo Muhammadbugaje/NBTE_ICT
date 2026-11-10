@@ -125,6 +125,9 @@ def _backfill_absent_range(users, start, end, actor=None):
 
     holidays_by_day = {d: services.holidays_on(d) for d in working_days}
     users_by_id = {u.pk: u for u in users}
+    # v2.1 G7: visit days become "On official duty", never absent.
+    from .duty import duty_map, duty_note
+    on_duty = duty_map(user_ids, working_days)
 
     to_create = []
     for uid in user_ids:
@@ -136,6 +139,12 @@ def _backfill_absent_range(users, start, end, actor=None):
                 continue
             if holidays_by_day[d] and services.is_holiday_for(users_by_id[uid], d, holidays_by_day[d]):
                 continue  # review M12: never auto-mark absent on a holiday
+            insp = on_duty.get((uid, d))
+            if insp is not None:
+                to_create.append(AttendanceRecord(
+                    user_id=uid, date=d, status=AttendanceRecord.ON_DUTY,
+                    source=AttendanceRecord.SOURCE_VISIT, duty_inspection=insp, notes=duty_note(insp)))
+                continue
             to_create.append(AttendanceRecord(
                 user_id=uid,
                 date=d,
@@ -830,6 +839,63 @@ def _credited_detail_rows(records):
     return rows
 
 
+def register_rows(users, records, first_day, last_day):
+    """Day-by-day register rows (G6, G9, F8): one per record, plus a Holiday
+    row for a holiday the person had with no record (never a blank)."""
+    today = timezone.localdate()
+    by_key = {(r.user_id, r.date): r for r in records}
+    rows = []
+    d = first_day
+    hol_cache = {}
+    while d <= min(last_day, today):
+        if is_working_day(d):
+            hols = hol_cache.setdefault(d, services.holidays_on(d))
+            for u in users:
+                r = by_key.get((u.pk, d))
+                if r is not None:
+                    rows.append({"user": u, "date": d, "status": r.status_label, "code": services.cell_for(r, with_times=False),
+                                 "in": timezone.localtime(r.check_in_at).strftime("%H:%M") if r.check_in_at else "",
+                                 "out": timezone.localtime(r.check_out_at).strftime("%H:%M") if r.check_out_at else "",
+                                 "out_by": r.get_check_out_source_display() if r.check_out_source else "",
+                                 "missing": "Yes" if r.missing_checkout else "",
+                                 "source": r.get_source_display(), "notes": r.notes or ""})
+                elif hols and services.is_holiday_for(u, d, hols):
+                    from .holidays import holiday_name_for
+                    rows.append({"user": u, "date": d, "status": "Holiday", "code": "H", "in": "", "out": "",
+                                 "out_by": "", "missing": "", "source": "Public holiday",
+                                 "notes": holiday_name_for(u, d, hols)})
+        d += timedelta(days=1)
+    return rows
+
+
+def _excel_register_sheet(wb, users, records, first_day, last_day, header_fill, header_font, border):
+    from openpyxl.styles import Alignment
+
+    users = list(users) or sorted({r.user for r in records}, key=lambda u: (u.get_full_name() or u.email).lower())
+    ws = wb.create_sheet("Daily register")
+    headers = ["Name", "Email", "Date", "Code", "Status", "Check-in", "Check-out", "Check-out by",
+               "Missing check-out", "Source", "Notes"]
+    for i, h in enumerate(headers, start=1):
+        c = ws.cell(row=1, column=i, value=h)
+        c.fill = header_fill
+        c.font = header_font
+        c.border = border
+    r_idx = 2
+    for row in register_rows(users, records, first_day, last_day):
+        vals = [row["user"].get_full_name() or row["user"].email, row["user"].email,
+                row["date"].strftime("%a %d %b %Y"), row["code"], row["status"], row["in"], row["out"],
+                row["out_by"], row["missing"], row["source"], row["notes"]]
+        for col, v in enumerate(vals, start=1):
+            c = ws.cell(row=r_idx, column=col, value=v)
+            c.border = border
+            c.alignment = Alignment(horizontal="left", vertical="center")
+        r_idx += 1
+    for col, w in zip("ABCDEFGHIJK", (28, 32, 16, 6, 24, 9, 9, 14, 10, 16, 40)):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A2"
+    return ws
+
+
 def _excel_detail_sheet(wb, records, header_fill, header_font, border):
     """Second sheet: excused / holiday / approved-leave stretches, one row per
     unbroken run with the same approver, so the summary numbers can be traced."""
@@ -923,8 +989,8 @@ def export_excel(request):
     center = Alignment(horizontal="center", vertical="center")
 
     headers = ["Email", "Name", "Present", "Late", "Absent", "Excused",
-               "Holiday", "On approved leave", "Credited total",
-               "Recorded days counted", "Attendance %"]
+               "Holiday", "On approved leave", "On official duty", "Credited total",
+               "Recorded days counted", "Attendance %", "Missing check-out"]
 
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
     c = ws.cell(row=1, column=1,
@@ -956,8 +1022,8 @@ def export_excel(request):
 
     def _row_vals(t):
         return [t["present"], t["late"], t["absent"], t["excused"],
-                t["holiday"], t["on_leave"], t["credited"], t["expected"],
-                t["pct"]]
+                t["holiday"], t["on_leave"], t["on_duty"], t["credited"], t["expected"],
+                t["pct"], t["missing_checkout"]]
 
     r_idx = 4
     for u in staff:
@@ -988,6 +1054,8 @@ def export_excel(request):
     ws.freeze_panes = "A4"
 
     _excel_detail_sheet(wb, records, header_fill, header_font, border)
+    _excel_register_sheet(wb, staff, records, first_day, last_day,
+                          header_fill, header_font, border)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -1056,23 +1124,9 @@ def export_pdf(request):
             return default
 
     def _find_logo():
-        candidates = [
-            getattr(_s, "PDF_LOGO_PATH", None),
-            Path(_s.BASE_DIR) / "static" / "img"      / "NBTE_logo.png",
-            Path(_s.BASE_DIR) / "static" / "images"   / "NBTE_logo.png",
-            Path(_s.BASE_DIR) / "static" / "branding" / "NBTE_logo.png",
-            Path(_s.BASE_DIR) / "static" / "logo.png",
-        ]
-        for c in candidates:
-            if not c:
-                continue
-            try:
-                p = Path(c)
-                if p.is_file():
-                    return p
-            except (TypeError, OSError):
-                continue
-        return None
+        # v2.1 A5: the formal brand slot (PNG rendered from the SVG crest).
+        from config.branding import pdf_logo_path
+        return pdf_logo_path("formal")
 
     def _transparent_logo(logo_path, opacity=0.06):
         if not logo_path:
@@ -1379,7 +1433,8 @@ def download_sample(request):
     c = ws.cell(
         row=2, column=1,
         value=("Fill each day cell with 1 (present), L (late), "
-               "0 (absent), E (excused), H (holiday). Blank = skip."),
+               "0 (absent), E (excused), H (holiday), OD (official duty). "
+               "Add times if you have them: '1 08:05-16:40' (check-in and check-out). Blank = skip."),
     )
     c.font = muted_font
     ws.row_dimensions[2].height = 18
@@ -1635,8 +1690,8 @@ def export_all_excel(request):
 
     headers = ["Department", "Email", "Name",
                "Present", "Late", "Absent", "Excused", "Holiday",
-               "On approved leave", "Credited total",
-               "Recorded days counted", "Attendance %"]
+               "On approved leave", "On official duty", "Credited total",
+               "Recorded days counted", "Attendance %", "Missing check-out"]
 
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
     c = ws.cell(row=1, column=1,
@@ -1669,8 +1724,8 @@ def export_all_excel(request):
 
     def _nums(t):
         return [t["present"], t["late"], t["absent"], t["excused"],
-                t["holiday"], t["on_leave"], t["credited"], t["expected"],
-                t["pct"]]
+                t["holiday"], t["on_leave"], t["on_duty"], t["credited"], t["expected"],
+                t["pct"], t["missing_checkout"]]
 
     def _write(r, vals, bold=False, fill=None):
         for col_idx, val in enumerate(vals, start=1):
@@ -1716,11 +1771,13 @@ def export_all_excel(request):
     ws.column_dimensions["A"].width = 26
     ws.column_dimensions["B"].width = 32
     ws.column_dimensions["C"].width = 28
-    for col in "DEFGHIJKL":
+    for col in "DEFGHIJKLMN":
         ws.column_dimensions[col].width = 14
     ws.freeze_panes = "A4"
 
     _excel_detail_sheet(wb, records, header_fill, header_font, border)
+    _excel_register_sheet(wb, all_users, records, first_day, last_day,
+                          header_fill, header_font, border)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -1874,4 +1931,86 @@ def check_in_manual(request):
         "today": today,
         "attempts_remaining": code_service.attempts_remaining(request.user),
         "rotation_minutes": code_service.rotation_minutes(),
+    })
+
+# ===========================================================================
+# v2.1 Phase D: check-out (G1, G2), office QR screen and scan (G4)
+# ===========================================================================
+@login_required
+@require_POST
+def check_out_api(request):
+    """JSON: {method: gps|code|qr, lat, lng, accuracy, code, token}."""
+    from . import checkout
+
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except (ValueError, AttributeError):
+        data = request.POST
+    token = data.get("token") or ""
+    if "/scan/" in token:  # a scanned URL: keep the token part
+        token = token.rstrip("/").rsplit("/scan/", 1)[-1]
+    out = checkout.check_out(request.user, method=data.get("method") or "", lat=data.get("lat"),
+                             lng=data.get("lng"), accuracy=data.get("accuracy"), code=data.get("code") or "",
+                             token=token)
+    rec = out.record
+    return JsonResponse({
+        "ok": out.ok, "message": out.message, "error": out.error,
+        "check_out_at": timezone.localtime(rec.check_out_at).strftime("%H:%M") if rec and rec.check_out_at else None,
+    }, status=200 if out.ok else 400)
+
+
+@login_required
+def scan(request, token):
+    """/attendance/scan/<token>/ - opened by scanning the office QR. GET shows
+    what will happen; POST checks in (or out when already checked in)."""
+    from . import checkout
+
+    today = timezone.localdate()
+    reason, rec = checkout.checkout_state(request.user, today)
+    action = "check_out" if not reason else ("done" if rec and rec.check_out_at else "check_in")
+    result = None
+    if request.method == "POST":
+        result = checkout.scan(request.user, token)
+        if result.ok:
+            messages.success(request, result.message)
+            return redirect("attendance:home")
+    location = None
+    error = ""
+    try:
+        location = checkout.verify_token(request.user, token)
+    except ValidationError as exc:
+        error = exc.messages[0]
+    return render(request, "attendance/scan.html", {
+        "token": token, "action": action, "record": rec, "location": location,
+        "error": result.message if result is not None else error, "today": today,
+    })
+
+
+def _screen_location(request, pk):
+    if not _can_view_location_codes(request.user):
+        raise PermissionDenied("Only people who may see the office codes can open the office screen.")
+    return get_object_or_404(AttendanceLocation, pk=pk, is_active=True)
+
+
+@login_required
+def office_screen(request, pk):
+    """Full-screen rotating QR for an office (a TV or tablet at reception)."""
+    from . import checkout
+
+    location = _screen_location(request, pk)
+    payload = checkout.qr_payload(location, request)
+    return render(request, "attendance/office_screen.html", {
+        "p": payload, "qr": checkout.qr_svg(payload["url"]) if payload["url"] else "",
+    })
+
+
+@login_required
+def office_qr(request, pk):
+    """HTMX fragment: the current QR, code and countdown (polled each slot)."""
+    from . import checkout
+
+    location = _screen_location(request, pk)
+    payload = checkout.qr_payload(location, request)
+    return render(request, "attendance/_office_qr.html", {
+        "p": payload, "qr": checkout.qr_svg(payload["url"]) if payload["url"] else "",
     })

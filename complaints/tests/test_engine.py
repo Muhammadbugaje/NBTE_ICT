@@ -81,17 +81,17 @@ def test_routing_rule_order_and_fallback(world, layer):
     stage = c.open_stage()
     assert c.status == "received" and stage.stage_code == "received"
     assert stage.assigned_department.code == "finance"
-    assert stage.assigned_to == world["fin_officer"]        # least loaded Finance handler
+    assert stage.assigned_to == world["fin_director"]       # v2.1 X9: the handling director
     assert stage.routed_by.order == 10
     link = QATaskLink.objects.get(object_id=c.pk, stage_code="received", kind="stage_action")
-    assert link.task.assignee_rows.filter(user=world["fin_officer"]).exists()
+    assert link.task.assignee_rows.filter(user=world["fin_director"]).exists()
     assert link.due_at == stage.due_at                       # the business-hour deadline, not calendar
     assert c.current_department.code == "finance"
 
     # "Others" has no rule → the general triage queue (qa.complaints.fallback_department = ict)
     other = _raise(world["b_user"], layer("others"), subject="Something else entirely")
     assert other.open_stage().assigned_department.code == "ict"
-    assert other.open_stage().assigned_to == world["ict_officer"]
+    assert other.open_stage().assigned_to is None            # no Director of ICT seated: the queue, not an officer
 
     # Rules run in order; the first true condition wins; a broken rule is skipped.
     from staff.models import Department
@@ -136,9 +136,9 @@ def test_sla_pauses_while_awaiting_the_raiser(world, layer):
     start = monday(9)
     with Clock(start) as clock:
         c = _raise(world["a_user"], layer("ssq-submission"), subject="Upload keeps failing")
-        handler = c.open_stage().assigned_to
-        assert handler == world["dpap_officer"]
-        services.act(c, "acknowledge", handler)
+        assert c.open_stage().assigned_to == world["dpap_director"]
+        handler = world["dpap_officer"]
+        services.act(c, "assign", world["dpap_director"], officer=handler)  # v2.1 X10
         work = c.open_stage()
         assert work.stage_code == "in_progress"
         assert work.due_at == start + datetime.timedelta(days=7)  # 40 working hours = Mon 09:00 next week
@@ -172,7 +172,7 @@ def test_payment_complaint_routes_to_finance_breaches_escalates_and_is_resolved(
     with Clock(start) as clock:
         c = _raise(world["a_user"], layer("payment-issues"))
         received = c.open_stage()
-        assert received.assigned_department.code == "finance" and received.assigned_to == world["fin_officer"]
+        assert received.assigned_department.code == "finance" and received.assigned_to == world["fin_director"]
         assert received.due_at == start + datetime.timedelta(days=1)  # 8 working hours → Tue 09:00
 
         clock.go(hours=4)  # half-way: a reminder, no breach
@@ -192,7 +192,7 @@ def test_payment_complaint_routes_to_finance_breaches_escalates_and_is_resolved(
         assert link.kind == "assignment" and link.closed_at is None
         assert esc.task.assignee_rows.filter(user=world["fin_director"]).exists()
         received.refresh_from_db()
-        assert received.assigned_to == world["fin_officer"]        # never reassigned
+        assert received.assigned_to == world["fin_director"]       # never reassigned
 
         assert services.sla_sweep()["escalated"] == 0              # level 1 happens once
         clock.go(minutes=479)
@@ -204,11 +204,12 @@ def test_payment_complaint_routes_to_finance_breaches_escalates_and_is_resolved(
         assert services.sla_sweep()["escalated"] == 0
         assert not Escalation.objects.filter(level=3).exists()
 
-        # The Director (a watcher now) can act; the handler resolves.
+        # v2.1 X10/X11: the Director assigns, the officer submits for review, the Director resolves.
         assert services.can_act(world["fin_director"], c)[0]
         assert services.can_view(world["fin_director"], c)
-        services.act(c, "acknowledge", world["fin_officer"])
-        services.act(c, "resolve", world["fin_officer"], remark="Confirmed today; receipt issued.")
+        services.act(c, "assign", world["fin_director"], officer=world["fin_officer"])
+        services.act(c, "submit_for_review", world["fin_officer"], remark="Confirmed today; receipt issued.")
+        services.act(c, "resolve", world["fin_director"], remark="Confirmed today; receipt issued.")
         c.refresh_from_db()
         assert c.status == "resolved" and c.resolved_at and c.resolution.startswith("Confirmed")
         # Leaving the stage closes the stage task and the escalation tasks.
@@ -259,8 +260,10 @@ def test_manual_escalation_and_permissions(world, layer):
         services.act(c, "confirm", world["fin_officer"])  # a raiser step
     with pytest.raises(PermissionDenied):
         services.act(c, "auto_close", world["fin_officer"])  # a system step
-    assert [t.action_code for t in services.handler_actions(world["fin_officer"], c)] == \
-        ["acknowledge", "resolve", "close"]
+    # v2.1 X9: an unassigned Finance officer has no step; the Director acknowledges, assigns or closes.
+    assert services.handler_actions(world["fin_officer"], c) == []
+    assert [t.action_code for t in services.handler_actions(world["fin_director"], c)] == \
+        ["acknowledge", "assign", "close"]
     assert services.handler_actions(world["vtsd_officer"], c) == []
 
 
@@ -275,8 +278,12 @@ def test_cross_institution_isolation(world, layer):
     assert ids(world["a_user2"]) == {a.pk}            # the same institution follows its complaints
     assert ids(world["b_user"]) == {b.pk}
     assert ids(world["rp"]) == {rp.pk}
-    assert ids(world["fin_officer"]) == {a.pk}        # routed to Finance (A is a DPAP institution)
-    assert ids(world["vtsd_officer"]) == {b.pk}
+    # v2.1 X9: the handling director (not every officer of the department), and the
+    # director overseeing the institution as a read-only watcher.
+    assert ids(world["fin_director"]) == {a.pk}       # routed to Finance (A is a DPAP institution)
+    assert ids(world["fin_officer"]) == set()         # until the director assigns it
+    assert ids(world["dpap_director"]) == {a.pk}      # oversees A (read-only)
+    assert ids(world["vtsd_officer"]) == set()
     assert b.pk not in ids(world["dpap_officer"]) and a.pk not in ids(world["dpap_officer"])
     assert {a.pk, b.pk, rp.pk} <= ids(world["es"])    # NBTE-wide oversight
     assert services.get_visible(world["b_user"], a.pk) is None
@@ -316,14 +323,18 @@ def test_reopen_window_and_auto_close(world, layer):
     start = monday(9)
     with Clock(start) as clock:
         c = _raise(world["a_user"], layer("payment-issues"))
-        services.act(c, "resolve", world["fin_officer"], remark="Confirmed.")
+        services.act(c, "assign", world["fin_director"], officer=world["fin_officer"])  # v2.1 X10/X11
+        services.act(c, "submit_for_review", world["fin_officer"], remark="Confirmed in the ledger.")
+        services.act(c, "resolve", world["fin_director"], remark="Confirmed.")
         clock.go(days=13)
         c.refresh_from_db()
         assert [t.action_code for t in services.raiser_actions(world["a_user"], c)] == ["confirm", "reopen"]
         services.act(c, "reopen", world["a_user"], remark="Still shows unpaid.")
         c.refresh_from_db()
         assert c.status == "in_progress" and c.reopened_count == 1 and c.resolved_at is None
-        services.act(c, "resolve", world["fin_officer"], remark="Now really confirmed.")
+        assert c.open_stage().assigned_to == world["fin_officer"]  # back to the same officer
+        services.act(c, "submit_for_review", world["fin_officer"], remark="Ledger corrected.")
+        services.act(c, "resolve", world["fin_director"], remark="Now really confirmed.")
         clock.go(days=15)  # outside the 14-day window
         c.refresh_from_db()
         assert [t.action_code for t in services.raiser_actions(world["a_user"], c)] == ["confirm"]
@@ -342,7 +353,7 @@ def test_withdraw_and_messages(world, layer):
     c = _raise(world["a_user"], layer("payment-issues"))
     m = services.add_message(c, world["a_user"], "Adding the teller number: 12345", visibility="internal")
     assert m.visibility == "public"  # a raiser cannot write internal notes
-    note = services.add_message(c, world["fin_officer"], "Statement line not found yet.", visibility="internal")
+    note = services.add_message(c, world["fin_director"], "Statement line not found yet.", visibility="internal")
     assert note.visibility == "internal"
     with pytest.raises(PermissionDenied):
         services.add_message(c, world["b_user"], "Let me in")
@@ -409,6 +420,8 @@ def test_seeded_configuration(qa_seed):
     assert list(EscalationRule.objects.values_list("level", "target_kind")) == [
         (1, "department_director"), (2, "deputy_director"), (3, "es")]
     assert KnowledgeArticle.objects.count() == 5
-    flow = FlowDefinition.objects.get(code="complaint")
-    assert flow.stages.get(code="awaiting_raiser").pauses_sla
-    assert flow.stages.get(code="received").creates_task
+    # v2.1 X11: version 2 is current; version 1 stays for complaints already open on it.
+    assert list(FlowDefinition.objects.filter(code="complaint").values_list("version", flat=True)) == [2, 1]
+    for flow in FlowDefinition.objects.filter(code="complaint"):
+        assert flow.stages.get(code="awaiting_raiser").pauses_sla
+        assert flow.stages.get(code="received").creates_task

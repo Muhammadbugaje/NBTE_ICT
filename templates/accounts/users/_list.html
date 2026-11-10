@@ -1,0 +1,71 @@
+{% comment %}User management rows region (#users-list), swapped by HTMX.{% endcomment %}
+<div id="users-list" class="hr-region">
+  <p class="hr-hint" aria-live="polite">{{ page.total }} {% if segment == 'institution' %}institution user{{ page.total|pluralize }}{% elif segment == 'external' %}portal account{{ page.total|pluralize }}{% else %}NBTE staff account{{ page.total|pluralize }}{% endif %}{% if f.any %} match{{ page.total|pluralize:"es," }} the filters{% endif %}.</p>
+  {% if page.rows %}
+    <div class="hr-table-wrap" tabindex="0" role="region" aria-label="Users (scrolls sideways)">
+      <table class="hr-table users-table2">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            {% if segment == 'institution' %}
+            <th scope="col">Institution</th>
+            <th scope="col">Account</th>
+            <th scope="col">Portal role</th>
+            {% elif segment == 'external' %}
+            <th scope="col">Type</th>
+            <th scope="col">Organisation</th>
+            <th scope="col">Role</th>
+            {% else %}
+            <th scope="col">Department</th>
+            <th scope="col">Office · rank</th>
+            <th scope="col">Role</th>
+            {% endif %}
+            <th scope="col">Last sign-in</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="hr-sticky"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in page.rows %}
+            <tr>
+              <td class="hr-cell-primary">
+                <div class="hr-cell-user">
+                  <span class="hr-avatar{% if not u.is_active %} is-off{% endif %}" aria-hidden="true">{{ u.first_name|slice:":1"|upper }}{{ u.last_name|slice:":1"|upper }}</span>
+                  <span><strong>{{ u.get_full_name|default:u.email }}</strong><small>{{ u.email }}</small></span>
+                </div>
+              </td>
+              {% if segment == 'institution' %}
+              <td data-label="Institution">{% if u.institution %}<span><strong>{{ u.institution.name }}</strong><small class="hr-muted"> {{ u.institution.code }}{% if u.institution.state %} · {{ u.institution.state.name }}{% endif %}</small></span>{% else %}—{% endif %}</td>
+              <td data-label="Account">{% with m=u.institution_membership %}{% if m.account_kind == 'chief_executive' %}<span class="hr-chip hr-chip--ok">Chief Executive</span>{% elif m.account_kind == 'ict_head' %}<span class="hr-chip">Head of ICT</span>{% else %}<span class="hr-muted">Portal user</span>{% endif %}{% endwith %}</td>
+              {% elif segment == 'external' %}
+              <td data-label="Type">{{ u.get_user_type_display }}</td>
+              <td data-label="Organisation">{% if u.professional_body %}{{ u.professional_body.name }}{% elif u.institution %}{{ u.institution.name }}{% else %}—{% endif %}</td>
+              {% else %}
+              <td data-label="Department">{{ u.department.name|default:"—" }}</td>
+              <td data-label="Office · rank">{% with sp=u.staff_profile %}{% if sp.office or sp.designation %}{{ sp.office.name|default:"" }}{% if sp.office and sp.designation %} · {% endif %}{{ sp.designation.name|default:"" }}{% else %}<span class="hr-muted">—</span>{% endif %}{% endwith %}</td>
+              {% endif %}
+              <td data-label="Role">{% if u.role %}<span class="hr-chip hr-chip--role">{{ u.role.name }}</span>{% else %}<span class="hr-muted">—</span>{% endif %}</td>
+              <td data-label="Last sign-in">{{ u.last_login|date:"j M Y"|default:"Never" }}</td>
+              <td data-label="Status">{% if u.is_active %}<span class="hr-chip hr-chip--ok">Active</span>{% else %}<span class="hr-chip hr-chip--danger">Inactive</span>{% endif %}</td>
+              <td class="hr-sticky">
+                <div class="btn-group">
+                  <a href="{% url 'accounts:user_detail' u.pk %}" class="btn btn-ghost btn-sm">Manage
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% include "qa_core/partials/_pagination.html" with page=page target="#users-list" swap="outerHTML" %}
+  {% else %}
+    {% url list_url_name|default:'accounts:user_list' as clear_url %}
+    {% if f.any %}
+      {% include "partials/empty_state.html" with variant="filtered" title="No users match" body="Try another department, role or search." action_url=clear_url action_label="Clear filters" action_class="btn-ghost" only %}
+    {% else %}
+      {% include "partials/empty_state.html" with title="No user accounts yet" body="Accounts appear here when staff are added with a sign-in." only %}
+    {% endif %}
+  {% endif %}
+</div>

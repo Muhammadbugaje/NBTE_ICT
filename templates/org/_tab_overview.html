@@ -1,0 +1,46 @@
+{% include "org/_alerts.html" %}
+<div class="org-grid">
+  <section class="org-card" aria-labelledby="seat-h">
+    <h2 id="seat-h">Director seat</h2>
+    <p class="org-muted">One director per department. Assigning is refused while the seat is filled — vacate it first.</p>
+    {% if director %}
+      <div class="org-seat"><span class="org-avatar" aria-hidden="true">{{ director.first_name|first|upper }}{{ director.last_name|first|upper }}</span>
+        <div><strong>{{ director.get_full_name|default:director.email }}</strong><span class="org-muted">{{ director.role.name|default:"No role" }}</span></div></div>
+      {% if can_manage_seat %}
+      <form class="org-form" hx-post="{% url 'org:director_vacate' dept.code %}" hx-target="#org-tab" method="post" action="{% url 'org:director_vacate' dept.code %}">
+        {% csrf_token %}
+        <label class="org-field">Reason (audited)<input name="reason" required maxlength="255" placeholder="e.g. Retired on 30 Sep 2026"></label>
+        <label class="org-field">Their role afterwards
+          <select name="new_role"><option value="">Keep current role</option><option value="deputy-director">Deputy Director</option></select></label>
+        <div class="btn-group"><button class="btn btn-danger" type="submit">Vacate seat</button></div>
+      </form>
+      {% endif %}
+    {% else %}
+      <div class="org-seat"><span class="org-avatar" aria-hidden="true">—</span><div><strong>Seat empty</strong><span class="org-muted">Nobody approves as director here until a director is assigned.</span></div></div>
+      {% if can_manage_seat %}
+      <form class="org-form" hx-post="{% url 'org:director_assign' dept.code %}" hx-target="#org-tab" method="post" action="{% url 'org:director_assign' dept.code %}">
+        {% csrf_token %}
+        <label class="org-field">Member of this department
+          <select name="user" required><option value="">Choose…</option>{% for m in director_candidates %}<option value="{{ m.pk }}">{{ m.get_full_name|default:m.email }}{% if m.role %} · {{ m.role.name }}{% endif %}</option>{% endfor %}</select></label>
+        <label class="org-field">Reason (audited)<input name="reason" maxlength="255" placeholder="e.g. Appointment letter of 1 Oct 2026"></label>
+        <div class="btn-group"><button class="btn btn-primary" type="submit">Assign director</button></div>
+      </form>
+      {% endif %}
+    {% endif %}
+  </section>
+  <section class="org-card" aria-labelledby="heads-h">
+    <h2 id="heads-h">Who leads</h2>
+    <p class="org-muted">Director, deputies, division heads and office heads, most senior first.</p>
+    <ul class="org-list">
+      {% for h in heads %}<li><div><strong>{{ h.get_full_name|default:h.email }}</strong><div class="org-muted">{{ h.role.name|default:"No role" }}</div></div>{% if h == director %}<span class="org-chip is-ok">Director</span>{% endif %}</li>
+      {% empty %}<li class="org-muted">No leads recorded yet.</li>{% endfor %}
+    </ul>
+  </section>
+  <section class="org-card" aria-labelledby="mem-h">
+    <h2 id="mem-h">Staff ({{ members|length }})</h2>
+    <ul class="org-list">
+      {% for m in members|slice:":12" %}<li><div><strong>{{ m.get_full_name|default:m.email }}</strong><div class="org-muted">{{ m.role.name|default:"No role" }}{% if m.staff_profile.grade %} · {{ m.staff_profile.grade.display }}{% endif %}{% if m.staff_profile.division %} · {{ m.staff_profile.division.name }}{% endif %}</div></div></li>{% endfor %}
+    </ul>
+    {% if members|length > 12 %}<p class="org-muted">and {{ members|length|add:"-12" }} more — see the Divisions tab.</p>{% endif %}
+  </section>
+</div>

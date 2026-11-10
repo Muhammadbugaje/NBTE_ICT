@@ -140,3 +140,50 @@ def toast(response, kind, title, body=""):
     payload["qa:toast"] = {"kind": kind, "title": title, "body": body}
     response["HX-Trigger"] = json.dumps(payload)
     return response
+
+
+def htmx_fragment(parent, anchor=""):
+    """Phase 0 (N2, V6): a view that renders only a fragment for HTMX must
+    still give a full, styled page to a normal request (deep link, new tab,
+    Back after a cache miss, no-JS form post).
+
+    ``parent`` is the URL name (reversed with the view's own arguments) or a
+    callable ``(request, *args, **kwargs) -> url`` of the page that hosts the
+    fragment. A normal GET is redirected there; a normal POST
+    runs the view (so no-JS forms keep working) and then redirects there
+    (POST/redirect/GET), with an error message when the view refused the data.
+    """
+    from functools import wraps
+
+    from django.contrib import messages
+    from django.shortcuts import redirect, resolve_url
+
+    def deco(view):
+        @wraps(view)
+        def inner(request, *args, **kwargs):
+            if is_htmx(request):
+                return view(request, *args, **kwargs)
+            if callable(parent):
+                url = parent(request, *args, **kwargs)
+            else:
+                from django.urls import NoReverseMatch
+                try:
+                    url = resolve_url(parent, *args, **kwargs)
+                except NoReverseMatch:
+                    # The host page takes no arguments (e.g. /application/ for
+                    # /application/programmes/<pk>/remove/).
+                    url = resolve_url(parent)
+            url += anchor
+            if request.method in ("GET", "HEAD"):
+                return redirect(url)
+            response = view(request, *args, **kwargs)
+            if response.status_code >= 500 or response.status_code in (301, 302, 303):
+                return response
+            if response.status_code >= 400:
+                if response.status_code in (403, 404, 405):
+                    return response
+                messages.error(request, "Not saved. Please check the form and try again.")
+            return redirect(url)
+        inner.htmx_fragment_parent = parent
+        return inner
+    return deco

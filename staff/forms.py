@@ -67,6 +67,13 @@ class StaffForm(forms.ModelForm):
         }),
     )
 
+    role = forms.ModelChoiceField(
+        queryset=None, required=False, label="Role",
+        empty_label="No role yet",
+        help_text="What they can see and do once the account exists. Only roles you may grant are listed.",
+        widget=forms.Select(attrs={"class": INPUT_CLASS}),
+    )
+
     class Meta:
         model = Staff
         fields = [
@@ -125,6 +132,14 @@ class StaffForm(forms.ModelForm):
         self.user = user
         self.fields["photo"].required = False
         self.fields["email"].required = True
+        self.fields["email"].help_text = "For linked accounts, this is also the sign-in email."
+
+        # B.8 (C4): role on create, limited to what the actor may grant.
+        from . import role_ui
+        if self.instance.pk or not role_ui.can_manage_roles(user):
+            self.fields.pop("role", None)
+        else:
+            self.fields["role"].queryset = role_ui.grantable_roles(user)
 
         # Department heads can't move staff out of their own department.
         # Review H7: someone without a department gets no choices at all
@@ -158,6 +173,16 @@ class StaffForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+
+        email = (cleaned.get("email") or "").strip().lower()
+        if self.instance.user_id and email:
+            from django.contrib.auth import get_user_model
+
+            if get_user_model().objects.filter(email__iexact=email).exclude(
+                    pk=self.instance.user_id).exists():
+                self.add_error("email", "Another account already uses this email address.")
+            else:
+                cleaned["email"] = email
 
         # -- Birth month/day range -------------------------------------------
         m = cleaned.get("birth_month")
@@ -276,7 +301,7 @@ class ExecutiveTenureForm(forms.ModelForm):
     class Meta:
         model = ExecutiveTenure
         fields = [
-            "position", "staff",
+            "position", "staff", "display_name", "title", "is_placeholder",
             "started_on", "ended_on", "is_acting", "appointment_reference",
             "photo", "qualifications", "bio",
             "is_public", "is_featured", "display_order",
@@ -284,6 +309,10 @@ class ExecutiveTenureForm(forms.ModelForm):
         widgets = {
             "position":              forms.Select(attrs={"class": INPUT}),
             "staff":                 forms.Select(attrs={"class": INPUT}),
+            "display_name":          forms.TextInput(attrs={"class": INPUT,
+                                                             "placeholder": "Name, if not a staff record"}),
+            "title":                 forms.TextInput(attrs={"class": INPUT, "placeholder": "Dr., Engr., Prof."}),
+            "is_placeholder":        forms.CheckboxInput(),
             "started_on":            forms.DateInput(attrs={"class": INPUT, "type": "date"}),
             "ended_on":              forms.DateInput(attrs={"class": INPUT, "type": "date"}),
             "appointment_reference": forms.TextInput(attrs={"class": INPUT,
@@ -323,6 +352,10 @@ class ExecutiveTenureForm(forms.ModelForm):
         started = cleaned.get("started_on")
         ended = cleaned.get("ended_on")
 
+        # v2.1 A4: a past leader may have no staff record, but then needs a name.
+        if not cleaned.get("staff") and not (cleaned.get("display_name") or "").strip():
+            self.add_error("display_name", "Choose a staff member or type the leader's name.")
+
         if started and ended and ended < started:
             self.add_error("ended_on", "End date cannot be before the start date.")
 
@@ -333,7 +366,5 @@ class ExecutiveTenureForm(forms.ModelForm):
                            "Only public tenures can be featured on the public page.")
 
         return cleaned
-
-
 
 

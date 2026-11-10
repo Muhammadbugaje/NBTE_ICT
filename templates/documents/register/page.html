@@ -1,0 +1,41 @@
+{% extends "qa_core/_shell.html" %}
+{% load static qa_tags %}
+{% block qa_title %}Issued documents{% endblock %}
+{% block qa_page_title %}Issued documents{% endblock %}
+{% block panel %}<link rel="stylesheet" href="{% static 'css/scan.css' %}">
+<div class="sv-page dr-page" data-qa-area="documents_register">
+  <header class="qa-hero dr-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "qr" 14 "2.2" %} Verification register</span>
+      <h1 data-qa-focus>Issued documents</h1>
+      <p>Every receipt, payment slip, approval letter and memo NBTE generated, each with its QR code. Upload the signed official copy of a provisional letter, or revoke a document with a reason — anyone who scans it then sees the new status.</p>
+      <div class="qa-hero__actions">
+        <a class="btn btn-primary" href="{% url 'scan:page' %}">{% icon "qr" 16 "2.2" %} Scan a document</a>
+        {% if filters.q or filters.kind or filters.status %}<a class="btn btn-subtle" href="{% url 'documents_register:list' %}">{% icon "x" 16 "2.2" %} Clear filters</a>{% endif %}
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <a class="qa-stat qa-stat--link" href="{% url 'documents_register:list' %}"><strong>{{ kpis.total }}</strong><span>Issued</span></a>
+      <a class="qa-stat qa-stat--success qa-stat--link" href="{% url 'documents_register:list' %}?status=valid"><strong>{{ kpis.valid }}</strong><span>Valid</span></a>
+      <a class="qa-stat qa-stat--warn qa-stat--link" href="{% url 'documents_register:list' %}?status=provisional"><strong>{{ kpis.provisional }}</strong><span>Awaiting official copy</span></a>
+      <a class="qa-stat qa-stat--danger qa-stat--link" href="{% url 'documents_register:list' %}?status=revoked"><strong>{{ kpis.revoked }}</strong><span>Revoked</span></a>
+    </div>
+  </header>
+
+  <section class="sv-card dr-card" aria-label="Documents">
+    <header class="dr-card__head">
+      <div><h2>Register</h2><p class="sv-note">Search by reference, verification code, institution or title. Open a row to see what a scan shows, its files and its verification history.</p></div>
+    </header>
+    <form class="sv-filters dr-filters" role="search" method="get" hx-get="{% url 'documents_register:list' %}" hx-target="#doc-panel" hx-push-url="true" hx-trigger="submit, change from:select, search from:input">
+      <label class="dr-search"><span class="sr-only">Search documents</span>{% icon "search" 16 "2.2" %}
+        <input type="search" name="q" value="{{ filters.q }}" placeholder="Reference, code, institution or title" autocomplete="off"></label>
+      <label class="sr-only" for="dr-kind">Type</label>
+      <select id="dr-kind" name="kind"><option value="">All types</option>{% for k, label in kinds %}<option value="{{ k }}"{% if filters.kind == k %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <label class="sr-only" for="dr-status">Status</label>
+      <select id="dr-status" name="status"><option value="">Any status</option>{% for k, label in statuses %}<option value="{{ k }}"{% if filters.status == k %} selected{% endif %}>{{ label }}</option>{% endfor %}<option value="provisional"{% if filters.status == "provisional" %} selected{% endif %}>Provisional (no official copy)</option></select>
+      <button class="btn btn-primary" type="submit">{% icon "search" 16 "2.2" %} Search</button>
+    </form>
+    <div id="doc-panel" aria-live="polite">{% include "documents/register/_list.html" %}</div>
+  </section>
+</div>
+{% endblock %}

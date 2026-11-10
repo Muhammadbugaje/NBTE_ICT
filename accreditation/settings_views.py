@@ -304,7 +304,9 @@ def catalogue(request):
             category = ProgrammeCategory.objects.filter(pk=p.get("category") or 0).first()
             item = builder.create_item(user=request.user, category=category, programme_name=p.get("programme_name", ""),
                                        kind=p.get("kind", ""), name=p.get("name", ""),
-                                       required_quantity=p.get("required_quantity", ""), unit=p.get("unit", "no."))
+                                       required_quantity=p.get("required_quantity", ""), unit=p.get("unit", "no."),
+                                       weight=p.get("weight", ""), min_spec=p.get("min_spec", ""),
+                                       is_critical=p.get("is_critical") == "on")
         except (ValidationError, PermissionDenied) as exc:
             response = render(request, "accreditation/settings/_catalogue_panel.html",
                               _catalogue_ctx(request, error=_msg(exc), values=p), status=422)
@@ -330,7 +332,9 @@ def catalogue_item(request, pk):
             title = f"{item.name} retired"
         else:
             new = builder.revise_item(item, user=request.user, required_quantity=request.POST.get("required_quantity", ""),
-                                      unit=request.POST.get("unit"), name=request.POST.get("name"))
+                                      unit=request.POST.get("unit"), name=request.POST.get("name"),
+                                      weight=request.POST.get("weight"), min_spec=request.POST.get("min_spec"),
+                                      is_critical=request.POST.get("is_critical") == "on")
             title = f"{new.name}: version {new.version}"
     except (ValidationError, PermissionDenied) as exc:
         response = render(request, "accreditation/settings/_catalogue_panel.html",
@@ -348,12 +352,15 @@ def _can_manage_rates(user):
 
 
 def _rates_ctx(request, **extra):
-    from staff.models import Department
+    from staff.models import Department, StateOfOrigin
+
+    from staff.models import StateOfOrigin
 
     from .models import RateTable
 
     f = request.GET if request.method == "GET" else request.POST
-    qs = RateTable.objects.select_related("department").order_by("department__name", "sort_order", "code")
+    qs = RateTable.objects.select_related("department", "state").order_by(
+        "state__name", "department__name", "sort_order", "code")
     if f.get("show", "active") == "active":
         qs = qs.filter(is_active=True)
     import config
@@ -362,7 +369,8 @@ def _rates_ctx(request, **extra):
     ctx = {"rates": list(qs), "filters": f, "show": f.get("show", "active"), "editable": _can_manage_rates(request.user),
            "kinds": RateTable.KIND_CHOICES, "units": RateTable.UNIT_CHOICES, "rates_confirmed": confirmed,
            "departments": Department.objects.filter(is_active=True).order_by("name")
-           if hasattr(Department, "is_active") else Department.objects.order_by("name")}
+           if hasattr(Department, "is_active") else Department.objects.order_by("name"),
+           "states": StateOfOrigin.objects.filter(is_active=True).order_by("name")}
     ctx.update(extra)
     return _ctx(request, "rates", **ctx)
 
@@ -386,6 +394,8 @@ def rates(request):
 
     from staff.models import Department
 
+    from staff.models import StateOfOrigin
+
     from .models import RateTable
 
     if request.method == "POST":
@@ -398,13 +408,15 @@ def rates(request):
             if not code or not role:
                 raise ValidationError("Enter a code and who the rate is for.")
             dept = Department.objects.filter(pk=p.get("department") or 0).first()
-            if RateTable.objects.filter(code=code, department=dept).exists():
+            state = StateOfOrigin.objects.filter(pk=p.get("state") or 0).first()
+            if RateTable.objects.filter(code=code, department=dept, state=state).exists():
                 raise ValidationError(f"A rate with code {code} already exists"
-                                      f"{' for ' + dept.name if dept else ''}; edit it instead.")
+                                      f"{' for ' + dept.name if dept else ''}"
+                                      f"{' in ' + state.name if state else ''}; edit it instead.")
             kind = p.get("allowance_type") if p.get("allowance_type") in dict(RateTable.KIND_CHOICES) else "other"
             unit = p.get("unit") if p.get("unit") in dict(RateTable.UNIT_CHOICES) else RateTable.PER_DAY
             rate = RateTable.objects.create(code=code, role=role[:120], allowance_type=kind, unit=unit,
-                                            amount=_money(p.get("amount", "")), department=dept,
+                                            amount=_money(p.get("amount", "")), department=dept, state=state,
                                             sort_order=(RateTable.objects.count() + 1) * 10)
         except (ValidationError, PermissionDenied) as exc:
             response = render(request, "accreditation/settings/_rates_panel.html",
@@ -421,6 +433,8 @@ def rates(request):
 def rate_edit(request, pk):
     """op=save (amount / role / unit) or op=toggle (retire / restore). Lines
     already on a cost sheet keep the amount they were priced at."""
+    from staff.models import StateOfOrigin
+
     from .models import RateTable
 
     rate = RateTable.objects.filter(pk=pk).first()

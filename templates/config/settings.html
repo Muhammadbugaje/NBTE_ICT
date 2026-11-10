@@ -3,7 +3,7 @@
 {% block title %}Settings{% endblock %}
 {% block page_title %}Settings{% endblock %}
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/settings.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/settings.css' %}">
 {% endblock %}
 {% block content %}
 {% comment %}
@@ -16,6 +16,15 @@
     <span class="settings-eyebrow">System configuration</span>
     <h1>Settings</h1>
     <p>Rules the NBTE system runs on: e-mail delivery, leave, tasks, tickets and workflows. Secrets and site identity stay in the server's environment. Quality-assurance rules have their own page.</p>
+    {# Phase B: organisation settings live on their own pages #}
+    <div class="btn-group settings-org-links">
+      <a class="btn btn-ghost" href="{% url 'config:appearance' %}">Appearance</a>{# v2.1 A9 #}
+      {% if perms.org.manage_offices or request.user.is_superuser %}<a class="btn btn-ghost" href="{% url 'org:offices' %}">Offices</a>{% endif %}
+      {% if perms.org.manage_grade_levels or request.user.is_superuser %}<a class="btn btn-ghost" href="{% url 'org:grade_levels' %}">Grade levels</a>
+      <a class="btn btn-ghost" href="{% url 'org:designations' %}">Designations</a>{% endif %}
+      <a class="btn btn-ghost" href="{% url 'config:branding' %}">Branding</a>{# v2.1 A5 #}
+      <a class="btn btn-ghost" href="{% url 'config:history' %}">History timeline</a>{# v2.1 A1 #}
+    </div>
   </header>
 
   <div class="sh-layout">
@@ -23,8 +32,10 @@
       <span class="sh-sidenav__title" aria-hidden="true">On this page</span>
       <ul class="sh-nav" data-sh-nav>
         <li><a href="#sh-email" class="is-active">E-mail delivery</a></li>
+        <li><a href="{% url 'config:appearance' %}">Appearance ↗</a></li>{# v2.1 A9 #}
         <li><a href="#sh-leave">Leave policy</a></li>
         {% if perms.backups.view_backups %}<li><a href="#sh-backups">Backups</a></li>{% endif %}
+        {% if perms.staff.manage_geography %}<li><a href="{% url 'geo:index' %}">States &amp; LGAs ↗</a></li>{% endif %}{# v2.1 X49 #}
         {% if qa_settings_count %}<li><a href="#sh-qa">Quality assurance <span class="sh-nav__count">{{ qa_settings_count }}</span></a></li>{% endif %}
         {% for group, items in grouped %}<li><a href="#sh-g-{{ group|slugify }}">{{ group }} <span class="sh-nav__count">{{ items|length }}</span></a></li>{% endfor %}
       </ul>
@@ -87,6 +98,10 @@
             <span class="sh-section__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
             <h2 id="settings-leave-policy-title">Annual leave days by role</h2>
             <p>The default annual allowance for each system role. A person-specific override always takes precedence.</p>
+            <div class="btn-group">
+              <a class="btn btn-ghost btn-sm" href="{% url 'leave:types' %}">Leave types</a>
+              <a class="btn btn-ghost btn-sm" href="{% url 'leave:holidays' %}">Public holidays</a>
+            </div>
           </div>
           <span class="sh-chip">{{ leave_roles|length }} role{{ leave_roles|length|pluralize }}</span>
         </header>

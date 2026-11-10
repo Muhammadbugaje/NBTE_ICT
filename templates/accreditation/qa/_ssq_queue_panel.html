@@ -3,25 +3,40 @@
   <a href="{% url 'qa_req:list' %}" hx-get="{% url 'qa_req:list' %}" hx-target="#qa-panel" hx-push-url="true">QA requests</a>
   <span aria-hidden="true">/</span><span aria-current="page">SSQ review queue</span>
 </nav>
-<header class="qa-hero">
+<header class="qa-hero ssq-hero">
   <div>
-    <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} SOP-02 · self-study questionnaires</span>
+    <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Self-study questionnaires · who is handling what</span>
     <h1 data-qa-focus>SSQ review queue</h1>
-    <p>Each submitted SSQ is an immutable snapshot. Accept it, return it to the institution (a new version is started — the submitted one is never changed), or raise a query for more information.</p>
+    <p>Every submitted SSQ goes to the department that handles the institution. Its director assigns one officer, the officer assesses it, and the director approves. Each row shows who holds it now and for how long{% if not tracks_all %} — for the SSQs in your scope{% endif %}.</p>
+    <div class="qa-hero__actions">
+      <a class="btn btn-primary" href="?status=unassigned" hx-get="{% url 'qa_req:ssq_queue' %}?status=unassigned" hx-target="#qa-panel" hx-push-url="true">{% icon "users" 16 %} Needs an officer</a>
+      <a class="btn btn-subtle" href="?status=overdue" hx-get="{% url 'qa_req:ssq_queue' %}?status=overdue" hx-target="#qa-panel" hx-push-url="true">{% icon "clock" 16 %} Overdue</a>
+      <a class="btn btn-subtle" href="{% url 'qa_req:list' %}" hx-get="{% url 'qa_req:list' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "layers" 16 %} QA requests</a>
+    </div>
   </div>
-  <div class="qa-hero__stats">
-    <a class="qa-stat qa-stat--warn qa-stat--link" href="?status=submitted" hx-get="{% url 'qa_req:ssq_queue' %}?status=submitted" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.waiting }}</strong><span>Waiting for review</span></a>
+  <div class="qa-hero__stats" aria-label="SSQs at NBTE">
+    <a class="qa-stat qa-stat--link" href="?status=submitted" hx-get="{% url 'qa_req:ssq_queue' %}?status=submitted" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.waiting }}</strong><span>At NBTE</span></a>
+    <a class="qa-stat qa-stat--warn qa-stat--link" href="?status=unassigned" hx-get="{% url 'qa_req:ssq_queue' %}?status=unassigned" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.unassigned }}</strong><span>Need an officer</span></a>
+    <a class="qa-stat qa-stat--link" href="?status=assessing" hx-get="{% url 'qa_req:ssq_queue' %}?status=assessing" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.assessing }}</strong><span>Under assessment</span></a>
+    <a class="qa-stat qa-stat--warn qa-stat--link" href="?status=approval" hx-get="{% url 'qa_req:ssq_queue' %}?status=approval" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.approval }}</strong><span>Awaiting approval</span></a>
+    <a class="qa-stat qa-stat--danger qa-stat--link" href="?status=overdue" hx-get="{% url 'qa_req:ssq_queue' %}?status=overdue" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.overdue }}</strong><span>Over {{ sla_days }} days</span></a>
   </div>
 </header>
-<section class="qa-card" aria-label="SSQs">
-  <nav class="qa-tabs" aria-label="SSQ status">
+
+{% if action_error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Reminder not sent" message=action_error %}
+{% elif action_ok %}{% include "qa_core/partials/_callout.html" with kind="success" title=action_ok message=action_ok_body|default:action_ok %}{% endif %}
+
+<section class="qa-card ssq-desk" aria-label="SSQs">
+  <nav class="qa-tabs ssq-desk__tabs" aria-label="SSQ stage">
     {% for v, l in statuses %}<a href="?status={{ v }}" hx-get="{% url 'qa_req:ssq_queue' %}?status={{ v }}" hx-target="#qa-panel" hx-push-url="true" class="{% if status == v %}is-active{% endif %}"{% if status == v %} aria-current="page"{% endif %}>{{ l }}</a>{% endfor %}
   </nav>
-  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_req:ssq_queue' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+  <form class="qa-toolbar" role="search" method="get" action="{% url 'qa_req:ssq_queue' %}" hx-get="{% url 'qa_req:ssq_queue' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change, submit" data-qa-no-overlay>
     <input type="hidden" name="status" value="{{ status }}">
     <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Request, institution or programme" autocomplete="off"></label>
-    <select class="input qa-select" name="type" aria-label="QA type"><option value="">Any QA type</option>{% for t in types %}<option value="{{ t.code }}"{% if filters.type == t.code %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
-    <select class="input qa-select" name="level" aria-label="Level"><option value="">Any level</option>{% for lv in levels %}<option value="{{ lv.code }}"{% if filters.level == lv.code %} selected{% endif %}>{{ lv.code|upper }}</option>{% endfor %}</select>
+    {% if departments|length > 1 %}<label class="sr-only" for="ssq-f-dept">Department</label><select class="input qa-select" id="ssq-f-dept" name="dept"><option value="">Any department</option>{% for d in departments %}<option value="{{ d.code }}"{% if filters.dept == d.code %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>{% endif %}
+    <label class="sr-only" for="ssq-f-type">QA type</label><select class="input qa-select" id="ssq-f-type" name="type"><option value="">Any QA type</option>{% for t in types %}<option value="{{ t.code }}"{% if filters.type == t.code %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+    <label class="sr-only" for="ssq-f-level">Level</label><select class="input qa-select" id="ssq-f-level" name="level"><option value="">Any level</option>{% for lv in levels %}<option value="{{ lv.code }}"{% if filters.level == lv.code %} selected{% endif %}>{{ lv.code|upper }}</option>{% endfor %}</select>
+    <noscript><button class="btn btn-sm btn-subtle" type="submit">Apply</button></noscript>
   </form>
   <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "accreditation/qa/_ssq_rows.html" %}</div>
 </section>

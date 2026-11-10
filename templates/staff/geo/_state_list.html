@@ -1,0 +1,12 @@
+<ul class="geo-state-list" id="geo-state-list">
+  {% for s in states %}
+  <li>
+    <a class="geo-state{% if state and s.pk == state.pk %} is-active{% endif %}{% if not s.is_active %} is-off{% endif %}" href="?state={{ s.code }}"
+       hx-get="{% url 'geo:state' s.code %}" hx-target="#geo-panel" hx-swap="outerHTML" hx-push-url="?state={{ s.code }}">
+      <span class="geo-state__name">{{ s.name|title }}</span>
+      <span class="pf-chip">{{ s.zone|default:"—" }}</span>
+      <span class="geo-state__count">{{ s.n_lgas }}</span>
+    </a>
+  </li>
+  {% empty %}<li class="pf-empty">No state matches.</li>{% endfor %}
+</ul>

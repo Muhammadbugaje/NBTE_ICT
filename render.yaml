@@ -1,0 +1,146 @@
+# Render blueprint (v2.2): the whole NBTE system as code, sized for small plans.
+#
+#   1. Review the production data, domain, credentials, and plan/cost choices.
+#   2. Push this repo to GitHub, then create a Blueprint in the Render dashboard.
+#   3. Fill the sync:false values ONCE, in the "siteEnv" environment group:
+#        DATABASE_URL (Aiven or Render Postgres), ALLOWED_HOSTS, SITE_URL,
+#        QA_PORTAL_HOST, CSRF_TRUSTED_ORIGINS, DEFAULT_FROM_EMAIL,
+#        BREVO_API_KEY (or GMAIL_USER + GMAIL_APP_PASSWORD), payment keys.
+#
+# Deployment notes:
+#   * ONE set of secrets. Before, the web service generated its own SECRET_KEY /
+#     FIELD_ENCRYPTION_KEY / PAYMENT_QR_SIGNING_KEY while the worker took a
+#     different set from the group, so the worker could not read encrypted
+#     bank details or verify signed QR codes. Both now use the group only.
+#   * The scheduler runs. Before, nothing started Celery beat, so the 25
+#     scheduled jobs (payment polls, nightly reconciliation, SLA sweeps,
+#     reminders, backup check, …) never ran on Render.
+#   * ONE service runs the website AND the worker + scheduler (start.sh,
+#     PROCESS_MODE=all). A Render disk attaches to one service only, so a
+#     separate worker could not read uploads or write backups. One paid
+#     service. Keep it at ONE instance (the scheduler must not run twice).
+#   * Conservative starting concurrency: 1 gunicorn process x 8 threads +
+#     1 Celery process x 2 threads. Measure resource use before scaling.
+#   * /healthz is the platform health check (no DB hit, never redirected).
+#   * Real client address from Cloudflare's CF-Connecting-IP (CLIENT_IP_HEADER),
+#     so rate limits and IP rules cannot be dodged with a forged header.
+#
+# Run the web service, worker and Redis in the SAME region as the database.
+# User uploads and Celery beat state need the persistent disk.
+services:
+  - type: web
+    name: nbte-ict-web
+    runtime: python
+    plan: 0.5c-512mb
+    buildCommand: ./build.sh
+    startCommand: ./start.sh
+    # Runs before every deploy; safe because seed.py --fresh never runs here.
+    preDeployCommand: python manage.py migrate --noinput
+    healthCheckPath: /healthz
+    # Keep deploys explicit until production migrations and data handling are reviewed.
+    autoDeployTrigger: "off"
+    envVars:
+      - fromGroup: siteEnv
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: nbte-ict-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: nbte-ict-redis
+          property: connectionString
+      - key: PROCESS_MODE
+        value: all             # website + Celery worker + scheduler in this one service
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: GUNICORN_THREADS
+        value: "8"
+      - key: CELERY_CONCURRENCY
+        value: "2"
+      - key: CELERYBEAT_SCHEDULE_FILE
+        value: /var/data/celerybeat-schedule
+    disk:
+      name: siteMediaDisk
+      mountPath: /var/data
+      sizeGB: 10 # Confirm required capacity/cost; persistent disks cannot be downsized.
+
+  # A separate worker service is only possible once uploads live in shared
+  # object storage (S3-compatible). Until then the web service runs it
+  # (PROCESS_MODE=all above).
+
+  - type: keyvalue
+    name: nbte-ict-redis
+    plan: 256mb
+    ipAllowList: []          # no external IP access; services use Render's private network
+    # Preserve Celery keys (no TTL); evict expiring cache entries first.
+    maxmemoryPolicy: volatile-lru
+    persistenceMode: journal-snapshot
+
+envVarGroups:
+  - name: siteEnv
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: nbte_ict.settings.prod
+      # Generated ONCE for the group, so the web and the worker share them.
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FIELD_ENCRYPTION_KEY
+        generateValue: true
+      - key: PAYMENT_QR_SIGNING_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false            # e.g. Aiven: postgres://…?sslmode=require
+      - key: SITE_URL
+        sync: false            # e.g. https://nbte-ict.onrender.com
+      - key: ALLOWED_HOSTS
+        sync: false            # e.g. nbte-ict.onrender.com,qa.your-domain.gov.ng
+      - key: QA_PORTAL_HOST
+        sync: false            # e.g. qa.your-domain.gov.ng
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false            # e.g. https://nbte-ict.onrender.com,https://qa.your-domain.gov.ng
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: PAYMENTS_GATEWAYS
+        sync: false            # paystack, remita or "paystack,remita"
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: PAYSTACK_BASE_URL
+        sync: false
+      - key: REMITA_MERCHANT_ID
+        sync: false
+      - key: REMITA_API_KEY
+        sync: false
+      - key: REMITA_BASE_URL
+        sync: false
+      - key: ADMIN_ALLOWED_IPS
+        sync: false            # optional: office IPs/CIDRs allowed to open /admin/
+      - key: CLIENT_IP_HEADER
+        value: HTTP_CF_CONNECTING_IP
+      - key: USE_X_ACCEL_REDIRECT
+        value: "False"         # no nginx on Render: gunicorn serves protected files
+      - key: WHITENOISE
+        value: "True"          # static files with year-long cache headers
+      - key: SECURE_SSL_REDIRECT
+        value: "True"
+      - key: DB_CONN_MAX_AGE
+        value: "300"
+      - key: DB_STATEMENT_TIMEOUT_MS
+        value: "30000"
+      - key: MEDIA_ROOT
+        value: /var/data/media
+      - key: PROTECTED_MEDIA_ROOT
+        value: /var/data/protected
+      - key: SERVE_FILES_LOCALLY
+        value: "True"           # persistent public media is served by Django on Render
+      - key: DB_BACKUP_DIR
+        value: /var/data/backups

@@ -22,10 +22,14 @@ def _routes(urlconf):
     return {route: p for route, p in _walk(get_resolver(urlconf).url_patterns)}
 
 
-SHARED_INFRA = ("^static/", "static/")  # dev-only static file serving exists on both
+# Shared infrastructure and public utility pages are intentionally mounted on both hosts.
+SHARED_INFRA = ("^static/", "static/", "sw.js", "offline/", "scan/", "v/")
 # Phase 9: the mobile API is mounted at api/v1/ on both doors on purpose (its
 # authentication class enforces the door); tested in api/tests.
-SHARED_API = ("api/v1/",)
+SHARED_API = ("api/v1/", "me/preferences/",  # A10: appearance preferences on both hosts
+              # X33/X34: a resource person's earnings and bank details use the same
+              # host-aware honoraria views on both doors (portal: /me/earnings/, /me/bank/).
+              "me/earnings/", "me/bank/")
 
 
 def _business(routes):
@@ -48,13 +52,21 @@ def test_url_tables_are_disjoint():
         # Phase 2: institution record, documents, onboarding application,
         # payments (incl. provider webhooks, slip verification, dev simulator),
         # protected downloads and QA impersonation hand-off.
-        "register/", "institution/", "institution/users/", "institution/lgas/", "documents/",
+        "register/", "institution/", "institution/users/", "institution/change-requests/",
+        "institution/change-requests/new/", "institution/lgas/", "documents/",
+        "institution/management/", "setup/", "setup/resend-ce/",
         "documents/summary/", "documents/upload/<int:kind_id>/", "timeline/", "programmes/list/", "programmes/<int:pk>/",  # Phase 8: programme pages
         "application/",
-        "application/start/", "application/submit/", "application/programmes/",
+        "application/start/", "application/submit/", "application/declare/", "application/ssq/open/",
+        "application/ssq/<int:pk>/", "application/ssq/<int:pk>/save/", "application/ssq/submit/",
+        "application/programmes/",
         "application/programmes/<int:pk>/remove/", "payments/", "payments/<int:pk>/", "payments/<int:pk>/slip/",
-        "payments/<int:pk>/online/", "payments/<int:pk>/proof/", "payments/<int:pk>/receipt/",
+        "application/programmes/master/", "application/programmes/master/<int:pk>/",
+        "payments/<int:pk>/online/", "payments/<int:pk>/app-return/<str:token>/", "payments/<int:pk>/proof/", "payments/<int:pk>/receipt/",
+        "payments/<int:pk>/method/",
         "payments/webhooks/paystack/", "payments/webhooks/remita/", "payments/simulator/<str:provider>/<str:ref>/",
+        "pb/", "pb/programmes/<int:pk>/", "pb/letters/<int:pk>/", "pb/programmes/<int:pk>/letters/",
+        "letters/documents/<int:pk>/", "letters/documents/<int:pk>/understood/",
         "verify/<str:token>/", "download/<str:label>/<int:pk>/", "impersonate/<str:token>/", "impersonation/ended/",
         # Phase 3: QA requests (SOP-02), the SSQ workspace and queries.
         "qa-requests/", "qa-requests/new/", "qa-requests/<int:pk>/", "qa-requests/<int:pk>/submit/",
@@ -68,6 +80,9 @@ def test_url_tables_are_disjoint():
         "qa-requests/<int:pk>/ssq/<int:ssq_pk>/revise/", "queries/", "queries/<int:pk>/",
         # Phase 5: the resource-person portal and the institution's inspections list.
         "engagements/", "service-history/", "profile/", "inspections/",
+        # SOP-03: visit invitations (bodies / resource persons) and the tokenised e-mail link.
+        "visit-invitations/", "visit-invitations/<int:pk>/respond/", "visit-invitations/<int:pk>/letter/",
+        "invite/<str:token>/", "invite/<str:token>/letter/",
         # Phase 6: the public how-to page and the Word guides it offers.
         "how-to/", "guides/<slug:slug>/",
         # Phase 7: every notification (the bell's "View all"), complaints and the knowledge base.
@@ -78,20 +93,40 @@ def test_url_tables_are_disjoint():
         # status board and outcome letters.
         "application/programmes/<int:pk>/streams/", "application/programmes/estimate/", "qa-requests/estimate/",
         "qa-requests/<int:pk>/programmes/<int:row>/streams/", "programmes/", "letters/",
+        # v2.1 Phase 0: programme submission (Q1) and the public LGA options (X49).
+        "application/programmes/submit/", "register/lgas/",
         # Phase 9: account security (devices, notification settings, deletion
         # requests, passkeys) and passkey sign-in.
         "account/devices/<int:pk>/sign-out/", "account/devices/sign-out-others/", "account/notifications/",
         "account/delete/", "account/delete/withdraw/", "account/passkeys/register/begin/",
         "account/passkeys/register/finish/", "account/passkeys/<int:pk>/rename/",
         "account/passkeys/<int:pk>/remove/", "passkeys/sign-in/begin/", "passkeys/sign-in/finish/",
+        # v2.1 Phase E (M4): the institution's Memos inbox
+        "memos/", "memos/<int:pk>/", "memos/<int:pk>/acknowledge/", "memos/<int:pk>/letter.pdf",
+        # Add to calendar: .ics downloads with reminders and the personal feed (core/calendar_views.py)
+        "my-calendar/inspections/<int:pk>.ics", "my-calendar/queries/<int:pk>.ics", "my-calendar/feed/<str:token>.ics",
+        # v2.2: read a guide in the browser before downloading it.
+        "guides/<slug:slug>/read/",
+        # Linear onboarding: resubmit a self-study NBTE returned for correction.
+        "application/ssq/<int:pk>/resubmit/",
+        # v2.5 cancellation & refunds (payments/refund_views.py).
+        "qa-requests/<int:pk>/cancel-with-refund/", "application/cancel/", "refunds/",
+        "refunds/<int:pk>/bank-details/", "refund-policy/",
     }
     # "" (the portal dashboard) is the only literal both share: on the internal
     # host "" is the public landing page. Everything else is disjoint.
     assert internal & portal <= {""}
-    views_internal = {f"{p.callback.__module__}.{p.callback.__name__}" for r, p in _routes(settings.ROOT_URLCONF).items()
-                      if not r.startswith(SHARED_API)}  # Phase 9
-    views_portal = {f"{p.callback.__module__}.{p.callback.__name__}" for r, p in _routes(settings.QA_PORTAL_URLCONF).items()
-                    if not r.startswith(SHARED_API)}  # Phase 9
+    shared_routes = SHARED_INFRA + SHARED_API
+    views_internal = {
+        f"{p.callback.__module__}.{p.callback.__name__}"
+        for r, p in _routes(settings.ROOT_URLCONF).items()
+        if not r.startswith(shared_routes)
+    }
+    views_portal = {
+        f"{p.callback.__module__}.{p.callback.__name__}"
+        for r, p in _routes(settings.QA_PORTAL_URLCONF).items()
+        if not r.startswith(shared_routes)
+    }
     assert not ({v for v in views_portal if "staticfiles" not in v} & views_internal)
 
 

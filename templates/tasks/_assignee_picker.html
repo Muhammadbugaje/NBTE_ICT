@@ -4,12 +4,16 @@ Usage:
     {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_task=task %}
     {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_category_code=category.code picker_initial_ids=current_ids %}
 {% endcomment %}
-<div class="tsk-picker"
+<div class="tsk-picker{% if picker_single %} tsk-picker-single{% endif %}"
      data-assignee-picker
      data-name="{{ picker_name|default:'assignees' }}"
      {% if picker_task %}data-task-id="{{ picker_task.pk }}"{% endif %}
      {% if picker_category_code %}data-category-code="{{ picker_category_code }}"{% endif %}
-     data-initial-ids="{{ picker_initial_ids|default:'' }}">
+     data-initial-ids="{{ picker_initial_ids|default:'' }}"
+     {% if picker_single %}data-single="1"{% endif %}
+     {% if picker_mode %}data-mode="{{ picker_mode }}"{% endif %}
+     {% if picker_initial_name %}data-initial-name="{{ picker_initial_name }}"{% endif %}
+     {% if picker_placeholder %}data-placeholder="{{ picker_placeholder }}"{% endif %}>
 
   <div class="tsk-picker-chips" data-picker-chips></div>
 
@@ -18,7 +22,7 @@ Usage:
     <span class="tsk-picker-trigger-icon" aria-hidden="true">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </span>
-    <span class="tsk-picker-trigger-label" data-picker-label>Add people…</span>
+    <span class="tsk-picker-trigger-label" data-picker-label>{{ picker_placeholder|default:"Add people…" }}</span>
     <svg class="tsk-picker-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
   </button>
 

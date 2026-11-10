@@ -129,6 +129,127 @@ def test_files_in_use_are_never_orphans_but_a_stray_old_file_is(slip, settings):
     assert "bank_snapshot" in index.reference_for("protected", "legacy/scans/7f1e2d3c4b5a69788796a5b4c3d2e1f0.pdf")
 
 
+def test_document_and_image_filefield_references_are_not_orphans(db, settings):
+    from django.contrib.auth import get_user_model
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from documents.models import StaffSignature
+    from portal.models import Document, DocumentCategory, DocumentVersion
+    from public.models import HistoryMilestone
+    from showcase.models import ShowcaseImage
+
+    owner = get_user_model().objects.create_user("media-scan-documents@t.local", password="unused")
+    category = DocumentCategory.objects.create(name="Scanner regression")
+    document = Document.objects.create(title="Scanner regression document", category=category, owner=owner)
+    version = DocumentVersion.objects.create(
+        document=document,
+        version_number=1,
+        file=SimpleUploadedFile("scanner-regression.pdf", b"%PDF-1.4 document"),
+    )
+    image = ShowcaseImage.objects.create(
+        image=SimpleUploadedFile("scanner-regression.png", b"stored image bytes"),
+        alt_text="Scanner regression image",
+        placements="hero",
+    )
+    # A second FileField model ensures references are discovered across models,
+    # not just the models used by the scanner's historic cleanup registry.
+    signature = StaffSignature.objects.create(
+        user=owner,
+        image=SimpleUploadedFile("scanner-signature.png", b"stored signature bytes"),
+    )
+    milestone = HistoryMilestone.objects.create(
+        year="2026",
+        title="Scanner regression milestone",
+        image=SimpleUploadedFile("scanner-history.png", b"stored public image bytes"),
+    )
+
+    referenced = [
+        ("protected", version.file.name),
+        ("protected", image.image.name),
+        ("protected", signature.image.name),
+        ("public", milestone.image.name),
+    ]
+    for kind, rel in referenced:
+        root = settings.PROTECTED_MEDIA_ROOT if kind == "protected" else settings.MEDIA_ROOT
+        _age(Path(root) / rel)
+
+    index = scanner.build_reference_map()
+
+    for kind, rel in referenced:
+        root = settings.PROTECTED_MEDIA_ROOT if kind == "protected" else settings.MEDIA_ROOT
+        entry = scanner.FileEntry(kind=kind, rel=rel, abs=Path(root) / rel,
+                                  size=(Path(root) / rel).stat().st_size, mtime=OLD)
+        is_orphan, reason = scanner.classify(entry, index, min_age_days=0)
+        assert not is_orphan, reason
+    assert "DocumentVersion" in index.reference_for(*referenced[0])
+    assert "ShowcaseImage" in index.reference_for(*referenced[1])
+    assert "StaffSignature" in index.reference_for(*referenced[2])
+    assert "HistoryMilestone" in index.reference_for(*referenced[3])
+
+
+def test_guide_and_configured_static_asset_references_are_kept(db, settings, tmp_path):
+    static_root = tmp_path / "configured-static"
+    static_root.mkdir()
+    settings.STATICFILES_DIRS = [static_root]
+
+    guide_image = "guide-assets/scanner-regression-guide-image.png"
+    _write(settings.MEDIA_ROOT, guide_image)
+    (static_root / "guide-regression.html").write_text(
+        f'<img src="/media/{guide_image}">', encoding="utf-8"
+    )
+    guide_document = "qa/guides/scanner-regression-guide.pdf"
+    _write(settings.MEDIA_ROOT, guide_document)
+    excluded_paths = [
+        "static/scanner-regression.css",
+        "fixtures/scanner-regression.json",
+        "system/scanner-regression.dat",
+    ]
+    for rel in excluded_paths:
+        _write(settings.MEDIA_ROOT, rel)
+
+    index = scanner.build_reference_map()
+    stored_paths = {(entry.kind, entry.rel) for entry in scanner.walk_storage()}
+
+    assert "static/guide asset" in index.reference_for("public", guide_image)
+    assert "protected folder" in index.reference_for("public", guide_document)
+    for rel in (guide_image, guide_document):
+        entry = scanner.FileEntry(kind="public", rel=rel, abs=Path(settings.MEDIA_ROOT) / rel,
+                                  size=(Path(settings.MEDIA_ROOT) / rel).stat().st_size, mtime=OLD)
+        is_orphan, reason = scanner.classify(entry, index, min_age_days=0)
+        assert not is_orphan, reason
+    assert not any(("public", rel) in stored_paths for rel in excluded_paths)
+
+
+def test_old_unreferenced_file_is_classified_as_an_orphan(db, settings, monkeypatch):
+    orphan = "uploads/scanner-regression-unreferenced.pdf"
+    path = _write(settings.PROTECTED_MEDIA_ROOT, orphan)
+    monkeypatch.setattr(scanner, "build_reference_map", lambda: scanner.ReferenceIndex())
+    result = scanner.scan(min_age_days=30)
+
+    assert ("protected", orphan) in _orphans(result)
+    assert path.is_file()
+
+
+def test_incomplete_reference_index_fails_closed_without_moving_files(db, settings, monkeypatch):
+    orphan = "uploads/scanner-regression-index-failure.pdf"
+    path = _write(settings.PROTECTED_MEDIA_ROOT, orphan)
+    incomplete = scanner.ReferenceIndex(complete=False, errors=["simulated field query failure"])
+    monkeypatch.setattr(scanner, "build_reference_map", lambda: incomplete)
+
+    result = scanner.scan(min_age_days=0)
+    quarantine = scanner.quarantine_paths(
+        [{"kind": "protected", "rel": orphan}],
+        min_age_days=0,
+        index=incomplete,
+    )
+
+    assert result.reference_index_complete is False
+    assert result.reference_errors == incomplete.errors
+    assert not result.orphans
+    assert quarantine.skipped_unverified == 1
+    assert path.is_file()
+    assert not list(Path(settings.PROTECTED_MEDIA_ROOT).glob(".quarantine/**"))
+
+
 def test_extra_protected_folders_from_config(db, settings):
     from config.models import ConfigEntry
 

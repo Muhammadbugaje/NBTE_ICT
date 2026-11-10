@@ -1,156 +1,53 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
-{% block title %}User management · {{ SITE_NAME }}{% endblock %}
+{% block title %}{{ seg.label }} · User management · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}User management{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/hr.css' %}">
+{% endblock %}
 
 {% block content %}
 <div class="users-page">
-
-  {# ---------- HERO ---------- #}
-  <header class="users-hero">
-    <div class="users-hero-inner">
-      <div class="users-hero-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+  {% url list_url_name as list_url %}
+  <header class="qa-hero nbte-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon seg.icon 14 "2.2" %} User management · {{ seg.label }}</span>
+      <h1>{% if segment == 'nbte' %}NBTE staff accounts{% elif segment == 'institution' %}Institution user accounts{% else %}Resource persons &amp; professional bodies{% endif %}</h1>
+      <p>{% if segment == 'nbte' %}Sign-in accounts for NBTE staff on the internal system. Filter by department, office, rank or role — institution and other portal accounts are kept in their own sections.{% elif segment == 'institution' %}QA portal accounts that belong to an institution — Chief Executives, Heads of ICT and other portal users. They never sign in to the internal system.{% else %}QA portal accounts for resource persons and professional bodies. They are created from their own workflows and never hold NBTE internal roles.{% endif %}</p>
+      <div class="qa-hero__actions">
+        {% if can_add and segment == 'nbte' %}<a class="btn btn-primary" href="{% url 'accounts:user_create' %}">{% icon "plus" 16 "2.4" %} New NBTE account</a>{% endif %}
+        {% if can_add and segment == 'institution' %}<a class="btn btn-primary" href="{% url 'accounts:user_create_institution' %}">{% icon "plus" 16 "2.4" %} New institution user</a>{% endif %}
+        {% if perms.accounts.assign_groups %}<a class="btn btn-subtle" href="{% url 'accounts:groups:users' %}?segment={{ segment }}">{% icon "shield" 16 %} Groups &amp; permissions</a>{% endif %}
+        {% if request.user.is_superuser %}<a class="btn btn-subtle" href="{% url 'core:impersonate_pick' %}{% if segment != 'nbte' %}?segment={{ segment }}{% endif %}">{% icon "eye" 16 %} Act as …</a>{% endif %}
       </div>
-      <div>
-        <h1>User management</h1>
-        <p>{{ total }} user{{ total|pluralize }}{% if q %} matching “{{ q }}”{% endif %}.</p>
-      </div>
+    </div>
+    <div class="qa-hero__stats um-tiles" aria-label="Summary">
+      <a class="qa-stat qa-stat--link" href="{{ list_url }}"><strong>{{ stats.total }}</strong><span>{% if segment == 'nbte' %}Staff accounts{% elif segment == 'institution' %}Institution users{% else %}Portal accounts{% endif %}</span></a>
+      <a class="qa-stat qa-stat--success qa-stat--link" href="{{ list_url }}?active=1"><strong>{{ stats.active }}</strong><span>Active</span></a>
+      {% if segment == 'nbte' %}
+        <div class="qa-stat qa-stat--info"><strong>{{ stats.departments }}</strong><span>Departments</span></div>
+        <a class="qa-stat qa-stat--warn qa-stat--link" href="{{ list_url }}?role=none"><strong>{{ stats.no_role }}</strong><span>Without a role</span></a>
+      {% elif segment == 'institution' %}
+        <div class="qa-stat qa-stat--info"><strong>{{ stats.institutions }}</strong><span>Institutions</span></div>
+        <a class="qa-stat qa-stat--link" href="{{ list_url }}?kind=chief_executive"><strong>{{ stats.ce }}</strong><span>Chief Executives</span></a>
+      {% else %}
+        <a class="qa-stat qa-stat--info qa-stat--link" href="{{ list_url }}?type=resource_person"><strong>{{ stats.resource }}</strong><span>Resource persons</span></a>
+        <a class="qa-stat qa-stat--link" href="{{ list_url }}?type=professional_body"><strong>{{ stats.bodies }}</strong><span>Professional bodies</span></a>
+      {% endif %}
     </div>
   </header>
 
-  {# ---------- FILTERS ---------- #}
-  <form method="get" class="users-filter">
-    <div class="users-filter-search">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" name="q" value="{{ q }}" placeholder="Search by name or email…" autocomplete="off">
-    </div>
+  {% url 'accounts:user_list' as nbte_url %}{% url 'accounts:user_list_institution' as inst_url %}{% url 'accounts:user_list_external' as ext_url %}
+  {% include "accounts/users/_segments.html" with label="User management sections" %}
 
-    <div class="users-filter-select">
-      <select name="active">
-        <option value="">All users</option>
-        <option value="1" {% if active_filter == "1" %}selected{% endif %}>Active only</option>
-        <option value="0" {% if active_filter == "0" %}selected{% endif %}>Inactive only</option>
-      </select>
-    </div>
+  {% include "accounts/users/_filters.html" with action=list_url target="#users-list" form_id="users-filters" %}
 
-    <div class="users-filter-actions">
-      <button type="submit" class="btn btn-primary">Apply</button>
-      <a href="{% url 'accounts:user_list' %}" class="btn btn-ghost">Reset</a>
-    </div>
-  </form>
-
-  {# ---------- RESULTS ---------- #}
-  {% if page.object_list %}
-
-    <div class="users-table-wrap">
-      <table class="users-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Department</th>
-            <th>Role</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for u in page.object_list %}
-            <tr>
-              {# ---- User identity (primary cell) ---- #}
-              <td class="users-cell-primary">
-                <div class="users-cell-user">
-                  <div class="users-avatar {% if not u.is_active %}users-avatar-inactive{% endif %}">
-                    {% if u.first_name %}{{ u.first_name|slice:":1"|upper }}{% endif %}{% if u.last_name %}{{ u.last_name|slice:":1"|upper }}{% endif %}
-                  </div>
-                  <div class="users-user-info">
-                    <span class="users-user-name">{{ u.get_full_name|default:u.email }}</span>
-                    <span class="users-user-email">{{ u.email }}</span>
-                  </div>
-                </div>
-              </td>
-
-              {# ---- Email ---- #}
-              <td data-label="Email" class="users-cell-meta">
-                {% if u.email %}{{ u.email }}{% else %}<span class="users-cell-meta-empty">—</span>{% endif %}
-              </td>
-
-              {# ---- Department ---- #}
-              <td data-label="Department" class="users-cell-meta">
-                {% if u.department %}
-                  <span class="users-chip">{{ u.department.name }}</span>
-                {% else %}
-                  <span class="users-cell-meta-empty">—</span>
-                {% endif %}
-              </td>
-
-              {# ---- Role ---- #}
-              <td data-label="Role" class="users-cell-meta">
-                {% if u.role %}
-                  <span class="users-chip users-chip-role">{{ u.role.name }}</span>
-                {% else %}
-                  <span class="users-cell-meta-empty">—</span>
-                {% endif %}
-              </td>
-
-              {# ---- Status ---- #}
-              <td data-label="Status">
-                {% if u.is_active %}
-                  <span class="users-status users-status-active">Active</span>
-                {% else %}
-                  <span class="users-status users-status-inactive">Inactive</span>
-                {% endif %}
-              </td>
-
-              {# ---- Actions ---- #}
-              <td class="users-actions users-cell-actions">
-                <a href="{% url 'accounts:user_detail' u.pk %}" class="btn btn-ghost btn-sm">
-                  Manage
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                </a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    {% if page.has_other_pages %}
-      <nav class="users-pagination">
-        {% if page.has_previous %}
-          <a href="?{% querystring page=page.previous_page_number %}" class="users-pagination-btn">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            Prev
-          </a>
-        {% endif %}
-        <span class="users-pagination-count">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
-        {% if page.has_next %}
-          <a href="?{% querystring page=page.next_page_number %}" class="users-pagination-btn">
-            Next
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </a>
-        {% endif %}
-      </nav>
-    {% endif %}
-
-  {% else %}
-    <div class="users-empty">
-      <div class="users-empty-icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      </div>
-      <h3>No users found</h3>
-      <p>
-        {% if q or active_filter %}
-          Nothing matches those filters.
-          <a href="{% url 'accounts:user_list' %}" class="fw-semibold">Clear filters</a>
-        {% else %}
-          There are no user accounts yet.
-        {% endif %}
-      </p>
-    </div>
-  {% endif %}
-
+  {% include "accounts/users/_list.html" %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/hr.js' %}" defer></script>
 {% endblock %}

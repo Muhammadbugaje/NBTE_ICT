@@ -1,0 +1,21 @@
+{% load qa_tags %}{% if page.rows %}
+<ul class="sv-rows dr-rows" role="list">{% for d in page.rows %}
+  <li><a class="sv-row dr-row" href="{% url 'documents_register:detail' d.pk %}">
+    <span class="dr-row__ico" aria-hidden="true">{% if d.status == 'revoked' %}{% icon "ban" 18 "2.2" %}{% elif d.provisional and not d.official_copy %}{% icon "clock" 18 "2.2" %}{% else %}{% icon "file" 18 "2.2" %}{% endif %}</span>
+    <span class="dr-row__main"><b>{{ d.title }}</b>
+      <small><span class="sv-mono">{{ d.reference }}</span><span>{{ d.kind_label }}</span>{% if d.institution %}<span>{{ d.institution.name }}</span>{% endif %}<span>{{ d.issued_at|date:"j M Y" }}</span><span class="sv-mono">{{ d.short_code }}</span></small></span>
+    <span class="sv-states">
+      <span class="sv-chip {% if d.status == 'valid' %}sv-chip--ok{% elif d.status == 'revoked' %}sv-chip--bad{% else %}sv-chip--warn{% endif %}">{{ d.get_status_display }}</span>
+      {% if d.provisional %}{% if d.official_copy %}<span class="sv-chip sv-chip--info">Official copy</span>{% else %}<span class="sv-chip sv-chip--warn">Provisional</span>{% endif %}{% endif %}
+    </span>
+  </a></li>{% endfor %}
+</ul>
+{% include "qa_core/partials/_pagination.html" with target="#doc-panel" %}
+{% else %}
+<div class="sv-empty dr-empty">
+  <span class="sv-ico" aria-hidden="true">{% icon "file" 26 "2" %}</span>
+  <h2>{% if filters.q or filters.kind or filters.status %}No documents match{% else %}No documents issued yet{% endif %}</h2>
+  <p>{% if filters.q or filters.kind or filters.status %}Try a different reference or code, or clear the filters.{% else %}Receipts, payment slips, letters and memos appear here as soon as NBTE generates them.{% endif %}</p>
+  {% if filters.q or filters.kind or filters.status %}<a class="btn btn-subtle btn-sm" href="{% url 'documents_register:list' %}">Clear filters</a>{% endif %}
+</div>
+{% endif %}

@@ -22,6 +22,10 @@ from django.core import signing
 from django.utils import timezone
 
 SALT = "nbte.staff-id.v1"
+# E1/E3: printed cards carry a durable QR (a printed code cannot rotate). It
+# stays valid while the account is an active staff account, so deactivating
+# the account revokes every printed card at once.
+PRINT_SALT = "nbte.staff-id.print.v1"
 WINDOW_SECONDS = 60
 VALID_SECONDS = 120
 
@@ -41,6 +45,10 @@ def is_eligible(user):
 def make_staff_token(user, now=None):
     window = int((now if now is not None else time.time()) // WINDOW_SECONDS)
     return _signer().sign_object({"u": user.pk, "w": window}, compress=True)
+
+
+def make_print_token(user):
+    return signing.Signer(salt=PRINT_SALT).sign_object({"u": user.pk, "p": 1}, compress=True)
 
 
 def _staff(user):
@@ -70,9 +78,12 @@ def card_details(user):
             photo_url = staff.photo.url
         except Exception:
             photo_url = ""
+    gender = getattr(staff, "gender", "") if staff is not None else ""
     return {
         "name": user.get_full_name() or user.email.split("@")[0],
         "initials": initials(user),
+        "gender": {"M": "male", "F": "female"}.get(gender, "neutral"),
+        "grade": (staff.grade_level or "") if staff is not None else "",
         "designation": str(staff.designation) if staff is not None and staff.designation_id else "",
         "department": department or "",
         "staff_number": staff.employee_no if staff is not None else "",
@@ -104,7 +115,10 @@ def verify_staff_token(token, max_age=VALID_SECONDS):
     except signing.SignatureExpired:
         return StaffVerification(status=EXPIRED)
     except (signing.BadSignature, ValueError, TypeError):
-        return StaffVerification(status=INVALID)
+        try:
+            payload = signing.Signer(salt=PRINT_SALT).unsign_object(token or "")
+        except (signing.BadSignature, ValueError, TypeError):
+            return StaffVerification(status=INVALID)
     user_id = payload.get("u") if isinstance(payload, dict) else None
     user = User.objects.filter(pk=user_id).select_related("department").first() if user_id else None
     if not is_eligible(user):

@@ -1,0 +1,17 @@
+{% load qa_tags %}
+<div class="rf-policy">
+  <table class="qa-table rf-policy__table">
+    <caption class="sr-only">Refund policy</caption>
+    <thead><tr><th scope="col">When it is cancelled</th><th scope="col" class="qa-num">Refunded</th><th scope="col" class="qa-num">Kept as admin fee</th></tr></thead>
+    <tbody>{% for r in policy.rows %}<tr class="{% if r.band == current %}is-current{% endif %}">
+      <td data-label="When">{{ r.when }}{% if r.band == current %} <span class="qa-chip qa-tone-info">{% if staff %}This case{% else %}You are here{% endif %}</span>{% endif %}</td>
+      <td data-label="Refunded" class="qa-num"><strong>{{ r.percent }}%</strong></td>
+      <td data-label="Kept" class="qa-num">{{ r.keep }}%</td></tr>{% endfor %}</tbody>
+  </table>
+  <ul class="rf-policy__notes qa-small qa-muted">
+    {% if policy.min_admin_fee %}<li>The admin fee is never less than {{ policy.min_admin_fee|naira }} (unless NBTE withdraws).</li>{% endif %}
+    {% if policy.void_unpaid %}<li>Bills not yet paid are simply cancelled — you owe nothing on them.</li>{% endif %}
+    <li>Give your bank details within {{ policy.window_days }} days of cancelling, or the refund lapses.</li>
+    <li>NBTE Finance checks every refund{% if policy.requires_es %} and the Executive Secretary approves it{% else %} and the Director of Finance approves it{% endif %} before the money is paid.</li>
+  </ul>
+</div>

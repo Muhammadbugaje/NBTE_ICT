@@ -2,7 +2,7 @@
 participant scoping comes from chat_services.get_participant (Http404 for
 anyone outside the conversation), rule violations are the services' own
 ValidationErrors (400 validation_error). See api/docs/chats.md."""
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import Http404
 from django.urls import reverse
 from drf_spectacular.types import OpenApiTypes
@@ -152,8 +152,9 @@ class UpdatesView(APIView):
         thread, _ = _thread(request, pk)
         params = _query(s.UpdatesQuerySerializer, request)
         data = cs.thread_updates(thread, request.user, after_id=params["after"], since=params.get("since"),
-                                 visible=params["visible"])
-        resp = Response(s.UpdatesSerializer(svc.updates_json(thread, request.user, data)).data)
+                                 visible=params["visible"], version=params.get("v") or None)
+        resp = Response(s.UpdatesSerializer(svc.updates_json(thread, request.user, data, after=params["after"],
+                                                              since=params.get("since"))).data)
         resp["Cache-Control"] = "no-store"
         return resp
 
@@ -438,3 +439,173 @@ class AttachmentDownloadView(APIView):
 
         attachment = cs.get_attachment_for(request.user, pk)
         return restricted_file_response(request._request, attachment)
+
+
+# ---------------------------------------------------------------------------
+# v2.1 Phase E: group administration (L3), invite links (L4), pins (L6),
+# reminders (L7). Every rule is in messaging.group_services: non-admins get
+# 403 permission_denied, rule violations 400, non-participants 404.
+# ---------------------------------------------------------------------------
+from django.http import FileResponse  # noqa: E402
+
+from messaging import group_services as gs  # noqa: E402
+from messaging.models import MessageReminder  # noqa: E402
+
+
+def _group(request, pk, code=200):
+    thread, _ = _thread(request, pk)
+    return Response(s.GroupSerializer(svc.group_json(thread, request.user)).data, status=code)
+
+
+class GroupView(APIView):
+    @extend_schema(operation_id="chats_group_detail", tags=TAGS,
+                   description="Group info for the info sheet: settings, my role and permissions, members "
+                               "(owner/admin/member), pinned messages. Direct chats answer with is_group=false.",
+                   responses={200: s.GroupSerializer, **errors(404), **AUTHED_ERRORS})
+    def get(self, request, pk):
+        return _group(request, pk)
+
+    @extend_schema(operation_id="chats_group_update", tags=TAGS, request=JSON_OR_MULTIPART(s.GroupUpdateSerializer),
+                   description="Name/description/photo need edit-info permission; the three policies need an admin.",
+                   responses={200: s.GroupSerializer, **errors(400, 404), **AUTHED_ERRORS})
+    def patch(self, request, pk):
+        thread, _ = _thread(request, pk)
+        data = _body(s.GroupUpdateSerializer, request)
+        info = {k: data[k] for k in ("title", "description") if k in data}
+        if info or data.get("photo") or data.get("remove_photo"):
+            gs.update_info(thread, request.user, title=info.get("title"), description=info.get("description"),
+                           photo=data.get("photo"), remove_photo=data.get("remove_photo", False))
+        policies = {k: data[k] for k in ("send_policy", "edit_info_policy", "add_members_policy") if k in data}
+        if policies:
+            gs.update_settings(thread, request.user, **policies)
+        thread.refresh_from_db()
+        return _group(request, pk)
+
+
+class GroupPhotoView(APIView):
+    @extend_schema(operation_id="chats_group_photo", tags=TAGS, responses={**FILE, **errors(404), **AUTHED_ERRORS})
+    def get(self, request, pk):
+        thread, _ = _thread(request, pk)
+        if not thread.photo:
+            raise Http404
+        return FileResponse(thread.photo.open("rb"), content_type="image/jpeg")
+
+
+class MembersView(APIView):
+    @extend_schema(operation_id="chats_members_add", tags=TAGS, request=s.MembersAddSerializer,
+                   responses={200: s.GroupSerializer, **errors(400, 404), **AUTHED_ERRORS})
+    def post(self, request, pk):
+        thread, _ = _thread(request, pk)
+        gs.add_members(thread, request.user, _body(s.MembersAddSerializer, request)["users"])
+        return _group(request, pk)
+
+
+class MemberRemoveView(APIView):
+    @extend_schema(operation_id="chats_member_remove", tags=TAGS, request=None,
+                   responses={200: s.GroupSerializer, **errors(400, 404), **AUTHED_ERRORS})
+    def post(self, request, pk, user_pk):
+        thread, _ = _thread(request, pk)
+        gs.remove_member(thread, request.user, user_pk)
+        return _group(request, pk)
+
+
+class MemberRoleView(APIView):
+    @extend_schema(operation_id="chats_member_role", tags=TAGS, request=s.RoleSerializer,
+                   responses={200: s.GroupSerializer, **errors(400, 404), **AUTHED_ERRORS})
+    def post(self, request, pk, user_pk):
+        thread, _ = _thread(request, pk)
+        gs.set_role(thread, request.user, user_pk, _body(s.RoleSerializer, request)["role"])
+        return _group(request, pk)
+
+
+class LeaveView(APIView):
+    @extend_schema(operation_id="chats_group_leave", tags=TAGS, request=None,
+                   responses={**NO_CONTENT, **errors(400, 404), **AUTHED_ERRORS})
+    def post(self, request, pk):
+        thread, _ = _thread(request, pk)
+        gs.leave_group(thread, request.user)
+        return Response(status=204)
+
+
+class InvitesView(APIView):
+    @extend_schema(operation_id="chats_invites_list", tags=TAGS,
+                   responses={200: s.InviteSerializer(many=True), **errors(404), **AUTHED_ERRORS})
+    def get(self, request, pk):
+        thread, participant = _thread(request, pk)
+        if not gs.permissions_for(thread, participant)["can_invite"]:
+            raise PermissionDenied("Only admins can see this group's invite links.")
+        rows = thread.invites.filter(revoked_at__isnull=True).order_by("-created_at")
+        return Response(s.InviteSerializer([svc.invite_json(i, request) for i in rows if i.is_usable()],
+                                           many=True).data)
+
+    @extend_schema(operation_id="chats_invites_create", tags=TAGS, request=s.InviteCreateSerializer,
+                   description="Staff-only join link; expires after `days` (default messaging.invite_link_days).",
+                   responses={201: s.InviteSerializer, **errors(400, 404), **AUTHED_ERRORS})
+    def post(self, request, pk):
+        thread, _ = _thread(request, pk)
+        data = _body(s.InviteCreateSerializer, request)
+        invite = gs.create_invite(thread, request.user, days=data.get("days"), max_uses=data.get("max_uses"))
+        return Response(s.InviteSerializer(svc.invite_json(invite, request)).data, status=201)
+
+
+class InviteRevokeView(APIView):
+    @extend_schema(operation_id="chats_invite_revoke", tags=TAGS, request=None,
+                   responses={200: s.InviteSerializer, **errors(404), **AUTHED_ERRORS})
+    def post(self, request, pk, invite_pk):
+        thread, _ = _thread(request, pk)
+        invite = gs.revoke_invite(thread, request.user, invite_pk)
+        return Response(s.InviteSerializer(svc.invite_json(invite, request)).data)
+
+
+class JoinView(APIView):
+    @extend_schema(operation_id="chats_join_status", tags=TAGS,
+                   responses={200: s.JoinStatusSerializer, **errors(404), **AUTHED_ERRORS})
+    def get(self, request, token):
+        invite, state = gs.invite_status(token, request.user)
+        t = invite.thread
+        return Response(s.JoinStatusSerializer({"state": state, "thread_id": t.pk, "title": t.subject,
+                                                "member_count": gs.member_counts(t)["members"]}).data)
+
+    @extend_schema(operation_id="chats_join", tags=TAGS, request=None,
+                   responses={200: s.GroupSerializer, **errors(400, 404), **AUTHED_ERRORS})
+    def post(self, request, token):
+        thread = gs.join_by_invite(token, request.user)
+        return _group(request, thread.pk)
+
+
+class MessagePinView(APIView):
+    @extend_schema(operation_id="chats_message_pin", tags=TAGS, request=s.MessagePinSerializer,
+                   description="Pin inside the chat (group admins; both people in a direct chat). "
+                               "At most messaging.pins_per_chat (3).",
+                   responses={200: s.MessageSerializer, **errors(400, 404), **AUTHED_ERRORS})
+    def post(self, request, pk):
+        message, thread, _ = _message(request, pk)
+        gs.pin_message(message, request.user, _body(s.MessagePinSerializer, request)["pinned"])
+        return _msg_response(thread, request.user, message.pk)
+
+
+class MessageReminderView(APIView):
+    @extend_schema(operation_id="chats_message_remind", tags=TAGS, request=s.ReminderSetSerializer,
+                   description="Remind me about this message: a notification at `remind_at` (or a preset).",
+                   responses={200: s.ReminderSerializer, **errors(400, 404), **AUTHED_ERRORS})
+    def post(self, request, pk):
+        message, _, _ = _message(request, pk)
+        data = _body(s.ReminderSetSerializer, request)
+        r = gs.set_reminder(message, request.user, remind_at=data.get("remind_at"), preset=data.get("preset"),
+                            note=data.get("note", ""))
+        return Response(s.ReminderSerializer(svc.reminder_json(r)).data)
+
+    @extend_schema(operation_id="chats_message_remind_cancel", tags=TAGS,
+                   responses={**NO_CONTENT, **errors(404), **AUTHED_ERRORS})
+    def delete(self, request, pk):
+        message, _, _ = _message(request, pk)
+        gs.cancel_reminder(message, request.user)
+        return Response(status=204)
+
+
+class RemindersView(APIView):
+    @extend_schema(operation_id="chats_reminders", tags=TAGS,
+                   responses={200: s.ReminderSerializer(many=True), **AUTHED_ERRORS})
+    def get(self, request):
+        rows = gs.my_reminders(request.user)
+        return Response(s.ReminderSerializer([svc.reminder_json(r) for r in rows], many=True).data)

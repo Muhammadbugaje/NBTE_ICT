@@ -34,6 +34,7 @@ Public API:
 from __future__ import annotations
 
 import calendar
+import re
 import json
 import logging
 from collections import defaultdict
@@ -119,9 +120,38 @@ def is_working_day(d):
     return d.weekday() in work_week()
 
 
+HOLIDAYS_VERSION_KEY = "attendance:holidays:version"
+
+
+def bump_holidays(*_args, **_kwargs):
+    """Any holiday change invalidates the cached lookups (v2.2)."""
+    from django.core.cache import cache
+
+    try:
+        cache.set(HOLIDAYS_VERSION_KEY, (cache.get(HOLIDAYS_VERSION_KEY) or 0) + 1, None)
+    except Exception:
+        pass
+
+
 def holidays_on(day):
     """Active portal holidays that cover `day` (recurring ones included).
-    Review M12: automatic absent-marking must not run on public holidays."""
+    Review M12: automatic absent-marking must not run on public holidays.
+    v2.2: cached for 60 s per day (the rotation asks once per candidate)."""
+    from django.core.cache import cache
+
+    key = f"attendance:holidays_on:{cache.get(HOLIDAYS_VERSION_KEY) or 0}:{day.isoformat()}"
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+    result = _holidays_on(day)
+    try:
+        cache.set(key, result, 60)
+    except Exception:  # unpicklable on some backends: just don't cache
+        pass
+    return result
+
+
+def _holidays_on(day):
     from django.db.models import Q
     from portal.models import Holiday
     from leave.services import _holiday_covers
@@ -302,7 +332,7 @@ def check_in_block_reason(user, day=None):
     if blocked:
         return blocked
     existing = AttendanceRecord.objects.filter(user=user, date=day).first()
-    if existing is not None and existing.status != AttendanceRecord.ON_LEAVE:
+    if existing is not None and existing.status not in AttendanceRecord.STATUSES_SYSTEM:
         return f"You already checked in today ({existing.get_status_display()})."
     if not user.department_id:
         return "You are not assigned to a department, so we can't match a location."
@@ -327,7 +357,7 @@ def check_in_user(user, lat, lng, now=None):
         .filter(user=user, date=today)
         .first()
     )
-    if existing is not None and existing.status != AttendanceRecord.ON_LEAVE:
+    if existing is not None and existing.status not in AttendanceRecord.STATUSES_SYSTEM:
         return CheckInResult(
             ok=False,
             status=existing.status,
@@ -362,12 +392,14 @@ def check_in_user(user, lat, lng, now=None):
         rec.distance_meters = distance
         rec.location = location
         rec.source = AttendanceRecord.SOURCE_GPS
+        was = existing.get_status_display().lower()
         rec.leave_application = None
-        rec.notes = "Checked in during approved annual leave."
+        rec.duty_inspection = None
+        rec.notes = f"Checked in while {was}."
         rec.save(update_fields=[
             "status", "check_in_at", "latitude", "longitude",
             "distance_meters", "location", "source", "leave_application",
-            "notes", "updated_at",
+            "duty_inspection", "notes", "updated_at",
         ])
     else:
         try:
@@ -419,7 +451,8 @@ def check_in_user(user, lat, lng, now=None):
 @transaction.atomic
 def mark_status(user, d, status, *, source=AttendanceRecord.SOURCE_MANUAL,
                 actor=None, notes="", check_in_at=None,
-                lat=None, lng=None, location=None, distance=None):
+                lat=None, lng=None, location=None, distance=None,
+                check_out_at=None, check_out_source=""):
     """Upsert a record for (user, date). Used by manual edit + Excel upload."""
     if status not in dict(AttendanceRecord.STATUS_CHOICES):
         raise ValidationError(f"Unknown status: {status}")
@@ -448,6 +481,10 @@ def mark_status(user, d, status, *, source=AttendanceRecord.SOURCE_MANUAL,
             "longitude": lng,
             "location": location,
             "distance_meters": distance,
+            "check_out_at": check_out_at,
+            "check_out_source": check_out_source if check_out_at else "",
+            "missing_checkout": False,
+            "duty_inspection": None,
         },
     )
     log(user, d, f"{'Created' if created else 'Updated'} → {status} via {source}",
@@ -531,7 +568,7 @@ def _count_cells(statuses, year, month):
     """
     counts = {}
     for day_num, raw in statuses.items():
-        status = _CELL_TO_STATUS.get(raw or "")
+        status = parse_cell(raw)[0]
         if status is None or status == AttendanceRecord.ON_LEAVE:
             continue
         try:
@@ -703,7 +740,62 @@ _CELL_TO_STATUS = {
     "H": AttendanceRecord.HOLIDAY,
     "HOLIDAY": AttendanceRecord.HOLIDAY,
     "LV": AttendanceRecord.ON_LEAVE,
+    # v2.1 Phase D (G9)
+    "OD": AttendanceRecord.ON_DUTY,
+    "ON DUTY": AttendanceRecord.ON_DUTY,
 }
+
+STATUS_TO_CELL = {
+    AttendanceRecord.PRESENT: "1", AttendanceRecord.LATE: "L", AttendanceRecord.ABSENT: "0",
+    AttendanceRecord.EXCUSED: "E", AttendanceRecord.HOLIDAY: "H", AttendanceRecord.ON_LEAVE: "LV",
+    AttendanceRecord.ON_DUTY: "OD",
+}
+
+_TIME_RE = re.compile(r"^(?P<code>[A-Z0-9 ]*?)\s*(?:@\s*)?(?P<in>\d{1,2}[:.]\d{2})?\s*(?:-\s*(?P<out>\d{1,2}[:.]\d{2})?)?$")
+
+
+def parse_cell(raw):
+    """(status, check_in_time, check_out_time) from a matrix cell (G9).
+
+    Old cells ("1", "L", "0", "E", "H", "LV") still work. A cell may add the
+    times: "1 08:05-16:40", "L 09:20-17:02", "1 08:00-" (no check-out).
+    Returns (None, None, None) for an unrecognised value."""
+    from datetime import time as _t
+
+    raw = (raw or "").strip().upper()
+    if not raw:
+        return None, None, None
+    if raw in _CELL_TO_STATUS:
+        return _CELL_TO_STATUS[raw], None, None
+    m = _TIME_RE.match(raw)
+    if not m:
+        return None, None, None
+    status = _CELL_TO_STATUS.get((m.group("code") or "").strip())
+    if status is None:
+        return None, None, None
+
+    def _parse(v):
+        if not v:
+            return None
+        h, mi = v.replace(".", ":").split(":")
+        h, mi = int(h), int(mi)
+        if not (0 <= h < 24 and 0 <= mi < 60):
+            raise ValueError
+        return _t(h, mi)
+    try:
+        return status, _parse(m.group("in")), _parse(m.group("out"))
+    except ValueError:
+        return None, None, None
+
+
+def cell_for(record, *, with_times=True):
+    """The matrix cell of a record (export; round-trips through parse_cell)."""
+    code = STATUS_TO_CELL.get(record.status, "")
+    if not with_times or not code or record.check_in_at is None:
+        return code
+    cin = timezone.localtime(record.check_in_at).strftime("%H:%M")
+    cout = timezone.localtime(record.check_out_at).strftime("%H:%M") if record.check_out_at else ""
+    return f"{code} {cin}-{cout}"
 
 
 @transaction.atomic
@@ -727,7 +819,7 @@ def apply_matrix(parsed, actor, overwrite=True):
         for day_num, raw in row.statuses.items():
             if not raw:
                 continue
-            status = _CELL_TO_STATUS.get(raw)
+            status, t_in, t_out = parse_cell(raw)
             if status is None:
                 result.errors.append(
                     f"Row {row.row_number} day {day_num}: unrecognised value '{raw}'."
@@ -757,11 +849,19 @@ def apply_matrix(parsed, actor, overwrite=True):
                 result.skipped += 1
                 continue
 
+            check_in_at = check_out_at = None
+            if t_in is not None and status in AttendanceRecord.STATUSES_PRESENT:
+                check_in_at = at_local_date(d, t_in)
+                if t_out is not None:
+                    check_out_at = at_local_date(d, t_out)
             mark_status(
                 row.user, d, status,
                 source=AttendanceRecord.SOURCE_EXCEL,
                 actor=actor,
                 notes=f"Excel upload row {row.row_number}",
+                check_in_at=check_in_at,
+                check_out_at=check_out_at,
+                check_out_source=AttendanceRecord.SOURCE_EXCEL if check_out_at else "",
             )
             if existing is None:
                 result.created += 1
@@ -798,12 +898,14 @@ def apply_matrix(parsed, actor, overwrite=True):
 CREDITED_STATUSES = frozenset({
     AttendanceRecord.PRESENT, AttendanceRecord.LATE,
     AttendanceRecord.EXCUSED, AttendanceRecord.HOLIDAY,
-    AttendanceRecord.ON_LEAVE,
+    AttendanceRecord.ON_LEAVE, AttendanceRecord.ON_DUTY,
 })
 NEUTRAL_STATUSES = frozenset({
     AttendanceRecord.EXCUSED, AttendanceRecord.HOLIDAY,
-    AttendanceRecord.ON_LEAVE,
+    AttendanceRecord.ON_LEAVE, AttendanceRecord.ON_DUTY,
 })
+# Every status a tally counts (v2.1 Phase D adds on_duty).
+TALLY_STATUSES = ("present", "late", "absent", "excused", "holiday", "on_leave", "on_duty")
 
 
 def pct_of(credited, expected):
@@ -818,7 +920,8 @@ def period_records(users, first_day, last_day):
     return list(
         AttendanceRecord.objects
         .filter(user__in=list(users), date__gte=first_day, date__lte=last_day)
-        .select_related("user", "recorded_by", "location", "leave_application__request")
+        .select_related("user", "recorded_by", "location", "leave_application__request",
+                        "leave_application__leave_type", "duty_inspection")
         .prefetch_related("leave_application__request__approvals__actor")
     )
 
@@ -857,7 +960,10 @@ def record_detail(record):
     st = record.status
     if st == AttendanceRecord.ON_LEAVE:
         who = leave_approver(record)
-        return "On approved leave" + (f" — approved by {who}" if who else "")
+        return record.status_label + (f" — approved by {who}" if who else "")
+    if st == AttendanceRecord.ON_DUTY:
+        insp = getattr(record, "duty_inspection", None)
+        return "Official duty: QA visit" + (f" {insp.reference}" if insp is not None else "")
     if st == AttendanceRecord.EXCUSED:
         who = ""
         if record.recorded_by_id:
@@ -930,7 +1036,7 @@ def group_credited_days(records):
         groups.append({
             "user": r.user,
             "status": r.status,
-            "status_label": r.get_status_display(),
+            "status_label": r.status_label,
             "authority": who,
             "start": r.date,
             "end": r.date,
@@ -955,8 +1061,8 @@ def _holidays_overlapping(first_day, last_day):
 
 def _blank_tally():
     return {"present": 0, "late": 0, "absent": 0, "excused": 0,
-            "holiday": 0, "on_leave": 0, "credited": 0, "expected": 0,
-            "pct": 0, "holiday_dates": set()}
+            "holiday": 0, "on_leave": 0, "on_duty": 0, "missing_checkout": 0,
+            "credited": 0, "expected": 0, "pct": 0, "holiday_dates": set()}
 
 
 def summarize_period(users, first_day, last_day, records=None, today=None):
@@ -982,10 +1088,12 @@ def summarize_period(users, first_day, last_day, records=None, today=None):
             continue
         if r.date < first_day or r.date > stop or not is_working_day(r.date):
             continue
-        if r.status not in ("present", "late", "absent", "excused", "holiday", "on_leave"):
+        if r.status not in TALLY_STATUSES:
             continue
         t["expected"] += 1
         t[r.status] += 1
+        if getattr(r, "missing_checkout", False):
+            t["missing_checkout"] += 1
     for t in out.values():
         t["credited"] = t["expected"] - t["absent"]
         t["pct"] = pct_of(t["credited"], t["expected"])
@@ -997,8 +1105,7 @@ def combine_tallies(tallies):
     agg = _blank_tally()
     agg.pop("holiday_dates")
     for t in tallies:
-        for k in ("present", "late", "absent", "excused", "holiday",
-                  "on_leave", "credited", "expected"):
+        for k in TALLY_STATUSES + ("missing_checkout", "credited", "expected"):
             agg[k] += t[k]
     agg["pct"] = pct_of(agg["credited"], agg["expected"])
     return agg
@@ -1050,6 +1157,8 @@ def attendance_stats(user, days=30):
         "excused": tally["excused"],
         "holiday": tally["holiday"],
         "on_leave": tally["on_leave"],
+        "on_duty": tally["on_duty"],
+        "missing_checkout": tally["missing_checkout"],
         "credited": tally["credited"],
         "present_pct": tally["pct"],
         "streak": streak,
@@ -1079,7 +1188,8 @@ def department_summary(department, start, end):
             "user": u,
             "present": t["present"], "late": t["late"], "absent": t["absent"],
             "excused": t["excused"], "holiday": t["holiday"],
-            "on_leave": t["on_leave"], "credited": t["credited"],
+            "on_leave": t["on_leave"], "on_duty": t["on_duty"],
+            "missing_checkout": t["missing_checkout"], "credited": t["credited"],
             "expected": t["expected"], "pct": t["pct"],
         })
 
@@ -1099,8 +1209,11 @@ def department_summary(department, start, end):
     }
 
 
-def to_matrix(records, month, year):
-    """Return a 2D list representation (email column + one per day)."""
+def to_matrix(records, month, year, *, with_times=True, holidays=True):
+    """Return a 2D list (email column + one per day). Cells use the upload
+    codes (1, L, 0, E, H, LV, OD) plus the check-in/out times (G9), so an
+    export can be uploaded again. A holiday the person had but that has no
+    record shows as "H" (F8: holidays are rows, not blanks)."""
     from accounts.models import User
 
     days_in_month = calendar.monthrange(year, month)[1]
@@ -1112,6 +1225,11 @@ def to_matrix(records, month, year):
         User.objects.filter(pk__in=by_user.keys())
         .order_by("first_name", "last_name", "email")
     )
+    hol_by_day = {}
+    if holidays:
+        for dnum in range(1, days_in_month + 1):
+            day = date_cls(year, month, dnum)
+            hol_by_day[dnum] = holidays_on(day) if is_working_day(day) else []
 
     header = ["Email"] + [str(d) for d in range(1, days_in_month + 1)]
     matrix = [header]
@@ -1119,20 +1237,12 @@ def to_matrix(records, month, year):
         row = [u.email]
         for d in range(1, days_in_month + 1):
             r = by_user[u.pk].get(d)
-            if r is None:
-                row.append("")
-            elif r.status == AttendanceRecord.PRESENT:
-                row.append("1")
-            elif r.status == AttendanceRecord.LATE:
-                row.append("L")
-            elif r.status == AttendanceRecord.ABSENT:
-                row.append("0")
-            elif r.status == AttendanceRecord.EXCUSED:
-                row.append("E")
-            elif r.status == AttendanceRecord.HOLIDAY:
+            if r is not None:
+                row.append(cell_for(r, with_times=with_times))
+            elif hol_by_day.get(d) and is_holiday_for(u, date_cls(year, month, d), hol_by_day[d]):
                 row.append("H")
-            elif r.status == AttendanceRecord.ON_LEAVE:
-                row.append("LV")
+            else:
+                row.append("")
         matrix.append(row)
     return matrix
 
@@ -1194,6 +1304,9 @@ def auto_mark_absent(for_date=None, days_back=0):
             .values_list("user_id", flat=True)
         )
         day_holidays = holidays_on(day)
+        # v2.1 G7: people on an official QA visit are on duty, never absent.
+        from .duty import duty_map, duty_note
+        on_duty = duty_map([st.user_id for st in staff if st.user_id not in existing], [day])
 
         to_create = []
         for s in staff:
@@ -1201,6 +1314,12 @@ def auto_mark_absent(for_date=None, days_back=0):
                 continue
             if day_holidays and is_holiday_for(s.user, day, day_holidays):
                 continue  # review M12: public/department holiday
+            insp = on_duty.get((s.user_id, day))
+            if insp is not None:
+                to_create.append(AttendanceRecord(
+                    user=s.user, date=day, status=AttendanceRecord.ON_DUTY,
+                    source=AttendanceRecord.SOURCE_VISIT, duty_inspection=insp, notes=duty_note(insp)))
+                continue
 
             state = getattr(s, "state", None)
             if state and getattr(state, "counts_as_absent", False):
@@ -1298,7 +1417,6 @@ def send_weekly_summary(for_date=None):
     sent = 0
     departments = Department.objects.filter(pk__in=list(by_dept.keys()))
 
-    from accounts.models import User as _User
 
     for dept in departments:
         # Review M12: Department had no head/director attribute, so this
@@ -1306,10 +1424,8 @@ def send_weekly_summary(for_date=None):
         # back to the department's active Director.
         head = dept.head if dept.head_id and dept.head.is_active else None
         if head is None:
-            head = (
-                _User.objects.filter(is_active=True, department=dept, role__code="director")
-                .order_by("pk").first()
-            )
+            import org
+            head = org.director_of(dept)
         if not head or not getattr(head, "email", None):
             continue
 

@@ -54,7 +54,9 @@ def body(qa_seed):
 def stage(p2, **sheets):
     from institutions import importexport
 
-    return importexport.stage_batch(workbook(**sheets), "legacy", user=p2.officer)
+    # v2.1 X47: bulk import (a TVET institution change) is held by the
+    # TVET Support – Initiators group, not the officer role.
+    return importexport.stage_batch(workbook(**sheets), "legacy", user=p2.tvet_initiator)
 
 
 def full(p2, body):
@@ -66,12 +68,12 @@ def full(p2, body):
 
 
 def send(batch, p2, **options):
-    pa = actions.initiate("institutions.bulk_import", actor=p2.officer, target=batch,
+    pa = actions.initiate("institutions.bulk_import", actor=p2.tvet_initiator, target=batch,
                           payload={"reason": "migration"}, reason="migration")
     if options:
         pa.payload = {**pa.payload, "confirm_options": options}
         PendingAction.objects.filter(pk=pa.pk).update(payload=pa.payload)
-    return actions.confirm(pa, p2.director)
+    return actions.confirm(pa, p2.tvet_confirmer)
 
 
 def test_template_has_instructions_examples_and_reference(qa_seed):
@@ -183,10 +185,10 @@ def test_confirm_checkbox_sends_set_password_links(p2, lookups, body, client_for
     from institutions import importexport
     from institutions.models import Institution
 
-    batch = importexport.stage_batch(workbook(institutions=[inst_row()]), "legacy", user=p2.officer)
-    pa = actions.initiate("institutions.bulk_import", actor=p2.officer, target=batch,
+    batch = importexport.stage_batch(workbook(institutions=[inst_row()]), "legacy", user=p2.tvet_initiator)
+    pa = actions.initiate("institutions.bulk_import", actor=p2.tvet_initiator, target=batch,
                           payload={"reason": "migration"}, reason="migration")
-    c = client_for(p2.director)
+    c = client_for(p2.tvet_confirmer)
     page = c.get(f"/qa/pending/{pa.pk}/").content.decode()
     assert "set-password link" in page and 'name="opt_send_invites"' in page
     r = c.post(f"/qa/pending/{pa.pk}/confirm/", {"has_options": "1", "opt_send_invites": "1", "remark": "ok"})
@@ -217,7 +219,9 @@ def test_later_bulk_send_from_the_batch_page(p2, lookups, body, client_for):
 
 
 def test_screens(p2, lookups, client_for):
-    c = client_for(p2.officer)
+    # v2.1 X47: the import screens are gated on initiate_bulk_import, now held
+    # by the TVET Support – Initiators group.
+    c = client_for(p2.tvet_initiator)
     r = c.get("/qa/institutions/import/template/legacy/")
     assert r.status_code == 200 and r["Content-Type"] == XLSX
     assert "migration" in r["Content-Disposition"]

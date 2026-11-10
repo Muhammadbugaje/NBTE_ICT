@@ -1,0 +1,21 @@
+{% load static %}{% if is_staff_user %}
+{# v2.1 Phase E (L10, T-CONS-3): announcements on every staff dashboard #}
+<link rel="stylesheet" href="{% static 'css/announcements.css' %}">
+<section class="ann-panel" aria-labelledby="ann-panel-h">
+  <header class="ann-panel-head">
+    <h2 id="ann-panel-h">
+      <span class="ann-panel-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
+      Announcements
+      {% if unread %}<span class="ann-panel-count" title="Unread">{{ unread }} new</span>{% endif %}
+    </h2>
+    <a href="{% url 'announcements:list' %}" class="link-btn">View all →</a>
+  </header>
+  {% if items %}
+    <ul class="ann-panel-list" role="list">
+      {% for a in items %}{% include "announcements/_home_panel_row.html" %}{% endfor %}
+    </ul>
+  {% else %}
+    <p class="ann-panel-empty muted">No announcements right now. New notices from NBTE appear here.</p>
+  {% endif %}
+</section>
+{% endif %}

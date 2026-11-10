@@ -1,28 +1,54 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}{% if mode == 'create' %}New memo{% else %}Edit memo{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{% if mode == 'create' %}New memo{% else %}Edit memo{% endif %}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=8">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=6">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="memo-page memo-page-form">
-  <a href="{% url 'messaging:memo_list' %}" class="msg-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Memos
-  </a>
+  <header class="qa-hero nbte-hero memo-qa-hero" data-qa-area="memos">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'messaging:memo_list' %}">{% icon "back" 14 "2.4" %} Memos</a>
+      <span class="qa-eyebrow">{% icon "edit" 14 "2.2" %} Communication · Memos</span>
+      <h1>{% if mode == 'create' %}Compose memo{% else %}Edit memo{% endif %}</h1>
+      <p>Memos are one-way declarations, routed through your approvers before delivery. Replies go through Messages.</p>
+    </div>
+  </header>
 
   <form method="post" enctype="multipart/form-data" class="memo-form" data-memo-form data-memo-visibility-form>
     {% csrf_token %}
 
-    <header class="memo-form-head">
-      <h1>{% if mode == 'create' %}Compose memo{% else %}Edit memo{% endif %}</h1>
-      <p class="muted">Memos are one-way declarations. Replies go through Messages.</p>
-    </header>
+    {# ---- v2.1 Phase E (M1, M7): memo type ---- #}
+    {% if memo_kinds|length > 1 %}
+    <fieldset class="memo-kind" aria-describedby="memo-kind-help">
+      <legend class="memo-label">Memo type</legend>
+      <div class="memo-kind-grid" role="radiogroup">
+        {% for radio in form.kind %}
+          <label class="memo-kind-card" data-kind-card="{{ radio.data.value }}">
+            {{ radio.tag }}
+            <span class="memo-kind-icon" aria-hidden="true">
+              {% if radio.data.value == "internal" %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              {% elif radio.data.value == "external" %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
+              {% else %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>{% endif %}
+            </span>
+            <span class="memo-kind-text">
+              <strong>{% if radio.data.value == "internal" %}Internal{% elif radio.data.value == "external" %}External{% else %}General{% endif %}</strong>
+              <small>{% if radio.data.value == "internal" %}NBTE staff only · internal memo letterhead{% elif radio.data.value == "external" %}Institutions only · letter signed by the ES{% else %}Staff and institutions · signed by the ES{% endif %}</small>
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+      <p class="memo-hint" id="memo-kind-help" data-kind-note>
+        {% if can_send_external %}As Executive Secretary, your external and general memos go out at once, signed “From the Executive Secretary”.{% else %}External and general memos go to the Executive Secretary for approval and are signed “Approved by the Executive Secretary”.{% endif %}
+      </p>
+      {% if form.kind.errors %}<div class="memo-field-error">{{ form.kind.errors|join:" " }}</div>{% endif %}
+    </fieldset>
+    {% endif %}
 
     {% if form.non_field_errors %}
       <div class="memo-form-error" role="alert">
@@ -62,7 +88,7 @@
     </div>
 
     {# ---- Target picker ---- #}
-    <section class="memo-target-section">
+    <section class="memo-target-section" data-staff-audience>
       <header class="memo-target-head">
         <h2>Who is this memo for?</h2>
         {% if not can_broadcast %}
@@ -171,7 +197,150 @@
           <div class="memo-field-error">{{ form.recipients.errors|join:" " }}</div>
         {% endif %}
       </div>
+
+      {# ---- v2.1 Phase E (M6): staff filters with a live count ---- #}
+      <div class="memo-target-panel memo-filter" data-target-panel="staff_filter"
+           hx-get="{% url 'messaging:memo_staff_count' %}" hx-include="this" hx-target="#memo-staff-count"
+           hx-trigger="change, keyup delay:400ms" hx-swap="innerHTML">
+        <div class="memo-filter-grid">
+          <div class="memo-filter-group">
+            <span class="memo-label">Departments</span>
+            <div class="memo-checkboxes memo-checkboxes-scroll memo-checkboxes-sm">
+              {% for pk, name in staff_options.departments %}
+                <label><input type="checkbox" name="sf_departments" value="{{ pk }}" {% if pk in staff_filter.departments %}checked{% endif %}> {{ name }}</label>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="memo-filter-group">
+            <span class="memo-label">Roles</span>
+            <div class="memo-checkboxes memo-checkboxes-scroll memo-checkboxes-sm">
+              {% for code, name in staff_options.roles %}
+                <label><input type="checkbox" name="sf_roles" value="{{ code }}" {% if code in staff_filter.roles %}checked{% endif %}> {{ name }}</label>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="memo-filter-group">
+            <span class="memo-label">Designations (rank)</span>
+            <div class="memo-checkboxes memo-checkboxes-scroll memo-checkboxes-sm">
+              {% for pk, name in staff_options.designations %}
+                <label><input type="checkbox" name="sf_designations" value="{{ pk }}" {% if pk in staff_filter.designations %}checked{% endif %}> {{ name }}</label>
+              {% empty %}<span class="muted">No designations yet.</span>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="memo-filter-group">
+            <span class="memo-label">Grade level range</span>
+            <div class="memo-range">
+              <label>From <input type="number" name="sf_grade_min" min="1" max="17" inputmode="numeric" value="{{ staff_filter.grade_min|default_if_none:'' }}" class="input"></label>
+              <label>to <input type="number" name="sf_grade_max" min="1" max="17" inputmode="numeric" value="{{ staff_filter.grade_max|default_if_none:'' }}" class="input"></label>
+            </div>
+            <span class="memo-hint">Names: use “A list of people”. Groups: use “Specific roles”.</span>
+          </div>
+        </div>
+        <div id="memo-staff-count" class="memo-count-slot"></div>
+      </div>
     </section>
+
+    {# ---- v2.1 Phase E (M4, M5): institutions ---- #}
+    {% if memo_kinds|length > 1 %}
+    <section class="memo-target-section memo-inst-section" data-inst-section
+             hx-get="{% url 'messaging:memo_institution_count' %}" hx-include="this" hx-target="#memo-inst-count"
+             hx-trigger="load, change, keyup delay:400ms" hx-swap="innerHTML">
+      <header class="memo-target-head">
+        <h2>Which institutions receive it?</h2>
+        <p class="memo-hint">They read it in the portal under <strong>Memos</strong>, get a portal notification and an e-mail, and can download the signed letter.</p>
+      </header>
+
+      <div class="memo-scope" role="radiogroup" aria-label="Institutions">
+        {% for radio in form.institution_scope %}
+          <label class="memo-scope-pill">{{ radio.tag }}<span>{{ radio.choice_label }}</span></label>
+        {% endfor %}
+      </div>
+      {% if form.institution_scope.errors %}<div class="memo-field-error">{{ form.institution_scope.errors|join:" " }}</div>{% endif %}
+
+      <div class="memo-inst-layout">
+        <div class="memo-inst-main">
+          <div class="memo-inst-panel" data-inst-panel="selected">
+            <label class="memo-label" for="memo-inst-search">Pick institutions</label>
+            <input type="search" id="memo-inst-search" class="input memo-inst-search" placeholder="Search by name or code…" data-inst-search autocomplete="off">
+            <div class="memo-checkboxes memo-checkboxes-scroll" data-inst-list>
+              {% for inst in form.target_institutions.field.queryset %}
+                <label data-search-text="{{ inst.name|lower }} {{ inst.code|lower }}"><input type="checkbox" name="target_institutions" value="{{ inst.pk }}" {% if inst.pk|stringformat:"s" in selected_institutions %}checked{% endif %}> {{ inst.name }} <span class="muted">· {{ inst.code }}</span></label>
+              {% empty %}<span class="muted">No institutions on record.</span>
+              {% endfor %}
+            </div>
+            {% if form.target_institutions.errors %}<div class="memo-field-error">{{ form.target_institutions.errors|join:" " }}</div>{% endif %}
+          </div>
+
+          <div class="memo-inst-panel memo-filter" data-inst-panel="filter">
+            <div class="memo-filter-group">
+              <span class="memo-label">Type</span>
+              <div class="memo-chips">
+                {% for code, name in inst_options.types %}
+                  <label class="memo-chip"><input type="checkbox" name="if_types" value="{{ code }}" {% if code in inst_filter.types %}checked{% endif %}><span>{{ name }}</span></label>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="memo-filter-group">
+              <span class="memo-label">Ownership</span>
+              <div class="memo-chips">
+                {% for code, name in inst_options.ownerships %}
+                  <label class="memo-chip"><input type="checkbox" name="if_ownerships" value="{{ code }}" {% if code in inst_filter.ownerships %}checked{% endif %}><span>{{ name }}</span></label>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="memo-filter-group">
+              <span class="memo-label">Zone</span>
+              <div class="memo-chips">
+                {% for code, name in inst_options.zones %}
+                  <label class="memo-chip"><input type="checkbox" name="if_zones" value="{{ code }}" {% if code in inst_filter.zones %}checked{% endif %}><span>{{ name }}</span></label>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="memo-filter-row">
+              <label class="memo-filter-field">
+                <span class="memo-label">More than … programmes</span>
+                <input type="number" name="if_min_programmes" min="0" max="500" inputmode="numeric" class="input" value="{{ inst_filter.min_programmes|default_if_none:'' }}" placeholder="e.g. 5">
+              </label>
+              <label class="memo-filter-field">
+                <span class="memo-label">Accreditation</span>
+                <select name="if_accreditation" class="input">
+                  {% for v, l in inst_options.accreditation %}<option value="{{ v }}" {% if inst_filter.accreditation == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+                </select>
+              </label>
+              <label class="memo-filter-field">
+                <span class="memo-label">State</span>
+                <select name="if_states" class="input">
+                  <option value="">Any state</option>
+                  {% for pk, name in inst_options.states %}<option value="{{ pk }}" {% if pk in inst_filter.states %}selected{% endif %}>{{ name }}</option>{% endfor %}
+                </select>
+              </label>
+            </div>
+            <div class="memo-filter-group">
+              <span class="memo-label">Status</span>
+              <div class="memo-chips">
+                {% for code, name in inst_options.statuses %}
+                  <label class="memo-chip"><input type="checkbox" name="if_statuses" value="{{ code }}" {% if code in inst_filter.statuses %}checked{% endif %}><span>{{ name }}</span></label>
+                {% endfor %}
+                <label class="memo-chip memo-chip-accent"><input type="checkbox" name="if_new_only" value="1" {% if inst_filter.new_only %}checked{% endif %}><span>New (last {{ inst_options.new_days }} days)</span></label>
+              </div>
+            </div>
+            <label class="memo-filter-field">
+              <span class="memo-label">Name contains (optional)</span>
+              <input type="search" name="if_q" class="input" value="{{ inst_filter.q|default:'' }}" placeholder="e.g. Kaduna">
+            </label>
+          </div>
+          <div class="memo-inst-panel" data-inst-panel="all">
+            <div class="memo-target-note"><strong>All institutions</strong><p>Every institution on record except delisted ones.</p></div>
+          </div>
+        </div>
+        <aside class="memo-inst-count" aria-label="Recipients">
+          <span class="memo-label">Recipients now</span>
+          <div id="memo-inst-count" class="memo-count-slot"></div>
+        </aside>
+      </div>
+    </section>
+    {% endif %}
 
     <div class="memo-field">
       <label class="memo-label" for="{{ form.attachments.id_for_label }}">Attachments</label>
@@ -192,14 +361,16 @@
       </div>
     {% endif %}
 
-    <footer class="memo-form-actions">
+    <footer class="memo-form-actions btn-group">
       {% if mode == 'create' or memo.status == 'draft' %}
         <button type="submit" name="action" value="draft" class="btn btn-ghost">
           Save as draft
         </button>
-        <button type="submit" name="action" value="publish" class="btn btn-primary">
+        <button type="submit" name="action" value="publish" class="btn btn-primary"
+                data-send-label-internal="Send for approval"
+                data-send-label-outbound="{% if can_send_external %}Send to institutions{% else %}Send to the ES for approval{% endif %}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Send for approval
+          <span data-send-label>Send for approval</span>
         </button>
       {% else %}
         <button type="submit" name="action" value="save" class="btn btn-primary">Save changes</button>
@@ -212,5 +383,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/memo.js' %}?v=3" defer></script>
+<script src="{% static 'js/memo.js' %}" defer></script>
 {% endblock %}

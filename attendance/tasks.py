@@ -44,3 +44,21 @@ def weekly_summary():
     except Exception:
         logger.exception("weekly_summary failed")
         return 0
+
+@shared_task(name="attendance.tasks.nightly_checkout_and_duty")
+def nightly_checkout_and_duty():
+    """v2.1 Phase D: flag past days checked in without a check-out (G3; the day
+    still counts) and re-sync "On official duty" days from QA visits (G7)."""
+    from . import checkout, duty
+
+    flagged = synced = 0
+    try:
+        flagged = checkout.flag_missing_checkouts()
+    except Exception:
+        logger.exception("flag_missing_checkouts failed")
+    try:
+        synced = duty.resync_recent()
+    except Exception:
+        logger.exception("visit duty resync failed")
+    logger.info("nightly: %s missing check-out(s) flagged, %s visit(s) synced", flagged, synced)
+    return {"flagged": flagged, "visits": synced}

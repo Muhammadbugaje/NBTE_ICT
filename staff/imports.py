@@ -111,6 +111,31 @@ def _lookup_reports_to(v):
     return obj
 
 
+def _lookup_role(v):
+    """B.8 (C5): Role column — code or name. Permission rules are checked when
+    the row is saved (role_ui.role_assign). MERGE NOTE (X45): pb-platform's diff
+    engine replaces this wizard; carry the Role and Grade columns over."""
+    from accounts.models import Role
+    s = _as_str(v)
+    role = Role.objects.filter(code__iexact=s).first() or Role.objects.filter(name__iexact=s).first()
+    if role is None:
+        raise ValidationError(f"Unknown role '{s}'. Use a role code or name from the Roles list.")
+    return role
+
+
+def _parse_grade(v):
+    """B.8 (C6): Grade must be a CONTEDISS/CONHESS number (1-17 placeholder range
+    until the GradeLevel table from pb-org validates it)."""
+    import re
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    s = _as_str(v)
+    m = re.fullmatch(r"(?:GL|CONTEDISS|CONHESS)?\s*0?(\d{1,2})", s, re.I)
+    if not m or not 1 <= int(m.group(1)) <= 17:
+        raise ValidationError(f"Grade must be a number from 1 to 17, got '{s}'.")
+    return str(int(m.group(1)))
+
+
 def _lookups(model):
     return lambda: list(model.objects.values_list("name", flat=True))
 
@@ -159,7 +184,8 @@ class StaffImport(ImportSpec):
         Column("Designation", field="designation",
                help="Post title, e.g. 'SNR. PROG. OFFR.'. Matched to the designation list "
                     "(any known spelling); a new title is added to the list."),
-        Column("Grade level", field="grade_level"),
+        Column("Grade level", field="grade_level", parse=_parse_grade,
+               help="CONTEDISS / CONHESS number, e.g. 8 (GL08 also accepted)."),
         Column("Office location", field="office_location"),
         Column("Reports to", field="reports_to",
                help="Employee no. or email of the supervisor.",
@@ -182,6 +208,12 @@ class StaffImport(ImportSpec):
         Column("Create account", field="create_account",
                help="yes / no. If yes, a login is provisioned and credentials emailed.",
                example="no", parse=_as_bool),
+        Column("Role", field="role",
+               help="Role code or name, e.g. officer. Needs an account (existing, or Create account = yes). "
+                    "Only roles the importing officer may grant are accepted.",
+               lookup=lambda: list(__import__("accounts.models", fromlist=["Role"]).Role.objects
+                                   .order_by("name").values_list("name", flat=True)),
+               parse=_lookup_role),
     ]
 
     def validate_row(self, cleaned):
@@ -198,6 +230,7 @@ class StaffImport(ImportSpec):
         """Returns "created" or "updated" so the ImportResult counts correctly."""
         emp = cleaned.pop("employee_no")
         create_account = cleaned.pop("create_account", False)
+        role = cleaned.pop("role", None)
         department = cleaned.pop("department", None)
         designation_text = _as_str(cleaned.pop("designation", None))
 
@@ -239,7 +272,26 @@ class StaffImport(ImportSpec):
         if create_account and not obj.user_id and obj.email:
             _provision_account_for_import(obj)
 
+        if role is not None:
+            _assign_role_for_import(obj, role)
+
         return "created" if created else "updated"
+
+
+def _assign_role_for_import(staff: Staff, role):
+    """Role column: through role_ui.role_assign (TODO(pb-org): org.assign_role),
+    acting as the officer running the import. Errors reject the row."""
+    from core.audit import get_current_actor
+
+    from .role_ui import RoleAssignError, role_assign
+
+    staff.refresh_from_db()
+    if not staff.user_id:
+        raise ValidationError("Role needs a sign-in account: set Create account to yes (and give an e-mail).")
+    try:
+        role_assign(staff.user, role, get_current_actor(), reason="Staff import")
+    except RoleAssignError as exc:
+        raise ValidationError(f"Role: {exc}")
 
 
 def _provision_account_for_import(staff: Staff):
@@ -295,12 +347,14 @@ class StaffExport(ExportSpec):
         Column("Birth month", field="birth_month"),
         Column("Birth day", field="birth_day"),
         Column("Date joined service", field="date_joined_service"),
+        Column("Role", field="role_name"),
     ]
 
     def get_queryset(self):
         return (
             Staff.objects
-            .select_related("department", "office", "category", "state", "reports_to", "designation")
+            .select_related("department", "office", "category", "state", "reports_to", "designation",
+                            "user__role")
             .order_by("last_name", "first_name")
         )
 
@@ -320,4 +374,6 @@ class StaffExport(ExportSpec):
             return obj.reports_to.employee_no if obj.reports_to else ""
         if column.field == "designation":
             return obj.designation.name if obj.designation_id else ""
-        return getattr(obj, column.field, "")
+        if column.field == "role_name":
+            return obj.user.role.name if obj.user_id and obj.user.role_id else ""
+        return getattr(obj, column.field, "")

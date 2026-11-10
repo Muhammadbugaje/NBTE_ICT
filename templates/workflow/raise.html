@@ -1,27 +1,24 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load workflow_extras %}
 
 {% block title %}{{ request_type.name }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{{ request_type.name }}{% endblock %}
 
 {% block content %}
-<div class="wf-page-head">
+<div class="wk-page wk-page--narrow" data-qa-area="requests">
+<header class="qa-hero nbte-hero wk-hero" data-qa-area="requests">
   <div>
-    <a href="{% url 'workflow:raise' %}" class="btn btn-subtle btn-sm mb-3">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-      Back to request types
-    </a>
+    <a class="nbte-hero__back" href="{% url 'workflow:raise' %}">{% icon "back" 14 "2.4" %} Request types</a>
+    <span class="qa-eyebrow">{% icon "plus" 14 "2.2" %} Requests · New request</span>
     <h1>{{ request_type.name }}</h1>
-    <p>
-      {{ request_type.description|default:"Fill in the details below." }}
-      <br>
-      <span class="muted text-xs">
-        Routes to <strong>{{ request_type.handling_department.name }}</strong>.
-      </span>
-    </p>
+    <p>{{ request_type.description|default:"Fill in the details below." }}</p>
+    <div class="wk-hero-meta">
+      {% if request_type.handling_department %}<span class="wk-chip">{% icon "building" 13 "2.2" %} Routes to <strong>{{ request_type.handling_department.name }}</strong></span>{% endif %}
+      {% if request_type.category %}<span class="wk-chip">{{ request_type.category.name }}</span>{% endif %}
+    </div>
   </div>
-</div>
+</header>
 
 <div class="wf-raise-card">
   <form method="post" novalidate>
@@ -88,5 +85,6 @@
       <a href="{% url 'workflow:raise' %}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
+</div>
 </div>
 {% endblock %}

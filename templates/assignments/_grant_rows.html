@@ -1,0 +1,35 @@
+{% load qa_tags %}
+{% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for g in page.rows %}
+      <li class="qa-card__body qa-grant-row">
+        <div>
+          <strong>{{ g.grantee|who }}</strong> · {{ g.get_scope_display }}
+          <div class="qa-grant-row__reason">{% if g.institution %}{{ g.institution.name }} · {% endif %}{{ g.reason }}</div>
+        </div>
+        <div class="qa-small">
+          <div>Given {{ g.granted_at|date:"j M Y H:i" }}{% if g.granted_by %} by {{ g.granted_by|who }}{% else %} by the system{% endif %}</div>
+          <div class="qa-muted">{% if g.revoked_at %}Ended {{ g.revoked_at|date:"j M Y H:i" }} · {{ g.get_revoke_reason_display }}{% elif g.expires_at %}Until {{ g.expires_at|date:"j M Y H:i" }}{% else %}While the work is open{% endif %}</div>
+        </div>
+        <div class="qa-work__side">
+          <span class="qa-chip {% if g.status == 'live' %}qa-tone-success{% else %}qa-tone-neutral{% endif %}">{{ g.status|title }}</span>
+          {% if can_revoke and g.status == "live" %}
+            <form class="qa-grant-revoke" hx-post="{% url 'assignments:grant_revoke' g.pk %}?{{ request.GET.urlencode }}" hx-target="#qa-panel">
+              {% csrf_token %}
+              <label class="sr-only" for="rv-{{ g.pk }}">Reason</label>
+              <input class="input input-sm" id="rv-{{ g.pk }}" name="reason" placeholder="Reason" required minlength="3">
+              <button class="btn btn-sm btn-subtle" type="submit">{% icon "ban" 14 %} Revoke</button>
+            </form>
+          {% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}
+  <div class="nbte-empty-state qa-empty" data-qa-announce="No grants">
+    <span class="nbte-empty-state__icon" aria-hidden="true">{% icon "shield" 28 %}</span>
+    <h3 class="nbte-empty-state__title">No grants here</h3>
+    <p class="nbte-empty-state__body">Grants appear when people accept work that needs temporary access.</p>
+  </div>
+{% endif %}

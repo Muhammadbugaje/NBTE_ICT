@@ -19,8 +19,9 @@ from django.views.decorators.http import require_GET, require_http_methods
 from qa_core.portal_views import _shell_context, institution_required, portal_login_required
 from qa_core.ui import is_htmx, paginate, toast
 
+from . import forms
 from . import services
-from .models import DUTY_CHOICES, QAMapping, ResourcePersonFile
+from .models import DUTY_CHOICES, PostVisitPersonnel, PostVisitReport, QAMapping, ResourcePersonFile
 
 ENGAGEMENT_STATUS = [("all", "All engagements"), ("live", "Upcoming and current"), ("released", "Completed")]
 
@@ -51,17 +52,48 @@ def _rows_or_page(request, target, rows_template, page_template, ctx):
 @require_http_methods(["GET", "POST"])
 def engagements(request):
     rp = request.resource_person
-    errors, error_for = {}, None
+    errors, error_for, report_error_for, member_form = {}, None, None, None
     if request.method == "POST":
         mapping = next((m for m in services.rp_engagements(rp) if str(m.pk) == request.POST.get("mapping")), None)
         if mapping is None:
             raise Http404
-        try:
-            services.submit_findings(mapping, user=request.user, text=request.POST.get("findings", ""))
-        except (ValidationError, PermissionDenied) as exc:
-            errors = getattr(exc, "message_dict", None) or {"findings": exc.messages if hasattr(exc, "messages")
-                                                            else [str(exc)]}
-            error_for = mapping.pk
+        if request.POST.get("action") == "member_report":
+            inspection = services.live_inspection(mapping.case)
+            report = (PostVisitReport.unscoped.filter(
+                inspection=inspection, qa_request_programme=mapping.qa_request_programme).first()
+                if inspection is not None else None)
+            member_report = services.member_report_for_user(report, request.user) if report else None
+            if member_report is None:
+                errors = {"__all__": ["Your individual report is not available until the recorded visit is "
+                                      "assigned to your account."]}
+                report_error_for = mapping.pk
+            else:
+                member_form = forms.MemberReportForm(request.POST, member_report=member_report)
+                if member_form.is_valid():
+                    try:
+                        services.save_member_report(
+                            member_report, user=request.user, summary=member_form.cleaned_data["summary"],
+                            findings=member_form.findings(),
+                            recommendation=member_form.cleaned_data["recommendation"],
+                            submit=request.POST.get("op") == "submit")
+                    except (ValidationError, PermissionDenied) as exc:
+                        if hasattr(exc, "error_dict"):
+                            for field, messages in exc.message_dict.items():
+                                member_form.add_error(field if field in member_form.fields else None, messages)
+                        else:
+                            member_form.add_error(None, exc)
+                        errors = member_form.errors
+                        report_error_for = mapping.pk
+                else:
+                    errors = member_form.errors
+                    report_error_for = mapping.pk
+        else:
+            try:
+                services.submit_findings(mapping, user=request.user, text=request.POST.get("findings", ""))
+            except (ValidationError, PermissionDenied) as exc:
+                errors = getattr(exc, "message_dict", None) or {"findings": exc.messages if hasattr(exc, "messages")
+                                                                else [str(exc)]}
+                error_for = mapping.pk
     f = request.GET
     qs = services.rp_engagements(rp)
     status = f.get("status") or "all"
@@ -82,13 +114,32 @@ def engagements(request):
     page = paginate(request, list(qs))
     for m in page["rows"]:
         m.can_write, m.write_why = services.findings_open(m)
+        inspection = services.live_inspection(m.case)
+        m.visit_report = (PostVisitReport.unscoped.filter(
+            inspection=inspection, qa_request_programme=m.qa_request_programme).first()
+            if inspection is not None else None)
+        m.visit_attendance = (PostVisitPersonnel.unscoped.filter(
+            inspection=inspection, resource_person=rp).first()
+            if inspection is not None and inspection.status == "closed" else None)
+        m.member_report = (services.member_report_for_user(m.visit_report, request.user)
+                           if m.visit_report is not None else None)
+        m.can_write_member_report, m.member_report_why = (
+            services.can_write_member_report(m.member_report, request.user)
+            if m.member_report is not None else (False, "Your individual report unlocks after attendance is recorded."))
+        m.member_form = (member_form if report_error_for == m.pk and member_form is not None else
+                         forms.MemberReportForm(member_report=m.member_report) if m.member_report else None)
     ctx = _shell_context(request, "engagements", page=page, filters=f, status=status, statuses=ENGAGEMENT_STATUS,
                          duties=DUTY_CHOICES, rp=rp, errors=errors, error_for=error_for,
+                         report_error_for=report_error_for,
                          draft=request.POST.get("findings", "") if errors else "")
     if request.method == "POST":
         response = render(request, "qa_portal/resource_person/engagements.html", ctx, status=422 if errors else 200)
         if errors:
             return toast(response, "error", "Not saved", " ".join(sum(errors.values(), [])))
+        if request.POST.get("action") == "member_report":
+            submitted = request.POST.get("op") == "submit"
+            return toast(response, "success", "Report submitted to the Team Lead" if submitted else "Draft saved",
+                         "The Team Lead can now review your programme findings." if submitted else "")
         return toast(response, "success", "Findings saved", "The Team Lead sees them on the report.")
     return _rows_or_page(request, "rp-rows", "qa_portal/resource_person/_engagement_rows.html",
                          "qa_portal/resource_person/engagements.html", ctx)

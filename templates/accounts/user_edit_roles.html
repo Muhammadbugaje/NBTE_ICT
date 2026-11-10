@@ -1,22 +1,22 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Edit roles · {{ u.email }}{% endblock %}
 {% block page_title %}Edit roles{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/home.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/home.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="home-page home-page-narrow">
 
-  <a href="{% url 'accounts:user_detail' u.pk %}" class="home-back">← {{ u.email }}</a>
-
-  <header class="home-header">
+  <header class="qa-hero nbte-hero">
     <div>
-      <h1>Edit roles</h1>
-      <p class="muted">Choose the role for <strong>{{ u.get_full_name|default:u.email }}</strong>. The role decides what they can see and do.</p>
+      <a class="nbte-hero__back" href="{% url 'accounts:user_detail' u.pk %}">{% icon "back" 14 "2.4" %} {{ u.get_full_name|default:u.email }}</a>
+      <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} User management · {{ seg.label }}</span>
+      <h1>Edit role</h1>
+      <p>Choose the role for <strong>{{ u.get_full_name|default:u.email }}</strong>. The role decides what they can see and do. Only {% if segment == 'institution' %}institution portal{% elif segment == 'external' %}portal{% else %}NBTE internal{% endif %} roles are offered for this account.</p>
     </div>
   </header>
 
@@ -39,7 +39,19 @@
       {% endfor %}
     </div>
 
-    <div class="form-actions">
+    <p class="muted">Only roles you may give are listed: the person's grade must allow the role, you must hold every permission it carries, and you can only manage staff of your own department (unless you see all users).</p>
+    <label class="field">
+      <span>Reason <span class="muted">(recorded in the audit log)</span></span>
+      <input type="text" name="reason" maxlength="255" placeholder="e.g. Appointed acting head of unit">
+    </label>
+    {% if can_override %}
+    <label class="role-item">
+      <input type="checkbox" name="override">
+      <div><strong>Executive Secretary override</strong><span class="muted">Apply even if a rule refuses it. A reason is required and the override is audited.</span></div>
+    </label>
+    {% endif %}
+
+    <div class="form-actions btn-group">
       <button type="submit" class="btn btn-primary">Save role</button>
       <a href="{% url 'accounts:user_detail' u.pk %}" class="btn btn-ghost">Cancel</a>
     </div>

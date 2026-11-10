@@ -1,0 +1,15 @@
+{# v2.1 Phase E (M5): live count for the institution filter builder #}
+<div class="memo-count" data-total="{{ total }}" aria-live="polite">
+  <div class="memo-count-num"><strong>{{ total }}</strong> <span>institution{{ total|pluralize }}</span></div>
+  <div class="memo-count-label">{{ label }}</div>
+  {% if sample %}
+    <ul class="memo-count-sample" role="list">
+      {% for i in sample %}<li>{{ i.name }}{% if i.code %} <span class="muted">· {{ i.code }}</span>{% endif %}</li>{% endfor %}
+      {% if more %}<li class="muted">+{{ more }} more</li>{% endif %}
+    </ul>
+  {% elif scope == "selected" %}
+    <p class="memo-count-empty">Tick the institutions below.</p>
+  {% else %}
+    <p class="memo-count-empty">No institution matches. Widen the filters.</p>
+  {% endif %}
+</div>

@@ -18,7 +18,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from qa_core.portal_views import _shell_context, portal_login_required
-from qa_core.ui import is_htmx, paginate, toast
+from qa_core.ui import htmx_fragment, is_htmx, paginate, toast
 
 from . import services
 from .models import ComplaintAttachment, ComplaintLayer, ComplaintMessage, KnowledgeArticle
@@ -142,6 +142,7 @@ def raise_complaint(request):
 
 @portal_login_required
 @require_GET
+@htmx_fragment("qa_portal:complaint_new")
 def suggest(request):
     """Knowledge-base suggestions while the subject is typed (TR-17)."""
     _external(request)
@@ -170,7 +171,9 @@ def _detail_ctx(request, complaint, **extra):
     ctx = _shell_context(
         request, "complaints", c=complaint, messages_list=list(messages_qs), stage_label=_public_stage(complaint),
         department=getattr(current, "assigned_department", None) or complaint.current_department,
-        officer=(current.assigned_to if current is not None and show_name else None),
+        # v2.1 X10: the officer working it (never the director's queue step), only when the setting allows.
+        officer=((complaint.assigned_officer if services.is_directed(complaint) else
+                  getattr(current, "assigned_to", None)) if show_name else None),
         actions=services.raiser_actions(request.user, complaint) if not _read_only(request) else [],
         can_reply=complaint.is_open and services.is_raiser(request.user, complaint) and not _read_only(request),
         waiting_for_me=complaint.status == "awaiting_raiser",
@@ -235,7 +238,7 @@ def complaint_action(request, pk, action):
         services.act(complaint, action, request.user, remark=request.POST.get("remark", ""))
         rating = request.POST.get("satisfaction", "")
         if action == "confirm" and rating.isdigit() and 1 <= int(rating) <= 5:
-            type(complaint).unscoped.filter(pk=complaint.pk).update(satisfaction=int(rating))
+            services.record_satisfaction(complaint, request.user, int(rating))
     except (ValidationError, PermissionDenied) as exc:
         response = render(request, "complaints/portal/detail.html",
                           _detail_ctx(request, complaint, error=_msg(exc)), status=422)

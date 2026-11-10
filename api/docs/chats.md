@@ -492,6 +492,51 @@ Sender only: `{"text": "Corrected transcript"}` → **200** message
 
 ---
 
+## Groups, invite links, pins and reminders (v2.1 Phase E)
+
+Rules live in `messaging/group_services.py` (the website uses the same functions).
+Members have a `role`: `owner`, `admin` or `member`. Admin-only actions answer
+**403 permission_denied** for members; rule violations **400**; non-participants **404**.
+Groups made by the system for a subject (`auto_managed: true`, e.g. an SSQ team)
+refuse manual add/remove/leave/invite (400); archived groups (`archived_at`) are read-only.
+
+### GET `threads/<id>/group/` — group info
+Title, description, `photo_path`, the three policies (`send_policy`, `edit_info_policy`,
+`add_members_policy`: `all` | `admins`), `auto_managed`, `purpose`, `archived_at`,
+`member_count`, `admin_count`, `my_role`, `permissions` (flags such as `can_send`,
+`can_pin`, `can_add_members`, `can_manage_members`, `read_only`), `members` (with `role`)
+and `pinned` messages. Direct chats answer with `is_group: false`.
+
+### PATCH `threads/<id>/group/` (JSON or multipart)
+`title`, `description`, `photo`, `remove_photo` need edit-info permission; the policies
+need an admin. Each change posts a system message. Answers the group info.
+
+### POST `threads/<id>/members/` `{"users": [ids]}` · POST `threads/<id>/members/<user>/remove/` · POST `threads/<id>/members/<user>/role/` `{"role": "admin"|"member"}` · POST `threads/<id>/leave/`
+Add (staff only, per `add_members_policy`), remove, promote/demote (admins; never the
+owner), leave (204; an owner who leaves hands over to the longest-serving admin).
+
+### GET / POST `threads/<id>/invites/` · POST `threads/<id>/invites/<invite>/revoke/`
+Join links for staff: `days` (1-30, default `messaging.invite_link_days` = 7) and an
+optional `max_uses`. `url` is the website join page.
+
+### GET / POST `join/<token>/`
+GET: `state` = `ok` | `member` | `expired` | `not_staff` | `closed`. POST joins (400 when
+expired/revoked/used up, 403 for non-staff accounts).
+
+### POST `messages/<id>/pin/` `{"pinned": true|false}`
+Pin inside the chat: group admins (both people in a direct chat); at most
+`messaging.pins_per_chat` (3). The message object carries `pinned_at`.
+
+### POST / DELETE `messages/<id>/reminder/` · GET `reminders/`
+`{"remind_at": ISO}` or `{"preset": "1h"|"3h"|"tomorrow"|"1w"}` plus an optional `note`.
+One pending reminder per person per message; a notification (category `message`)
+arrives at the time (beat task every minute). The message object carries `my_reminder_at`.
+
+### Cheaper polls
+`threads/<id>/updates/` accepts `v` (the `v` of your last answer). While nothing changed,
+the answer is `{"unchanged": true, ...}` with empty lists and no database work; keep
+your state. The website shares one notification/inbox poll between all tabs of a browser.
+
 ## Attachments
 
 ### GET `attachments/<id>/`
@@ -525,3 +570,9 @@ message is deleted (for everyone or for you) or the file expired (30 days).
 | POST | `chats/voice/<id>/played/` | 204 |
 | PATCH | `chats/voice/<id>/transcript/` | sender only |
 | GET | `chats/attachments/<id>/` | file |
+| GET / PATCH | `chats/threads/<id>/group/` | group info / settings (v2.1) |
+| POST | `chats/threads/<id>/members/` · `members/<user>/remove/` · `members/<user>/role/` · `leave/` | admins (v2.1) |
+| GET / POST | `chats/threads/<id>/invites/` · POST `invites/<id>/revoke/` | staff join links (v2.1) |
+| GET / POST | `chats/join/<token>/` | join by link (v2.1) |
+| POST | `chats/messages/<id>/pin/` | in-chat pin, max 3 (v2.1) |
+| POST / DELETE | `chats/messages/<id>/reminder/` · GET `chats/reminders/` | reminders (v2.1) |

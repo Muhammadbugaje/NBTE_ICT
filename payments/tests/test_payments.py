@@ -14,6 +14,11 @@ from qa_core.tests.phase2_fixtures import pdf_upload
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _enable_gateway_simulator_for_tests(settings):
+    settings.QA_PAYMENTS_SIMULATE = True
+
+
 def _ob(pk):
     from payments.models import PaymentObligation
 
@@ -146,9 +151,8 @@ def test_director_confirmation_flow(claimed, p2):
 
     assert claimed.status == "awaiting_finance_confirmation"
     item = _open_item(claimed)
-    with pytest.raises(ValidationError):  # nothing before the first pass
-        services.final_decision(item, user=p2.fin_director, decision="confirmed")
-    services.first_pass(item, user=p2.fin_officer, decision="approved", amount=claimed.amount)
+    with pytest.raises(PermissionDenied):
+        services.first_pass(item, user=p2.fin_officer, decision="approved", amount=claimed.amount)
     assert _ob(claimed.pk).status == "awaiting_finance_confirmation"
     with pytest.raises(PermissionDenied):  # the officer can never confirm
         services.final_decision(item, user=p2.fin_officer, decision="confirmed")
@@ -165,13 +169,14 @@ def test_director_without_permission_is_refused(claimed, p2):
     from accounts.models import User
     from payments import services
 
-    services.first_pass(_open_item(claimed), user=p2.fin_officer, decision="approved", amount=claimed.amount)
     perm = Permission.objects.get(codename="final_confirm_payment", content_type__app_label="payments")
     role = p2.fin_director.role
     role.permissions.remove(perm)
     for group in role.groups.all():
         group.permissions.remove(perm)
     for group in p2.fin_director.groups.all():
+        group.permissions.remove(perm)
+    for group in p2.fin_director.department.director_groups.all():  # Phase B: the Finance seat group
         group.permissions.remove(perm)
     user = User.objects.get(pk=p2.fin_director.pk)
     assert not user.has_perm("payments.final_confirm_payment")
@@ -180,35 +185,10 @@ def test_director_without_permission_is_refused(claimed, p2):
     assert _ob(claimed.pk).status == "awaiting_finance_confirmation"
 
 
-def test_first_pass_director_cannot_also_decide(claimed, p2, make_user):
-    from accounts.models import User
-    from payments import services
-    from qa_core.departments import qa_department
-
-    other = make_user("p2.fin.director2@t.local", role="qa-finance-director")
-    other.department = qa_department("finance")
-    other.save()
-    other = User.objects.get(pk=other.pk)
-    from django.contrib.auth.models import Permission
-
-    # A Director of Finance who also holds the first-pass permission does a first pass …
-    p2.fin_director.user_permissions.add(Permission.objects.get(codename="verify_payment",
-                                                                 content_type__app_label="payments"))
-    director = User.objects.get(pk=p2.fin_director.pk)
-    item = _open_item(claimed)
-    services.first_pass(item, user=director, decision="approved", amount=claimed.amount)
-    # … and therefore cannot also decide; another Director of Finance can.
-    with pytest.raises(PermissionDenied):
-        services.final_decision(item, user=director, decision="confirmed")
-    services.final_decision(item, user=other, decision="confirmed")
-    assert _ob(claimed.pk).status == "confirmed"
-
-
 def test_reject_lets_the_institution_pay_again(claimed, p2, inst_user):
     from payments import services
 
     item = _open_item(claimed)
-    services.first_pass(item, user=p2.fin_officer, decision="rejected", reason="teller not on the statement")
     with pytest.raises(ValidationError):
         services.final_decision(item, user=p2.fin_director, decision="rejected", reason="")
     services.final_decision(item, user=p2.fin_director, decision="rejected", reason="Teller not found")
@@ -218,17 +198,23 @@ def test_reject_lets_the_institution_pay_again(claimed, p2, inst_user):
     assert _ob(claimed.pk).status == "awaiting_finance_confirmation"
 
 
-def test_provider_payment_needs_receipt_before_confirmation(bill, inst_user, p2):
+def _setting(key, value):
+    from config.models import ConfigEntry
+
+    entry = ConfigEntry.objects.get(key=key, scope="global")
+    entry.value = value
+    entry.save()
+
+
+def test_provider_verified_payment_needs_no_receipt(bill, inst_user, p2):
+    """A server-verified successful payment needs only the Director's decision."""
     from payments import services
 
+    _setting("qa.payment.receipt_required_for_provider_payments", "true")
     attempt = _pay_online(bill, inst_user, "paystack")
     services.simulate_provider_callback("paystack", attempt.provider_reference, "success")
     item = _open_item(_ob(bill.pk))
-    services.first_pass(item, user=p2.fin_officer, decision="approved", amount=bill.amount)
-    with pytest.raises(ValidationError):
-        services.final_decision(item, user=p2.fin_director, decision="confirmed")
-    services.submit_proof(_ob(bill.pk), user=inst_user, upload=pdf_upload("receipt.pdf", b"r"), kind="provider_receipt",
-                          attempt=attempt, amount_claimed=attempt.amount)
+    assert services.ready_for_final(item) == (True, "")
     services.final_decision(_open_item(_ob(bill.pk)), user=p2.fin_director, decision="confirmed")
     assert _ob(bill.pk).status == "confirmed"
     from payments.models import PaymentAttempt
@@ -314,7 +300,6 @@ def _confirm(ob, p2):
     from payments import services
 
     item = _open_item(ob)
-    services.first_pass(item, user=p2.fin_officer, decision="approved", amount=ob.amount)
     services.final_decision(item, user=p2.fin_director, decision="confirmed")
     return _ob(ob.pk)
 
@@ -347,8 +332,7 @@ def test_overpayment_is_recorded(claimed, p2):
     from payments import services
 
     item = _open_item(claimed)
-    services.first_pass(item, user=p2.fin_officer, decision="approved", amount=claimed.amount + 500)
-    services.final_decision(item, user=p2.fin_director, decision="confirmed")
+    services.final_decision(item, user=p2.fin_director, decision="confirmed", amount=claimed.amount + 500)
     ob = _ob(claimed.pk)
     assert ob.overpaid_amount == Decimal("500.00") and ob.status in ("overpaid", "confirmed")
 
@@ -441,7 +425,7 @@ def test_bank_transfer_only_fallback(bill, inst_user, client_for, portal_host, s
     page = client_for(inst_user, portal_host).get(f"/payments/{bill.pk}/")
     assert page.status_code == 200
     assert b"Pay with Paystack" not in page.content and b"Pay with Remita" not in page.content
-    assert b"Bank transfer or deposit" in page.content
+    assert b"Upload proof of payment" in page.content  # v2.1 P9: the only method is shown at once
 
 
 def test_online_methods_off_without_keys_in_production(settings):

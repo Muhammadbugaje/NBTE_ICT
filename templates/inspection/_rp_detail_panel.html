@@ -11,7 +11,7 @@
 {% if problems %}<div class="qa-callout qa-callout--warn" role="status">{% icon "alert" 18 "2.2" %}<div><strong>Eligibility</strong><ul class="qa-problems">{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div></div>{% endif %}
 <div class="qa-cols">
   <div class="qa-stack">
-    <section class="qa-card" aria-labelledby="rp-h1"><header class="qa-card__head"><h2 id="rp-h1">Profile</h2></header>
+    <section class="qa-card" aria-labelledby="rp-h1"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--blue">{% icon "user" 17 "2.2" %}</span><div><h2 id="rp-h1">Profile</h2></div></div></header>
       <div class="qa-card__body"><dl class="qa-dl">
         <div><dt>Disciplines</dt><dd>{% for d in disciplines %}<span class="qa-chip{% if d.is_primary %} qa-tone-info{% endif %}">{{ d.discipline.name }}{% if d.is_primary %} (primary){% endif %}</span> {% empty %}—{% endfor %}</dd></div>
         <div><dt>Home institution</dt><dd>{{ rp.home_institution.name|default:"—" }}</dd></div>
@@ -22,22 +22,22 @@
         <div><dt>Portal account</dt><dd>{% if rp.user %}{{ rp.user.email }}{% else %}None{% endif %}</dd></div>
       </dl></div>
     </section>
-    <section class="qa-card" aria-labelledby="rp-h2"><header class="qa-card__head"><div><h2 id="rp-h2">Service history</h2><p>{{ totals.visits }} visit{{ totals.visits|pluralize }} · {{ totals.ssqs }} SSQ review{{ totals.ssqs|pluralize }} · {{ totals.visits_this_year }} this year · last served {{ totals.last_served|date:"j M Y"|default:"never" }}</p></div></header>
+    <section class="qa-card" aria-labelledby="rp-h2"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--teal">{% icon "clock" 17 "2.2" %}</span><div><h2 id="rp-h2">Service history</h2><p>{{ totals.visits }} visit{{ totals.visits|pluralize }} · {{ totals.ssqs }} SSQ review{{ totals.ssqs|pluralize }} · {{ totals.visits_this_year }} this year · last served {{ totals.last_served|date:"j M Y"|default:"never" }}</p></div></div></header>
       {% include "inspection/_service_table.html" with rows=history %}
     </section>
-    <section class="qa-card" aria-labelledby="rp-h3"><header class="qa-card__head"><h2 id="rp-h3">Engagements</h2></header>
+    <section class="qa-card" aria-labelledby="rp-h3"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--amber">{% icon "link" 17 "2.2" %}</span><div><h2 id="rp-h3">Engagements</h2></div></div></header>
       <ul class="qa-rowlist" role="list">{% for m in mappings %}<li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ m.qa_request_programme.programme }}</span><span class="qa-rowlink__meta"><span>{{ m.case.institution.name }}</span><span>· {{ m.get_duty_display }}</span><span>· {{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</span></span></span><span class="qa-rowlink__side"><span class="qa-chip {{ m.status|tone }}">{{ m.get_status_display }}</span></span></li>{% empty %}<li class="qa-card__body qa-muted">No engagements.</li>{% endfor %}</ul>
     </section>
   </div>
   <aside class="qa-stack">
-    <section class="qa-card" aria-labelledby="rp-h4"><header class="qa-card__head"><h2 id="rp-h4">CV and documents</h2></header>
+    <section class="qa-card" aria-labelledby="rp-h4"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--purple">{% icon "file" 17 "2.2" %}</span><div><h2 id="rp-h4">CV and documents</h2></div></div></header>
       <ul class="qa-rowlist" role="list">{% for f in files %}<li class="fpv-row"><a class="qa-rowlink qa-rowlink--nobadge" href="{{ f.download_url }}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ f.get_kind_display }}</span><span class="qa-rowlink__meta"><span>{{ f.original_name|default:"file" }}</span><span>· {{ f.created_at|date:"j M Y" }}</span></span></span></a>{% preview_button f.download_url f.display_name f.size_bytes %}</li>{% empty %}<li class="qa-card__body qa-muted">No CV yet.</li>{% endfor %}</ul>
       {% if can_manage %}<div class="qa-card__body"><form class="qa-form" method="post" enctype="multipart/form-data" action="{% url 'qa_insp:rp_action' rp.pk 'file' %}" hx-post="{% url 'qa_insp:rp_action' rp.pk 'file' %}" hx-encoding="multipart/form-data" hx-target="#qa-panel">{% csrf_token %}
         <div class="qa-fields">{% for field in file_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}</div>
         <div class="qa-form-actions"><button class="btn btn-subtle" type="submit">{% icon "upload" 16 %} Upload</button></div></form></div>{% endif %}
     </section>
     {% if rp.status == "nominated" or rp.status == "vetted" %}
-    <section class="qa-card" aria-labelledby="rp-h5"><header class="qa-card__head"><h2 id="rp-h5">Vetting</h2></header>
+    <section class="qa-card" aria-labelledby="rp-h5"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--teal">{% icon "shield" 17 "2.2" %}</span><div><h2 id="rp-h5">Vetting</h2></div></div></header>
       <div class="qa-card__body">{% if can_vet %}
         <form class="qa-form" method="post" action="{% url 'qa_insp:rp_action' rp.pk 'vet' %}" hx-post="{% url 'qa_insp:rp_action' rp.pk 'vet' %}" hx-target="#qa-panel">{% csrf_token %}
           {% for field in vet_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}
@@ -45,7 +45,7 @@
       {% elif monitor %}<p class="qa-muted qa-small">Read-only (R-13).</p>{% else %}<p class="qa-muted qa-small">A vetter other than the nominator decides (inspection.vet_resource_person).</p>{% endif %}</div>
     </section>
     {% elif can_manage and rp.status != "rejected" %}
-    <section class="qa-card" aria-labelledby="rp-h6"><header class="qa-card__head"><h2 id="rp-h6">Status and portal</h2></header>
+    <section class="qa-card" aria-labelledby="rp-h6"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--blue">{% icon "settings" 17 "2.2" %}</span><div><h2 id="rp-h6">Status and portal</h2></div></div></header>
       <div class="qa-card__body qa-stack">
         <form class="qa-inline-form" method="post" action="{% url 'qa_insp:rp_action' rp.pk 'status' %}" hx-post="{% url 'qa_insp:rp_action' rp.pk 'status' %}" hx-target="#qa-panel">{% csrf_token %}
           {% for field in status_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}<button class="btn btn-subtle" type="submit">Save</button></form>

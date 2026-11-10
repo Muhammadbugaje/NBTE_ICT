@@ -305,7 +305,7 @@ REQUEST_TYPES = [
      {"is_cross_department": True, "form_schema": FACILITIES_AC_SCHEMA}),
 
     # ---- Human resources ----
-    ("annual-leave", "Annual leave application", "leave", "hr", "internal-4-step",
+    ("annual-leave", "Leave application", "leave", "hr", "internal-4-step",
      {"requires_hr_approval": True, "form_schema": ANNUAL_LEAVE_SCHEMA}),
 ]
 

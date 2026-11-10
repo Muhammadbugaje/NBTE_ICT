@@ -1,34 +1,29 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 
 {% block title %}Awaiting my action · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Awaiting my action{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/action-queue.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/action-queue.css' %}">
 {% endblock %}
 
 {% block content %}
-<main class="action-queue-page">
+<div class="action-queue-page wk-page" data-qa-area="requests">
 
-  <header class="action-queue-hero">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="requests">
     <div>
+      <span class="qa-eyebrow">{% icon "clock" 14 "2.2" %} Requests · Awaiting my action</span>
       <h1>Awaiting my action</h1>
-      <p class="action-queue-subtitle">
-        {% if total %}
-          {{ total }} item{{ total|pluralize }} across messages, approvals,
-          overdue assets, and escalations.
-        {% else %}
-          Messages, approvals, overdue assets, and escalations, in one queue.
-        {% endif %}
-      </p>
-    </div>
-    {% if total %}
-      <div class="action-queue-total" aria-label="{{ total }} open items">
-        <strong>{{ total }}</strong>
-        <span>open</span>
+      <p>{% if total %}{{ total }} item{{ total|pluralize }} across messages, approvals, overdue assets and escalations, in one queue.{% else %}Messages, approvals, overdue assets and escalations that need you, in one queue.{% endif %}</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'workflow:my_requests' %}" class="btn btn-subtle">{% icon "inbox" 16 "2.2" %} My requests</a>
+        <a href="{% url 'workflow:raise' %}" class="btn btn-subtle">{% icon "plus" 16 "2.4" %} New request</a>
       </div>
-    {% endif %}
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat{% if total %} qa-stat--warn{% endif %}"><strong>{{ total|default:0 }}</strong><span>Open item{{ total|pluralize }}</span></div>
+    </div>
   </header>
 
   <form method="get" class="action-queue-filters" role="search">
@@ -92,6 +87,13 @@
     {% csrf_token %}
 
     {% if page.object_list %}
+      <div class="action-queue-selecttools" data-aq-tools hidden>
+        <button type="button" class="bulk-select-btn action-queue-mode-btn" data-aq-mode aria-pressed="false">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="m8 12 3 3 5-6"/></svg>
+          <span data-aq-mode-label>Select</span>
+        </button>
+        <label class="action-queue-select-all aq-sel-only"><input type="checkbox" data-aq-all> Select all on this page</label>
+      </div>
       <div class="action-queue-list" aria-label="Action items" aria-live="polite">
         {% for item in page.object_list %}
           <article class="action-queue-item{% if item.source == 'request' %} action-queue-item--request{% endif %}">
@@ -224,12 +226,13 @@
         <button class="btn btn-ghost" type="submit" name="bulk_action" value="return" disabled>
           Return
         </button>
+        <button class="btn btn-ghost" type="button" data-aq-cancel>Cancel</button>
       </div>
     </div>
   </form>
-</main>
+</div>
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/action-queue.js' %}?v=2" defer></script>
+  <script src="{% static 'js/action-queue.js' %}" defer></script>
 {% endblock %}

@@ -1,32 +1,17 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Saved queries · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Advanced query{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="nbr-page qb-page">
-  <a href="{% url 'staff:query' %}" class="nbr-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Advanced query
-  </a>
-  <header class="nbte-page-header nbr-header">
-    <div class="nbte-page-header__text">
-      <span class="nbte-page-header__eyebrow">People · Advanced query</span>
-      <h1 class="nbte-page-header__title">Saved queries</h1>
-      <p class="nbte-page-header__description">Your own queries, plus the ones shared with everyone. Run one to open it in the builder with its conditions filled in.</p>
-    </div>
-    <div class="nbte-page-header__actions">
-      <a href="{% url 'staff:query' %}" class="btn btn-primary">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New query
-      </a>
-    </div>
-  </header>
+  {% url 'staff:query' as new_url %}
+  {% include "partials/hero.html" with icon="search" eyebrow="User management · Advanced query" title="Saved queries" lede="Your own queries plus the shared ones; run one to open it in the builder." back_url=new_url back_label="Advanced query" action_url=new_url action_label="New query" action_icon="plus" s1=queries|length s1_label="Saved queries" %}
 
   {% if queries %}
     <ul class="qb-saved-grid">
@@ -78,5 +63,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/query-builder.js' %}?v=1" defer></script>
+  <script src="{% static 'js/query-builder.js' %}" defer></script>
 {% endblock %}

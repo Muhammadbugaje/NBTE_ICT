@@ -1,56 +1,53 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}{{ department.name }} attendance · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Department attendance{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="att-page att-page-wide">
 
   {# ============================ HERO ============================ #}
-  <header class="att-hero">
-    <div class="att-hero-left">
-      <a class="att-back" href="{% url 'attendance:home' %}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        Attendance
-      </a>
+  <header class="qa-hero nbte-hero att-qa-hero" data-qa-area="attendance">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'attendance:home' %}">{% icon "back" 14 "2.4" %} Attendance</a>
+      <span class="qa-eyebrow">{% icon "users" 14 "2.2" %} Attendance · Department report</span>
       <h1>{{ department.name }}</h1>
       <p>
         {{ staff_count }} staff member{{ staff_count|pluralize }}
         · {{ working_days }} working day{{ working_days|pluralize }}
         in {{ month_label }}
       </p>
-    </div>
-
-    <div class="att-hero-right">
-      {% if can_view_all %}
-        <a class="att-btn att-btn-ghost" href="{% url 'attendance:all_departments' %}?year={{ year }}{% if month %}&month={{ month }}{% endif %}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><line x1="10" y1="21" x2="10" y2="12"/><line x1="14" y1="21" x2="14" y2="12"/></svg>
-          All departments
+      <div class="qa-hero__actions btn-group">
+        {% if can_view_all %}
+          <a class="btn btn-subtle" href="{% url 'attendance:all_departments' %}?year={{ year }}{% if month %}&month={{ month }}{% endif %}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><line x1="10" y1="21" x2="10" y2="12"/><line x1="14" y1="21" x2="14" y2="12"/></svg>
+            All departments
+          </a>
+        {% endif %}
+        <a class="btn btn-subtle"
+           href="{% url 'attendance:export_excel' %}?year={{ year }}{% if month %}&month={{ month }}{% endif %}{% if can_view_all %}&department={{ department.pk }}{% endif %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Excel — {{ export_label }}
         </a>
-      {% endif %}
-      <a class="att-btn att-btn-ghost"
-         href="{% url 'attendance:export_excel' %}?year={{ year }}{% if month %}&month={{ month }}{% endif %}{% if can_view_all %}&department={{ department.pk }}{% endif %}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Excel — {{ export_label }}
-      </a>
-      <a class="att-btn att-btn-ghost"
-         href="{% url 'attendance:export_pdf' %}?year={{ year }}{% if month %}&month={{ month }}{% endif %}{% if can_view_all %}&department={{ department.pk }}{% endif %}"
-         target="_blank">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        PDF — {{ export_label }}
-      </a>
-      {% if can_upload %}
-        <a class="att-btn att-btn-primary"
-           href="{% url 'attendance:upload' %}?year={{ year }}&month={{ month|default:today.month }}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Upload
+        <a class="btn btn-subtle"
+           href="{% url 'attendance:export_pdf' %}?year={{ year }}{% if month %}&month={{ month }}{% endif %}{% if can_view_all %}&department={{ department.pk }}{% endif %}"
+           target="_blank">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          PDF — {{ export_label }}
         </a>
-      {% endif %}
+        {% if can_upload %}
+          <a class="btn btn-primary"
+             href="{% url 'attendance:upload' %}?year={{ year }}&month={{ month|default:today.month }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Upload
+          </a>
+        {% endif %}
+      </div>
     </div>
   </header>
 

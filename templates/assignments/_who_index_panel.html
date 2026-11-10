@@ -1,0 +1,22 @@
+{% load qa_tags %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "eye" 14 "2.2" %} Settings · Access</span>
+    <h1 data-qa-focus>Who can see an institution</h1>
+    <p>Pick an institution to list everyone who can see it and why: full viewer, ICT supervisor, department lead, assignment, temporary access or portal account. Privacy mode now: <strong>{{ mode }}</strong>.</p>
+    <div class="qa-hero__actions btn-group"><a class="btn btn-subtle" href="{% url 'assignments:grants' %}" hx-get="{% url 'assignments:grants' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "shield" 16 %} Grants log</a></div>
+  </div>
+</header>
+<section class="qa-card" aria-label="Institutions">
+  <form class="qa-toolbar" role="search" method="get" action="{% url 'assignments:who_index' %}" hx-get="{% url 'assignments:who_index' %}" hx-target="#qa-panel" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], submit" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search institutions</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ q }}" placeholder="Name or code" autocomplete="off"></label>
+  </form>
+  <ul class="qa-rowlist" role="list">
+    {% for i in page.rows %}
+      <li><a class="qa-rowlink" href="{% url 'assignments:who' i.code %}" hx-get="{% url 'assignments:who' i.code %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="qa-rowlink__badge">{{ i.code }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ i.name }}</span></span>
+        <span class="qa-rowlink__side"><span class="qa-chip {{ i.status|tone }}">{{ i.status_label }}</span></span></a></li>
+    {% empty %}<li class="qa-card__body qa-muted">No institution matches.</li>{% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-panel" %}
+</section>

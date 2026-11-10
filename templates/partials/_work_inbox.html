@@ -1,0 +1,56 @@
+{% comment %}v2.3 — "Your work": every task opens where it is done (primary button = the task itself,
+"Institution" = the file). Context: work_rows, work_summary (total, overdue, decide, bulk, filters).
+Optional: inbox_title, inbox_hide_all_link.{% endcomment %}
+<section class="ux-card ux-card--accent wx" aria-labelledby="inbox-h" id="your-work" data-wx>
+  <header class="ux-card__head">
+    <div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">✦</span>
+      <div><h2 id="inbox-h">{{ inbox_title|default:"Your work" }}</h2><p>{% if work_summary.total %}{{ work_summary.total }} thing{{ work_summary.total|pluralize }} waiting for you{% if work_summary.overdue %} · <strong class="wx-overdue-text">{{ work_summary.overdue }} overdue</strong>{% endif %}. Each one opens where you act.{% else %}You are all caught up.{% endif %}</p></div></div>
+    {% if not inbox_hide_all_link %}<a class="btn btn-sm btn-subtle" href="{% url 'assignments:my_work' %}">All my work</a>{% endif %}
+  </header>
+  {% if work_rows %}
+  {% if work_summary.bulk %}
+  <form method="post" action="{% url 'qa_app:docrev_bulk_approve' %}" id="wx-bulk" class="wx-bulk" data-wx-bulk data-confirm data-confirm-variant="neutral" data-confirm-tone="default" data-confirm-title="Approve {{ work_summary.bulk|length }} document{{ work_summary.bulk|length|pluralize }}?" data-confirm-body="Each was opened and recommended for acceptance by your officer. They are approved with your name; you can still open any of them first." data-confirm-label="Approve">{% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <span class="wx-bulk__badge" aria-hidden="true" data-wx-n>{{ work_summary.bulk|length }}</span>
+    <div class="wx-bulk__text">
+      <h3>Group approval — recommended for acceptance</h3>
+      <p>Your officers opened and recommended these documents. Tick the ones to approve in one go, or open any first.</p>
+      <label class="wx-check wx-check--all"><input type="checkbox" data-wx-all checked> <span>Select all {{ work_summary.bulk|length }}</span></label>
+    </div>
+    <button class="btn ux-btn-approve" type="submit" data-wx-submit><span>✓ Approve selected (<b data-wx-count>{{ work_summary.bulk|length }}</b>)</span></button>
+  </form>
+  {% endif %}
+  {% if work_summary.filters|length > 1 or work_summary.overdue %}
+  <div class="ux-filters wx-filters" role="group" aria-label="Show">
+    <button type="button" class="ux-filter is-active" aria-pressed="true" data-wx-filter="">All <b>{{ work_summary.total }}</b></button>
+    {% for f in work_summary.filters %}<button type="button" class="ux-filter" aria-pressed="false" data-wx-filter="{{ f.key }}">{{ f.label }} <b>{{ f.count }}</b></button>{% endfor %}
+    {% if work_summary.overdue %}<button type="button" class="ux-filter wx-filter--overdue" aria-pressed="false" data-wx-filter="overdue">Overdue <b>{{ work_summary.overdue }}</b></button>{% endif %}
+  </div>
+  {% endif %}
+  <ul class="ux-list wx-list">
+    {% for r in work_rows %}
+    <li class="ux-row wx-row{% if r.bulk_id %} ux-row--select{% endif %}{% if r.overdue %} is-overdue{% endif %}" data-wx-row="{{ r.fkey|default:'other' }}"{% if r.overdue %} data-wx-overdue{% endif %}>
+      {% if r.bulk_id %}<label class="wx-check" title="Include in group approval"><input type="checkbox" name="review" value="{{ r.bulk_id }}" form="wx-bulk" data-wx-item checked><span class="sr-only">Include {{ r.title }} ({{ r.institution.name }}) in group approval</span></label>{% endif %}
+      <span class="ux-row__icon ux-row__icon--{{ r.tone }}" aria-hidden="true">{{ r.icon }}</span>
+      <div class="ux-row__main">
+        <span class="wx-verb wx-verb--{{ r.tone }}">{{ r.verb }}</span>
+        <a class="ux-row__title" href="{{ r.url }}">{{ r.title }}</a>
+        <div class="ux-row__meta">
+          {% if r.institution %}<span>🏛 {{ r.institution.name }}</span>{% endif %}
+          {% if r.sub %}<span>{{ r.sub }}</span>{% endif %}
+          {% if r.overdue %}<span class="ux-chip ux-chip--red">Overdue{% if r.due %} · {{ r.due|date:"j M" }}{% endif %}</span>{% elif r.due %}<span class="ux-chip ux-chip--plain">Due {{ r.due|date:"j M" }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="ux-row__actions">
+        <a class="btn btn-sm btn-primary" href="{{ r.url }}">{{ r.verb }} →</a>
+        {% if r.inst_url %}<a class="btn btn-sm btn-subtle" href="{{ r.inst_url }}" title="Open the institution file">Institution</a>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="ux-empty wx-none" data-wx-none hidden><div class="ux-empty__art">✓</div><strong>Nothing in this group</strong><span>Choose another filter.</span></div>
+  {% else %}
+  <div class="ux-empty"><div class="ux-empty__art">✓</div><strong>Nothing is waiting for you</strong><span>New work appears here the moment it is assigned, with a notification.</span></div>
+  {% endif %}
+</section>
+{% include "partials/_wx_script.html" %}

@@ -58,7 +58,9 @@ class LeavePreviewView(APIView):
         days / no staff record)."""
         q = s.LeavePreviewQuerySerializer(data=request.query_params)
         q.is_valid(raise_exception=True)
-        data = svc.preview(request.user, q.validated_data["start_date"], q.validated_data["end_date"])
+        v = q.validated_data
+        data = svc.preview(request.user, v["start_date"], v.get("end_date"), v.get("leave_type") or None,
+                           v.get("days"))
         return Response(s.LeavePreviewSerializer(data).data)
 
 

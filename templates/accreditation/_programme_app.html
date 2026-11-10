@@ -1,0 +1,31 @@
+{% load qa_tags %}
+{% with app=item.app %}
+<article class="qa-progq__app" id="progq-{{ app.pk }}" aria-labelledby="progq-h-{{ app.pk }}">
+  <header class="qa-progq__head">
+    <span class="qa-rowlink__badge">{{ app.institution.code }}</span>
+    <div class="qa-progq__title"><h3 id="progq-h-{{ app.pk }}"><a href="{% url 'qa_app:detail' app.pk %}">{{ app.institution.name }}</a></h3>
+      <span class="qa-small qa-muted"><span class="qa-mono">{{ app.reference }}</span> · round {{ app.programme_round }} · {{ app.institution.ownership.name|default:"" }}{% if item.department %} · {{ item.department.name }}{% endif %}</span></div>
+    <span class="qa-progq__side">{% if app.status == "programme_clearance" %}<span class="qa-chip qa-tone-info">{{ item.pending }} waiting</span><span class="qa-small {% if item.waiting_days >= 7 %}qa-strong{% else %}qa-muted{% endif %}">{% if item.waiting_days %}{{ item.waiting_days }} day{{ item.waiting_days|pluralize }}{% else %}New today{% endif %}</span>{% else %}<span class="qa-chip {{ app.status|tone }}">{{ app.status|humanize_code }}</span>{% endif %}</span>
+  </header>
+  {% if error %}<div class="qa-callout qa-callout--danger" role="alert"><div><strong>Not done</strong><p>{{ error }}</p></div></div>{% endif %}
+  {% if not item.can_clear and app.status == "programme_clearance" %}<p class="qa-small qa-muted">{{ item.why }}</p>{% endif %}
+  <ul class="qa-progq__list" role="list">
+    {% for r in item.reviews %}
+      <li class="qa-progq__row is-{{ r.status }}">
+        <div class="qa-progq__prog"><strong>{{ r.programme.name }}</strong>
+          <span class="qa-small qa-muted">{{ r.programme.level.name }}{% if r.programme.category %} · {{ r.programme.category.name }}{% endif %} · {{ r.programme.requested_streams }} stream{{ r.programme.requested_streams|pluralize }}</span>
+          {% if r.remark %}<span class="qa-small">“{{ r.remark }}”</span>{% endif %}</div>
+        {% if r.status == "pending" and item.can_clear %}
+          <form class="qa-progq__form" method="post" action="{% url 'qa_app:programme_decide' r.pk %}" hx-post="{% url 'qa_app:programme_decide' r.pk %}" hx-target="#progq-{{ app.pk }}" hx-swap="outerHTML">{% csrf_token %}
+            <label class="sr-only" for="pr-rm-{{ r.pk }}">Remark for {{ r.programme.name }}</label>
+            <input class="input" id="pr-rm-{{ r.pk }}" name="remark" placeholder="Remark (required to return)" autocomplete="off">
+            <div class="btn-group"><button class="btn btn-sm btn-primary" type="submit" name="decision" value="clear">{% icon "check" 14 "2.4" %} Clear</button><button class="btn btn-sm btn-subtle" type="submit" name="decision" value="return">Return</button></div>
+          </form>
+        {% else %}
+          <span class="qa-progq__state"><span class="qa-chip {% if r.status == 'cleared' %}qa-tone-success{% elif r.status == 'returned' %}qa-tone-danger{% else %}qa-tone-info{% endif %}">{{ r.get_status_display }}</span>{% if r.decided_by %}<span class="qa-small qa-muted">by {{ r.decided_by|who }}</span>{% endif %}</span>
+        {% endif %}
+      </li>
+    {% empty %}<li class="qa-small qa-muted">No programmes in this round (all were cleared earlier).</li>{% endfor %}
+  </ul>
+</article>
+{% endwith %}

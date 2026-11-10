@@ -1,0 +1,152 @@
+{% load qa_tags %}{% load ux_tags %}
+{% comment %}
+  Linear onboarding: one programme self-study. What the institution
+  submitted and the bare-minimum counter come first — read them — then the
+  one step that is the viewer's (assign / send to director / clear · return
+  to officer · return to institution) on the cards below
+  (accreditation/onboarding_views.self_study).
+{% endcomment %}
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa_app:list' %}">Applications</a>
+  <span aria-hidden="true">/</span><a href="{% url 'qa_app:detail' app.pk %}">{{ app.reference }}</a>
+  <span aria-hidden="true">/</span><span aria-current="page">{{ study.programme.name }}</span>
+</nav>
+
+<header class="qa-inst-head">
+  <span class="qa-inst-head__code" aria-hidden="true">{{ inst.code }}</span>
+  <div>
+    <span class="qa-eyebrow">Onboarding programme self-study · {{ inst.name }}</span>
+    <h1 data-qa-focus>{{ study.programme.name }}</h1>
+    <div class="qa-inst-head__meta">
+      <span class="qa-chip {% if stage.code == 'cleared' or stage.code == 'approved' %}qa-tone-success{% elif stage.code == 'returned_to_institution' %}qa-tone-danger{% elif state.overdue %}qa-tone-danger{% else %}qa-tone-warn{% endif %}">{{ stage.label }}</span>
+      <span class="qa-chip {% if check.meets %}qa-tone-success{% else %}qa-tone-danger{% endif %}" title="Bare-minimum counter">{{ check.score }}/100 · {% if check.meets %}bare minimum met{% else %}below bare minimum{% endif %}</span>
+      {% if stage.code %}<span>{% icon "user" 14 %} With {{ stage.holder }} · {{ stage.days_at_stage }} day{{ stage.days_at_stage|pluralize }}{% if state.overdue %} · <strong>overdue</strong>{% endif %}</span>{% endif %}
+      {% if study.submitted_at %}<span>{% icon "clock" 14 %} Submitted {{ study.submitted_at|date:"j M Y, H:i" }}</span>{% endif %}
+    </div>
+  </div>
+</header>
+
+<div class="qa-cols">
+  <div class="qa-stack">
+    {% comment %}Read first: the submission itself, then the counter over it.{% endcomment %}
+    <section class="qa-card" aria-labelledby="ob-snap-h">
+      <header class="qa-card__head"><div><span class="qa-eyebrow">Read first</span><h2 id="ob-snap-h">What the institution submitted</h2>
+        <p>{{ study.template.name }} v{{ study.template.version }}{% if study.submitted_by %} · {{ study.submitted_by|who }}{% endif %}</p></div></header>
+      <div class="qa-card__body">
+        {% if study.status == "submitted" and not snapshot_valid %}
+          {% include "qa_core/partials/_callout.html" with kind="danger" title="Snapshot verification failed" message="Do not clear this programme until the self-study record is investigated." %}
+        {% elif study.status == "submitted" %}
+          <p class="qa-small qa-muted">{% icon "shield" 14 %} Immutable submitted snapshot · checksum verified</p>
+          {% include "accreditation/qa/_snapshot.html" with sections=study.rendered_snapshot %}
+        {% else %}
+          <p class="qa-muted">With the institution for correction.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    {% include "accreditation/onboarding/_self_study_check.html" %}
+
+    {% if can_direct and state.code == "awaiting_assignment" %}
+    <section class="qa-card" aria-labelledby="ob-assign-h">
+      <header class="qa-card__head"><div><span class="qa-eyebrow">Step 1 · assignment</span><h2 id="ob-assign-h">Assign the assessing officer</h2>
+        <p>One officer of {{ state.department.name|default:"the handling department" }} assesses this self-study and sends it to you.</p></div></header>
+      <form class="qa-card__body qa-stack" method="post" action="{% url 'qa_app:onboarding_assign' study.pk %}">
+        {% csrf_token %}
+        {% if suggested %}
+          <p>Next in rotation: <strong>{{ suggested.name }}</strong> <span class="qa-muted qa-small">· {{ suggested.open }} open</span></p>
+          <input type="hidden" name="officer" value="{{ suggested.user_id }}">
+          <button class="btn btn-primary" type="submit">Assign {{ suggested.name }}</button>
+        {% endif %}
+      </form>
+      {% if candidates %}
+      <form class="qa-card__body qa-stack" method="post" action="{% url 'qa_app:onboarding_assign' study.pk %}">
+        {% csrf_token %}
+        <label class="qa-field" for="ob-officer"><span>Or choose another officer</span>
+          <select class="input" id="ob-officer" name="officer" required data-pp-auto data-pp-noun="officer">
+            <option value="">Choose an officer…</option>
+            {% for r in candidates %}<option value="{{ r.user_id }}">{{ r.name }} · {{ r.open }} open</option>{% endfor %}
+          </select></label>
+        <label class="qa-field" for="ob-reason"><span>Reason <span class="qa-muted">(optional)</span></span>
+          <input class="input" id="ob-reason" name="reason" maxlength="255" autocomplete="off"></label>
+        <button class="btn btn-subtle" type="submit">Assign selected officer</button>
+      </form>
+      {% elif not suggested %}
+      <div class="qa-card__body"><p class="qa-muted">No active officers in {{ state.department.name|default:"the department" }}.</p></div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if can_assess %}
+    <section class="qa-card" aria-labelledby="ob-assess-h">
+      <header class="qa-card__head"><div><span class="qa-eyebrow">Step 2 · assessment</span><h2 id="ob-assess-h">Send your assessment to the director</h2>
+        <p>Recommend clearing the programme, or returning the self-study to the institution with notes.</p></div></header>
+      <form class="qa-card__body qa-stack" method="post" action="{% url 'qa_app:onboarding_send' study.pk %}">
+        {% csrf_token %}
+        {% if review.director_remark %}<div class="qa-callout qa-callout--warn" role="status"><div><strong>Sent back by the director</strong><p>{{ review.director_remark }}</p></div></div>{% endif %}
+        {% if not check.meets %}
+        <div class="qa-callout qa-callout--danger" role="alert">{% icon "alert" 18 "2.2" %}
+          <div><strong>Below the bare minimum — {{ check.score }}/100</strong>
+            <p>Sending it on is an override. It is recorded with your name and reason, and the director is told
+              before clearing the programme.</p>
+            <ul class="qa-problems">{% for c in check.failed_checks %}<li><strong>{{ c.label }}</strong> — {{ c.detail }}</li>{% endfor %}</ul>
+          </div>
+        </div>
+        <label for="ob-override"><input type="checkbox" id="ob-override" name="override" value="1">
+          I have read the counter above and want to send this self-study to the director anyway.</label>
+        <label class="qa-field" for="ob-override-reason"><span>Why is it being sent despite falling short?
+          <span class="qa-muted">(at least 10 characters · the director sees this)</span></span>
+          <textarea class="input" id="ob-override-reason" name="override_reason" rows="2" minlength="10" maxlength="500"></textarea></label>
+        {% endif %}
+        <fieldset><legend class="sr-only">Recommendation</legend>
+          {% for value, label in recommendations.items %}<label><input type="radio" name="recommendation" value="{{ value }}"{% if forloop.first %} checked{% endif %}> {{ label }}</label><br>{% endfor %}
+        </fieldset>
+        <label class="qa-field" for="ob-remark"><span>Notes <span class="qa-muted">(required to return)</span></span>
+          <textarea class="input" id="ob-remark" name="remark" rows="3"></textarea></label>
+        <button class="btn btn-primary" type="submit">{% if not check.meets %}Send to Director anyway{% else %}Send to Director{% endif %}</button>
+      </form>
+    </section>
+    {% endif %}
+
+    {% if can_direct and state.code == "awaiting_director" %}
+    <section class="qa-card" aria-labelledby="ob-clear-h">
+      <header class="qa-card__head"><div><span class="qa-eyebrow">Step 3 · clearance</span><h2 id="ob-clear-h">Clear the programme</h2>
+        <p>{{ review.officer|who:"The officer" }} recommends <strong>{% if review.recommendation == "return" %}returning it to the institution{% else %}clearing it{% endif %}</strong>.{% if review.officer_remark %} “{{ review.officer_remark }}”{% endif %}</p></div></header>
+      <div class="qa-card__body qa-stack">
+        {% if not check.meets %}
+        <div class="qa-callout qa-callout--warn" role="status">{% icon "alert" 18 "2.2" %}
+          <div><strong>Below the bare minimum — {{ check.score }}/100</strong>
+            <p>{% if check_override %}{{ check_override.by|default:"The officer" }} sent it with an override: “{{ check_override.reason }}”.{% else %}The officer did not record an override.{% endif %}
+              Clearing it accepts the self-study as it stands; returning it to the institution asks for corrections.</p>
+            <ul class="qa-problems">{% for c in check.failed_checks %}<li><strong>{{ c.label }}</strong> — {{ c.detail }}</li>{% endfor %}</ul>
+          </div>
+        </div>
+        {% endif %}
+        <form method="post" action="{% url 'qa_app:onboarding_clear' study.pk %}">{% csrf_token %}
+          <button class="btn btn-primary" type="submit">Clear programme</button></form>
+        <form class="qa-stack" method="post" action="{% url 'qa_app:onboarding_return_officer' study.pk %}">{% csrf_token %}
+          <label class="qa-field" for="ob-back"><span>Return to the officer — what should be looked at again?</span>
+            <textarea class="input" id="ob-back" name="remark" rows="2" required></textarea></label>
+          <button class="btn btn-subtle" type="submit">Return to officer</button></form>
+        <form class="qa-stack" method="post" action="{% url 'qa_app:onboarding_return_institution' study.pk %}">{% csrf_token %}
+          <label class="qa-field" for="ob-inst"><span>Return to the institution for correction — what must change? <span class="qa-muted">(the institution sees this)</span></span>
+            <textarea class="input" id="ob-inst" name="remark" rows="2" required>{% if review.recommendation == "return" %}{{ review.officer_remark }}{% endif %}</textarea></label>
+          <button class="btn btn-subtle" type="submit">Return to institution</button></form>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="qa-stack">
+    <section class="qa-card"><header class="qa-card__head"><h2>Where it is</h2></header>
+      <div class="qa-card__body"><dl class="qa-dl">
+        <div><dt>Stage</dt><dd>{{ stage.label }}</dd></div>
+        <div><dt>Department</dt><dd>{{ state.department.name|default:"—" }}</dd></div>
+        <div><dt>Director</dt><dd>{{ stage.director|who:"—" }}</dd></div>
+        <div><dt>Officer</dt><dd>{{ stage.assigned_officer|who:"—" }}</dd></div>
+        {% if state.due %}<div><dt>Due</dt><dd>{{ state.due|date:"j M Y" }}</dd></div>{% endif %}
+        <div class="is-wide"><dt>Institution sees</dt><dd>{{ stage.public|default:"—" }}</dd></div>
+      </dl></div></section>
+    {% if history %}<section class="qa-card"><header class="qa-card__head"><h2>History</h2></header>
+      <div class="qa-card__body"><ol class="qa-tl">{% for h in history %}<li><strong>{{ h.event|humanize_code }}</strong>{% if h.override %}<span class="qa-tl__text">Override ({{ h.check_score }}/100): “{{ h.override_reason }}”</span>{% endif %}{% if h.remark %}<span class="qa-tl__text">“{{ h.remark }}”</span>{% endif %}<small>{{ h.at|slice:":16"|cut:"T"|default:"" }} · {{ h.by_name|default:"System" }}</small></li>{% endfor %}</ol></div></section>{% endif %}
+  </aside>
+</div>

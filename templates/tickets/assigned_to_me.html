@@ -1,22 +1,30 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 
 {% block title %}Assigned to me · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Assigned to me{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}">
 {% endblock %}
 {% block extra_js %}
-  <script src="{% static 'js/tickets.js' %}?v=2" defer></script>
+  <script src="{% static 'js/tickets.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
-<div class="tk-page">
-  <header class="tk-page-head">
+<div class="tk-page wk-page" data-qa-area="tickets">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tickets">
     <div>
+      <span class="qa-eyebrow">{% icon "user" 14 "2.2" %} Tickets · Assigned to me</span>
       <h1>Assigned to me</h1>
-      <p>{{ total }} open ticket{{ total|pluralize }} assigned to you.</p>
+      <p>Tickets you are working on. Keep the requester updated and resolve them within the SLA.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'tickets:list' %}" class="btn btn-subtle">{% icon "list" 16 "2.2" %} All tickets</a>
+        <a href="{% url 'tickets:my_tickets' %}" class="btn btn-subtle">{% icon "inbox" 16 "2.2" %} My tickets</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat{% if total %} qa-stat--warn{% endif %}"><strong>{{ total|default:0 }}</strong><span>{% if state_filter == 'open' %}Open ticket{{ total|pluralize }}{% else %}Ticket{{ total|pluralize }}{% endif %}</span></div>
     </div>
   </header>
 

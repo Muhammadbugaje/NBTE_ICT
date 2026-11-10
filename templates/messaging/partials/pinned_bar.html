@@ -1,0 +1,17 @@
+{# v2.1 L6: pinned messages under the sticky chat header. Click cycles through them. #}
+<div class="msg-pinned-bar" data-pinned-bar{% if not pinned %} hidden{% endif %}>
+  {% if pinned %}
+  <button type="button" class="msg-pinned-main" data-pinned-cycle aria-label="Pinned messages: go to the pinned message">
+    <span class="msg-pinned-ticks" aria-hidden="true">{% for p in pinned %}<span class="{% if forloop.first %}is-current{% endif %}"></span>{% endfor %}</span>
+    <svg class="msg-pinned-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.8V6.4L7.3 4.7A1 1 0 0 1 8 3h8a1 1 0 0 1 .7 1.7L15 6.4v4.4l3.3 3.3a1 1 0 0 1-.7 1.7H6.4a1 1 0 0 1-.7-1.7z"/></svg>
+    <span class="msg-pinned-items">
+      {% for p in pinned %}
+        <span class="msg-pinned-item" data-pinned-item data-message-id="{{ p.pk }}"{% if not forloop.first %} hidden{% endif %}>
+          <strong>Pinned{% if pinned|length > 1 %} {{ forloop.counter }}/{{ pinned|length }}{% endif %}:</strong>
+          <span class="msg-pinned-text">{% if p.body %}{{ p.body|truncatechars:120 }}{% else %}Attachment{% endif %}</span>
+        </span>
+      {% endfor %}
+    </span>
+  </button>
+  {% endif %}
+</div>

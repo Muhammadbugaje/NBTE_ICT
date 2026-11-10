@@ -1,0 +1,221 @@
+{% load qa_tags static ux_tags %}
+<link rel="stylesheet" href="{% static 'css/qa-onboard.css' %}">
+{# v2.1 F.16 (X16, X17, X18) — design 23. Director sees only his department's documents. #}
+<header class="ux-hero dq-hero{% if review %} dq-hero--detail{% endif %}">
+  <div>
+    <span class="ux-hero__eyebrow"><a href="{% url 'qa_app:docrev_queue' %}">Document review</a>{% if review %} · {{ review.document.institution.name }}{% endif %}</span>
+    <h1 data-qa-focus>{% if review %}{{ review.document.institution.name }}: {{ review.department.name }} documents{% elif directed %}{{ directed.name }} — documents to review{% else %}Your documents to analyse{% endif %}</h1>
+    <p>{% if review %}Open the file, read the officer's recommendation, then decide — only this document is affected.{% else %}Each document is reviewed on its own: assign an officer, read the recommendation, then approve, send it back to the officer, or return just that document to the institution.{% endif %}</p>
+  </div>
+  <div class="ux-hero__actions">
+    <span class="dq-scope">{% icon "eye" 14 %} {% if directed %}You see {{ directed.name }}'s part only{% else %}You see your own assignments only{% endif %}</span>
+    {% if review %}<a class="btn btn-ghost" href="{% url 'qa_inst:detail' review.document.institution.code %}">Institution file</a><a class="btn btn-ghost" href="{% url 'qa_app:docrev_queue' %}">All documents</a>{% endif %}
+  </div>
+</header>
+
+{% if not review %}
+<div class="ux-stats dq-stats" aria-label="Summary">
+  {% if directed %}<a class="ux-stat ux-stat--gold" href="?status=recommended"><span class="ux-stat__label">Awaiting your decision</span><span class="ux-stat__value">{{ status_counts.recommended|default:0 }}</span><span class="ux-stat__hint">{{ bulk_ids|length }} recommended for acceptance</span></a>
+  <a class="ux-stat ux-stat--blue" href="?status=awaiting_assignment"><span class="ux-stat__label">Need an officer</span><span class="ux-stat__value">{{ status_counts.awaiting_assignment|default:0 }}</span><span class="ux-stat__hint">assign to start the review</span></a>{% endif %}
+  <a class="ux-stat" href="?status=assigned"><span class="ux-stat__label">With officer</span><span class="ux-stat__value">{{ status_counts.assigned|default:0 }}</span><span class="ux-stat__hint">being analysed</span></a>
+  <a class="ux-stat ux-stat--red" href="?status=returned_to_institution"><span class="ux-stat__label">With institution</span><span class="ux-stat__value">{{ status_counts.returned_to_institution|default:0 }}</span><span class="ux-stat__hint">returned for a new version</span></a>
+  <a class="ux-stat ux-stat--teal" href="?status=approved"><span class="ux-stat__label">Approved</span><span class="ux-stat__value">{{ status_counts.approved|default:0 }}</span><span class="ux-stat__hint">done</span></a>
+</div>
+{% endif %}
+
+
+<div class="qa-dr dq{% if not review %} dq--queue{% endif %}">
+  <div class="qa-stack">
+    {% if review %}
+    <section class="qa-card" aria-labelledby="qa-dr-list-h">
+      <header class="qa-card__head"><div><h2 id="qa-dr-list-h">Your department's documents</h2><p>{{ siblings|length }} of this institution's documents are yours</p></div></header>
+      <ul class="qa-dr-list" role="list">{% for r in siblings %}
+        <li><a class="qa-dr-item{% if r.pk == review.pk %} is-active{% endif %}" href="{% url 'qa_app:docrev_detail' r.pk %}">
+          <span class="qa-dr-item__i" aria-hidden="true">{% icon "file" 16 %}</span>
+          <div><strong>{{ r.document.kind.name }}</strong><span>{% if r.analyst %}{{ r.analyst.get_full_name }}{% if r.recommendation %} recommends {{ r.get_recommendation_display|lower }}{% endif %}{% else %}Uploaded {{ r.document.created_at|date:"j M, H:i" }}{% endif %}{% if r.round > 1 %} · re-uploaded (round {{ r.round }}){% endif %}</span>
+            <span class="qa-chip {% if r.status == 'recommended' %}qa-tone-warn{% elif r.status == 'approved' %}qa-tone-success{% elif r.status == 'returned_to_institution' %}qa-tone-danger{% else %}qa-tone-info{% endif %}">{% if r.status == "recommended" and is_director %}Awaiting your decision{% else %}{{ r.get_status_display }}{% endif %}</span></div>
+        </a></li>{% endfor %}
+      </ul>
+      {% if sibling_bulk|length > 1 %}
+      <form method="post" action="{% url 'qa_app:docrev_bulk_approve' %}" class="dq-sib-bulk" data-confirm data-confirm-variant="neutral" data-confirm-tone="default" data-confirm-title="Approve {{ sibling_bulk|length }} documents?" data-confirm-body="All of {{ review.document.institution.name }}'s documents your officers recommended for acceptance are approved with your name." data-confirm-label="Approve all">{% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        {% for pk in sibling_bulk %}<input type="hidden" name="review" value="{{ pk }}">{% endfor %}
+        <span>{{ sibling_bulk|length }} recommended for acceptance</span>
+        <button class="btn btn-sm ux-btn-approve" type="submit">✓ Approve all {{ sibling_bulk|length }}</button>
+      </form>
+      {% endif %}
+      <p class="qa-dr-note">{% icon "lock" 13 %} Other departments' documents and progress are not shown to you. Only ICT oversight and the ES see the whole journey.</p>
+    </section>
+    {% if review.status == "awaiting_assignment" and is_director %}
+    <section class="qa-card" aria-labelledby="qa-dr-assign-h">
+      <header class="qa-card__head"><div><h2 id="qa-dr-assign-h">Assign an officer</h2><p>{{ review.document.kind.name }}</p></div></header>
+      <div class="qa-card__body qa-stack">
+        {% if suggested %}
+        <div class="qa-dr-suggest">
+          <span class="qa-small qa-muted">{% icon "rotate" 13 %} Next in rotation</span>
+          <strong>{{ suggested.user.get_full_name }} <span class="qa-chip qa-tone-success">{{ suggested.open }} open</span></strong>
+          {% if suggested.notes %}<span class="qa-small qa-muted">{{ suggested.notes|join:" · " }}</span>{% endif %}
+          <form method="post" action="{% url 'qa_app:docrev_assign' review.pk %}">{% csrf_token %}<input type="hidden" name="accept_suggestion" value="1">
+            <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">{% icon "check" 14 %} Assign</button></div></form>
+        </div>
+        {% endif %}
+        <details{% if not suggested %} open{% endif %}><summary class="btn btn-subtle btn-sm">Someone else</summary>
+          <form method="post" action="{% url 'qa_app:docrev_assign' review.pk %}" class="qa-stack" style="margin-top:10px">{% csrf_token %}
+            <label class="qa-field"><span>Officer</span><select class="input" name="officer" required>{% for u in candidates %}<option value="{{ u.pk }}">{{ u.get_full_name }}</option>{% endfor %}</select></label>
+            {% if suggested %}<label class="qa-field"><span>Why not the suggested officer?</span><input class="input" name="reason" minlength="5" placeholder="e.g. knows this institution's case"></label>{% endif %}
+            <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">Assign</button></div>
+          </form></details>
+      </div>
+    </section>
+    {% endif %}
+    {% else %}
+    <section class="ux-card dq-queue" aria-labelledby="qa-dr-q-h" data-wx>
+      <header class="ux-card__head"><div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">{% icon "file" 18 %}</span>
+        <div><h2 id="qa-dr-q-h">Documents</h2><p>{{ rows|length }} shown · most urgent first</p></div></div></header>
+      <nav class="ux-filters" aria-label="Status">{% for f in filter_pills %}<a href="?status={{ f.code }}" class="ux-filter{% if status == f.code %} is-active{% endif %}"{% if status == f.code %} aria-current="true"{% endif %}>{{ f.label }} <b>{{ f.count }}</b></a>{% endfor %}</nav>
+      {% if bulk_ids %}
+      <form method="post" action="{% url 'qa_app:docrev_bulk_approve' %}" id="wx-bulk" class="wx-bulk" data-wx-bulk data-confirm data-confirm-variant="neutral" data-confirm-tone="default" data-confirm-title="Approve {{ bulk_ids|length }} document{{ bulk_ids|length|pluralize }}?" data-confirm-body="Each was opened and recommended for acceptance by your officer. They are approved with your name; documents recommended for return are never included." data-confirm-label="Approve">{% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <span class="wx-bulk__badge" aria-hidden="true" data-wx-n>{{ bulk_ids|length }}</span>
+        <div class="wx-bulk__text">
+          <h3>Group approval</h3>
+          <p>Approve every document your officers recommended for acceptance — no need to open each one.</p>
+          <label class="wx-check wx-check--all"><input type="checkbox" data-wx-all checked> <span>Select all {{ bulk_ids|length }}</span></label>
+        </div>
+        <button class="btn ux-btn-approve" type="submit" data-wx-submit><span>✓ Approve selected (<b data-wx-count>{{ bulk_ids|length }}</b>)</span></button>
+      </form>
+      {% endif %}
+      <ul class="ux-list dq-list" role="list">{% for r in rows %}
+        <li class="ux-row{% if r.pk in bulk_ids %} ux-row--select{% endif %} dq-row dq-row--{{ r.status }}">
+          {% if r.pk in bulk_ids %}<label class="wx-check" title="Include in group approval"><input type="checkbox" name="review" value="{{ r.pk }}" form="wx-bulk" data-wx-item checked><span class="sr-only">Include {{ r.document.kind.name }} ({{ r.document.institution.name }}) in group approval</span></label>{% endif %}
+          <span class="ux-row__icon{% if r.status == 'recommended' %} ux-row__icon--gold{% elif r.status == 'awaiting_assignment' %} ux-row__icon--blue{% elif r.status == 'returned_to_institution' or r.status == 'sent_back' %} ux-row__icon--red{% endif %}" aria-hidden="true">{% icon "file" 18 %}</span>
+          <div class="ux-row__main">
+            <a class="ux-row__title" href="{% url 'qa_app:docrev_detail' r.pk %}">{{ r.document.kind.name }}</a>
+            <div class="ux-row__meta">
+              <span class="ux-chip {% if r.status == 'recommended' %}ux-chip--gold{% elif r.status == 'approved' %}ux-chip--green{% elif r.status == 'returned_to_institution' or r.status == 'sent_back' %}ux-chip--red{% else %}ux-chip--blue{% endif %}">{% if r.status == "recommended" and directed and r.department_id == directed.pk %}Awaiting your decision{% else %}{{ r.get_status_display }}{% endif %}</span>
+              <span>🏛 {{ r.document.institution.name }}</span>
+              {% if r.analyst %}<span>{{ r.analyst.get_full_name }}{% if r.recommendation %} recommends <strong class="{% if r.recommendation == 'return' %}dq-rec--return{% else %}dq-rec--accept{% endif %}">{{ r.get_recommendation_display|lower }}</strong>{% endif %}</span>{% endif %}
+              {% if r.round > 1 %}<span>re-uploaded · round {{ r.round }}</span>{% endif %}
+            </div>
+          </div>
+          <div class="ux-row__actions">
+            <a class="btn btn-sm btn-primary" href="{% url 'qa_app:docrev_detail' r.pk %}">{% if r.status == "recommended" and directed and r.department_id == directed.pk %}Decide{% elif r.status == "awaiting_assignment" and directed %}Assign{% elif r.analyst_id == request.user.pk and r.status == "assigned" or r.analyst_id == request.user.pk and r.status == "sent_back" %}Review{% else %}Open{% endif %} →</a>
+            <a class="btn btn-sm btn-subtle" href="{% url 'qa_inst:detail' r.document.institution.code %}">Institution</a>
+          </div>
+        </li>{% empty %}<li><div class="ux-empty"><div class="ux-empty__art">✓</div><strong>Nothing here</strong><span>No document matches this filter.</span></div></li>{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+
+  <div class="qa-stack">
+    {% if review %}
+    {% with doc=review.document %}
+    <section class="qa-card" aria-labelledby="qa-dr-doc-h">
+      <header class="qa-card__head"><div><h2 id="qa-dr-doc-h">{{ doc.kind.name }}</h2><p>Uploaded {{ doc.created_at|date:"j M" }} · version {{ doc.version }}{% if review.round > 1 %} · round {{ review.round }}{% endif %}</p></div>
+        {% if review.status == "recommended" and is_director %}<span class="qa-chip qa-tone-warn">Your decision</span>{% else %}<span class="qa-chip qa-tone-info">{{ review.get_status_display }}</span>{% endif %}</header>
+      <div class="qa-card__body qa-stack" data-preview-scope data-opened="{% if opened %}1{% else %}0{% endif %}">
+        <div class="btn-group">{% preview_button doc.download_url doc.display_name doc.size_bytes "Open document" %}<a class="btn btn-sm btn-subtle" href="{{ doc.download_url }}">{% icon "download" 14 %} Download</a></div>
+        {% if gate_on and can_act_here %}
+        <div class="ux-gate{% if opened %} is-open{% endif %}" data-preview-note role="status">
+          <span class="ux-gate__icon" aria-hidden="true">{% if opened %}✓{% else %}🔒{% endif %}</span>
+          <span data-preview-text>{% if opened %}You have opened this document. You can now decide.{% else %}Open the document first — the decision buttons unlock once you have looked at it.{% endif %}</span>
+        </div>
+        {% endif %}
+        {% if review.recommendation %}
+        <div class="qa-dr-rec">
+          <strong>{{ review.analyst.get_full_name }} recommends <span class="qa-chip {% if review.recommendation == 'return' %}qa-tone-danger{% else %}qa-tone-success{% endif %}">{{ review.get_recommendation_display }}</span></strong>
+          <span class="qa-small qa-muted">{{ review.recommended_at|date:"j M, H:i" }}</span>
+          {% if review.analyst_remark %}<p>{{ review.analyst_remark }}</p>{% endif %}
+        </div>
+        {% endif %}
+        <dl class="qa-dl">
+          {% if review.assigned_by %}<div><dt>Assigned by</dt><dd>{{ review.assigned_by.get_full_name }}, {{ review.assigned_at|date:"j M" }}</dd></div>{% endif %}
+          {% if review.analyst %}<div><dt>Officer</dt><dd>{{ review.analyst.get_full_name }}</dd></div>{% endif %}
+          {% if review.director_remark %}<div><dt>Director's remark</dt><dd>{{ review.director_remark }}</dd></div>{% endif %}
+        </dl>
+
+        {% if review.status == "recommended" and is_director %}
+        <div class="qa-dr-decide" data-dr-decide>
+          <form method="post" action="{% url 'qa_app:docrev_decide' review.pk %}">{% csrf_token %}<input type="hidden" name="decision" value="approve">
+            <button class="qa-dr-choice qa-dr-choice--approve" type="submit" data-needs-preview{% if gate_on and not opened %} disabled{% endif %}>{% icon "check" 18 "2.6" %}<strong>Approve</strong><span>Accept the document. Logged with your name.</span></button></form>
+          <button class="qa-dr-choice" type="button" data-dr-open="qa-dr-sendback" data-needs-preview{% if gate_on and not opened %} disabled{% endif %}>{% icon "back" 18 %}<strong>Send back to officer</strong><span>Ask {{ review.analyst.first_name }} to look again</span></button>
+          <button class="qa-dr-choice qa-dr-choice--return" type="button" data-dr-open="qa-dr-return" data-needs-preview{% if gate_on and not opened %} disabled{% endif %}>{% icon "arrow" 18 %}<strong>Return to institution</strong><span>Only this document goes back</span></button>
+        </div>
+        <form class="qa-dr-sheet" id="qa-dr-return" method="post" action="{% url 'qa_app:docrev_decide' review.pk %}" hidden>{% csrf_token %}<input type="hidden" name="decision" value="return_to_institution">
+          <strong>Return to {{ doc.institution.name }} with a remark</strong>
+          <div class="qa-dr-reasons">{% for r in return_reasons %}<button type="button" data-dr-reason="{{ r }}">{{ r }}</button>{% endfor %}</div>
+          <textarea class="input" name="remark" required minlength="3" aria-label="Remark the institution will see">{% if review.recommendation == "return" %}{{ review.analyst_remark }}{% endif %}</textarea>
+          <p class="qa-small qa-muted">The institution sees this remark on its dashboard. When it re-uploads, the file comes back to you and {{ review.analyst.first_name|default:"the officer" }}.</p>
+          <div class="btn-group"><button class="btn btn-subtle btn-sm" type="button" data-dr-close>Cancel</button><button class="btn btn-danger btn-sm" type="submit">{% icon "arrow" 14 %} Return document</button></div>
+        </form>
+        <form class="qa-dr-sheet" id="qa-dr-sendback" method="post" action="{% url 'qa_app:docrev_decide' review.pk %}" hidden>{% csrf_token %}<input type="hidden" name="decision" value="send_back">
+          <strong>Send back to {{ review.analyst.get_full_name }}</strong>
+          <textarea class="input" name="remark" required minlength="3" aria-label="What to look at again"></textarea>
+          <div class="btn-group"><button class="btn btn-subtle btn-sm" type="button" data-dr-close>Cancel</button><button class="btn btn-primary btn-sm" type="submit">Send back</button></div>
+        </form>
+        {% endif %}
+
+        {% if is_analyst and review.status == "assigned" or is_analyst and review.status == "sent_back" %}
+        <form method="post" action="{% url 'qa_app:docrev_recommend' review.pk %}" class="qa-dr-sheet qa-stack">{% csrf_token %}
+          <strong>Your recommendation</strong>
+          {% if review.status == "sent_back" and review.director_remark %}<p class="qa-small">Your director asks: {{ review.director_remark }}</p>{% endif %}
+          <label class="qa-field--check"><input type="radio" name="recommendation" value="accept" required> Accept</label>
+          <label class="qa-field--check"><input type="radio" name="recommendation" value="return"> Return with remark</label>
+          <textarea class="input" name="remark" aria-label="Remark (required to return)" placeholder="What is wrong, or what you checked"></textarea>
+          <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit" data-needs-preview{% if gate_on and not opened %} disabled{% endif %}>Send to director</button></div>
+        </form>
+        {% endif %}
+
+        <h3 class="qa-small" style="margin:6px 0 0">Trail</h3>
+        <ol class="qa-dr-trail" role="list">{% for when, text in trail %}<li><span>{{ text }}</span><time>{{ when|date:"j M" }}</time></li>{% endfor %}</ol>
+      </div>
+    </section>
+    {% endwith %}
+    {% else %}
+    {% if pv_rows %}
+    <section class="qa-card" aria-labelledby="qa-pv-h">
+      <header class="qa-card__head"><div><h2 id="qa-pv-h">Physical verification</h2><p>Many programmes proposed: assign an ICT officer to verify the site in person. It must be someone other than the officer overseeing the institution and anyone who reviewed its self-study.</p></div></header>
+      <ul class="qa-ob-team" role="list">{% for w in pv_rows %}
+        <li><span class="qa-ob-team__icon" aria-hidden="true">{% icon "map" 16 %}</span><div><strong>{{ w.institution.name }}</strong><span>{{ w.meta.programme_count }} programmes</span></div>
+          <form method="post" action="{% url 'qa_app:docrev_verification_assign' w.pk %}" class="btn-group">{% csrf_token %}
+            <select class="input" name="officer" aria-label="ICT officer">{% for u in w.pv_officers %}<option value="{{ u.pk }}">{{ u.get_full_name }}</option>{% endfor %}</select>
+            <button class="btn btn-primary btn-sm" type="submit">Assign</button></form></li>{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    <section class="ux-card ux-card--green dq-how" aria-labelledby="dq-how-h">
+      <header class="ux-card__head"><div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">{% icon "help" 18 %}</span><div><h2 id="dq-how-h">How a document moves</h2><p>Open any row to act on it.</p></div></div></header>
+      <ol class="ux-steps dq-steps">
+        <li class="ux-step"><strong>Assign</strong><small>The director picks an officer (rotation suggests one).</small></li>
+        <li class="ux-step"><strong>Analyse</strong><small>The officer opens the file and recommends.</small></li>
+        <li class="ux-step"><strong>Decide</strong><small>Approve, send back, or return to the institution.</small></li>
+      </ol>
+      {% if directed %}<p class="dq-tip">✦ Tip: tick the documents recommended for acceptance and approve them together.</p>{% endif %}
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% include "partials/_wx_script.html" %}
+<script>
+(function () {
+  var root = document.currentScript.parentNode;
+  root.querySelectorAll("[data-dr-open]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      root.querySelectorAll(".qa-dr-sheet[id]").forEach(function (s) { s.hidden = true; });
+      var s = document.getElementById(b.getAttribute("data-dr-open"));
+      if (s) { s.hidden = false; var t = s.querySelector("textarea"); if (t) t.focus(); }
+    });
+  });
+  root.querySelectorAll("[data-dr-close]").forEach(function (b) {
+    b.addEventListener("click", function () { b.closest(".qa-dr-sheet").hidden = true; });
+  });
+  root.querySelectorAll("[data-dr-reason]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var t = b.closest(".qa-dr-sheet").querySelector("textarea");
+      t.value = (t.value ? t.value.trim() + " " : "") + b.getAttribute("data-dr-reason") + ".";
+      t.focus();
+    });
+  });
+})();
+</script>

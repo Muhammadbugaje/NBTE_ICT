@@ -1,23 +1,202 @@
 {% load qa_tags %}
-<section class="qa-card" aria-labelledby="rp-h">
-  <header class="qa-card__head"><div><h2 id="rp-h">Post-visit reports</h2><p>Stage 12: one report per programme, written by someone who attended (B17), endorsed Division Head → Deputy Director → Director. Stage 13: the Directorate's recommendation per programme.</p></div>
-    {% if inspection %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_insp:inspection' inspection.pk %}">{% icon "eye" 14 %} {{ inspection.reference }}</a>{% endif %}</header>
+<section class="c3-sec" aria-labelledby="rp-h">
+  <header class="c3-sec__head"><span class="c3-sec__num">12</span>
+    <div><h2 id="rp-h">Post-visit reports</h2>
+      <p>Stage 12 has two separate jobs. <strong>Each attendee writes their own report</strong> for the programme they covered. <strong>Only the Team Lead</strong> reviews those reports and writes the one compiled programme report that goes for endorsement. Attendees cannot submit the compiled report; the Team Lead cannot submit on an attendee's behalf.</p>
+    </div>
+    {% if inspection %}<a class="btn btn-sm btn-subtle c3-sec__chip" href="{% url 'qa_insp:inspection' inspection.pk %}">{% icon "eye" 14 %} {{ inspection.reference }}</a>{% endif %}
+  </header>
+
+  {% if report_summary %}
+  <div class="rp-overview" role="group" aria-label="Report progress">
+    <div class="rp-overview__step">
+      <span class="rp-overview__n">1</span>
+      <div class="rp-overview__copy">
+        <strong>Attendee reports</strong>
+        <p>Every person who attended writes their own findings.</p>
+      </div>
+      <span class="rp-overview__stat"><b>{{ report_summary.received }}</b><i>/ {{ report_summary.required }} in</i></span>
+    </div>
+    <div class="rp-overview__step">
+      <span class="rp-overview__n">2</span>
+      <div class="rp-overview__copy">
+        <strong>Team Lead compilation</strong>
+        <p>Only the Team Lead writes and submits the final report.</p>
+      </div>
+      <span class="rp-overview__stat"><b>{{ report_summary.compiled }}</b><i>/ {{ report_summary.programmes }} submitted</i></span>
+    </div>
+    <div class="rp-overview__counts">
+      <span class="rp-count rp-count--warn"><b>{{ report_summary.still }}</b> still to submit</span>
+      <span class="rp-count rp-count--info"><b>{{ report_summary.awaiting }}</b> awaiting Team Lead review</span>
+      <span class="rp-count rp-count--ok"><b>{{ report_summary.ready }}</b> ready to compile</span>
+    </div>
+  </div>
+  <p class="rp-overview__note">{% icon "shield" 14 "2.2" %} The Team Lead may skip an attendee with a written reason. That reason and every skipped report stay on the case for the CQAC to see.</p>
+  {% endif %}
+
+  {% if inspection %}{% include "inspection/_visit_moment.html" %}{% endif %}
+  {% if inspection and inspection.status != "closed" %}
+    <p class="c3-callout c3-callout--warn">{% icon "lock" 15 "2.2" %}<span><strong>The reports are locked until the visit is recorded.</strong> The Team Lead records it on the last day (dates come prefilled); the report forms then unlock for everyone who attended.</span></p>
+  {% endif %}
+
   {% if reports %}
-  <div class="qa-table-wrap"><table class="qa-table">
-    <thead><tr><th scope="col">Programme</th><th scope="col">Where</th><th scope="col">Team recommendation</th><th scope="col">Directorate (stage 13)</th></tr></thead>
-    <tbody>{% for r in reports %}<tr>
-      <td><a href="{% url 'qa_insp:report' r.pk %}"><strong>{{ r.qa_request_programme.programme }}</strong></a><br><span class="qa-small qa-muted">v{{ r.version }}{% if r.submitted_by %} · {{ r.submitted_by|who }}{% endif %}</span></td>
-      <td>{% if r.layer %}<span class="qa-chip qa-tone-pending">{{ r.layer }}</span>{% else %}<span class="qa-chip {{ r.status|tone }}">{{ r.status|humanize_code }}</span>{% endif %}</td>
-      <td>{{ r.get_recommendation_display|default:"—" }}</td>
-      <td>{% if can_recommend %}
-        <form class="qa-inline-form" method="post" action="{% url 'qa_case:recommend' case.pk r.pk %}" hx-post="{% url 'qa_case:recommend' case.pk r.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="reports">
-          <div class="qa-field"><label for="rec-{{ r.pk }}">Recommendation</label><select class="input" id="rec-{{ r.pk }}" name="recommendation" required>{% for v, l in recommendations %}<option value="{{ v }}"{% if r.recommendation == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
-          <div class="qa-field"><label for="note-{{ r.pk }}">Note <span class="qa-muted">(optional)</span></label><input class="input" id="note-{{ r.pk }}" name="note" value="{{ r.recommendation_note }}"></div>
-          <button class="btn btn-primary btn-sm" type="submit">{% if r.recommended_by %}Update{% else %}Confirm{% endif %}</button>
-        </form>{% if r.recommended_by %}<p class="qa-small qa-muted">Confirmed by {{ r.recommended_by|who }}</p>{% endif %}
-      {% elif r.recommended_by %}{{ r.get_recommendation_display }} — {{ r.recommended_by|who }}{% if r.recommendation_note %}<br><span class="qa-small qa-muted">{{ r.recommendation_note }}</span>{% endif %}
-      {% else %}<span class="qa-muted">—</span>{% endif %}</td>
-    </tr>{% endfor %}</tbody>
-  </table></div>
-  {% else %}<div class="qa-card__body"><p class="qa-muted">The reports open when the case reaches stage 12 (after the visit is recorded and funds are released).</p></div>{% endif %}
+    {% with first=reports.0 %}{% if report_forms_available.ict_verification %}
+    <div class="c3-formcard{% if first.ict_form.status == 'submitted' %} is-done{% endif %}">
+      <span class="c3-formcard__icon" aria-hidden="true">{% icon "shield" 18 "2.2" %}</span>
+      <div class="c3-formcard__body"><strong>ICT verification · whole visit</strong>
+        {% if can_view_ict_form %}
+          <span class="c3-muted">NBTE/QA/ICT/VVT/001 — scored ICT components, mandatory items and evidence.</span>
+          <span class="c3-small">{% if first.ict_form %}{{ first.ict_form.get_status_display }}{% if first.ict_form.score.score %} · score {{ first.ict_form.score.score }} %{% endif %}{% if first.ict_form.last_saved_at %} · saved {{ first.ict_form.last_saved_at|date:"j M, H:i" }}{% endif %}{% else %}Not started{% endif %}</span>
+        {% else %}
+          <span class="c3-muted">Locked to the assigned ICT officer and authorised ICT leadership.</span>
+          <span class="c3-small">Assigned ICT officer: {{ ict_assigned }}</span>
+        {% endif %}</div>
+      <div class="c3-formcard__side">
+        {% if can_view_ict_form %}
+          <a class="btn btn-sm {% if first.ict_form.status == 'submitted' %}btn-subtle{% else %}btn-primary{% endif %}" href="{% url 'qa_case:report_form' case.pk first.pk 'ict_verification' %}">{% if first.ict_form.status == "submitted" %}{% icon "eye" 14 %} View{% elif first.ict_form %}{% icon "edit" 14 %} Continue{% else %}{% icon "edit" 14 %} Start{% endif %}</a>
+          {% if first.ict_form %}
+          <a class="btn btn-sm btn-subtle" href="{% url 'qa_case:report_form_pdf' case.pk first.pk 'ict_verification' %}" target="_blank" rel="noopener">{% icon "eye" 14 %} Preview PDF</a>
+          <a class="btn btn-sm btn-subtle" href="{% url 'qa_case:report_form_pdf' case.pk first.pk 'ict_verification' %}?download=1">{% icon "download" 14 %} Download PDF</a>
+          {% endif %}
+        {% else %}<span class="qa-chip qa-tone-pending">{% icon "lock" 12 %} Locked</span>{% endif %}
+      </div>
+    </div>
+    {% endif %}{% endwith %}
+
+    <ul class="c3-reports" role="list">
+      {% for r in reports %}
+      <li class="c3-report">
+        <div class="c3-report__head">
+          <div><a class="c3-report__title" href="{% url 'qa_insp:report' r.pk %}">{{ r.qa_request_programme.programme }}</a>
+            <span class="c3-muted c3-small">Report v{{ r.version }}{% if r.submitted_by %} · compiled and submitted by {{ r.submitted_by|who }}{% else %} · Team Lead: {% if r.team_lead %}{{ r.team_lead|who }}{% else %}not assigned{% endif %}{% endif %}</span>
+            <div class="c3-row c3-row--tight qa-mt-xs">
+              {% if r.source_ssq %}<a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq' case.pk r.source_ssq.pk %}?back={{ request.get_full_path|urlencode }}">{% icon "file" 13 %} Institution's SSQ</a>{% endif %}
+              {% if r.source_ssq %}
+              <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk r.source_ssq.pk %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview SSQ PDF</a>
+              <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk r.source_ssq.pk %}?download=1">{% icon "download" 13 %} Download SSQ</a>
+              {% endif %}
+              <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form' case.pk r.pk 'programme_evaluation' %}">{% icon "edit" 13 %} Evaluation</a>
+              <a class="btn btn-xs btn-subtle" href="{% url 'qa_insp:report' r.pk %}">{% icon "eye" 13 %} Open report</a>
+              {% if r.can_preview_compiled_pdf %}
+              <a class="btn btn-xs btn-primary" href="{% url 'qa_insp:report_pdf' r.pk %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview compiled PDF</a>
+              <a class="btn btn-xs btn-subtle" href="{% url 'qa_insp:report_pdf' r.pk %}?download=1">{% icon "download" 13 %} Download compiled PDF</a>
+              {% endif %}
+            </div>
+          </div>
+          {% if r.layer %}<span class="qa-chip qa-tone-pending">With {{ r.layer }}</span>{% else %}<span class="qa-chip {{ r.status|tone }}">{{ r.status|humanize_code }}</span>{% endif %}
+        </div>
+
+        <div class="rp-report-progress">
+          <div class="rp-report-progress__top">
+            <strong>Attendee contributions</strong>
+            <span>{% if r.required %}{{ r.received }} of {{ r.required }} in{% else %}No attendees to report{% endif %}{% if r.still_to_submit %} · {{ r.still_to_submit }} still to submit{% endif %}{% if r.awaiting_review %} · {{ r.awaiting_review }} awaiting review{% endif %}</span>
+          </div>
+          <div class="rp-report-progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ r.progress_pct }}" aria-label="Attendee reports received"><span style="width: {{ r.progress_pct }}%"></span></div>
+          <div class="rp-report-progress__foot">
+            {% if r.ready_to_compile %}<span class="rp-count rp-count--ok">{% icon "check" 12 "2.6" %} Ready for the Team Lead to compile</span>{% else %}<span class="rp-count rp-count--warn">{% icon "clock" 12 "2.2" %} Waiting for {{ r.member_pending|length }} attendee{{ r.member_pending|length|pluralize }}</span>{% endif %}
+            {% if r.member_counts.skipped %}<span class="rp-count rp-count--muted">{% icon "x" 12 "2.2" %} {{ r.member_counts.skipped }} skipped</span>{% endif %}
+          </div>
+        </div>
+
+        {% if r.my_row %}
+        <div class="rp-mine">
+          {% if not r.my_row.member_report or r.my_row.member_report.status == "draft" or r.my_row.member_report.status == "returned" %}
+            <span>{% icon "edit" 14 "2.2" %} <strong>Your own report is still to submit.</strong> Write your findings for this programme; the Team Lead reviews them before compiling.</span>
+            <a class="btn btn-xs btn-primary" href="{% url 'qa_insp:report' r.pk %}">Write my report</a>
+          {% elif r.my_row.member_report.status == "submitted" %}
+            <span>{% icon "clock" 14 "2.2" %} <strong>Your report is with the Team Lead.</strong> You will be notified when it is accepted or returned.</span>
+          {% elif r.my_row.member_report.status == "accepted" %}
+            <span>{% icon "check" 14 "2.6" %} <strong>Your report was accepted.</strong> It is folded into the compiled programme report.</span>
+          {% elif r.my_row.member_report.status == "skipped" %}
+            <span>{% icon "flag" 14 "2.2" %} <strong>Your contribution was skipped by the Team Lead.</strong> {{ r.my_row.member_report.review_note }}</span>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if r.member_rows %}
+        <ul class="rp-attendees" role="list">
+          {% for row in r.member_rows %}
+          <li class="rp-attendee">
+            <span class="rp-attendee__who"><strong>{{ row.person }}</strong>{% if row.attendee.role_on_team %}<em>{{ row.attendee.role_on_team }}</em>{% endif %}</span>
+            {% if not row.attendee.attended %}
+              <span class="qa-chip qa-tone-danger">Absent</span>
+            {% elif not row.member_report %}
+              <span class="qa-chip qa-tone-pending">No portal account</span>
+            {% elif row.member_report.status == "accepted" %}
+              <span class="qa-chip qa-tone-success">Accepted</span>
+            {% elif row.member_report.status == "submitted" %}
+              <span class="qa-chip qa-tone-info">Submitted · awaiting review</span>
+            {% elif row.member_report.status == "returned" %}
+              <span class="qa-chip qa-tone-warn">Returned for changes</span>
+            {% elif row.member_report.status == "skipped" %}
+              <span class="qa-chip qa-tone-warn">Skipped by Team Lead</span>
+            {% else %}
+              <span class="qa-chip qa-tone-pending">Draft · not submitted</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if r.skipped_rows %}
+        <div class="rp-skipped">
+          <strong>{% icon "flag" 13 "2.2" %} Skipped contributions and reasons</strong>
+          {% for row in r.skipped_rows %}<p><b>{{ row.person }}:</b> {{ row.member_report.review_note|default:"No reason recorded." }}</p>{% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="c3-report__grid">
+          {% if report_forms_available.programme_evaluation %}
+          <div class="c3-report__cell">
+            <span class="c3-label">Programme evaluation (NBTE/P/4A)</span>
+            <span>{% if r.eval_form %}{{ r.eval_form.get_status_display }}{% if r.eval_form.score.outcome_label %} · {{ r.eval_form.score.score|default:'—' }} % · <strong>{{ r.eval_form.score.outcome_label }}</strong>{% endif %}{% else %}Not started{% endif %}</span>
+            <span class="c3-row c3-row--tight">
+              <a class="btn btn-xs {% if r.eval_form.status == 'submitted' %}btn-subtle{% else %}btn-primary{% endif %}" href="{% url 'qa_case:report_form' case.pk r.pk 'programme_evaluation' %}">{% if r.eval_form.status == "submitted" %}View{% elif r.eval_form %}Continue{% else %}Start{% endif %}</a>
+              {% if r.eval_form %}
+              <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form_pdf' case.pk r.pk 'programme_evaluation' %}" target="_blank" rel="noopener">Preview PDF</a>
+              <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form_pdf' case.pk r.pk 'programme_evaluation' %}?download=1">Download PDF</a>
+              {% endif %}
+            </span>
+          </div>
+          {% endif %}
+          <div class="c3-report__cell">
+            <span class="c3-label">Team recommendation</span>
+            <strong>{{ r.get_recommendation_display|default:"—" }}</strong>
+          </div>
+          <div class="c3-report__cell c3-report__cell--wide">
+            <span class="c3-label">Directorate recommendation (stage 13)</span>
+            {% if can_recommend %}
+            <form class="c3-form c3-form--inline" method="post" action="{% url 'qa_case:recommend' case.pk r.pk %}" hx-post="{% url 'qa_case:recommend' case.pk r.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="reports">
+              <div class="qa-field"><label class="sr-only" for="rec-{{ r.pk }}">Recommendation</label><select class="input" id="rec-{{ r.pk }}" name="recommendation" required>{% for v, l in recommendations %}<option value="{{ v }}"{% if r.recommendation == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+              <div class="qa-field"><label class="sr-only" for="note-{{ r.pk }}">Note</label><input class="input" id="note-{{ r.pk }}" name="note" value="{{ r.recommendation_note }}" placeholder="Note (optional)"></div>
+              <button class="btn btn-primary btn-sm" type="submit">{% if r.recommended_by %}Update{% else %}Confirm{% endif %}</button>
+            </form>{% if r.recommended_by %}<span class="c3-muted c3-small">Confirmed by {{ r.recommended_by|who }}</span>{% endif %}
+            {% elif r.recommended_by %}<span><strong>{{ r.get_recommendation_display }}</strong> — {{ r.recommended_by|who }}</span>{% if r.recommendation_note %}<span class="c3-muted c3-small">{{ r.recommendation_note }}</span>{% endif %}
+            {% else %}<span class="c3-muted">Not yet</span>{% endif %}
+          </div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+
+    {% if body_reports %}<section class="c3-sec__sub qa-mt" aria-labelledby="pb-reports-h">
+      <h3 id="pb-reports-h">Professional-body reports on this case</h3>
+      <ul class="qa-rowlist" role="list">
+        {% for b in body_reports %}
+        <li class="qa-rowlink qa-rowlink--nobadge">
+          <span class="qa-rowlink__main">
+            <span class="qa-rowlink__title">{{ b.body.acronym|default:b.body.name }} · {{ b.title|default:"Visit report" }}
+              <span class="qa-chip{% if b.status == 'with_nbte' %} qa-tone-info{% elif b.status == 'returned' %} qa-tone-warn{% endif %}">{{ b.get_status_display }}</span>
+              {% if b.programme %}<span class="qa-chip">{{ b.programme }}</span>{% endif %}
+            </span>
+            <span class="qa-rowlink__meta">{{ b.author.get_full_name|default:b.author.email }} · {{ b.created_at|date:"j M Y H:i" }}{% if b.summary %} · {{ b.summary }}{% endif %}</span>
+          </span>
+          {% if b.file %}<span class="qa-rowlink__side"><a class="btn btn-xs btn-subtle" href="{% url 'qa_case:body_report_file' case.pk b.pk %}">{% icon "download" 14 %} File</a></span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>{% endif %}
+  {% else %}
+  <div class="c3-empty">{% icon "file" 22 "2" %}<p><strong>No reports yet.</strong> They open when the case reaches stage 12 — after the visit is recorded and the funds are released.</p></div>
+  {% endif %}
 </section>

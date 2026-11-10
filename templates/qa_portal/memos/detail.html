@@ -1,0 +1,64 @@
+{% extends base_template %}
+{% load qa_tags ux_tags brand %}
+{% block title %}{{ memo.reference }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page" id="qa-memo">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:memos' %}" hx-get="{% url 'qa_portal:memos' %}" hx-target="#qa-main" hx-push-url="true">Memos</a><span aria-hidden="true">/</span><span aria-current="page">{{ memo.reference }}</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} {% if memo.signed_as == "from" %}From the Executive Secretary{% else %}Approved by the Executive Secretary{% endif %}</span>
+    <h1 data-qa-focus>{{ memo.subject }}</h1>
+    <p class="qa-row qa-gap-sm"><span class="qa-mono qa-small">{{ external_ref }}</span><span class="qa-small">{{ memo.published_at|date:"j M Y" }}</span>
+      {% if receipt.acknowledged_at %}<span class="qa-chip qa-tone-success">Acknowledged {{ receipt.acknowledged_at|date:"j M Y" }}</span>{% elif memo.requires_acknowledgment %}<span class="qa-chip qa-tone-warn">Please acknowledge</span>{% endif %}</p>
+  </header>
+
+  <div class="qa-cols">
+    <article class="qa-card pmemo-letter" aria-label="The letter">
+      <div class="qa-card__body">
+        <header class="pmemo-head">
+          <img loading="lazy" decoding="async" src="{% brand_logo_url 'formal' %}" alt="NBTE" class="pmemo-logo">
+          <div class="pmemo-org">{{ letterhead.org }}</div>
+          <div class="pmemo-band">
+            <div><strong>Executive Secretary:</strong><br>{{ es_name }}{% if letterhead.postnominals %}, {{ letterhead.postnominals }}{% endif %}</div>
+            <div class="pmemo-band-right"><strong>ADDRESS:</strong> {{ letterhead.address }}{% if letterhead.email %}<br><strong>Email:</strong> {{ letterhead.email }}{% endif %}{% if letterhead.phone %}<br><strong>Tel:</strong> {{ letterhead.phone }}{% endif %}</div>
+          </div>
+        </header>
+        <div class="pmemo-rule"></div>
+        <p class="pmemo-ref"><span><strong>Ref:</strong> {{ external_ref }}</span><span>{{ memo.published_at|date:"F j, Y" }}</span></p>
+        <p class="pmemo-to">The Head of Institution,<br>{{ inst.name }}{% if inst.state_name %},<br>{{ inst.state_name }} State.{% endif %}</p>
+        <h2 class="pmemo-subject">{{ memo.subject|upper }}</h2>
+        <div class="pmemo-body">{{ memo.body|linebreaks }}</div>
+        <div class="pmemo-sign">
+          <div class="pmemo-caption">{% if memo.signed_as == "from" %}From the Executive Secretary{% else %}Approved by the Executive Secretary{% endif %}</div>
+          {% if es_signature %}<img loading="lazy" decoding="async" src="{{ es_signature }}" alt="Signature of the Executive Secretary" class="pmemo-sig">{% endif %}
+          <div class="pmemo-line"></div>
+          <strong>{{ es_name|upper }}</strong>
+          <span>Executive Secretary</span>
+        </div>
+      </div>
+    </article>
+    <aside class="qa-stack">
+      <section class="qa-card"><div class="qa-card__body qa-stack">
+        <h2 class="qa-h3">The signed letter</h2>
+        <p class="qa-small qa-muted">Addressed to {{ inst.name }}. Keep it with your records.</p>
+        <div class="btn-group">
+          {% url 'qa_portal:memo_pdf' memo.pk as pdf_url %}
+          <a class="btn btn-primary btn-sm" href="{{ pdf_url }}?download=1">{% icon "download" 14 %} Download PDF</a>
+          {% preview_button pdf_url memo.reference|add:".pdf" label="Preview" %}
+        </div>
+      </div></section>
+      <section class="qa-card"><div class="qa-card__body qa-stack">
+        <h2 class="qa-h3">Receipt</h2>
+        {% if receipt.acknowledged_at %}
+          <p class="qa-small">Acknowledged by {{ receipt.acknowledged_by.get_full_name|default:receipt.acknowledged_by.email }} on {{ receipt.acknowledged_at|date:"j M Y, H:i" }}.</p>
+        {% else %}
+          <p class="qa-small">{% if memo.requires_acknowledgment %}NBTE asks you to confirm you received this memo.{% else %}Let NBTE know your institution has received this memo.{% endif %}</p>
+          <form method="post" action="{% url 'qa_portal:memo_acknowledge' memo.pk %}" hx-post="{% url 'qa_portal:memo_acknowledge' memo.pk %}" hx-target="#qa-main" hx-push-url="{% url 'qa_portal:memo' memo.pk %}">{% csrf_token %}
+            <button type="submit" class="btn btn-primary btn-sm"{% if request.is_impersonating %} disabled{% endif %}>{% icon "check" 14 %} Acknowledge receipt</button>
+          </form>
+        {% endif %}
+        {% if receipt.read_at %}<p class="qa-small qa-muted">First opened {{ receipt.read_at|date:"j M Y, H:i" }}{% if receipt.read_by %} by {{ receipt.read_by.get_full_name|default:receipt.read_by.email }}{% endif %}.</p>{% endif %}
+      </div></section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

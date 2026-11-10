@@ -1,27 +1,179 @@
 {% load qa_tags %}
 {% include "inspection/_subnav.html" with section="endorsements" %}
-<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_insp:inspection' inspection.pk %}" hx-get="{% url 'qa_insp:inspection' inspection.pk %}" hx-target="#qa-panel" hx-push-url="true">{{ inspection.reference }}</a><span aria-hidden="true">/</span><span aria-current="page">Post-visit report</span></nav>
-<header class="qa-inst-head">
-  <span class="qa-inst-head__code" aria-hidden="true">{{ case.institution.code }}</span>
-  <div><span class="qa-eyebrow">SOP-03 stage 12 · <a href="{% url 'qa_case:detail' case.pk %}">{{ case.reference }}</a></span>
+<nav class="qa-crumbs" aria-label="Breadcrumb" data-qa-live-url="{% url 'qa_insp:report_live' report.pk %}" data-qa-live-target="#qa-panel" data-qa-live-label="{{ inspection.reference }}"><a href="{% url 'qa_insp:inspection' inspection.pk %}" hx-get="{% url 'qa_insp:inspection' inspection.pk %}" hx-target="#qa-panel" hx-push-url="true">{{ inspection.reference }}</a><span aria-hidden="true">/</span><span aria-current="page">Post-visit report</span></nav>
+<header class="qa-inst-head rp-hero">
+  <span class="qa-inst-head__code rp-hero__code" aria-hidden="true">{{ case.institution.code }}</span>
+  <div class="rp-hero__main"><span class="qa-eyebrow">{% icon "file" 14 "2.2" %} SOP-03 stage 12 · <a href="{% url 'qa_case:detail' case.pk %}">{{ case.reference }}</a></span>
     <h1 data-qa-focus>{{ report.qa_request_programme.programme }}</h1>
     <div class="qa-inst-head__meta"><span class="qa-chip {{ report.status|tone }}">{{ report.status|humanize_code }}</span><span>{{ case.institution.name }}</span><span>v{{ report.version }}</span>{% if report.submitted_by %}<span>Submitted by {{ report.submitted_by|who }}</span>{% endif %}</div></div>
+  <div class="rp-hero__stats" aria-label="Report progress">
+    <div class="rp-hero__stat rp-hero__stat--ok"><strong>{{ member_counts.accepted }}</strong><span>Accepted</span></div>
+    <div class="rp-hero__stat rp-hero__stat--info"><strong>{{ member_counts.submitted }}</strong><span>Awaiting review</span></div>
+    <div class="rp-hero__stat rp-hero__stat--warn"><strong>{{ member_counts.pending }}</strong><span>To submit</span></div>
+    {% if member_counts.unlinked %}<div class="rp-hero__stat rp-hero__stat--muted"><strong>{{ member_counts.unlinked }}</strong><span>No account</span></div>{% endif %}
+  </div>
 </header>
-<section class="qa-card" aria-label="Endorsement chain"><div class="qa-card__body">
+{% if source_ssq or can_preview_compiled_pdf %}
+<section class="qa-card rp-document-actions" aria-label="Report documents">
+  <div class="qa-card__body">
+    <div class="rp-document-actions__intro"><span class="rp-document-actions__icon">{% icon "file" 18 "2.2" %}</span>
+      <div><strong>Review the source and compiled documents</strong>
+        <span>Preview a PDF, download a copy, or open the full interactive record with its attachments and contributions.</span>
+      </div>
+    </div>
+    <div class="rp-document-actions__links">
+      {% if source_ssq %}
+      <a class="btn btn-sm btn-subtle" href="{% url 'qa_case:source_ssq' case.pk source_ssq.pk %}?back={{ request.get_full_path|urlencode }}">{% icon "arrow" 14 %} Open institution SSQ</a>
+      <a class="btn btn-sm btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk source_ssq.pk %}" target="_blank" rel="noopener">{% icon "eye" 14 %} Preview SSQ PDF</a>
+      <a class="btn btn-sm btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk source_ssq.pk %}?download=1">{% icon "download" 14 %} Download SSQ PDF</a>
+      {% endif %}
+      {% if can_preview_compiled_pdf %}
+      <a class="btn btn-sm btn-primary" href="{% url 'qa_insp:report_pdf' report.pk %}" target="_blank" rel="noopener">{% icon "eye" 14 %} Preview compiled report</a>
+      <a class="btn btn-sm btn-subtle" href="{% url 'qa_insp:report_pdf' report.pk %}?download=1">{% icon "download" 14 %} Download compiled report</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+<section class="qa-card rp-chain" aria-label="Endorsement chain"><div class="qa-card__body">
+  <div class="rp-chain__top">
+    <div class="rp-chain__label"><span class="rp-chain__icon">{% icon "layers" 17 "2.2" %}</span><div><strong>Endorsement route</strong><span>Each step signs before the report moves to the next office.</span></div></div>
+    {% if link and link.due_at %}<span class="qa-chip qa-tone-warn">{% icon "clock" 12 "2.2" %} Due {{ link.due_at|date:"j M, H:i" }}</span>{% endif %}
+  </div>
   <ol class="qa-stepper qa-stepper--chain">{% for st in chain %}<li class="is-{{ st.state }}"{% if st.state == "current" %} aria-current="step"{% endif %}><span class="qa-stepper__dot">{% if st.state == "done" %}✓{% else %}{{ forloop.counter }}{% endif %}</span><span class="qa-stepper__label">{{ st.label }}</span></li>{% endfor %}</ol>
-  {% if holders %}<p class="qa-small qa-muted">With: {% for u in holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if link and link.due_at %} · due {{ link.due_at|date:"j M, H:i" }}{% endif %}</p>{% endif %}
+  {% if holders %}<p class="qa-small qa-muted qa-chain-with">With: {% for u in holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if link and link.due_at %} · due {{ link.due_at|date:"j M, H:i" }}{% endif %}</p>{% endif %}
 </div></section>
 {% for c in pinned %}<div class="qa-pinned-remark" role="note"><strong>{% icon "flag" 14 %} Pinned remark</strong><span>{{ c.body }}</span><small>{{ c.author|who }} · {{ c.pinned_at|date:"j M Y, H:i" }}</small></div>{% endfor %}
+<section class="qa-card rp-role-card" aria-label="Your role in this report">
+  <div class="qa-card__body rp-role{% if is_team_lead %} rp-role--lead{% elif my_member_row %} rp-role--member{% endif %}">
+    {% if is_team_lead %}
+      <span class="rp-role__icon">{% icon "award" 20 "2.2" %}</span>
+      <div><strong>You are the Team Lead for this visit.</strong>
+        <p>Attendees write their own reports below. You review each one, then <strong>you alone write and submit the single compiled programme report</strong>. You may skip an attendee, but the reason is kept for the CQAC.</p></div>
+    {% elif my_member_row %}
+      <span class="rp-role__icon">{% icon "user" 20 "2.2" %}</span>
+      <div><strong>You are writing your own attendee report.</strong>
+        <p>Submit your findings for {{ report.qa_request_programme.programme }} below. The Team Lead will review your report and compile the final programme report; you do not submit the compiled report.</p></div>
+    {% else %}
+      <span class="rp-role__icon">{% icon "eye" 20 "2.2" %}</span>
+      <div><strong>Read-only view.</strong>
+        <p>Only each attendee writes their own report, and only the Team Lead writes the compiled programme report. You can follow every contribution and decision here.</p></div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="qa-card rp-attendees" aria-labelledby="team-reports-h">
+  <header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--blue">{% icon "users" 17 "2.2" %}</span><div><h2 id="team-reports-h">Attendee reports for this programme</h2>
+    <p>Each person who attended writes their own findings. The Team Lead reviews each submission, returns it with a comment, accepts it for compilation, or skips it with a reason. Absences do not hold up the report.</p>
+  </div></div>
+  <div class="rp-mini-stats" aria-label="Contribution counts">
+    <span class="rp-count rp-count--ok"><b>{{ member_counts.accepted }}</b> accepted</span>
+    <span class="rp-count rp-count--info"><b>{{ member_counts.submitted }}</b> awaiting review</span>
+    <span class="rp-count rp-count--warn"><b>{{ member_counts.pending }}</b> still to submit</span>
+    {% if member_counts.unlinked %}<span class="rp-count rp-count--muted"><b>{{ member_counts.unlinked }}</b> no portal account</span>{% endif %}
+    {% if member_counts.skipped %}<span class="rp-count rp-count--muted"><b>{{ member_counts.skipped }}</b> skipped</span>{% endif %}
+  </div>
+  </header>
+  <div class="qa-card__body">
+    {% if inspection.status != "closed" %}
+      <div class="qa-callout qa-callout--info" role="status">Individual reports unlock after the Team Lead records the visit and attendance.</div>
+    {% endif %}
+    <ul class="qa-rowlist" role="list">
+      {% for row in member_roster %}
+      <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge rp-attendee" data-status="{% if not row.attendee.attended %}absent{% elif not row.member_report %}unlinked{% else %}{{ row.member_report.status }}{% endif %}">
+        <span class="rp-attendee__avatar" aria-hidden="true">{{ row.person|stringformat:"s"|slice:":1" }}</span>
+        <span class="qa-rowlink__main">
+          <span class="qa-rowlink__title">{{ row.person }}
+            {% if not row.attendee.attended %}<span class="qa-chip qa-tone-danger">Absent</span>
+            {% elif not row.member_report %}<span class="qa-chip qa-tone-pending">No portal account</span>
+            {% elif row.member_report.status == "accepted" %}<span class="qa-chip qa-tone-success">{{ row.status }}</span>
+            {% elif row.member_report.status == "submitted" %}<span class="qa-chip qa-tone-info">{{ row.status }}</span>
+            {% elif row.member_report.status == "skipped" %}<span class="qa-chip qa-tone-warn">{{ row.status }}</span>
+            {% elif row.member_report.status == "returned" %}<span class="qa-chip qa-tone-warn">{{ row.status }}</span>
+            {% else %}<span class="qa-chip qa-tone-pending">{{ row.status }}</span>{% endif %}
+          </span>
+          <span class="qa-rowlink__meta">{% if row.attendee.role_on_team %}{{ row.attendee.role_on_team }} · {% endif %}{{ row.attendee.get_duty_display }}</span>
+          {% if not row.attendee.attended %}
+            <span class="qa-small qa-muted">Marked absent by the Team Lead. No individual report is required from this attendee.</span>
+          {% elif not row.member_report %}
+            <span class="qa-small qa-muted">No portal account is linked, so this attendee cannot submit. The Team Lead can skip them with a reason.</span>
+          {% elif row.can_view %}
+            {% if row.member_report.summary %}<span class="qa-small"><strong>Summary:</strong> {{ row.member_report.summary }}</span>{% endif %}
+            {% if row.member_report.recommendation %}<span class="qa-small"><strong>Recommendation:</strong> {{ row.member_report.get_recommendation_display }}</span>{% endif %}
+            {% if row.member_report.review_note %}<span class="qa-small qa-muted"><strong>Team Lead:</strong> {{ row.member_report.review_note }}</span>{% endif %}
+            {% if row.member_report.findings %}
+              <details class="qa-small"><summary>View section findings</summary>
+                <dl class="qa-dl">{% for key, label, help in sections %}{% with finding=row.member_report.findings|get_item:key %}{% if finding %}<div><dt>{{ label }}</dt><dd>{{ finding|linebreaksbr }}</dd></div>{% endif %}{% endwith %}{% endfor %}</dl>
+              </details>
+            {% endif %}
+            {% if row.can_edit %}
+              <form class="qa-form qa-mt-sm" method="post" action="{% url 'qa_insp:member_report_save' report.pk %}" hx-post="{% url 'qa_insp:member_report_save' report.pk %}" hx-target="#qa-panel" novalidate>
+                {% csrf_token %}{% include "qa_core/partials/_form_errors.html" with form=row.form %}
+                <div class="qa-fields">{% for field in row.form %}{% include "qa_core/partials/_field.html" with wide=True %}{% endfor %}</div>
+                <div class="qa-form-actions"><button class="btn btn-subtle" type="submit" name="op" value="save">Save my draft</button>
+                  <button class="btn btn-primary" type="submit" name="op" value="submit">Submit my report to the Team Lead</button></div>
+              </form>
+            {% elif can_review_members and row.member_report.author_id != request.user.pk and row.member_report.status == "submitted" %}
+              <form class="qa-form qa-mt-sm" method="post" action="{% url 'qa_insp:member_report_review' report.pk row.member_report.pk %}" hx-post="{% url 'qa_insp:member_report_review' report.pk row.member_report.pk %}" hx-target="#qa-panel">
+                {% csrf_token %}
+                {% if review_member_pk == row.member_report.pk %}{% include "qa_core/partials/_form_errors.html" with form=member_review_form %}{% endif %}
+                <div class="qa-field"><label for="member-review-{{ row.member_report.pk }}">Review comment (required to return or skip)</label>
+                  <textarea class="input" id="member-review-{{ row.member_report.pk }}" name="content" rows="2"></textarea></div>
+                <div class="qa-form-actions"><button class="btn btn-primary" type="submit" name="action" value="accept">Accept for compilation</button>
+                  <button class="btn btn-subtle" type="submit" name="action" value="return">Return with comment</button>
+                  <button class="btn btn-subtle rp-skip-btn" type="submit" name="action" value="skip">Skip attendee</button></div>
+              </form>
+            {% elif can_review_members and row.member_report.author_id != request.user.pk and row.member_report.status != "skipped" %}
+              <details class="rp-skip">
+                <summary class="rp-skip__toggle">{% icon "x" 13 "2.2" %} Skip this attendee with a reason</summary>
+                <form class="qa-form qa-mt-sm rp-skip-form" method="post" action="{% url 'qa_insp:member_report_review' report.pk row.member_report.pk %}" hx-post="{% url 'qa_insp:member_report_review' report.pk row.member_report.pk %}" hx-target="#qa-panel">
+                  {% csrf_token %}
+                  {% if review_member_pk == row.member_report.pk %}{% include "qa_core/partials/_form_errors.html" with form=member_review_form %}{% endif %}
+                  <div class="qa-field"><label for="member-skip-{{ row.member_report.pk }}">Reason for skipping (kept for the CQAC)</label>
+                    <textarea class="input" id="member-skip-{{ row.member_report.pk }}" name="content" rows="2" placeholder="Explain why this contribution is being set aside."></textarea></div>
+                  <div class="qa-form-actions"><button class="btn btn-subtle rp-skip-btn" type="submit" name="action" value="skip">Skip this attendee</button></div>
+                </form>
+              </details>
+            {% elif row.member_report.author_id == request.user.pk %}
+              <span class="qa-small qa-muted">This is your own attendee contribution. It is folded into the compiled report; no separate review action is needed from you.</span>
+            {% endif %}
+          {% else %}
+            <span class="qa-small qa-muted">The Team Lead reviews individual findings before sharing the completed compilation with the review chain.</span>
+          {% endif %}
+
+          {% if can_review_members and row.attendee.attended and not row.member_report %}
+            <details class="rp-skip">
+              <summary class="rp-skip__toggle">{% icon "x" 13 "2.2" %} Skip this attendee with a reason</summary>
+              <form class="qa-form qa-mt-sm rp-skip-form" method="post" action="{% url 'qa_insp:member_attendee_skip' report.pk row.attendee.pk %}" hx-post="{% url 'qa_insp:member_attendee_skip' report.pk row.attendee.pk %}" hx-target="#qa-panel">
+                {% csrf_token %}
+                {% if review_attendee_pk == row.attendee.pk %}{% include "qa_core/partials/_form_errors.html" with form=member_review_form %}{% endif %}
+                <div class="qa-field"><label for="attendee-skip-{{ row.attendee.pk }}">Reason for skipping (kept for the CQAC)</label>
+                  <textarea class="input" id="attendee-skip-{{ row.attendee.pk }}" name="content" rows="2" placeholder="Explain why this attendee's contribution is being set aside."></textarea></div>
+                <div class="qa-form-actions"><button class="btn btn-subtle rp-skip-btn" type="submit" name="action" value="skip">Skip this attendee</button></div>
+              </form>
+            </details>
+          {% endif %}
+        </span>
+      </li>
+      {% empty %}
+      <li class="qa-muted">No team attendance has been recorded for this programme.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% include "inspection/_vvt001.html" %}
+{% include "inspection/_report_forms_card.html" %}
 <div class="qa-cols">
   <div class="qa-stack">
-    <section class="qa-card" aria-labelledby="rep-h"><header class="qa-card__head"><div><h2 id="rep-h">Findings</h2><p>{% if can_write %}Write the findings section by section, then submit. Only someone who attended the visit can (B17).{% else %}{{ write_why }}{% endif %}</p></div></header>
+    <section class="qa-card rp-compile" aria-labelledby="rep-h"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--teal">{% icon "award" 17 "2.2" %}</span><div><h2 id="rep-h">Team Lead's programme compilation</h2><p>{% if can_write %}Review the accepted attendee contributions, add your own compilation, and submit one final report for this programme.{% else %}{{ write_why }}{% endif %}</p></div></div></header>
       <div class="qa-card__body">
       {% if can_write %}
         <form class="qa-form" method="post" action="{% url 'qa_insp:report_save' report.pk %}" hx-post="{% url 'qa_insp:report_save' report.pk %}" hx-target="#qa-panel" novalidate>{% csrf_token %}
           {% include "qa_core/partials/_form_errors.html" with form=form %}
+          {% if compile_pending %}<div id="compile-pending" class="qa-callout qa-callout--warn" role="status">Before you can submit the compilation, these attendees still need to submit or have their report accepted: {{ compile_pending|join:", " }}.</div>{% endif %}
           <div class="qa-fields">{% for field in form %}{% include "qa_core/partials/_field.html" with wide=True %}{% endfor %}</div>
-          <div class="qa-form-actions"><button class="btn btn-subtle" type="submit" name="op" value="save">Save draft</button>
-            <button class="btn btn-primary" type="submit" name="op" value="submit">{% icon "check" 16 %} {% if report.status == "returned" %}Re-submit{% else %}Submit{% endif %} to the Division Head</button></div>
+          <div class="qa-form-actions rp-compile__actions"><button class="btn btn-subtle" type="submit" name="op" value="save">Save draft</button>
+            <button class="btn btn-primary" type="submit" name="op" value="submit"{% if compile_pending %} disabled aria-describedby="compile-pending"{% endif %}>{% icon "check" 16 %} {% if report.status == "returned" %}Re-submit{% else %}Submit{% endif %} compilation to the Division Head</button></div>
         </form>
       {% else %}
         <dl class="qa-dl">{% for key, label, help in sections %}<div><dt>{{ label }}</dt><dd>{{ report.findings|get_item:key|default:"—"|linebreaksbr }}</dd></div>{% endfor %}
@@ -41,6 +193,10 @@
     {% if layer %}
     <section class="qa-card qa-stage-act{% if not can_endorse %} is-blocked{% endif %}" aria-labelledby="end-h"><header class="qa-stage-act__head"><h2 id="end-h">{{ layer }}</h2></header>
       <div class="qa-stage-act__body">{% if can_endorse %}
+        {% if report.status == "deputy_verified" %}<div class="qa-form-actions">
+          <a class="btn btn-subtle btn-block" href="{% url 'qa_insp:report_pdf' report.pk %}" target="_blank" rel="noopener">{% icon "eye" 16 %} Preview compiled PDF</a>
+          <a class="btn btn-subtle btn-block" href="{% url 'qa_insp:report_pdf' report.pk %}?download=1">{% icon "download" 16 %} Download compiled PDF</a>
+        </div>{% endif %}
         <form class="qa-form" method="post" action="{% url 'qa_insp:report_endorse' report.pk %}" hx-post="{% url 'qa_insp:report_endorse' report.pk %}" hx-target="#qa-panel" novalidate>{% csrf_token %}
           {% include "qa_core/partials/_form_errors.html" with form=endorse_form %}
           {% for field in endorse_form %}{% if field.name == "content" %}{% include "qa_core/partials/_field.html" with wide=True %}{% endif %}{% endfor %}
@@ -52,8 +208,40 @@
       {% else %}<p class="qa-small qa-muted">{{ endorse_why }}</p>{% endif %}</div>
     </section>
     {% endif %}
-    <section class="qa-card" aria-labelledby="hist-h"><header class="qa-card__head"><h2 id="hist-h">Endorsements</h2></header>
-      <div class="qa-card__body"><ol class="qa-tl">{% for e in endorsements %}<li><span class="qa-tl__text"><strong>{{ e.get_layer_display }}</strong> {{ e.get_action_display|lower }}{% if e.content %} — “{{ e.content }}”{% endif %}</span><small>{{ e.actor|who }} · <time datetime="{{ e.at|date:'c' }}">{{ e.at|date:"j M Y, H:i" }}</time></small></li>{% empty %}<li class="qa-muted">Not submitted yet.</li>{% endfor %}</ol></div>
+    <section class="qa-card rp-endorse-card" aria-labelledby="hist-h"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--purple">{% icon "check" 17 "2.4" %}</span><div><h2 id="hist-h">Endorsements</h2></div></div></header>
+      <div class="qa-card__body"><ol class="qa-tl rp-timeline">{% for e in endorsements %}<li><span class="qa-tl__text"><strong>{{ e.get_layer_display }}</strong> {{ e.get_action_display|lower }}{% if e.content %} — “{{ e.content }}”{% endif %}</span><small>{{ e.actor|who }} · <time datetime="{{ e.at|date:'c' }}">{{ e.at|date:"j M Y, H:i" }}</time></small></li>{% empty %}<li class="qa-muted">Not submitted yet.</li>{% endfor %}</ol></div>
     </section>
   </aside>
 </div>
+
+<style>
+  .qa-stepper--chain { flex-wrap: wrap; overflow: visible; row-gap: 12px; padding-bottom: 2px; }
+  .qa-stepper--chain li:first-child::before { inset-inline-start: 50%; }
+  .qa-stepper--chain li:last-child::before { inset-inline-end: 50%; }
+  .qa-chain-with { margin: 10px 0 0; }
+  @media (max-width: 1099px) {
+    .qa-stepper--chain li.is-current .qa-stepper__label { display: block; }
+  }
+  .rp-role { display: flex; align-items: flex-start; gap: 12px; }
+  .rp-role__icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text-muted); }
+  .rp-role > div > strong { display: block; font-size: .92rem; }
+  .rp-role p strong { font-weight: var(--fw-bold); }
+  .rp-role p { margin: 4px 0 0; font-size: .82rem; line-height: 1.5; color: var(--text-muted); }
+  .rp-role--lead { background: color-mix(in srgb, #129c62 6%, var(--surface)); border-left: 3px solid #129c62; }
+  .rp-role--lead .rp-role__icon { background: color-mix(in srgb, #129c62 14%, transparent); color: #0f7d4f; }
+  .rp-role--member { background: color-mix(in srgb, #0b6bcb 6%, var(--surface)); border-left: 3px solid #0b6bcb; }
+  .rp-role--member .rp-role__icon { background: color-mix(in srgb, #0b6bcb 14%, transparent); color: #0b6bcb; }
+  .rp-mini-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+  .rp-count { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2, #fafbfc); font-size: .72rem; color: var(--text-muted); }
+  .rp-count b { color: var(--text); }
+  .rp-count--warn { color: #b45309; border-color: color-mix(in srgb, #d97706 25%, var(--border)); background: color-mix(in srgb, #d97706 7%, var(--surface)); }
+  .rp-count--info { color: #0b6bcb; border-color: color-mix(in srgb, #0b6bcb 25%, var(--border)); background: color-mix(in srgb, #0b6bcb 7%, var(--surface)); }
+  .rp-count--ok { color: #0f7d4f; border-color: color-mix(in srgb, #129c62 25%, var(--border)); background: color-mix(in srgb, #129c62 7%, var(--surface)); }
+  .rp-count--muted { color: #64748b; }
+  .rp-skip-btn { color: #b45309; border-color: color-mix(in srgb, #d97706 30%, var(--border)); }
+  .rp-skip { margin-top: 6px; }
+  .rp-skip__toggle { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: .74rem; color: #b45309; list-style: none; padding: 3px 0; }
+  .rp-skip__toggle::-webkit-details-marker { display: none; }
+  .rp-skip[open] .rp-skip__toggle { margin-bottom: 2px; }
+  .rp-skip-form { padding: 10px 12px; border: 1px dashed color-mix(in srgb, #d97706 30%, var(--border)); border-radius: 10px; background: color-mix(in srgb, #d97706 4%, var(--surface)); }
+</style>

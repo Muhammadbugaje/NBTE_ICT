@@ -1,0 +1,103 @@
+{% comment %}
+  The "?" button in the portal top bar: help for the page you are on, the
+  guides, the help centre and NBTE's contact details. The top bar is not
+  swapped by boosted navigation, so every page's tip is here and CSS shows
+  the one matching body[data-portal-section] (set by qa-portal-ui.js on every
+  navigation); "dashboard" is the fallback.
+{% endcomment %}
+<div class="qa-bell pp-help-menu">
+  <button type="button" class="qa-icon-btn pp-top__help" data-dropdown-trigger="qa-help-menu" aria-expanded="false" aria-controls="qa-help-menu" aria-label="Help" title="Help">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  </button>
+  <div class="dropdown qa-notif pp-helpbox" id="qa-help-menu" data-dropdown-menu aria-hidden="true" role="dialog" aria-label="Help">
+    <div class="dropdown-header"><strong>Help</strong><span class="muted">For this page, and for the whole process</span></div>
+    <div class="pp-helpbox__body">
+      {% url 'qa_portal:guide_read' 'starter' as g_starter %}{% url 'qa_portal:guide_read' 'onboarding' as g_onb %}{% url 'qa_portal:guide_read' 'qa-requests' as g_qar %}{% url 'qa_portal:guide_read' 'payments' as g_pay %}{% url 'qa_portal:how_to' as how_to %}
+      <div class="pp-helpctx" data-help-for="dashboard">
+        <p class="pp-helpctx__k">On this page</p>
+        <p>Home shows what needs your action now, and what happened recently. Start with the card at the top: it always names your next step.</p>
+        <a href="{{ g_starter }}#part-3">Guide: your dashboard</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="application">
+        <p class="pp-helpctx__k">Your application</p>
+        <p>Follow the steps in order; each one unlocks the next. If a department returns your application, its reason is shown so you can correct and resubmit.</p>
+        <a href="{{ g_onb }}">Read the Onboarding guide</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="documents">
+        <p class="pp-helpctx__k">Documents</p>
+        <p>Upload each required document as a PDF or image. A returned document shows NBTE's reason; upload a corrected version in its place.</p>
+        <a href="{{ g_onb }}">Read the Onboarding guide</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="payments">
+        <p class="pp-helpctx__k">Payments</p>
+        <p>Every fee is a bill with its own reference. Pay online, or by bank transfer and upload your proof. A payment counts once NBTE Finance confirms it.</p>
+        <a href="{{ g_pay }}">Read the Payments guide</a>
+        <a href="{% url 'qa_portal:refunds' %}">Your refunds</a> · <a href="{% url 'qa_portal:refund_policy' %}">Cancellations and refunds</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="requests reviews">
+        <p class="pp-helpctx__k">QA requests and SSQs</p>
+        <p>Choose the type of QA and the programmes. After the fee is confirmed, one self-study questionnaire opens per programme; you can send sections to departments.</p>
+        <a href="{{ g_qar }}">Read the QA requests guide</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="programmes professional">
+        <p class="pp-helpctx__k">Programmes</p>
+        <p>Each programme's status, approved streams and expiry date. They update automatically when NBTE issues a decision.</p>
+        <a href="{{ g_qar }}">Read the QA requests guide</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="queries">
+        <p class="pp-helpctx__k">Queries</p>
+        <p>NBTE asks here when something is missing. Answer on the portal so your reply stays on the record and the review can continue.</p>
+        <a href="{{ g_starter }}#part-4">Guide: how NBTE contacts you</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="notifications memos letters">
+        <p class="pp-helpctx__k">Messages from NBTE</p>
+        <p>Notifications, memos and letters from NBTE. Open one to read it in full; memos that ask for it need an acknowledgement.</p>
+        <a href="{{ g_starter }}#part-4">Guide: how NBTE contacts you</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="institution">
+        <p class="pp-helpctx__k">Profile and team</p>
+        <p>Keep your institution's details and users up to date. After your first application is submitted, changes go to NBTE as a change request.</p>
+        <a href="{{ g_starter }}#part-5">Guide: your institution's record</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="activity">
+        <p class="pp-helpctx__k">Timeline</p>
+        <p>A permanent record of everything that happened on your institution's record, newest first. Use the filters to find an event.</p>
+        <a href="{{ g_starter }}#part-6">Guide: the timeline</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="account">
+        <p class="pp-helpctx__k">Account settings</p>
+        <p>Your name, password, notification settings and the devices you are signed in on. Only NBTE can change your e-mail address or role.</p>
+        <a href="{{ g_starter }}#part-7">Guide: account settings</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="visits">
+        <p class="pp-helpctx__k">Inspections</p>
+        <p>NBTE's scheduled and recorded visits to your institution. You are told when a visit is scheduled, when it takes place and when the decision is issued.</p>
+        <a href="{{ how_to }}#inside-nbte">What happens inside NBTE</a>
+      </div>
+      <div class="pp-helpctx" data-help-for="complaints help verification engagements">
+        <p class="pp-helpctx__k">On this page</p>
+        <p>Search the help centre for answers, or raise a complaint if something has gone wrong. NBTE replies on the portal.</p>
+      </div>
+      <nav class="pp-helpbox__links" aria-label="Help links">
+        <a class="dropdown-item" href="{{ how_to }}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span><strong>How it works &amp; guides</strong><small>The process step by step; every guide as PDF</small></span></a>
+        {% if request.user.user_type == "institution" or request.user.user_type == "resource_person" %}
+        <a class="dropdown-item" href="{% url 'qa_portal:help' %}" hx-boost="true" hx-target="#qa-main" hx-push-url="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span><strong>Help centre</strong><small>Search answers to common questions</small></span></a>
+        <a class="dropdown-item" href="{% url 'qa_portal:complaint_new' %}" hx-boost="true" hx-target="#qa-main" hx-push-url="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span><strong>Raise a complaint</strong><small>Tell NBTE what went wrong</small></span></a>
+        {% endif %}
+      </nav>
+    </div>
+    {% if site_info.email or site_info.phone %}
+    <div class="qa-notif__foot pp-helpbox__contact">
+      <span>Contact NBTE</span>
+      {% if site_info.email %}<a href="mailto:{{ site_info.email }}?subject=QA%20Portal%20help">{{ site_info.email }}</a>{% endif %}
+      {% if site_info.phone %}<a href="tel:{{ site_info.phone|cut:' ' }}">{{ site_info.phone }}</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>

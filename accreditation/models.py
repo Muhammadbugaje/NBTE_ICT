@@ -107,6 +107,19 @@ class Application(InstitutionScopedModelMixin, TimeStampedModel):
     returned_by_department = models.ForeignKey("staff.Department", null=True, blank=True,
                                                on_delete=models.SET_NULL, related_name="+")
     declaration_accepted = models.BooleanField(default=False)
+    # Phase 0 (Q1, Q2): programme selection submitted to NBTE for clearance.
+    programme_round = models.PositiveSmallIntegerField(
+        default=0, help_text="Programme clearance round (each programme submission starts one).")
+    programmes_submitted_at = models.DateTimeField(null=True, blank=True)
+    programmes_submitted_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL,
+                                                related_name="+")
+    # v2.1 X14/X15 (F.15): the Chief Executive declares at "Declare and pay";
+    # the application then submits itself once the fee is confirmed.
+    declared_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    declared_at = models.DateTimeField(null=True, blank=True)
+    auto_submitted = models.BooleanField(default=False)
+    fee_obligation = models.ForeignKey("payments.PaymentObligation", null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name="+")
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()
@@ -133,6 +146,8 @@ class DepartmentalClearance(InstitutionScopedModelMixin, TimeStampedModel):
 
     AUDITED = True
     INSTITUTION_PATH = "application__institution"
+    # v2.1 X3: non-full viewers see only their own department's rows.
+    DEPARTMENT_PATH = "department"
     PENDING, CLEARED, RETURNED, CLOSED = "pending", "cleared", "returned", "closed"
     STATUS_CHOICES = [(PENDING, "Pending"), (CLEARED, "Cleared"), (RETURNED, "Returned"),
                       (CLOSED, "Closed (another department returned it)")]
@@ -146,6 +161,10 @@ class DepartmentalClearance(InstitutionScopedModelMixin, TimeStampedModel):
     decided_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     decided_at = models.DateTimeField(null=True, blank=True)
     opened_at = models.DateTimeField(default=timezone.now)
+    # Phase 0 (O9): a returned document was re-uploaded while this clearance
+    # was open, so it is back in the department's queue (no resubmission).
+    resubmitted_at = models.DateTimeField(null=True, blank=True)
+    resubmissions = models.PositiveSmallIntegerField(default=0)
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()
@@ -163,15 +182,230 @@ class DepartmentalClearance(InstitutionScopedModelMixin, TimeStampedModel):
         return f"{self.application.reference} · {self.department} · round {self.round} · {self.status}"
 
 
+class ClearanceDelegate(TimeStampedModel):
+    """Phase 0 (O10, T-SEC-7): a named person the director of a department
+    lets decide that department's onboarding clearances. Departmental
+    clearance is otherwise reserved for the director of the clearance
+    department, the Executive Secretary and superusers
+    (``accreditation.clearance_access``)."""
+
+    AUDITED = True
+
+    department = models.ForeignKey("staff.Department", on_delete=models.CASCADE, related_name="+")
+    user = models.ForeignKey(USER, on_delete=models.CASCADE, related_name="clearance_delegations")
+    granted_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    active = models.BooleanField(default=True, db_index=True)
+    expires_at = models.DateTimeField(null=True, blank=True, help_text="Leave blank for no end date.")
+    note = models.CharField(max_length=255, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        ordering = ["department", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["department", "user"], condition=models.Q(active=True),
+                                    name="acc_one_active_clearance_delegate"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} for {self.department} ({'active' if self.active else 'revoked'})"
+
+    @property
+    def is_live(self):
+        return self.active and (self.expires_at is None or self.expires_at > timezone.now())
+
+
+class OnboardingProgrammeReview(InstitutionScopedModelMixin, TimeStampedModel):
+    """Phase 0 (Q2): the programme-clearance decision on one programme of an
+    onboarding application, per programme round. NTIRD (or the institution
+    category's handling department) clears or returns each programme; when
+    every programme is cleared the programme processing fee is issued."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "application__institution"
+    DEPARTMENT_PATH = "department"  # v2.1 X3
+    PENDING, CLEARED, RETURNED, SUPERSEDED = "pending", "cleared", "returned", "superseded"
+    STATUS_CHOICES = [(PENDING, "Waiting for clearance"), (CLEARED, "Cleared"), (RETURNED, "Returned"),
+                      (SUPERSEDED, "Superseded")]
+
+    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="programme_reviews")
+    programme = models.ForeignKey("institutions.Programme", on_delete=models.CASCADE, related_name="+")
+    department = models.ForeignKey("staff.Department", on_delete=models.PROTECT, related_name="+")
+    round = models.PositiveSmallIntegerField(default=1)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=PENDING, db_index=True)
+    remark = models.TextField(blank=True)
+    decided_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["application", "round", "programme__name"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [
+            models.UniqueConstraint(fields=["application", "programme", "round"],
+                                    name="acc_programme_review_round_unique"),
+        ]
+        indexes = [models.Index(fields=["department", "status"], name="acc_progrev_dept_status")]
+
+    def __str__(self):
+        return f"{self.application.reference} · {self.programme_id} · round {self.round} · {self.status}"
+
+
+class OnboardingSSQ(InstitutionScopedModelMixin, TimeStampedModel):
+    """SOP-01 programme self-study, submitted before NBTE approves an institution."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "application__institution"
+    DRAFT, SUBMITTED = "draft", "submitted"
+    STATUS_CHOICES = [(DRAFT, "Draft"), (SUBMITTED, "Submitted")]
+
+    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="self_studies")
+    programme = models.ForeignKey("institutions.Programme", on_delete=models.PROTECT, related_name="+")
+    template = models.ForeignKey("SSQTemplate", on_delete=models.PROTECT, related_name="onboarding_ssqs")
+    data = models.JSONField(default=dict, blank=True)
+    meta = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=DRAFT, db_index=True)
+    last_saved_at = models.DateTimeField(null=True, blank=True)
+    last_saved_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    submitted_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    submitted_data = models.JSONField(default=dict, blank=True)
+    rendered_snapshot = models.JSONField(default=list, blank=True)
+    evidence_snapshot = models.JSONField(default=list, blank=True)
+    checksum = models.CharField(max_length=64, blank=True)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["application", "programme__name"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [
+            models.UniqueConstraint(fields=["application", "programme"], name="onboarding_ssq_programme_unique"),
+        ]
+
+    def __str__(self):
+        return f"Onboarding SSQ — {self.application.reference} · {self.programme}"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None and not self._state.adding:
+            previous = type(self).unscoped.filter(pk=self.pk).values(
+                "application_id", "programme_id", "template_id", "data", "meta", "status", "last_saved_at",
+                "last_saved_by_id", "submitted_by_id", "submitted_at", "submitted_data", "rendered_snapshot",
+                "evidence_snapshot", "checksum",
+            ).first()
+            if previous and previous["status"] == self.SUBMITTED:
+                current = {
+                    "application_id": self.application_id, "programme_id": self.programme_id,
+                    "template_id": self.template_id, "data": self.data, "meta": self.meta, "status": self.status,
+                    "last_saved_at": self.last_saved_at, "last_saved_by_id": self.last_saved_by_id,
+                    "submitted_by_id": self.submitted_by_id, "submitted_at": self.submitted_at,
+                    "submitted_data": self.submitted_data, "rendered_snapshot": self.rendered_snapshot,
+                    "evidence_snapshot": self.evidence_snapshot, "checksum": self.checksum,
+                }
+                if current != previous:
+                    raise PermissionError("A submitted onboarding self-study is immutable.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.status == self.SUBMITTED:
+            raise PermissionError("A submitted onboarding self-study cannot be deleted.")
+        super().delete(*args, **kwargs)
+
+    def verify_submission(self):
+        raw = json.dumps(
+            {"data": self.submitted_data, "rendered": self.rendered_snapshot, "evidence": self.evidence_snapshot},
+            sort_keys=True, separators=(",", ":"), default=str,
+        ).encode("utf-8")
+        return bool(self.checksum and self.checksum == hashlib.sha256(raw).hexdigest())
+
+
+class OnboardingSSQReview(TimeStampedModel):
+    """Linear SOP-01 review of one submitted programme self-study
+    (``accreditation.onboarding_linear``): routed to the handling department →
+    the director assigns an officer → the officer assesses and sends it to the
+    director → the director clears it (or returns it to the officer or to the
+    institution). The self-study itself stays immutable; its review state lives
+    here. ``onboarding_ssq.review_stage(ssq)`` reads it."""
+
+    AUDITED = True
+    AWAITING_ASSIGNMENT, UNDER_ASSESSMENT, AWAITING_DIRECTOR = (
+        "awaiting_assignment", "under_assessment", "awaiting_director")
+    CLEARED, RETURNED = "cleared", "returned_to_institution"
+    STAGE_CHOICES = [
+        (AWAITING_ASSIGNMENT, "Awaiting officer assignment"), (UNDER_ASSESSMENT, "Under assessment"),
+        (AWAITING_DIRECTOR, "Awaiting the director"), (CLEARED, "Cleared"),
+        (RETURNED, "Returned to the institution"),
+    ]
+    OPEN_STAGES = (AWAITING_ASSIGNMENT, UNDER_ASSESSMENT, AWAITING_DIRECTOR)
+    RECOMMENDATION_CHOICES = [("clear", "Clear"), ("return", "Return to the institution")]
+
+    ssq = models.OneToOneField(OnboardingSSQ, on_delete=models.CASCADE, related_name="linear_review")
+    stage = models.CharField(max_length=32, choices=STAGE_CHOICES, default=AWAITING_ASSIGNMENT, db_index=True)
+    department = models.ForeignKey("staff.Department", null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+", help_text="The handling department it was routed to.")
+    director = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+                                 help_text="Who assigns and clears (the director; heads / the ES if vacant).")
+    officer = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    assigned_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    assigned_at = models.DateTimeField(null=True, blank=True)
+    recommendation = models.CharField(max_length=10, choices=RECOMMENDATION_CHOICES, blank=True)
+    officer_remark = models.TextField(blank=True)
+    director_remark = models.TextField(blank=True)
+    stage_since = models.DateTimeField(default=timezone.now)
+    cleared_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    cleared_at = models.DateTimeField(null=True, blank=True)
+    round = models.PositiveSmallIntegerField(default=1)
+    reminder = models.JSONField(default=dict, blank=True,
+                                help_text="SLA reminders sent at the current stage: {stage, level, at}.")
+    history = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ["ssq"]
+        verbose_name = "onboarding self-study review"
+
+    def __str__(self):
+        return f"Review of {self.ssq} · {self.get_stage_display()}"
+
+
+class OnboardingQAStart(TimeStampedModel):
+    """The formal QA request NBTE started automatically when the institution
+    was approved (``onboarding_linear.start_formal_qa``), for the programmes
+    whose onboarding self-studies were cleared."""
+
+    AUDITED = True
+
+    application = models.ForeignKey(Application, on_delete=models.PROTECT, related_name="qa_starts")
+    qa_request = models.OneToOneField("QARequest", null=True, blank=True, on_delete=models.SET_NULL,
+                                      related_name="onboarding_start")
+    fee_waived = models.BooleanField(default=False)
+    started_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    error = models.TextField(blank=True, help_text="Why the request could not be started (NBTE retries it).")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "onboarding QA start"
+
+    def __str__(self):
+        return f"{self.application.reference} → {getattr(self.qa_request, 'reference', '—')}"
+
+
 # ===========================================================================
 # Phase 3 — SOP-02 QA requests and the dynamic SSQ (Master Plan §5.4)
 # ===========================================================================
 slug_validator = RegexValidator(r"^[a-z][a-z0-9_]*$", "Use lower-case letters, digits and underscores.")
 
 
-def _staff_can_see(user, institution):
+def _staff_can_see(user, institution, obj=None, scope="ssq"):
     if user is None or not user.is_authenticated or getattr(user, "user_type", "staff") != "staff":
         return False
+    from assignments import access
+    if access.assignment_mode():  # v2.1 X1 (P.3): need-to-know
+        return access.can_see(user, obj if obj is not None else institution, scope)
     if user.is_superuser or user.has_perm("qa_core.view_all_institutions") \
             or user.has_perm("accounts.access_all_departments"):
         return True
@@ -282,6 +516,13 @@ class CatalogueItem(TimeStampedModel):
     effective_from = models.DateField(default=timezone.localdate)
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
+    # v2.1 R.1 (X35): NBTE-only scoring data, never shown to institutions.
+    weight = models.DecimalField(max_digits=6, decimal_places=2, default=1,
+                                 help_text="Relative weight in the shortfall score (internal).")
+    min_spec = models.TextField(blank=True, help_text="Minimum specification (e.g. 'Core i5, 8 GB RAM').")
+    is_critical = models.BooleanField(default=False, help_text="Counts double in the shortfall score (internal).")
+    programme_master = models.ForeignKey("institutions.ProgrammeMaster", null=True, blank=True,
+                                         on_delete=models.SET_NULL, related_name="catalogue_items")
 
     class Meta:
         ordering = ["programme_name", "kind", "sort_order", "name"]
@@ -391,6 +632,8 @@ class SSQ(InstitutionScopedModelMixin, TimeStampedModel):
 
     AUDITED = True
     INSTITUTION_PATH = "qa_request_programme__qa_request__institution"
+    # v2.1 X3 (spec G1.c): the handling department until SSQ reviews carry their own.
+    DEPARTMENT_PATH = "qa_request_programme__qa_request__institution__handling_department"
     FLOW_CODE = "ssq"
     FLOW_STATUS_FIELD = "status"
     EDITABLE_STATUSES = ("draft", "returned_to_department", "submitted_by_department")
@@ -442,6 +685,37 @@ class SSQ(InstitutionScopedModelMixin, TimeStampedModel):
     @property
     def is_editable(self):
         return self.is_current and self.status in self.EDITABLE_STATUSES
+
+
+class BodyRequirementCheck(InstitutionScopedModelMixin, TimeStampedModel):
+    """v2.1 R.6 (X37b): the reviewer's result for one professional-body
+    requirement on one SSQ."""
+
+    INSTITUTION_PATH = "ssq__qa_request_programme__qa_request__institution"
+
+    RESULT_CHOICES = [("met", "Met"), ("partly", "Partly met"), ("not_met", "Not met"),
+                      ("not_applicable", "Not applicable")]
+
+    ssq = models.ForeignKey(SSQ, on_delete=models.CASCADE, related_name="requirement_checks")
+    requirement = models.ForeignKey("institutions.BodyRequirement", on_delete=models.PROTECT,
+                                    related_name="checks")
+    result = models.CharField(max_length=20, choices=RESULT_CHOICES, default="not_applicable")
+    remark = models.TextField(blank=True)
+    checked_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    checked_at = models.DateTimeField(null=True, blank=True)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["requirement__sort_order", "requirement__code"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [models.UniqueConstraint(fields=["ssq", "requirement"],
+                                               name="body_requirement_check_unique")]
+
+    def __str__(self):
+        return f"{self.requirement} — {self.get_result_display()}"
 
 
 class Submission(InstitutionScopedModelMixin, models.Model):
@@ -543,7 +817,17 @@ class Evidence(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
             return False
         if getattr(user, "user_type", "staff") == "institution":
             return user.institution_id == inst.pk
-        return _staff_can_see(user, inst)
+        if _staff_can_see(user, inst, self):
+            return True
+        if getattr(user, "user_type", "staff") != "staff":
+            return False
+        from inspection.services import can_review_cqac_evidence
+
+        try:
+            case = self.ssq.qa_request_programme.qa_request.case
+        except QACase.DoesNotExist:
+            return False
+        return can_review_cqac_evidence(case, user)
 
 
 class Query(InstitutionScopedModelMixin, TimeStampedModel):
@@ -622,7 +906,7 @@ class Response(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
             return False
         if getattr(user, "user_type", "staff") == "institution":
             return user.institution_id == inst.pk
-        return _staff_can_see(user, inst)
+        return _staff_can_see(user, inst, self)
 
 
 class QACase(InstitutionScopedModelMixin, TimeStampedModel):
@@ -635,6 +919,7 @@ class QACase(InstitutionScopedModelMixin, TimeStampedModel):
 
     AUDITED = True
     INSTITUTION_PATH = "institution"
+    DEPARTMENT_PATH = "owning_department"  # v2.1 X3
     FLOW_CODE = "qa_case"
     FLOW_STATUS_FIELD = "status"
 
@@ -698,7 +983,8 @@ class RateTable(TimeStampedModel):
 
     AUDITED = True
     KIND_CHOICES = [("fee", "Fee / honorarium"), ("academic_allowance", "Academic allowance"),
-                    ("dta", "Duty tour allowance (per night)"), ("transport", "Transport"), ("other", "Other")]
+                    ("dta", "Duty tour allowance (per night)"), ("transport", "Transport"),
+                    ("fuel", "Fuel"), ("airport_taxi", "Airport taxi"), ("other", "Other")]
     PER_DAY, PER_TRIP = "per_day", "per_trip"
     UNIT_CHOICES = [(PER_DAY, "Per day"), (PER_TRIP, "Per trip / flat")]
 
@@ -709,12 +995,17 @@ class RateTable(TimeStampedModel):
     unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default=PER_DAY)
     department = models.ForeignKey("staff.Department", null=True, blank=True, on_delete=models.PROTECT,
                                    related_name="+", help_text="Blank = shared by every department.")
+    # v2.1 X39: a state row overrides the shared row of the same kind for visits
+    # to that state (nights, DSA, fuel, airport taxi); blank = every state.
+    state = models.ForeignKey("staff.StateOfOrigin", null=True, blank=True, on_delete=models.PROTECT,
+                              related_name="+", help_text="Blank = every state.")
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["sort_order", "code"]
-        constraints = [models.UniqueConstraint(fields=["code", "department"], name="rate_code_department_unique")]
+        constraints = [models.UniqueConstraint(fields=["code", "department", "state"],
+                                               name="rate_code_department_state_unique")]
 
     def __str__(self):
         return f"{self.role} — {self.get_allowance_type_display()}"
@@ -738,6 +1029,12 @@ class CostSheet(InstitutionScopedModelMixin, TimeStampedModel):
     audited_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     approved_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     approved_at = models.DateTimeField(null=True, blank=True)
+    # v2.1 X39: what the visit actually cost, recorded after it is approved.
+    actual_total = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True,
+                                       help_text="Actual spend recorded by Finance after the visit.")
+    actual_note = models.CharField(max_length=255, blank=True)
+    actual_recorded_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    actual_recorded_at = models.DateTimeField(null=True, blank=True)
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()
@@ -836,6 +1133,135 @@ class PersonnelEntry(InstitutionScopedModelMixin, TimeStampedModel):
         return f"{self.staff} ({self.get_duty_display()})"
 
 
+class VisitExternalMember(InstitutionScopedModelMixin, TimeStampedModel):
+    """An external participant on the visit team (SOP-03 stage 3), kept apart
+    from the NBTE staff list (PersonnelEntry): a resource person from the
+    inspection register whose discipline matches a case programme, or a
+    professional-body representative for a joint-QA programme."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "case__institution"
+    RESOURCE_PERSON, PROFESSIONAL_BODY = "resource_person", "professional_body"
+    KIND_CHOICES = [(RESOURCE_PERSON, "External resource person"), (PROFESSIONAL_BODY, "Professional body")]
+    STATUS_CHOICES = PersonnelEntry.STATUS_CHOICES
+
+    case = models.ForeignKey(QACase, on_delete=models.CASCADE, related_name="external_members")
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    resource_person = models.ForeignKey("inspection.ResourcePerson", null=True, blank=True, on_delete=models.PROTECT,
+                                        related_name="+")
+    discipline = models.ForeignKey("institutions.Discipline", null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+", help_text="The case discipline the resource person covers.")
+    body = models.ForeignKey("institutions.ProfessionalBody", null=True, blank=True, on_delete=models.PROTECT,
+                             related_name="+")
+    user = models.ForeignKey(USER, null=True, blank=True, on_delete=models.PROTECT, related_name="+",
+                             help_text="The professional body's portal user (representative).")
+    remark = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="proposed")
+    added_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["case", "kind", "id"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [
+            models.UniqueConstraint(fields=["case", "resource_person"], condition=models.Q(resource_person__isnull=False),
+                                    name="visit_external_rp_unique"),
+            models.UniqueConstraint(fields=["case", "user"], condition=models.Q(user__isnull=False),
+                                    name="visit_external_user_unique"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def name(self):
+        if self.resource_person_id:
+            return self.resource_person.full_name
+        if self.user_id:
+            return (self.user.get_full_name() or "").strip() or self.user.email
+        return "External participant"
+
+    @property
+    def label(self):
+        if self.kind == self.RESOURCE_PERSON:
+            return "External resource person" + (f" · {self.discipline.name}" if self.discipline_id else "")
+        return "Professional body" + (f" · {self.body.name}" if self.body_id else "")
+
+
+class BodyVisitReport(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
+    """v2.6: a professional body's own report of an accreditation visit. A body
+    representative (assigned by the registrar) writes the findings; the body's
+    administrator (the registrar) approves or returns it; the version sent on
+    to NBTE lands on the case's Reports tab and feeds the approval decision —
+    the body still uploads the official letter for each programme itself."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "case__institution"
+    MEDIA_SUBDIR = "qa/body-visit-reports"
+
+    DRAFT, SUBMITTED, APPROVED, RETURNED, WITH_NBTE = "draft", "submitted", "approved", "returned", "with_nbte"
+    STATUS_CHOICES = [(DRAFT, "Draft"), (SUBMITTED, "With the registrar"), (APPROVED, "Approved by the registrar"),
+                      (RETURNED, "Returned for correction"), (WITH_NBTE, "Sent to NBTE")]
+    SATISFACTORY, CONCERNS, UNSATISFACTORY = "satisfactory", "concerns", "unsatisfactory"
+    RECOMMENDATION_CHOICES = [(SATISFACTORY, "Satisfactory"), (CONCERNS, "Satisfactory with concerns"),
+                              (UNSATISFACTORY, "Not satisfactory")]
+
+    case = models.ForeignKey(QACase, on_delete=models.CASCADE, related_name="body_reports")
+    body = models.ForeignKey("institutions.ProfessionalBody", on_delete=models.PROTECT, related_name="visit_reports")
+    author = models.ForeignKey(USER, on_delete=models.PROTECT, related_name="body_visit_reports",
+                               help_text="The body representative who wrote the report.")
+    member = models.ForeignKey(VisitExternalMember, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="+", help_text="The visit assignment behind this report.")
+    programme = models.ForeignKey("institutions.Programme", null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name="+", help_text="The one programme the visit covered, if any.")
+    title = models.CharField(max_length=200, default="Visit report")
+    summary = models.CharField(max_length=200, blank=True, help_text="One line, shown on lists.")
+    content = models.TextField(help_text="What the body's representative saw on the visit.")
+    recommendation = models.CharField(max_length=16, choices=RECOMMENDATION_CHOICES, default=SATISFACTORY)
+    remark = models.CharField(max_length=255, blank=True, help_text="Anything the representative adds.")
+    # The registrar's review (approve / return works like the SSQs).
+    review_remark = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=DRAFT, db_index=True)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["-created_at"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+
+    def __str__(self):
+        return f"{self.body.acronym or self.body.name} report · {self.case.reference}"
+
+    @property
+    def institution(self):
+        return self.case.institution
+
+    def is_editable(self):
+        return self.status in (self.DRAFT, self.RETURNED)
+
+    def is_reviewable(self):
+        return self.status == self.SUBMITTED
+
+    def can_download(self, user):
+        if user is None or not user.is_authenticated:
+            return False
+        kind = getattr(user, "user_type", "staff")
+        if kind == "professional_body":
+            return user.professional_body_id == self.body_id
+        if kind == "institution":
+            return user.institution_id == self.case.institution_id
+        return user.is_superuser or any(user.has_perm(p) for p in
+                                        ("institutions.manage_professional_bodies", "qa_core.view_all_institutions"))
+
+
 class VisitDetail(InstitutionScopedModelMixin, TimeStampedModel):
     """Dates, team lead and logistics of the visit (stages 8–10)."""
 
@@ -912,6 +1338,8 @@ class ProfessionalBodyNotice(InstitutionScopedModelMixin, TimeStampedModel):
     programmes = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=SENT)
     sent_at = models.DateTimeField(null=True, blank=True)
+    portal_notified_at = models.DateTimeField(null=True, blank=True)
+    portal_recipient_count = models.PositiveIntegerField(default=0)
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()
@@ -971,6 +1399,43 @@ def add_months(day, months):
     year, month = day.year + month0 // 12, month0 % 12 + 1
     last = calendar.monthrange(year, month)[1]
     return _dt.date(year, month, min(day.day, last))
+
+
+class CQACVote(InstitutionScopedModelMixin, TimeStampedModel):
+    """One CQAC member's vote on one programme at stage 14."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "case__institution"
+
+    case = models.ForeignKey(QACase, on_delete=models.CASCADE, related_name="cqac_votes")
+    qa_request_programme = models.ForeignKey(QARequestProgramme, on_delete=models.PROTECT,
+                                             related_name="cqac_votes")
+    programme = models.ForeignKey("institutions.Programme", on_delete=models.PROTECT, related_name="+")
+    user = models.ForeignKey(USER, on_delete=models.PROTECT, related_name="cqac_votes")
+    outcome = models.CharField(max_length=10, choices=[
+        ("approve", "Approve"), ("deny", "Deny"), ("return", "Return for more work"),
+    ])
+    approval_type = models.ForeignKey(ApprovalType, null=True, blank=True, on_delete=models.PROTECT,
+                                      related_name="+")
+    approved_streams = models.PositiveSmallIntegerField(default=0)
+    commencement_date = models.DateField(null=True, blank=True)
+    weaknesses = models.JSONField(default=list, blank=True)
+    note = models.TextField(blank=True)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["case", "programme__name", "user_id"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [
+            models.UniqueConstraint(fields=["case", "qa_request_programme", "user"],
+                                    name="cqac_vote_once_per_member"),
+        ]
+
+    def __str__(self):
+        return f"CQAC vote · {self.programme} · {self.user} · {self.get_outcome_display()}"
 
 
 class Decision(InstitutionScopedModelMixin, TimeStampedModel):
@@ -1073,6 +1538,13 @@ class OutcomeLetter(InstitutionScopedModelMixin, TimeStampedModel):
         return OutcomeLetterCopy.unscoped.filter(letter=self, kind=kind).first()
 
     @property
+    def all_copies(self):
+        """The letter's copies. The letter itself was loaded through a scoped
+        query, so its own copies are read in system scope (templates must not
+        use ``letter.copies.all``, which the scoping guard refuses)."""
+        return list(OutcomeLetterCopy.unscoped.filter(letter=self).order_by("pk"))
+
+    @property
     def pdf_original(self):
         return self.copy(OutcomeLetterCopy.ORIGINAL)
 
@@ -1112,6 +1584,9 @@ class OutcomeLetterCopy(InstitutionScopedModelMixin, QAFileMixin, TimeStampedMod
             return False
         if getattr(user, "user_type", "staff") == "institution":
             return user.institution_id == inst.pk
+        from assignments import access
+        if access.assignment_mode():
+            return _staff_can_see(user, inst, self, "case")
         return _staff_can_see(user, inst) or user.has_perm("accreditation.view_qa_case")
 
 
@@ -1152,3 +1627,306 @@ class CapacityAssessment(InstitutionScopedModelMixin, TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_kind_display()} v{self.version} · {self.qa_request_programme}"
+
+
+class CapacityReview(InstitutionScopedModelMixin, TimeStampedModel):
+    """Director's sign-off of the exact current capacity assessments."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "case__institution"
+
+    case = models.ForeignKey(QACase, on_delete=models.CASCADE, related_name="capacity_reviews")
+    qa_request_programme = models.ForeignKey(QARequestProgramme, on_delete=models.CASCADE,
+                                             related_name="capacity_reviews")
+    version = models.PositiveSmallIntegerField(default=1)
+    is_current = models.BooleanField(default=True, db_index=True)
+    assessment_ids = models.JSONField(default=dict)
+    reviewed_at = models.DateTimeField(default=timezone.now)
+    reviewed_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["qa_request_programme", "-version"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [
+            models.UniqueConstraint(fields=["qa_request_programme", "version"],
+                                    name="capacity_review_version_unique"),
+            models.UniqueConstraint(fields=["case", "qa_request_programme"], condition=models.Q(is_current=True),
+                                    name="capacity_review_current_unique"),
+        ]
+
+    def __str__(self):
+        return f"Capacity review v{self.version} · {self.qa_request_programme}"
+
+
+
+class ShortfallAnalysis(InstitutionScopedModelMixin, TimeStampedModel):
+    """v2.1 R.2 (X36): resource shortfall of one SSQ submission, computed when
+    the institution submits. Internal to NBTE (never on the portal).
+
+    score = 100 x sum(w x min(declared / required, 1)) / sum(w), where w is the
+    item weight, doubled for critical items. Bands: >= 80 good, >= 60 fair,
+    else major."""
+
+    INSTITUTION_PATH = "ssq__qa_request_programme__qa_request__institution"
+    GOOD, FAIR, MAJOR = "good", "fair", "major"
+    BAND_CHOICES = [(GOOD, "Good"), (FAIR, "Fair"), (MAJOR, "Major shortfall")]
+
+    submission = models.OneToOneField(Submission, on_delete=models.CASCADE, related_name="shortfall")
+    ssq = models.ForeignKey(SSQ, on_delete=models.CASCADE, related_name="shortfalls")
+    score = models.DecimalField(max_digits=5, decimal_places=1)
+    band = models.CharField(max_length=8, choices=BAND_CHOICES)
+    items_scored = models.PositiveIntegerField(default=0)
+    items = models.JSONField(default=list, blank=True, help_text="Missing and short items, worst first.")
+    suggested = models.CharField(max_length=20, blank=True, help_text="Suggested recommendation.")
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["-created_at"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+
+    def __str__(self):
+        return f"Shortfall {self.score}% ({self.band}) · {self.ssq}"
+
+
+# ===========================================================================
+# v2.1 X40 (Phase H): structured visit report NBTE/QA/ICT/VVT/001
+# ===========================================================================
+class VisitConflictDeclaration(InstitutionScopedModelMixin, TimeStampedModel):
+    """One panel member's conflict-of-interest declaration before the visit
+    starts (X40). A visit cannot be reported on until every panel member has
+    declared."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "inspection__case__institution"
+
+    inspection = models.ForeignKey("inspection.Inspection", on_delete=models.CASCADE,
+                                   related_name="declarations")
+    staff = models.ForeignKey("staff.Staff", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    resource_person = models.ForeignKey("inspection.ResourcePerson", null=True, blank=True,
+                                        on_delete=models.PROTECT, related_name="+")
+    has_conflict = models.BooleanField(default=False)
+    details = models.TextField(blank=True)
+    declared_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    declared_at = models.DateTimeField(default=timezone.now)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["pk"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(staff__isnull=False, resource_person__isnull=True)
+                           | models.Q(staff__isnull=True, resource_person__isnull=False)),
+                name="visit_declaration_exactly_one_person"),
+            models.UniqueConstraint(fields=["inspection", "staff"], condition=models.Q(staff__isnull=False),
+                                    name="visit_declaration_staff_unique"),
+            models.UniqueConstraint(fields=["inspection", "resource_person"],
+                                    condition=models.Q(resource_person__isnull=False),
+                                    name="visit_declaration_rp_unique"),
+        ]
+
+    def __str__(self):
+        return f"Declaration · {self.person} · {'conflict' if self.has_conflict else 'clear'}"
+
+    @property
+    def person(self):
+        return self.resource_person or self.staff
+
+
+class VisitFinding(InstitutionScopedModelMixin, TimeStampedModel):
+    """A catalogue item checked on the visit: what the institution declared on
+    its SSQ vs what the panel found. A falsified item carries the fine (X40)."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "report__inspection__case__institution"
+
+    report = models.ForeignKey("inspection.PostVisitReport", on_delete=models.CASCADE,
+                                  related_name="visit_findings")
+    item = models.ForeignKey(CatalogueItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    name = models.CharField(max_length=200)
+    kind = models.CharField(max_length=10, choices=CatalogueItem.KIND_CHOICES, default=CatalogueItem.EQUIPMENT)
+    declared_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    found_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    is_falsified = models.BooleanField(default=False, help_text="Declared but not found: a fine applies.")
+    remark = models.CharField(max_length=255, blank=True)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["report", "kind", "name"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+
+    def __str__(self):
+        return f"{self.name}: {self.declared_quantity} declared, {self.found_quantity} found"
+
+
+class VisitReportForm(InstitutionScopedModelMixin, TimeStampedModel):
+    """v2.4: a template-driven visit report filled by the panel at SOP-03 stage
+    12, on the same engine as the SSQ (``accreditation/report_forms.py``).
+
+    * ``programme_evaluation`` — NBTE/P/4A, one per post-visit report
+      (programme): ratings per criterion, the computed recommendation;
+    * ``ict_verification`` — NBTE/QA/ICT/VVT/001, one per visit: scored ICT
+      components, mandatory items, capacity arithmetic, evidence register.
+
+    ``score`` holds the last computed result; ``rendered_snapshot`` freezes the
+    form (labels and values) when it is submitted."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "inspection__case__institution"
+    EVALUATION, ICT = "programme_evaluation", "ict_verification"
+    KIND_CHOICES = [(EVALUATION, "Programme evaluation (NBTE/P/4A)"),
+                    (ICT, "ICT verification (NBTE/QA/ICT/VVT/001)")]
+    STATUS_CHOICES = [("draft", "Being written"), ("submitted", "Submitted")]
+
+    inspection = models.ForeignKey("inspection.Inspection", on_delete=models.CASCADE, related_name="report_forms")
+    report = models.ForeignKey("inspection.PostVisitReport", null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="forms")
+    kind = models.CharField(max_length=24, choices=KIND_CHOICES)
+    template = models.ForeignKey(SSQTemplate, on_delete=models.PROTECT, related_name="report_forms")
+    data = models.JSONField(default=dict, blank=True)
+    meta = models.JSONField(default=dict, blank=True, help_text="prefilled keys, suggestions …")
+    score = models.JSONField(default=dict, blank=True, help_text="The last computed score and recommendation.")
+    computed_outcome = models.CharField(max_length=30, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="draft", db_index=True)
+    rendered_snapshot = models.JSONField(default=list, blank=True)
+    last_saved_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    last_saved_at = models.DateTimeField(null=True, blank=True)
+    submitted_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["inspection", "kind", "pk"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        constraints = [
+            models.UniqueConstraint(fields=["report", "kind"], condition=models.Q(report__isnull=False),
+                                    name="visit_report_form_per_report"),
+            models.UniqueConstraint(fields=["inspection", "kind"], condition=models.Q(report__isnull=True),
+                                    name="visit_report_form_per_visit"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} · {self.report or self.inspection}"
+
+    @property
+    def institution(self):
+        return self.inspection.case.institution
+
+
+class VisitReportAttachment(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
+    """Restricted evidence files attached to a visit-report template field."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "form__inspection__case__institution"
+    MEDIA_SUBDIR = "qa/visit-report-evidence"
+    INSTITUTION_MEDIA_KIND = "qa/visit-report-evidence"
+
+    form = models.ForeignKey(VisitReportForm, on_delete=models.CASCADE, related_name="attachments")
+    field_key = models.CharField(max_length=80)
+    uploaded_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["form", "field_key", "created_at", "pk"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+
+    def __str__(self):
+        return f"{self.field_key}: {self.display_name}"
+
+    @property
+    def institution(self):
+        return self.form.institution
+
+    def can_download(self, user):
+        if user is None or not user.is_authenticated:
+            return False
+        from inspection import services as insp
+
+        if self.form.kind == VisitReportForm.ICT:
+            return (insp.can_edit_ict(self.form.inspection, user)[0]
+                    or insp.can_review_cqac_evidence(self.form.inspection.case, user))
+        return bool(self.form.report_id and insp.visible_reports(user).filter(pk=self.form.report_id).exists())
+
+
+class CaseChangeRequest(InstitutionScopedModelMixin, TimeStampedModel):
+    """v2.7: a controlled change to a live SOP-03 case.
+
+    Two kinds, one approval chain (handling-department Director → ES):
+
+    * ``visit_date`` — the visit dates are fixed once the ES approves them.
+      The desk officer (or the Director) asks; the Director approves, then the
+      ES; only then may the desk officer apply the new dates.
+    * ``rollback`` — move the case back to an earlier stage. Everything after
+      that stage has to be done again (their tasks are closed and recreated
+      as the case moves forward).
+
+    Nothing is applied until the ES approves; the request stays as the audit
+    record (who asked, who agreed, and why)."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "case__institution"
+
+    VISIT_DATE, ROLLBACK = "visit_date", "rollback"
+    KIND_CHOICES = [(VISIT_DATE, "Change the visit dates"), (ROLLBACK, "Move the case back a stage")]
+    STATUS_CHOICES = [("pending_director", "Waiting for the Director"), ("pending_es", "Waiting for the ES"),
+                      ("approved", "Approved — ready to apply"), ("applied", "Applied"),
+                      ("returned", "Returned for revision"), ("rejected", "Rejected"),
+                      ("cancelled", "Cancelled")]
+    OPEN = ("pending_director", "pending_es", "approved")
+
+    case = models.ForeignKey("accreditation.QACase", on_delete=models.CASCADE, related_name="change_requests")
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES, db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending_director", db_index=True)
+    requested_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    requested_at = models.DateTimeField(default=timezone.now)
+    reason = models.TextField(help_text="Why the change is needed — the approvers see this.")
+    proposed_start = models.DateField(null=True, blank=True)
+    proposed_end = models.DateField(null=True, blank=True)
+    target_stage = models.CharField(max_length=40, blank=True, help_text="Stage code to move back to.")
+    director_approved_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    director_approved_at = models.DateTimeField(null=True, blank=True)
+    director_remark = models.TextField(blank=True)
+    es_approved_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    es_approved_at = models.DateTimeField(null=True, blank=True)
+    es_remark = models.TextField(blank=True)
+    applied_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["-requested_at", "-pk"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        indexes = [models.Index(fields=["case", "status"])]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} · {self.case.reference} · {self.get_status_display()}"
+
+    @property
+    def is_open(self):
+        return self.status in self.OPEN
+
+
+# Visit invitations to professional bodies and resource persons (kept in their own module).
+from .visit_invitation_models import VisitInvitation, VisitInvitationContact  # noqa: E402,F401

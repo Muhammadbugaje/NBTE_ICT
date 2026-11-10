@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from django.db.models import Exists, OuterRef, Q
 
+import org
 from accounts.access import is_department_lead, is_super_admin
 
 # Roles that already had the "Incoming" queue (requests addressed to their
@@ -64,8 +65,8 @@ def visible_requests_queryset(user):
     if is_department_request_viewer(user):
         dept = user.department_id
         q |= Q(requester__department_id=dept) | Q(receiving_department_id=dept)
-    elif (user.department_id and user.role_id
-          and user.role.code in INCOMING_LEAD_ROLE_CODES):
+    elif user.department_id and (org.has_role(user, *INCOMING_LEAD_ROLE_CODES)
+                                 or org.is_director(user, user.department_id)):
         q |= Q(receiving_department_id=user.department_id)
     return base.filter(q)
 

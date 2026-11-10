@@ -408,8 +408,21 @@ Row plus `documents` (the documents **this department** reviews:
 waiting for review are accepted when `accept_documents` is true (website default); missing /
 returned / expired mandatory documents block it (400 `"<Document> is not ready — return the application instead."`).
 Response 200: `{"message": "Legal Unit: cleared. Waiting for the other departments.", "clearance": {…detail…}}`.
-403: not my department / already decided / earlier round / on hold. 404: not visible.
+403: not the director of the clearance department, a ClearanceDelegate of it, the ES or a superuser
+(v2.1 O10 — officers no longer decide) / already decided / earlier round / on hold. 404: not visible.
 Single-document accept/return and lifting holds stay web-only.
+
+### GET `qa/applications/programmes/?status=pending|all` (paginated)
+Onboarding programme lists for my programme-clearance department (NTIRD by default,
+`qa.onboarding.programme_clearance_department`): `[{"application": {"id", "reference", "status",
+"institution", "institution_code"}, "department", "round", "waiting_days", "can_clear", "reason",
+"programmes": [{"id", "programme", "level", "streams", "status", "remark"}]}]`.
+
+### POST `qa/applications/programmes/<review id>/decide/`
+`{"decision": "clear" | "return", "remark": ""}` (remark ≥3 to return). Needs
+`accreditation.clear_qa_programmes` in the clearance department. When the last programme is decided:
+all cleared → the programme processing fee is issued (`programme_fee_due`); any returned → the list
+goes back to the institution (cleared programmes stay cleared). Response 200: the application item.
 
 ---
 
@@ -524,6 +537,13 @@ Errors: 400 `fields.body` ("Write a message."), file type/size; 403 `"You cannot
 `requires_remark` (400 `fields.remark`); `refer` needs `refer_department` (department id) and/or
 `refer_user` (staff user id). Response 200 `{"message": "Done. NBTE-CMP-2026-000002 is now: referred.", "complaint": {…}}`.
 403 `"This complaint is handled by another department."` etc.
+
+v2.1 X9–X11 (flow `complaint` v2): `assign` (handling director, a delegate, the ES or super admin)
+needs `officer` (a staff user id from `rights.officers`; below the ES the officer must be active
+staff of the handling department, else 403); the officer takes `submit_for_review` (remark = the
+proposed resolution) and `request_info`; only the director takes `resolve`, `return_to_officer`
+(remark required), `refer` and `close`. Watchers (`rights.read_only`: the overseeing director, the
+institution's ICT supervisor) get no actions. Staff outside these roles get 404.
 
 ### POST `qa/complaints/<id>/escalate/`
 `{"reason": "Raiser waiting two weeks.", "to_user": null}` — `to_user` = staff user id, or null for

@@ -1,0 +1,40 @@
+{% load qa_tags %}{# Who is handling this SSQ — needs `who` (ssq_routing.holder), `ssq`; optional `compact`, `can_nudge`, `nudge_from` #}
+<div class="ssq-who{% if compact %} ssq-who--compact{% endif %}">
+  <div class="ssq-who__now ssq-who__now--{{ who.stage }}">
+    <span class="ssq-who__now-icon" aria-hidden="true">{% if who.stage == "approved" %}{% icon "check" 18 "2.4" %}{% elif who.stage == "returned" or who.stage == "with_institution" %}{% icon "building" 18 %}{% elif who.stage == "awaiting_approval" %}{% icon "shield" 18 %}{% else %}{% icon "users" 18 %}{% endif %}</span>
+    <div class="ssq-who__now-copy">
+      <span class="ssq-who__kicker">Now with</span>
+      <strong>{{ who.holder_label|default:"—" }}</strong>
+      {% if who.holder_role %}<span class="qa-small qa-muted">{{ who.holder_role }}{% if who.department and who.holder_role != "Institution" %} · {{ who.department.name }}{% endif %}</span>{% endif %}
+    </div>
+    <div class="ssq-who__clock{% if who.overdue %} is-overdue{% endif %}">
+      {% if who.days is not None %}<strong>{{ who.days }}</strong><span>day{{ who.days|pluralize }} at this stage</span>{% endif %}
+      {% if who.overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}
+    </div>
+  </div>
+  {% if who.next_step %}<p class="ssq-who__next">{% icon "arrow" 14 "2.2" %} <span>{{ who.next_step }}</span></p>{% endif %}
+  <dl class="ssq-who__grid">
+    <div><dt>Handling department</dt><dd>{{ who.department.name|default:"Not set — ask the QA administrator" }}</dd></div>
+    <div><dt>Assigns the officer</dt><dd>{% if who.director %}{{ who.director|who }} <span class="qa-muted">Director</span>{% elif who.assigners %}{% for u in who.assigners %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %} <span class="qa-muted">(director's seat empty)</span>{% else %}<span class="qa-tone-danger-text">Director's seat empty</span>{% endif %}</dd></div>
+    <div><dt>Assessing officer</dt><dd>{% if who.assignee %}{{ who.assignee|who }}{% if who.assignment %} <span class="qa-chip">{{ who.assignment.get_status_display }}</span>{% endif %}{% if who.due_at %} <span class="qa-muted">· due {{ who.due_at|date:"j M Y" }}</span>{% endif %}{% elif who.stage == "approved" or who.stage == "returned" %}{{ who.decided_by|who:"—" }}{% else %}<span class="qa-muted">Not assigned yet</span>{% endif %}</dd></div>
+    <div><dt>Approves</dt><dd>{% if who.stage == "approved" or who.stage == "returned" %}{{ who.decided_by|who:"—" }} <span class="qa-muted">decided {{ ssq.reviewed_at|date:"j M Y" }}</span>{% else %}{{ who.approver|who:"—" }}{% endif %}</dd></div>
+    {% if not compact %}
+    <div><dt>ICT supervision</dt><dd>{% for u in who.ict_supervisors %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="qa-muted">No ICT supervisor yet</span>{% endfor %}{% if who.ict_director %} <span class="qa-muted">· Director of ICT: {{ who.ict_director|who }}</span>{% endif %}</dd></div>
+    {% endif %}
+    {% if who.assessment.recommendation %}<div class="is-wide"><dt>Officer's assessment</dt><dd>{{ who.assessment.by_name }} recommends <strong>{% if who.assessment.recommendation == "accept" %}accept{% else %}return{% endif %}</strong>{% if who.assessment.remark %} — “{{ who.assessment.remark }}”{% endif %}</dd></div>{% endif %}
+  </dl>
+  {% if not compact and who.nudges %}
+    <details class="ssq-who__log"><summary>Reminders sent ({{ who.nudges|length }})</summary>
+      <ul role="list">{% for n in who.nudges %}<li><span class="qa-small">{{ n.by_name }} → {{ n.to|join:", " }}</span>{% if n.message %} <span class="qa-small qa-muted">“{{ n.message }}”</span>{% endif %}</li>{% endfor %}</ul>
+    </details>
+  {% endif %}
+  {% if can_nudge and who.is_open %}
+    <form class="ssq-who__nudge" method="post" action="{% url 'qa_req:ssq_nudge' ssq.pk %}" hx-post="{% url 'qa_req:ssq_nudge' ssq.pk %}" hx-target="#qa-panel">
+      {% csrf_token %}<input type="hidden" name="from" value="{{ nudge_from|default:'detail' }}">
+      {% if nudge_from == "queue" %}{% for k, v in filters.items %}{% if k != "from" and k != "message" and k != "csrfmiddlewaretoken" %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}{% endif %}
+      <label class="sr-only" for="nudge-msg-{{ ssq.pk }}">Note with the reminder</label>
+      <input class="input" id="nudge-msg-{{ ssq.pk }}" name="message" maxlength="500" placeholder="Optional note to {{ who.holder_label }}" autocomplete="off">
+      <button class="btn btn-subtle" type="submit">{% icon "bell" 16 %} Send reminder</button>
+    </form>
+  {% endif %}
+</div>

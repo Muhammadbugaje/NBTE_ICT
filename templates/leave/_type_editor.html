@@ -1,0 +1,29 @@
+{% with f=edit_form %}
+<form method="post" action="{% if f.instance.pk %}{% url 'leave:type_edit' f.instance.pk %}{% else %}{% url 'leave:type_new' %}{% endif %}"
+      hx-post="{% if f.instance.pk %}{% url 'leave:type_edit' f.instance.pk %}{% else %}{% url 'leave:type_new' %}{% endif %}"
+      hx-target="#lt-body" hx-swap="innerHTML" novalidate>
+  {% csrf_token %}
+  <h2>{% if f.instance.pk %}Edit {{ f.instance.name }}{% else %}New leave type{% endif %}</h2>
+  <p class="hrd-sub">Fields marked with a limit can be left empty for no limit.</p>
+  {% if f.non_field_errors %}<div class="alert alert-danger"><div class="alert-body">{{ f.non_field_errors|join:" " }}</div></div>{% endif %}
+  <div class="hrd-grid2">
+    {% for field in f %}
+      {% if field.field.widget.input_type == "checkbox" %}
+        <div class="field"><label class="hrd-check">{{ field }} {{ field.label }}</label>
+          {% if field.errors %}<span class="field-error">{{ field.errors|join:" " }}</span>{% endif %}</div>
+      {% else %}
+        <div class="field {% if field.name == 'description' or field.name == 'name' or field.name == 'counting' or field.name == 'input_mode' %}hrd-span2{% endif %}">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<span class="hint">{{ field.help_text }}</span>{% endif %}
+          {% if field.errors %}<span class="field-error">{{ field.errors|join:" " }}</span>{% endif %}
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <div class="btn-group btn-group--end hrd-mt">
+    <a class="btn btn-ghost" href="{% url 'leave:types' %}">Cancel</a>
+    <button class="btn btn-primary" type="submit">Save leave type</button>
+  </div>
+</form>
+{% endwith %}

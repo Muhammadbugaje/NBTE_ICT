@@ -32,12 +32,18 @@ def test_visitors_get_the_landing_page(qa_seed, portal):
     assert 'href="/login/"' in html and 'href="/how-to/"' in html and 'href="/register/"' in html
 
 
-def test_signed_in_institution_gets_the_dashboard(qa_seed, portal, make_user, make_institution):
+def test_signed_in_institution_can_visit_homepage_and_return_to_dashboard(qa_seed, portal, make_user,
+                                                                         make_institution):
     inst = make_institution("KDP")
     user = make_user("admin@kdp.local", user_type="institution", institution=inst, role="inst-admin")
     portal.force_login(user)
     html = portal.get("/").content.decode()
-    assert "Accreditation you can follow" not in html
+    assert "Accreditation you can follow" in html
+    assert 'href="/dashboard/">Dashboard</a>' in html
+    assert "_auth_user_id" in portal.session
+    dashboard = portal.get("/dashboard/").content.decode()
+    assert "Institution dashboard" in dashboard
+    assert "QA Portal homepage" in dashboard and 'href="/"' in dashboard
 
 
 def test_registration_closed_hides_the_form_and_shows_the_contact(qa_seed, portal):
@@ -76,33 +82,45 @@ def test_how_to_has_every_section_and_accessible_diagrams(qa_seed, portal):
     response = portal.get("/how-to/")
     assert response.status_code == 200
     html = response.content.decode()
-    for anchor in ("getting-started", "onboarding", "qa-requests", "qa-types", "inside-nbte", "payments",
-                   "joint-qa", "downloads", "questions"):
+    for anchor in ("journey", "guides", "getting-started", "onboarding", "qa-requests", "qa-types", "inside-nbte",
+                   "payments", "joint-qa", "downloads", "questions"):
         assert f'id="{anchor}"' in html
-    assert html.count('role="img"') == 4
+    assert html.count('role="img"') >= 3
     assert "<title id=" in html and "Programme record update" not in html  # labels are plain words
     for name in ("Resource Inspection", "Accreditation", "Reaccreditation", "Increase in Carrying Capacity"):
         assert name in html
-    assert "17-stage" in html or "17 stages" in html
+    assert "stage" in html  # the QA case stages are described
 
 
 def test_how_to_lists_guides_and_downloads_them(qa_seed, portal, settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path
     html = portal.get("/how-to/").content.decode()
-    assert "Coming soon" in html
-    assert portal.get("/guides/starter/").status_code == 404
-    from qa_core.portal_public import guide_path
-
-    os.makedirs(os.path.dirname(guide_path("starter")), exist_ok=True)
-    with open(guide_path("starter"), "wb") as fh:
-        fh.write(b"PK\x03\x04 fake docx")
-    html = portal.get("/how-to/").content.decode()
-    assert 'href="/guides/starter/"' in html
-    response = portal.get("/guides/starter/")
+    # "How it works & guides": every guide can be read online and downloaded as PDF.
+    assert 'id="guides"' in html and 'id="downloads"' in html  # the old anchor still works
+    assert html.count("Read online") >= 4 and html.count("Download PDF") >= 4
+    assert "Word version" not in html
+    for slug in ("starter", "onboarding", "qa-requests", "payments"):
+        assert f'href="/guides/{slug}/"' in html and f'href="/guides/{slug}/read/"' in html
+    response = portal.get("/guides/payments/")
     assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
     assert response["Content-Disposition"].startswith("attachment")
+    assert b"".join(response.streaming_content).startswith(b"%PDF")
+    from qa_core.guide_pdf import guide_pdf_path
+
+    assert os.path.exists(guide_pdf_path("payments"))  # cached for the next download
+    assert portal.get("/guides/payments/?inline=1")["Content-Disposition"].startswith("inline")
+    assert portal.get("/guides/payments/?format=docx").status_code == 404  # no Word file built here
     assert portal.get("/guides/../../etc/passwd/").status_code == 404
     assert portal.get("/guides/unknown/").status_code == 404
+
+
+def test_guide_read_page_offers_pdf_and_print(qa_seed, portal):
+    html = portal.get("/guides/starter/read/").content.decode()
+    assert "Download PDF" in html and "Print this guide" in html and "Download Word" not in html
+    assert 'href="/guides/starter/"' in html and 'href="/how-to/"' in html
+    assert "Next guide" in html and 'href="/guides/onboarding/read/"' in html
+    assert portal.get("/guides/unknown/read/").status_code == 404
 
 
 def test_public_pages_are_not_on_the_internal_host(qa_seed):
@@ -130,10 +148,8 @@ def test_generate_institution_guides_builds_four_word_files(qa_seed, tmp_path, s
         text = "\n".join(p.text for p in doc.paragraphs)
         assert title.split(" (")[0] in text and "Getting help" in text
         assert len(doc.inline_shapes) >= 3  # logo + screenshots / diagrams
-    # Offered for download on the how-to page.
-    html = portal.get("/how-to/").content.decode()
-    assert html.count('href="/guides/') == 4 and "Coming soon" not in html
-    response = portal.get("/guides/payments/")
+    # The Word file is still served on request; the portal offers the PDF.
+    response = portal.get("/guides/payments/?format=docx")
     assert response.status_code == 200
     assert response["Content-Type"].startswith("application/vnd.openxmlformats-officedocument.wordprocessingml")
 

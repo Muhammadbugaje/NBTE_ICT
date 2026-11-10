@@ -11,6 +11,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import models
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from qa_core.ui import htmx_fragment  # Phase 0 (N2): fragment URLs
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -742,6 +743,10 @@ def document_download(request, pk, version_pk=None):
         if file_field is None:
             raise Http404("This document has no downloadable file yet.")
 
+    # The record can outlive its file (restored DB, cleared media folder).
+    if not file_field.storage.exists(file_field.name):
+        raise Http404("The file for this document is missing from storage.")
+
     # ---- Log the download before streaming ----------------------------
     try:
         doc.record_download(request.user, request=request)
@@ -777,8 +782,9 @@ def _log_download(doc, version, request, is_external):
     if not doc.download_tracking_enabled:
         return
     Document.objects.filter(pk=doc.pk).update(download_count=F("download_count") + 1)
-    ip = (request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
-          or request.META.get("REMOTE_ADDR"))
+    from core.ratelimit import client_ip
+    ip = client_ip(request)
+    ip = None if ip == "unknown" else ip
     DocumentDownloadLog.objects.create(
         document=doc,
         version=version,
@@ -1034,6 +1040,7 @@ def holiday_delete(request, pk):
 # ABSENCE INDICATOR (live-derived; no model)
 # ============================================================================
 @login_required
+@htmx_fragment("portal:holidays_list")
 def absence_today(request):
     """Who's currently absent today — visible in the viewer's scope."""
     staff = services.absent_staff_today(user=request.user)

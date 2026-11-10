@@ -120,7 +120,16 @@
       .catch(function () {});
   }
 
+  var badgeSub = null;
   function startStream() {
+    // v2.1 L9: one badge poll per browser, shared by every open tab.
+    if (window.NBTEPoll) {
+      badgeSub = window.NBTEPoll.subscribe('notif-unread', {
+        url: STREAM_URL, visibleMs: POLL_MS, hiddenMs: 60000,
+        onData: function (data) { if (data) updateBadge(data.unread || 0); },
+      });
+      return;
+    }
     startPolling();
   }
 
@@ -151,6 +160,7 @@
         updateBadge(0);
         btn.hidden = true;
         refreshBell();
+        if (badgeSub) badgeSub.kick();
       }).catch(function () {});
     });
   }

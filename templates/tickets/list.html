@@ -1,30 +1,33 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 
 {% block title %}Tickets · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Tickets{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}">
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/tickets.js' %}?v=2" defer></script>
+  <script src="{% static 'js/tickets.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
-<div class="tk-page">
+<div class="tk-page wk-page" data-qa-area="tickets">
 
-  <header class="tk-page-head">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tickets">
     <div>
-      <h1>Tickets & Helpdesk</h1>
-      <p>{{ total }} ticket{{ total|pluralize }} in your scope.</p>
+      <span class="qa-eyebrow">{% icon "help" 14 "2.2" %} Tickets &amp; helpdesk</span>
+      <h1>Tickets</h1>
+      <p>Support tickets in your scope: faults, access issues and service requests, with their SLA and who is on them.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'tickets:create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New ticket</a>
+        <a href="{% url 'tickets:assigned_to_me' %}" class="btn btn-subtle">{% icon "user" 16 "2.2" %} Assigned to me</a>
+        {% if can_see_counts %}<a href="{% url 'tickets:counts' %}" class="btn btn-subtle">{% icon "chart" 16 "2.2" %} Divisions &amp; counts</a>{% endif %}
+      </div>
     </div>
-    <div class="tk-page-head-actions">
-      <a href="{% url 'tickets:create' %}" class="tk-btn tk-btn-primary">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New ticket
-      </a>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong>{{ total|default:0 }}</strong><span>Ticket{{ total|pluralize }} in view</span></div>
     </div>
   </header>
 

@@ -1,0 +1,350 @@
+/* ==========================================================================
+   NBTE UX layer (v2.3) — one visual language for the staff app and the
+   institution portal. Loaded last (finish bundle), so it can tidy older pages.
+
+   Palette: NBTE green (--brand-*) + Nigerian gold (--gold-*) on calm neutrals.
+   Every component reads the semantic tokens, so dark mode follows for free.
+   ========================================================================== */
+
+:root {
+  --ux-green: var(--brand-500, #1f6b3e);
+  --ux-green-2: var(--brand-glow-500, #2d8a56);
+  --ux-green-soft: color-mix(in srgb, var(--ux-green) 10%, var(--surface, #fff));
+  --ux-gold: #c8962a;
+  --ux-gold-soft: color-mix(in srgb, var(--ux-gold) 14%, var(--surface, #fff));
+  --ux-ink: var(--text, #181c20);
+  --ux-muted: var(--text-muted, #5a616b);
+  --ux-line: var(--border, #e3e6ea);
+  --ux-card: var(--surface, #fff);
+  --ux-sunken: var(--surface-sunken, #f4f6f7);
+  --ux-radius: 18px;
+  --ux-radius-sm: 12px;
+  --ux-shadow: 0 1px 2px rgba(16, 24, 20, .05), 0 8px 24px -12px rgba(16, 40, 24, .18);
+  --ux-shadow-hover: 0 2px 4px rgba(16, 24, 20, .06), 0 18px 36px -16px rgba(16, 60, 32, .32);
+  --ux-hero: radial-gradient(120% 140% at 0% 0%, #2e8f58 0%, #1f6b3e 42%, #123f25 100%);
+  --ux-chart-1: #1f6b3e; --ux-chart-2: #c8962a; --ux-chart-3: #2f7cf6; --ux-chart-4: #13a37c;
+  --ux-chart-5: #9a4fd0; --ux-chart-6: #e5484d; --ux-chart-7: #0aa2c4; --ux-chart-8: #f08a00;
+}
+
+/* --------------------------------------------------------------------------
+   1. Breathing room: a row of buttons never touches what follows it.
+   -------------------------------------------------------------------------- */
+:where(.btn-row, .qa-actions, .form-actions, .qa-toolbar, .actions, .card-actions, .qa-card__actions,
+       .pa-actions, .qp-actions, .ux-actions) {
+  display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+}
+:where(.btn-row, .qa-actions, .form-actions, .qa-toolbar, .actions, .card-actions, .qa-card__actions,
+       .pa-actions, .qp-actions, .ux-actions) + :where(*) { margin-top: 1rem; }
+:where(form, div, p) > .btn:last-child:not(:only-child) { margin-bottom: 0; }
+:where(.qa-card, .card, section) > :where(.btn, form):last-child { margin-bottom: .25rem; }
+:where(.qa-card, .card, section) > :where(a.btn, button.btn, form) + :where(section, .qa-card, .card, table,
+       .table-wrap, ul, ol, h2, h3) { margin-top: 1.25rem; }
+.qa-card__body > .btn:first-child + :where(*),
+.qa-card__body > form:first-child + :where(*) { margin-top: 1rem; }
+
+/* --------------------------------------------------------------------------
+   2. Hero header for any page
+   -------------------------------------------------------------------------- */
+.ux-hero {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: grid; grid-template-columns: 1fr auto; gap: 1.25rem; align-items: end;
+  padding: clamp(1.25rem, 3vw, 2rem) clamp(1.25rem, 3vw, 2.25rem);
+  border-radius: calc(var(--ux-radius) + 4px); color: #fff; background: var(--ux-hero);
+  box-shadow: 0 24px 48px -28px rgba(18, 63, 37, .65); margin-bottom: 1.5rem;
+}
+.ux-hero::before {   /* soft gold sunrise */
+  content: ""; position: absolute; inset: auto -10% -70% auto; width: 60%; aspect-ratio: 1;
+  background: radial-gradient(circle, rgba(232, 182, 72, .38) 0%, rgba(232, 182, 72, 0) 62%); z-index: -1;
+}
+.ux-hero::after {    /* faint crest rings */
+  content: ""; position: absolute; right: -60px; top: -60px; width: 260px; height: 260px; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .12); box-shadow: 0 0 0 28px rgba(255, 255, 255, .04),
+  0 0 0 56px rgba(255, 255, 255, .03); z-index: -1;
+}
+.ux-hero__eyebrow { display: inline-flex; align-items: center; gap: .45rem; font-size: .78rem; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; color: rgba(255, 255, 255, .78); }
+.ux-hero__eyebrow::before { content: ""; width: 18px; height: 2px; border-radius: 2px; background: #e8b648; }
+.ux-hero h1 { margin: .35rem 0 .35rem; font-size: clamp(1.5rem, 2.6vw, 2.1rem); line-height: 1.15; color: #fff;
+  letter-spacing: -.01em; }
+.ux-hero p { margin: 0; max-width: 62ch; color: rgba(255, 255, 255, .86); line-height: 1.55; }
+.ux-hero__actions { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; }
+.ux-hero .btn { border-radius: 999px; }
+.ux-hero .btn-primary, .ux-hero .ux-btn-light { background: #fff; color: var(--ux-green); border-color: #fff;
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, .45); }
+.ux-hero .btn-ghost, .ux-hero .btn-subtle { background: rgba(255, 255, 255, .12); color: #fff;
+  border-color: rgba(255, 255, 255, .28); }
+.ux-hero .btn-ghost:hover, .ux-hero .btn-subtle:hover { background: rgba(255, 255, 255, .2); }
+@media (max-width: 760px) { .ux-hero { grid-template-columns: 1fr; } .ux-hero__actions { justify-content: flex-start; } }
+
+/* --------------------------------------------------------------------------
+   3. Cards, grids, sections
+   -------------------------------------------------------------------------- */
+.ux-grid { display: grid; gap: 1rem; grid-template-columns: repeat(12, minmax(0, 1fr)); margin-bottom: 1rem; }
+.ux-span-12 { grid-column: span 12; } .ux-span-8 { grid-column: span 8; } .ux-span-7 { grid-column: span 7; }
+.ux-span-6 { grid-column: span 6; } .ux-span-5 { grid-column: span 5; } .ux-span-4 { grid-column: span 4; }
+.ux-span-3 { grid-column: span 3; }
+@media (max-width: 1100px) { .ux-span-8, .ux-span-7, .ux-span-6, .ux-span-5, .ux-span-4 { grid-column: span 12; }
+  .ux-span-3 { grid-column: span 6; } }
+@media (max-width: 600px) { .ux-span-3 { grid-column: span 12; } }
+
+.ux-card { background: var(--ux-card); border: 1px solid var(--ux-line); border-radius: var(--ux-radius);
+  box-shadow: var(--ux-shadow); padding: 1.15rem 1.25rem; min-width: 0; }
+.ux-card + .ux-card { margin-top: 1rem; }
+.ux-grid > .ux-card + .ux-card { margin-top: 0; }
+.ux-card__head { display: flex; gap: .75rem; align-items: flex-start; justify-content: space-between;
+  margin: -.1rem 0 1rem; }
+.ux-card__head h2, .ux-card__head h3 { margin: 0; font-size: 1.05rem; letter-spacing: -.005em; }
+.ux-card__head p { margin: .2rem 0 0; color: var(--ux-muted); font-size: .86rem; }
+.ux-card__icon { flex: none; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--ux-green-soft); color: var(--ux-green); }
+.ux-card__title { display: flex; gap: .7rem; align-items: center; min-width: 0; }
+.ux-card--accent { border-top: 3px solid var(--ux-gold); }
+.ux-card--green { background: linear-gradient(180deg, var(--ux-green-soft), var(--ux-card) 60%); }
+.ux-section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  margin: 1.75rem 0 .75rem; }
+.ux-section-title h2 { margin: 0; font-size: 1.15rem; }
+.ux-section-title a { font-size: .86rem; font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   4. Stat tiles
+   -------------------------------------------------------------------------- */
+.ux-stats { display: grid; gap: .85rem; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  margin-bottom: 1.25rem; }
+.ux-stat { position: relative; display: flex; flex-direction: column; gap: .25rem; padding: 1rem 1.1rem;
+  background: var(--ux-card); border: 1px solid var(--ux-line); border-radius: var(--ux-radius-sm);
+  box-shadow: var(--ux-shadow); color: inherit; text-decoration: none; overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease; }
+a.ux-stat:hover { transform: translateY(-2px); box-shadow: var(--ux-shadow-hover); text-decoration: none; }
+.ux-stat::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--tone, var(--ux-green)); }
+.ux-stat__label { font-size: .78rem; font-weight: 600; color: var(--ux-muted); text-transform: uppercase;
+  letter-spacing: .04em; }
+.ux-stat__value { font-size: 1.75rem; font-weight: 700; line-height: 1.1; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; }
+.ux-stat__hint { font-size: .8rem; color: var(--ux-muted); }
+.ux-stat--gold { --tone: var(--ux-gold); } .ux-stat--blue { --tone: #2f7cf6; } .ux-stat--red { --tone: #e5484d; }
+.ux-stat--amber { --tone: #d99a00; } .ux-stat--teal { --tone: #13a37c; } .ux-stat--violet { --tone: #7a55f0; }
+
+/* --------------------------------------------------------------------------
+   5. "Your next action" — the one thing to do now
+   -------------------------------------------------------------------------- */
+.ux-next { display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; align-items: center;
+  padding: 1rem 1.15rem; border-radius: var(--ux-radius); background: var(--ux-card);
+  border: 1px solid color-mix(in srgb, var(--ux-gold) 45%, var(--ux-line));
+  box-shadow: 0 10px 30px -18px rgba(200, 150, 42, .55); margin-bottom: 1rem; }
+.ux-next__badge { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center;
+  background: linear-gradient(160deg, #f2c35a, #c8962a); color: #fff; font-weight: 800; font-size: 1.1rem;
+  box-shadow: 0 8px 18px -8px rgba(200, 150, 42, .8); }
+.ux-next h3 { margin: 0 0 .15rem; font-size: 1rem; }
+.ux-next p { margin: 0; color: var(--ux-muted); font-size: .88rem; }
+.ux-next .btn { border-radius: 999px; white-space: nowrap; }
+@media (max-width: 640px) { .ux-next { grid-template-columns: auto 1fr; } .ux-next > :last-child { grid-column: 1 / -1; } }
+
+/* --------------------------------------------------------------------------
+   6. Work list rows (My work, approvals, queues)
+   -------------------------------------------------------------------------- */
+.ux-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .55rem; }
+.ux-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .85rem; align-items: center;
+  padding: .8rem .95rem; border: 1px solid var(--ux-line); border-radius: 14px; background: var(--ux-card);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.ux-row:hover { border-color: color-mix(in srgb, var(--ux-green) 35%, var(--ux-line)); box-shadow: var(--ux-shadow); }
+.ux-row__icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--ux-green-soft); color: var(--ux-green); font-weight: 700; }
+.ux-row__icon--gold { background: var(--ux-gold-soft); color: #8f6510; }
+.ux-row__icon--blue { background: color-mix(in srgb, #2f7cf6 12%, var(--ux-card)); color: #1e5fc4; }
+.ux-row__icon--red { background: color-mix(in srgb, #e5484d 12%, var(--ux-card)); color: #b4262b; }
+.ux-row__icon--violet { background: color-mix(in srgb, #7a55f0 12%, var(--ux-card)); color: #5a35d0; }
+.ux-row__main { min-width: 0; }
+.ux-row__title { display: block; font-weight: 650; color: var(--ux-ink); text-decoration: none; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+a.ux-row__title:hover { color: var(--ux-green); }
+.ux-row__meta { display: flex; flex-wrap: wrap; gap: .35rem .75rem; margin-top: .2rem; color: var(--ux-muted);
+  font-size: .82rem; }
+.ux-row__actions { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: flex-end; }
+.ux-row__actions .btn { border-radius: 999px; }
+.ux-row--select { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+.ux-row--done { opacity: .62; }
+@media (max-width: 640px) { .ux-row { grid-template-columns: auto minmax(0, 1fr); }
+  .ux-row__actions { grid-column: 1 / -1; justify-content: flex-start; } }
+
+/* --------------------------------------------------------------------------
+   7. Chips
+   -------------------------------------------------------------------------- */
+.ux-chip { display: inline-flex; align-items: center; gap: .3rem; padding: .16rem .55rem; border-radius: 999px;
+  font-size: .74rem; font-weight: 650; line-height: 1.5; background: var(--ux-sunken); color: var(--ux-muted);
+  white-space: nowrap; }
+.ux-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8; }
+.ux-chip--green { background: color-mix(in srgb, #2f8f57 14%, var(--ux-card)); color: #1d6b3d; }
+.ux-chip--gold, .ux-chip--amber { background: color-mix(in srgb, #d99a00 16%, var(--ux-card)); color: #8a5d00; }
+.ux-chip--red { background: color-mix(in srgb, #e5484d 13%, var(--ux-card)); color: #b4262b; }
+.ux-chip--blue { background: color-mix(in srgb, #2f7cf6 13%, var(--ux-card)); color: #1e5fc4; }
+.ux-chip--violet { background: color-mix(in srgb, #7a55f0 13%, var(--ux-card)); color: #5a35d0; }
+.ux-chip--plain::before { display: none; }
+:root[data-theme="dark"] .ux-chip--green { color: #7fdca4; } :root[data-theme="dark"] .ux-chip--gold { color: #f2c35a; }
+:root[data-theme="dark"] .ux-chip--red { color: #ff9a9d; } :root[data-theme="dark"] .ux-chip--blue { color: #8ab8ff; }
+
+/* --------------------------------------------------------------------------
+   8. Filter pills with counts
+   -------------------------------------------------------------------------- */
+.ux-filters { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1rem; }
+.ux-filter { display: inline-flex; align-items: center; gap: .45rem; padding: .42rem .8rem; border-radius: 999px;
+  border: 1px solid var(--ux-line); background: var(--ux-card); color: var(--ux-ink); font-size: .85rem;
+  font-weight: 600; text-decoration: none; cursor: pointer; transition: all .15s ease; }
+.ux-filter b { min-width: 1.6em; padding: .02rem .42rem; border-radius: 999px; background: var(--ux-sunken);
+  font-size: .75rem; text-align: center; font-variant-numeric: tabular-nums; }
+.ux-filter:hover { border-color: var(--ux-green); text-decoration: none; }
+.ux-filter.is-active, .ux-filter[aria-pressed="true"] { background: var(--ux-green); border-color: var(--ux-green);
+  color: #fff; box-shadow: 0 6px 16px -10px rgba(31, 107, 62, .9); }
+.ux-filter.is-active b, .ux-filter[aria-pressed="true"] b { background: rgba(255, 255, 255, .22); color: #fff; }
+
+/* --------------------------------------------------------------------------
+   9. Stepper (journeys, onboarding, SOP stages)
+   -------------------------------------------------------------------------- */
+.ux-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); counter-reset: s; }
+.ux-step { position: relative; padding: .7rem .75rem .75rem; border-radius: 14px; background: var(--ux-sunken);
+  border: 1px solid transparent; font-size: .84rem; counter-increment: s; }
+.ux-step strong { display: block; font-size: .86rem; line-height: 1.3; }
+.ux-step small { display: block; margin-top: .15rem; color: var(--ux-muted); font-size: .76rem; }
+.ux-step::before { content: counter(s); display: grid; place-items: center; width: 24px; height: 24px;
+  border-radius: 50%; margin-bottom: .45rem; font-size: .75rem; font-weight: 700; background: var(--ux-card);
+  color: var(--ux-muted); border: 1px solid var(--ux-line); }
+.ux-step.is-done { background: var(--ux-green-soft); }
+.ux-step.is-done::before { content: "✓"; background: var(--ux-green); color: #fff; border-color: var(--ux-green); }
+.ux-step.is-current { background: var(--ux-card); border-color: var(--ux-gold);
+  box-shadow: 0 10px 24px -16px rgba(200, 150, 42, .9); }
+.ux-step.is-current::before { background: var(--ux-gold); color: #fff; border-color: var(--ux-gold); }
+.ux-progress { height: 8px; border-radius: 999px; background: var(--ux-sunken); overflow: hidden; }
+.ux-progress > i { display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, var(--ux-green), #46b673); transition: width .6s ease; }
+
+/* --------------------------------------------------------------------------
+   10. Checklist (criteria before approval)
+   -------------------------------------------------------------------------- */
+.ux-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.ux-check { display: grid; grid-template-columns: auto 1fr auto; gap: .7rem; align-items: center;
+  padding: .7rem .85rem; border-radius: 12px; background: var(--ux-sunken); }
+.ux-check__mark { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 800; font-size: .8rem; background: #e5484d; color: #fff; }
+.ux-check.is-ok .ux-check__mark { background: var(--ux-green); }
+.ux-check small { color: var(--ux-muted); }
+
+/* --------------------------------------------------------------------------
+   11. Preview gate — decide only after opening the file
+   -------------------------------------------------------------------------- */
+.ux-gate { display: flex; gap: .6rem; align-items: center; padding: .6rem .8rem; border-radius: 12px;
+  background: var(--ux-gold-soft); color: #7a5307; font-size: .85rem; margin: .5rem 0 .75rem; }
+.ux-gate.is-open { background: var(--ux-green-soft); color: var(--ux-green); }
+.ux-gate__icon { font-size: 1rem; }
+[data-needs-preview][disabled], [data-needs-preview].is-locked { opacity: .45; cursor: not-allowed; filter: grayscale(.4); }
+.ux-preview-btn { border-radius: 999px; }
+
+/* --------------------------------------------------------------------------
+   12. Charts
+   -------------------------------------------------------------------------- */
+.ux-chart { position: relative; width: 100%; min-height: 240px; }
+.ux-chart--sm { min-height: 180px; } .ux-chart--lg { min-height: 320px; }
+.ux-legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; margin-top: .6rem; font-size: .8rem; color: var(--ux-muted); }
+.ux-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: .35rem;
+  vertical-align: -1px; }
+.ux-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.ux-bars li { display: grid; grid-template-columns: minmax(0, 1fr) 2fr auto; gap: .65rem; align-items: center;
+  font-size: .85rem; }
+.ux-bars li > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ux-bars__track { height: 10px; border-radius: 999px; background: var(--ux-sunken); overflow: hidden; }
+.ux-bars__track i { display: block; height: 100%; border-radius: inherit; background: var(--bar, var(--ux-green)); }
+.ux-bars b { font-variant-numeric: tabular-nums; }
+.ux-donut { --size: 148px; width: var(--size); height: var(--size); border-radius: 50%; position: relative;
+  background: conic-gradient(var(--segments, var(--ux-green) 0 100%)); }
+.ux-donut::after { content: ""; position: absolute; inset: 22%; border-radius: 50%; background: var(--ux-card); }
+.ux-donut__center { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; text-align: center;
+  font-size: .78rem; color: var(--ux-muted); }
+.ux-donut__center b { display: block; font-size: 1.35rem; color: var(--ux-ink); }
+
+/* --------------------------------------------------------------------------
+   13. Empty states
+   -------------------------------------------------------------------------- */
+.ux-empty { display: grid; justify-items: center; text-align: center; gap: .4rem; padding: 2rem 1rem;
+  color: var(--ux-muted); }
+.ux-empty__art { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center;
+  font-size: 1.6rem; background: var(--ux-green-soft); color: var(--ux-green); margin-bottom: .35rem; }
+.ux-empty strong { color: var(--ux-ink); font-size: 1rem; }
+
+/* --------------------------------------------------------------------------
+   14. NBTE confirmation dialog (all confirmations, hx-confirm included)
+   -------------------------------------------------------------------------- */
+.nbte-confirm { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 1rem; }
+.nbte-confirm__backdrop { position: absolute; inset: 0; border: 0; background: rgba(8, 24, 14, .52);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: uxFade .18s ease; cursor: default; }
+.nbte-confirm__panel { position: relative; width: min(460px, 100%); padding: 0 0 1.1rem; border-radius: 22px;
+  background: var(--ux-card); color: var(--ux-ink); box-shadow: 0 30px 80px -24px rgba(0, 0, 0, .55);
+  overflow: hidden; animation: uxPop .22s cubic-bezier(.2, .9, .3, 1.2); outline: none; }
+.nbte-confirm__panel::before { content: ""; display: block; height: 6px;
+  background: linear-gradient(90deg, #1f6b3e 0 70%, #e8b648 70% 100%); }
+.nbte-confirm__brand { display: flex; align-items: center; gap: .5rem; padding: 1rem 1.35rem 0; font-size: .72rem;
+  font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ux-muted); }
+.nbte-confirm__brand img { width: 22px; height: 22px; }
+.nbte-confirm__icon { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center;
+  margin: 1rem 1.35rem .2rem; font-size: 1.4rem; background: var(--ux-green-soft); color: var(--ux-green); }
+.nbte-confirm__panel--danger .nbte-confirm__icon { background: color-mix(in srgb, #e5484d 14%, var(--ux-card));
+  color: #c62f35; }
+.nbte-confirm__panel--danger::before { background: linear-gradient(90deg, #c62f35 0 70%, #e8b648 70% 100%); }
+.nbte-confirm__title { margin: .65rem 1.35rem .35rem !important; font-size: 1.2rem !important; line-height: 1.3; }
+.nbte-confirm__body { margin: 0 1.35rem; color: var(--ux-muted); font-size: .92rem; line-height: 1.6; }
+.nbte-confirm__note { margin: .85rem 1.35rem 0; padding: .55rem .75rem; border-radius: 10px; background: var(--ux-sunken);
+  font-size: .8rem; color: var(--ux-muted); }
+.nbte-confirm__actions { display: flex; justify-content: flex-end; gap: .55rem; margin: 1.2rem 1.35rem 0;
+  flex-wrap: wrap; }
+.nbte-confirm__actions .btn { border-radius: 999px; min-width: 110px; justify-content: center; }
+@keyframes uxPop { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes uxFade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .nbte-confirm__panel, .nbte-confirm__backdrop { animation: none; } }
+
+/* --------------------------------------------------------------------------
+   15. Approval page (Gate A) and other decision screens
+   -------------------------------------------------------------------------- */
+.ux-decide { position: sticky; bottom: 1rem; z-index: 5; display: flex; flex-wrap: wrap; gap: .75rem;
+  align-items: center; justify-content: space-between; padding: .9rem 1.1rem; margin-top: 1.25rem;
+  border-radius: var(--ux-radius); background: color-mix(in srgb, var(--ux-card) 92%, transparent);
+  border: 1px solid var(--ux-line); box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .45);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.ux-decide p { margin: 0; font-size: .88rem; color: var(--ux-muted); }
+.ux-decide .btn { border-radius: 999px; }
+.ux-btn-approve { background: linear-gradient(160deg, #2f9a5d, #1f6b3e); color: #fff; border: 0;
+  box-shadow: 0 10px 22px -12px rgba(31, 107, 62, .9); }
+.ux-btn-approve:hover { filter: brightness(1.06); color: #fff; }
+.ux-btn-approve[disabled] { background: var(--ux-sunken); color: var(--ux-muted); box-shadow: none; cursor: not-allowed; }
+
+/* --------------------------------------------------------------------------
+   16. Small utilities
+   -------------------------------------------------------------------------- */
+.ux-muted { color: var(--ux-muted); } .ux-num { font-variant-numeric: tabular-nums; }
+.ux-mt { margin-top: 1rem; } .ux-mb { margin-bottom: 1rem; } .ux-gap { display: flex; gap: .5rem; flex-wrap: wrap; }
+.ux-split { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.ux-kicker { font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ux-gold); }
+.ux-avatar { width: 34px; height: 34px; border-radius: 50%; display: inline-grid; place-items: center; font-size: .8rem;
+  font-weight: 700; color: #fff; background: linear-gradient(160deg, #46b673, #1f6b3e); flex: none; }
+.ux-avatar--gold { background: linear-gradient(160deg, #f2c35a, #c8962a); }
+.ux-avatar--blue { background: linear-gradient(160deg, #5aa9ff, #1e66e6); }
+.ux-avatar--violet { background: linear-gradient(160deg, #a68cff, #6440e6); }
+
+/* --------------------------------------------------------------------------
+   17. QA home (v2.3)
+   -------------------------------------------------------------------------- */
+.qh--v23 .qh-grid--v23 { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.qh--v23 .qh-grid--v23 > .ux-card { margin: 0; display: flex; flex-direction: column; }
+.qh--v23 .qh-count { min-width: 44px; height: 44px; padding: 0 .6rem; border-radius: 14px; display: grid;
+  place-items: center; font-size: 1.25rem; font-weight: 800; background: var(--ux-green-soft); color: var(--ux-green); }
+.qh--v23 .qh-tone-warn .qh-count { background: var(--ux-gold-soft); color: #8a5d00; }
+.qh--v23 .qh-tone-danger .qh-count { background: color-mix(in srgb, #e5484d 14%, var(--ux-card)); color: #b4262b; }
+.qh--v23 .qh-action-line { margin: -.4rem 0 .75rem; font-size: .86rem; font-weight: 600; color: var(--ux-green); }
+.qh--v23 .qh-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: .5rem;
+  margin: 0 0 .75rem; }
+.qh--v23 .qh-stats > div { padding: .55rem .7rem; border-radius: 12px; background: var(--ux-sunken); }
+.qh--v23 .qh-stats dt { font-size: .74rem; color: var(--ux-muted); }
+.qh--v23 .qh-stats dd { margin: .1rem 0 0; font-size: 1.1rem; font-weight: 700; }
+.qh--v23 .qh-items { list-style: none; margin: 0 0 .75rem; padding: 0; display: grid; gap: .4rem; }
+.qh--v23 .qh-items li { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center; padding: .5rem .65rem;
+  border-radius: 10px; background: var(--ux-sunken); font-size: .86rem; }
+.qh--v23 .qh-items li.is-overdue { box-shadow: inset 3px 0 0 #e5484d; }
+.qh--v23 .qh-items__s { color: var(--ux-muted); font-size: .8rem; }
+.qh--v23 .qh-more { margin: auto 0 0; padding-top: .25rem; }

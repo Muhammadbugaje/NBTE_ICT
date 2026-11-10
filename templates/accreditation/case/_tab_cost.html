@@ -1,53 +1,85 @@
 {% load qa_tags %}
-<section class="qa-card" aria-labelledby="cost-h">
-  <header class="qa-card__head"><div><h2 id="cost-h">Cost sheet{% if sheet %} · version {{ sheet.version }}{% endif %}</h2>
-    <p>Built by the department (stage 2), audited by the supervising Audit officer (stages 5–6), approved by the ES (stage 7). Amounts come from the rate table; a line keeps the rate it was priced at.</p></div>
-    {% if sheet %}<span class="qa-chip {{ sheet.status|tone }}">{{ sheet.get_status_display }}</span>{% endif %}</header>
-  <div class="qa-card__body qa-stack">
-    {% if not rates_confirmed %}<div class="qa-callout qa-callout--warn" role="status">{% icon "alert" 18 "2.2" %}<div><strong>Rates not confirmed</strong><p>The rate table holds placeholder amounts until Finance confirms them (Settings → Rate table; then set <span class="qa-mono">qa.cost.rates_confirmed</span>). Treat every total here as provisional.</p></div></div>{% endif %}
-    {% if editor == "department" %}<div class="qa-mode-banner">{% icon "edit" 16 %} You are building the cost sheet. Add a line per person and allowance; submit it with <strong>Submit cost sheet</strong> above.</div>
-    {% elif editor == "audit" %}<div class="qa-mode-banner qa-mode-banner--audit">{% icon "shield" 16 %} Audit review: you can change days or the rate, add or remove lines. Every change needs a note — the department sees it.</div>
-    {% else %}<div class="qa-mode-banner qa-mode-banner--locked">{% icon "lock" 16 %} Read-only now. {% if sheet.status == "es_approved" %}Approved by {{ sheet.approved_by|who }} on {{ sheet.approved_at|date:"j M Y" }}.{% else %}Only the holder of stage 2 (department) or stage 5 (Audit) can edit it.{% endif %}</div>{% endif %}
+<section class="c3-sec" aria-labelledby="cost-h">
+  <header class="c3-sec__head"><span class="c3-sec__num{% if editor == 'department' %} c3-sec__num--key{% endif %}">{% if editor == "department" and focus == "generate_cost" %}1{% else %}2{% endif %}</span>
+    <div><h2 id="cost-h">{% if editor == "department" and focus == "generate_cost" %}Step 1 · Prepare the cost sheet{% else %}Cost sheet{% endif %}{% if sheet %} · version {{ sheet.version }}{% endif %}</h2>
+      <p>Built by the desk officer (stage 2), audited by Audit (stages 5–6), approved by the ES (stage 7). Amounts come from the rate table; each line keeps the rate it was priced at.</p></div>
+    {% if sheet %}<span class="qa-chip {{ sheet.status|tone }} c3-sec__chip">{{ sheet.get_status_display }}</span>{% endif %}</header>
+
+  <div class="c3-cost-sum" role="group" aria-label="Cost summary">
+    <div class="c3-cost-sum__total"><span>Total{% if not rates_confirmed %} <em>(provisional)</em>{% endif %}</span><strong>{{ sheet.total|default:0|naira }}</strong></div>
+    <div><span>Lines</span><strong>{{ lines|length }}</strong></div>
+    <div><span>People costed</span><strong>{{ cost_people_n }}</strong></div>
+    {% if costing %}<div><span>Trip</span><strong>{{ costing.state.name|default:"State not set"|title }}</strong><small>{{ costing.travel_mode|default:"road"|title }}{% if costing.distance_km %} · {{ costing.distance_km }} km{% endif %}</small></div>
+    {% if costing.actual != None %}<div><span>Actual spend</span><strong>{{ costing.actual|naira }}</strong><small class="{% if costing.variance > 0 %}c3-late{% endif %}">Variance {{ costing.variance|naira }}</small></div>{% endif %}{% endif %}
   </div>
-  <div class="qa-table-wrap">
-    <table class="qa-table qa-cost-table">
+
+  {% if not rates_confirmed %}<p class="c3-hint c3-hint--warn">{% icon "alert" 16 "2.2" %}<span><strong>Rates not confirmed yet.</strong> The rate table holds placeholder amounts until Finance confirms them, so every total here is provisional.</span></p>{% endif %}
+
+  {% if editor == "department" %}
+  <ol class="c3-guide c3-guide--how" aria-label="How to build the cost sheet">
+    <li><span><strong>Calculate</strong> from the state's rates (set the nights) — this fills the standard lines for you.</span></li>
+    <li><span><strong>Add</strong> any other line: choose the rate, the days and, if you know them, the person — the list recommends who fits.</span></li>
+    <li><span><strong>Check</strong> the lines and the total; change days in the table and press Save on that line.</span></li>
+    <li><span><strong>Submit</strong> the cost sheet{% if focus == "generate_cost" %} with the Step 2 button below{% else %} at the Generate cost stage{% endif %}.</span></li>
+  </ol>
+  <form class="c3-cost-calc" method="post" action="{% url 'qa_case:cost_calc' case.pk %}" hx-post="{% url 'qa_case:cost_calc' case.pk %}" hx-target="#qa-panel" hx-disabled-elt="find button"{% if lines %} hx-trigger="qa:confirmed" data-qa-confirm="This replaces the {{ lines|length }} line{{ lines|length|pluralize }} on the sheet with freshly calculated ones." data-qa-confirm-title="Recalculate the cost sheet?" data-qa-confirm-label="Recalculate"{% endif %}>{% csrf_token %}<input type="hidden" name="tab" value="cost">
+    <div class="qa-field"><label for="cc-nights">Nights</label><input class="input" id="cc-nights" name="nights" type="number" min="1" max="60" inputmode="numeric" value="{{ costing.nights|default:''|floatformat:'-1' }}" placeholder="3"></div>
+    <button class="btn btn-primary" type="submit">{% icon "sheet" 16 %} Calculate from the state's rates</button>
+    <p class="c3-small c3-muted">Uses {{ inst.name }}'s state and travel mode. Running it again replaces the lines on the sheet (you are asked first).</p>
+  </form>
+  {% elif editor == "audit" %}<p class="c3-hint">{% icon "shield" 16 %}<span><strong>Audit review.</strong> Change days, add or remove lines — every change needs a short note, which the department sees.</span></p>
+  {% else %}<p class="c3-note">{% icon "lock" 14 %} {% if sheet.status == "es_approved" %}Approved by {{ sheet.approved_by|who }} on {{ sheet.approved_at|date:"j M Y" }} — read-only.{% else %}Read-only now: only the holder of stage 2 (desk officer) or stage 5 (Audit) can edit it.{% endif %}</p>{% endif %}
+
+  {% if sheet and sheet.status == "es_approved" and perms.accreditation.audit_cost_sheet or sheet and sheet.status == "es_approved" and request.user.is_superuser %}
+  <form class="c3-form c3-form--inline c3-cost-actual" method="post" action="{% url 'qa_case:cost_actual' case.pk %}" hx-post="{% url 'qa_case:cost_actual' case.pk %}" hx-target="#qa-panel" hx-disabled-elt="find button">{% csrf_token %}<input type="hidden" name="tab" value="cost">
+    <div class="qa-field"><label for="ca-amount">Actual spend (₦)</label><input class="input" id="ca-amount" name="amount" inputmode="decimal" required></div>
+    <div class="qa-field"><label for="ca-note">Note <span class="qa-muted">(optional)</span></label><input class="input" id="ca-note" name="note"></div>
+    <button class="btn btn-subtle" type="submit">Record actual spend</button></form>{% endif %}
+
+  {% if lines %}
+  <div class="qa-table-wrap c3-cost-wrap">
+    <table class="qa-table qa-cost-table c3-cost-table">
       <caption class="sr-only">Cost lines</caption>
       <thead><tr><th scope="col">Role on the exercise</th><th scope="col">Allowance</th><th scope="col" class="num">Days</th><th scope="col" class="num">Rate</th><th scope="col" class="num">Amount</th>{% if editor %}<th scope="col"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
       <tbody>
         {% for line in lines %}
         <tr class="{% if line.edited_by_audit %}is-audit-edited{% endif %}">
-          <td><strong>{{ line.role_on_exercise }}</strong>{% if line.staff %}<br><span class="qa-small qa-muted">{{ line.staff }}</span>{% endif %}{% if line.audit_note %}<span class="qa-audit-note">{% icon "shield" 12 %} Audit: {{ line.audit_note }}</span>{% endif %}</td>
-          <td>{{ line.rate.role }}<br><span class="qa-small qa-muted">{{ line.rate.get_allowance_type_display }} · {{ line.rate.get_unit_display|lower }}</span></td>
-          <td class="num">{% if editor and line.rate.unit == "per_day" %}<input class="input" form="line-{{ line.pk }}" name="days" value="{{ line.days|floatformat:"-1" }}" inputmode="decimal" aria-label="Days for {{ line.role_on_exercise }}">{% else %}{{ line.days|floatformat:"-1" }}{% endif %}</td>
-          <td class="num">{{ line.unit_amount|naira }}</td>
-          <td class="num">{{ line.amount|naira }}</td>
-          {% if editor %}<td><div class="qa-line-actions">
-            <form id="line-{{ line.pk }}" method="post" action="{% url 'qa_case:cost_line' case.pk line.pk %}" hx-post="{% url 'qa_case:cost_line' case.pk line.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="cost">
-              {% if editor == "audit" %}<input class="input" name="note" placeholder="Audit note" aria-label="Audit note" required style="max-width:160px">{% endif %}
-              <button class="btn btn-xs btn-subtle" type="submit" name="op" value="save">Save</button>
-              <button class="btn btn-xs btn-subtle qa-btn-reject" type="submit" name="op" value="remove" aria-label="Remove {{ line.role_on_exercise }}">{% icon "trash" 12 %}</button>
-            </form></div></td>{% endif %}
+          <td><strong>{{ line.role_on_exercise }}</strong>{% if line.rate and line.rate.role != line.role_on_exercise %}<span class="c3-small c3-muted c3-block-l">Rate: {{ line.rate.role }}</span>{% endif %}{% if line.staff %}<span class="c3-cost-who">{% icon "user" 12 %} {{ line.staff }}</span>{% endif %}{% if line.audit_note %}<span class="qa-audit-note">{% icon "shield" 12 %} Audit: {{ line.audit_note }}</span>{% endif %}</td>
+          <td data-label="Allowance">{% if line.rate %}{{ line.rate.get_allowance_type_display }}<span class="c3-small c3-muted c3-block-l">{{ line.rate.get_unit_display }}</span>{% else %}{{ line.get_kind_display }}{% endif %}</td>
+          <td class="num" data-label="Days">{% if editor and line.rate.unit == "per_day" %}<input class="input c3-days" form="line-{{ line.pk }}" name="days" type="number" step="0.5" min="0.5" max="60" value="{{ line.days|floatformat:"-1" }}" inputmode="decimal" aria-label="Days for {{ line.role_on_exercise }}">{% else %}{{ line.days|floatformat:"-1" }}{% endif %}</td>
+          <td class="num" data-label="Rate">{{ line.unit_amount|naira }}</td>
+          <td class="num" data-label="Amount"><strong>{{ line.amount|naira }}</strong></td>
+          {% if editor %}<td class="c3-cost-act"><form id="line-{{ line.pk }}" class="qa-line-actions" method="post" action="{% url 'qa_case:cost_line' case.pk line.pk %}" hx-post="{% url 'qa_case:cost_line' case.pk line.pk %}" hx-target="#qa-panel" hx-disabled-elt="find button">{% csrf_token %}<input type="hidden" name="tab" value="cost">
+              {% if editor == "audit" %}<input class="input c3-audit-note" name="note" placeholder="Audit note" aria-label="Audit note for {{ line.role_on_exercise }}" required>{% endif %}
+              {% if line.rate.unit == "per_day" or editor == "audit" %}<button class="btn btn-xs btn-subtle" type="submit" name="op" value="save">Save</button>{% endif %}
+              <button class="btn btn-xs btn-subtle qa-btn-reject" type="submit" name="op" value="remove" aria-label="Remove {{ line.role_on_exercise }}" title="Remove this line">{% icon "trash" 13 %}</button>
+            </form></td>{% endif %}
         </tr>
-        {% empty %}<tr><td colspan="{% if editor %}6{% else %}5{% endif %}" class="qa-muted">No lines yet.</td></tr>{% endfor %}
+        {% endfor %}
       </tbody>
-      <tfoot><tr><td colspan="4">Total</td><td class="num">{{ sheet.total|naira }}</td>{% if editor %}<td></td>{% endif %}</tr></tfoot>
+      <tfoot><tr><th scope="row" colspan="4">Total{% if not rates_confirmed %} (provisional){% endif %}</th><td class="num">{{ sheet.total|naira }}</td>{% if editor %}<td class="c3-cost-act"></td>{% endif %}</tr></tfoot>
     </table>
   </div>
+  {% else %}
+  <div class="c3-empty">{% icon "sheet" 22 "2" %}<p><strong>No cost lines yet.</strong>{% if editor == "department" %} Press <em>Calculate from the state's rates</em> for the standard lines, or add one below.{% elif editor %} Add a line below.{% else %} The desk officer builds the sheet at stage 2.{% endif %}</p></div>
+  {% endif %}
+
   {% if editor %}
-  <div class="qa-card__body">
-    <h3 class="qa-h3">Add a line</h3>
-    <form class="qa-cost-add" method="post" action="{% url 'qa_case:cost_add' case.pk %}" hx-post="{% url 'qa_case:cost_add' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="cost">
-      <div class="qa-field"><label for="cl-rate">Rate</label><select class="input" id="cl-rate" name="rate" required><option value="">Choose…</option>{% for r in rates %}<option value="{{ r.pk }}">{{ r.role }} — {{ r.amount|naira }} {{ r.get_unit_display|lower }}</option>{% endfor %}</select></div>
-      <div class="qa-field"><label for="cl-days">Days</label><input class="input" id="cl-days" name="days" value="1" inputmode="decimal"></div>
-      <div class="qa-field"><label for="cl-role">Role on the exercise</label><input class="input" id="cl-role" name="role_on_exercise" placeholder="e.g. Team lead"></div>
-      <div class="qa-field"><label for="cl-staff">Person <span class="qa-muted">(optional)</span></label><select class="input" id="cl-staff" name="staff"><option value="">—</option>{% for st in staff_choices %}<option value="{{ st.pk }}">{{ st }}{% if st.department %} · {{ st.department.name }}{% endif %}</option>{% endfor %}</select></div>
-      {% if editor == "audit" %}<div class="qa-field"><label for="cl-note">Audit note</label><input class="input" id="cl-note" name="note" required></div>{% endif %}
-      <button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add line</button>
+  <div class="c3-sub">
+    <h3>Add a line</h3>
+    <form class="c3-form c3-cost-add" method="post" action="{% url 'qa_case:cost_add' case.pk %}" hx-post="{% url 'qa_case:cost_add' case.pk %}" hx-target="#qa-panel" hx-disabled-elt="#cl-add-btn">{% csrf_token %}<input type="hidden" name="tab" value="cost">
+      <div class="qa-field c3-cost-add__rate"><label for="cl-rate">Rate (who it is for) <span class="qa-req" aria-hidden="true">*</span></label>
+        <select class="input" id="cl-rate" name="rate" required hx-get="{% url 'qa_case:cost_people' case.pk %}" hx-trigger="change" hx-target="#cl-person-wrap" hx-swap="outerHTML" hx-indicator="#cl-person-wrap" hx-disabled-elt="#cl-add-btn">
+          <option value="">Choose a rate…</option>{% for r in rates %}<option value="{{ r.pk }}"{% if cost_rate and cost_rate.pk == r.pk %} selected{% endif %}>{{ r.role }} — {{ r.amount|naira }} {{ r.get_unit_display|lower }}</option>{% endfor %}</select></div>
+      <div class="qa-field c3-cost-add__days"><label for="cl-days">Days</label><input class="input" id="cl-days" name="days" type="number" step="0.5" min="0.5" max="60" value="1" inputmode="decimal" aria-describedby="cl-days-help"><small id="cl-days-help" class="c3-small c3-muted">Per-day rates only</small></div>
+      <div class="qa-field c3-cost-add__role"><label for="cl-role">Role on this exercise <span class="qa-muted">(optional)</span></label><input class="input" id="cl-role" name="role_on_exercise" maxlength="120" placeholder="e.g. Team lead"></div>
+      {% include "accreditation/case/_cost_person.html" %}
+      {% if editor == "audit" %}<div class="qa-field c3-cost-add__note"><label for="cl-note">Audit note <span class="qa-req" aria-hidden="true">*</span></label><input class="input" id="cl-note" name="note" required></div>{% endif %}
+      <div class="c3-cost-add__go"><button class="btn btn-primary" type="submit" id="cl-add-btn">{% icon "plus" 16 %} Add line</button></div>
     </form>
   </div>
   {% endif %}
-  <div class="qa-cost-total"><span>Total{% if not rates_confirmed %} (provisional){% endif %}</span><strong>{{ sheet.total|naira }}</strong></div>
 </section>
-{% if sheet %}<section class="qa-card"><div class="qa-card__body"><dl class="qa-kv">
-  <dt>Prepared by</dt><dd>{{ sheet.prepared_by|who }}</dd><dt>Audited by</dt><dd>{{ sheet.audited_by|who }}</dd><dt>Approved by (ES)</dt><dd>{{ sheet.approved_by|who }}{% if sheet.approved_at %} · {{ sheet.approved_at|date:"j M Y" }}{% endif %}</dd>
-</dl></div></section>{% endif %}
+{% if sheet %}<section class="c3-sec c3-sec--quiet" aria-label="Sign-off"><dl class="c3-signoff">
+  <div><dt>Prepared by</dt><dd>{{ sheet.prepared_by|who }}</dd></div><div><dt>Audited by</dt><dd>{{ sheet.audited_by|who }}</dd></div><div><dt>Approved by (ES)</dt><dd>{{ sheet.approved_by|who }}{% if sheet.approved_at %} · {{ sheet.approved_at|date:"j M Y" }}{% endif %}</dd></div>
+</dl></section>{% endif %}

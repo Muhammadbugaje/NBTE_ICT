@@ -1,28 +1,30 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 
 {% block title %}My tickets · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}My tickets{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}">
 {% endblock %}
 {% block extra_js %}
-  <script src="{% static 'js/tickets.js' %}?v=2" defer></script>
+  <script src="{% static 'js/tickets.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
-<div class="tk-page">
-  <header class="tk-page-head">
+<div class="tk-page wk-page" data-qa-area="tickets">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tickets">
     <div>
+      <span class="qa-eyebrow">{% icon "help" 14 "2.2" %} Tickets · My tickets</span>
       <h1>My tickets</h1>
-      <p>{{ total }} ticket{{ total|pluralize }} you've raised.</p>
+      <p>Tickets you have raised. Follow progress, reply to the team and rate the fix once it is resolved.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'tickets:create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New ticket</a>
+        <a href="{% url 'tickets:list' %}" class="btn btn-subtle">{% icon "list" 16 "2.2" %} All tickets</a>
+      </div>
     </div>
-    <div class="tk-page-head-actions">
-      <a href="{% url 'tickets:create' %}" class="tk-btn tk-btn-primary">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New ticket
-      </a>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong>{{ total|default:0 }}</strong><span>Ticket{{ total|pluralize }}</span></div>
     </div>
   </header>
 

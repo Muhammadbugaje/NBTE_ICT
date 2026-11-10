@@ -265,6 +265,7 @@
 .qa-doc__name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-weight: var(--fw-semibold); }
 .qa-doc__meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; color: var(--text-muted); font-size: var(--fs-xs); }
 .qa-doc__remark { margin-top: 8px; padding: 8px 12px; border-inline-start: 1px solid var(--danger); border-radius: var(--radius-sm); background: var(--danger-subtle); color: var(--danger-fg); font-size: var(--fs-sm); }
+.qa-doc__note { margin-top: 8px; padding: 8px 12px; border-inline-start: 1px solid var(--success); border-radius: var(--radius-sm); background: var(--success-subtle); color: var(--success-fg); font-size: var(--fs-sm); display: flex; gap: 6px; align-items: flex-start; }
 .qa-doc__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .qa-doc.is-flash { animation: qa-flash 1.4s var(--ease-standard); }
 @media (max-width: 767px) { .qa-doc { padding: 14px 16px; } }
@@ -382,8 +383,16 @@
 .qa-fieldset { margin: 0; padding: 0; border: 0; }
 .qa-fieldset + .qa-fieldset { margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--divider); }
 .qa-fieldset legend { margin-bottom: var(--space-3); font-family: var(--font-display); font-size: 1rem; font-weight: var(--fw-bold); }
-.qa-field { display: grid; gap: 6px; min-width: 0; }
+.qa-field { display: grid; gap: 6px; min-width: 0; align-content: start; }
 .qa-field > label, .qa-field > .qa-field__label { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+/* Fields side by side stay on the same line: the label always reserves two
+   lines, so a long label never pushes its input below the one next to it. */
+.qa-fields .qa-field:not(.qa-field--check) > label,
+.qa-fields .qa-field:not(.qa-field--check) > .qa-field__label {
+  min-height: 2.6em;
+  display: flex;
+  align-items: flex-end;
+}
 .qa-field .input { width: 100%; }
 .qa-field__help { color: var(--text-muted); font-size: var(--fs-xs); line-height: var(--lh-normal); }
 .qa-field__error { color: var(--danger-fg); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
@@ -500,5 +509,55 @@
 .qa-summary::-webkit-details-marker { display: none; }
 details[open] > .qa-summary .qa-summary__toggle { display: none; }
 .qa-rowlink__side .qa-chip { max-width: 100%; white-space: normal; text-align: end; }
+/* v2.3: fee rows have no leading badge — two columns (description | amount + status), wrapping freely;
+   in a narrow card or on a phone the amount and status drop below the description. */
+.qa-rowlink.qa-rowlink--fee { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+.qa-rowlink--fee .qa-rowlink__title { white-space: normal; overflow-wrap: anywhere; }
+.qa-rowlink--fee .qa-rowlink__meta { overflow-wrap: anywhere; }
+.qa-rowlink--fee .qa-rowlink__side { grid-column: 2; min-width: 0; }
+.qa-rowlink--fee .qa-rowlink__amount { white-space: nowrap; }
+@container (max-width: 420px) {
+  .qa-rowlink.qa-rowlink--fee { grid-template-columns: minmax(0, 1fr); }
+  .qa-rowlink--fee .qa-rowlink__side { grid-column: 1; justify-items: start; text-align: start; }
+}
+@media (max-width: 767px) {
+  .qa-rowlink.qa-rowlink--fee { grid-template-columns: minmax(0, 1fr); }
+  .qa-rowlink--fee .qa-rowlink__side { grid-column: 1; justify-items: start; text-align: start; }
+}
+.qa-card:has(> .qa-rowlist > li > .qa-rowlink--fee) { container-type: inline-size; }
 .input[type=file] { padding: 8px; height: auto; min-height: 44px; }
 .input[type=file]::file-selector-button { margin-inline-end: 10px; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text); font: inherit; font-weight: var(--fw-semibold); cursor: pointer; }
+
+/* v2.1 Phase 0 (Q1): sticky "Submit programmes to NBTE" bar */
+.qa-submitbar { position: sticky; inset-block-end: 12px; z-index: 2; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; margin: 0 12px 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg, 16px); background: var(--surface-glass-strong, var(--surface)); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px); box-shadow: var(--shadow-md); }
+.qa-submitbar__icon { display: grid; place-items: center; inline-size: 40px; block-size: 40px; border-radius: 12px; background: var(--accent-subtle, var(--info-subtle)); color: var(--accent-fg, var(--info-fg)); }
+.qa-submitbar__text { display: grid; gap: 2px; min-width: 0; font-size: var(--fs-sm); }
+.qa-submitbar__text span { color: var(--text-muted); }
+.qa-submitbar form { margin: 0; }
+@media (max-width: 767px) {
+  .qa-submitbar { inset-block-end: calc(76px + env(safe-area-inset-bottom, 0px)); grid-template-columns: 1fr; gap: 8px; padding: 10px 12px; }
+  .qa-submitbar__icon { display: none; }
+  .qa-submitbar form { grid-column: 1 / -1; }
+  .qa-submitbar__btn { inline-size: 100%; justify-content: center; }
+}
+
+/* v2.1 Phase 0 (Q2): staff onboarding programme-clearance queue */
+.qa-progq { padding: 12px; }
+.qa-progq__app { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md, 12px); background: var(--surface); }
+.qa-progq__head { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
+.qa-progq__title { display: grid; gap: 2px; min-width: 0; }
+.qa-progq__title h3 { margin: 0; font-size: var(--fs-md, 1rem); }
+.qa-progq__side { display: grid; justify-items: end; gap: 4px; }
+.qa-progq__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.qa-progq__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; align-items: center; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2, var(--surface)); }
+.qa-progq__prog { display: grid; gap: 2px; min-width: 0; }
+.qa-progq__form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.qa-progq__form .input { flex: 1 1 180px; min-width: 0; }
+.qa-progq__state { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.qa-progq .btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 767px) {
+  .qa-progq__head { grid-template-columns: auto 1fr; }
+  .qa-progq__side { grid-column: 1 / -1; justify-items: start; grid-auto-flow: column; justify-content: start; }
+  .qa-progq__row { grid-template-columns: 1fr; }
+  .qa-progq__form, .qa-progq__state { justify-content: flex-start; }
+}

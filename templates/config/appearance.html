@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Appearance · Settings{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/appearance.css' %}">
+{% endblock %}
+{% block content %}
+{% comment %}
+  v2.1 Phase A (A9): Settings → Appearance (design/03-appearance.html).
+  The form saves through settings_service.save_setting (permission, audit log,
+  optional dual control). The preview is the real staff home in a same-origin
+  frame; appearance.js recolours it as you pick, before anything is saved.
+{% endcomment %}
+<div class="apx">
+  <nav class="apx-crumbs" aria-label="Breadcrumb">
+    <a href="{% url 'config:settings' %}">Settings</a>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+    <span aria-current="page">Appearance</span>
+  </nav>
+  <header class="apx-head">
+    <div class="apx-head__text">
+      <h1>Appearance</h1>
+      <p>Pick the portal's colours, the homepage scene and how much things move. Every page uses the same colour tokens, so one choice recolours the whole portal — the internal system and the Quality Assurance portal.</p>
+    </div>
+    <div class="btn-group apx-head__actions">
+      <a class="btn btn-ghost" href="{% url 'config:appearance_preview' 'landing' %}?palette={{ site.palette }}" target="_blank" rel="noopener" data-apx-open-preview>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        Preview the homepage
+      </a>
+    </div>
+  </header>
+
+  <div class="apx-layout">
+    <aside class="apx-preview" aria-label="Live preview">
+      <div class="apx-card apx-preview__card">
+        <div class="apx-preview__head">
+          <h2>Live preview</h2>
+          <span class="apx-live"><span aria-hidden="true"></span>Updates as you pick</span>
+        </div>
+        <div class="apx-frame" data-apx-frame>
+          <iframe src="{% url 'config:appearance_preview' 'home' %}?palette={{ site.palette }}&amp;motion=off{% if site.palette == 'custom' %}&amp;cp={{ site.custom_primary|slice:'1:' }}&amp;ca={{ site.custom_accent|slice:'1:' }}{% endif %}"
+                  title="Preview of the staff home with these choices" tabindex="-1" loading="lazy" data-apx-iframe></iframe>
+        </div>
+        <p class="apx-note">The preview shows your own home page. Nothing changes for anyone until you save.</p>
+      </div>
+    </aside>
+
+    {% include "config/_appearance_form.html" %}
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+  <script src="{% static 'js/appearance.js' %}" defer></script>
+{% endblock %}

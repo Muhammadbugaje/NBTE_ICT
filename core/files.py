@@ -57,7 +57,7 @@ def register_file_cleanup(model, fields):
     new_fields = set(fields) - existing
 
     if not new_fields:
-        logger.info(  # review L7: routine
+        logger.debug(
             "file cleanup: %s already registered (fields=%s)",
             model._meta.label, sorted(existing),
         )
@@ -65,7 +65,7 @@ def register_file_cleanup(model, fields):
 
     reg[model] = existing | new_fields
     _install_signals(model, sorted(reg[model]))
-    logger.info(  # review L7: routine
+    logger.debug(
         "file cleanup: registered %s -> %s",
         model._meta.label, sorted(new_fields),
     )

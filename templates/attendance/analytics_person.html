@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% load static qa_tags %}
+{% block title %}{{ p.name }} · Attendance analytics · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Attendance analytics{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/hr-leave.css' %}"><link rel="stylesheet" href="{% static 'css/attendance.css' %}">{% endblock %}
+{% block content %}
+<main class="hrd-page">
+  <header class="qa-hero nbte-hero att-qa-hero" data-qa-area="attendance">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'attendance:analytics' %}?from={{ first|date:'Y-m-d' }}&amp;to={{ last|date:'Y-m-d' }}">{% icon "back" 14 "2.4" %} Attendance analytics</a>
+      <span class="qa-eyebrow">{% icon "user" 14 "2.2" %} Attendance · {{ person.department.name|default:"Person" }}</span>
+      <h1>{{ p.name }}</h1>
+      <p>Day-by-day record for {{ first|date:"j M" }} – {{ last|date:"j M Y" }}.</p>
+      {% if person.pk != request.user.pk %}<div class="qa-hero__actions"><a class="btn btn-primary" href="{% url 'messaging:compose' %}?to={{ person.pk }}">{% icon "message" 15 "2.2" %} Message {{ person.first_name|default:"this person" }}</a></div>{% endif %}
+    </div>
+  </header>
+  <section class="hrd-card">{% include "attendance/_analytics_person.html" with standalone=1 %}</section>
+</main>
+{% endblock %}

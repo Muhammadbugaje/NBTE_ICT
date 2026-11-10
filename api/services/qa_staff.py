@@ -129,7 +129,12 @@ def summary(user, request):
     now = timezone.now()
     counts = {k: None for k in ("my_stages", "my_stages_overdue", "confirmations_waiting", "finance_queue",
                                 "finance_ready_for_final", "complaints_assigned", "applications_to_clear",
-                                "ssq_waiting", "inspections_upcoming")}
+                                "ssq_waiting", "inspections_upcoming", "my_work", "my_work_overdue")}
+    if any(access.values()):  # v2.1 N1: the same numbers as the web QA home
+        from qa_core.home import my_work_counts
+
+        work = my_work_counts(user)
+        counts["my_work"], counts["my_work_overdue"] = work["open"], work["overdue"]
     if access["cases"]:
         links = cs.my_stage_links(user)
         counts["my_stages"] = len(links)
@@ -312,7 +317,11 @@ def confirmation_row(pa, user):
             "status_label": pa.get_status_display(), "initiated_by": person(pa.initiated_by),
             "initiated_at": dt(pa.initiated_at), "expires_at": dt(pa.expires_at), "overdue": pa.is_overdue,
             "department": dept_ref(pa.scope_department), "decided_by": person(pa.decided_by),
-            "decided_at": dt(pa.decided_at), "can_decide": can, "decide_reason": why}
+            "decided_at": dt(pa.decided_at), "can_decide": can, "decide_reason": why,
+            # X47: which layer it waits for, and the trail (same as the website)
+            "stage": pa.stage, "layers": actions.layers_for(pa.policy), "confirmed_by": person(pa.confirmed_by),
+            "confirmed_at": dt(pa.confirmed_at),
+            "trail": [{"at": dt(when), "by": person(who), "what": what} for when, who, what in actions.trail(pa)]}
 
 
 def confirmation_list(user, *, tab="pending", action="", q=""):
@@ -451,6 +460,11 @@ def finance_detail(item, user, request):
         "final": _pass(item.final_decision, item.get_final_decision_display() if item.final_decision else None,
                        item.final_approver, item.final_decided_at, item.final_reason),
         "needs_second_check": needs_second,
+        # v2.1 F.4 / F.18
+        "verified_via": item.verified_via, "auto_first_pass": bool(item.auto_first_pass),
+        "provider_amount": money(item.provider_amount)[0] if item.provider_amount is not None else None,
+        "amount_matches": item.amount_matches,
+        "approvals_required": pay.approvals_required(item), "approvals_have": len(pay.approvals(item)),
         "dual_verify_threshold_display": money(pay._decimal("qa.payment.dual_verify_threshold", "5000000"))[1],
         "ready_for_final": ready, "ready_why": why,
         "rights": rights,
@@ -683,6 +697,7 @@ def complaint_row(c):
             "status_label": (c.status or "").replace("_", " ").capitalize(), "is_open": c.is_open,
             "institution": inst_ref(c.institution), "raised_by": person(c.raised_by), "raiser_type": c.raiser_type,
             "current_department": dept_ref(c.current_department), "current_assignee": person(c.current_assignee),
+            "assigned_officer": person(c.assigned_officer),
             "sla": {"state": sla.get("state", "none"), "pct": sla.get("pct", 0), "left": sla.get("left", ""),
                     "due": dt(sla.get("due"))},
             "created_at": dt(c.created_at)}
@@ -702,7 +717,8 @@ def complaint_detail(c, user, request):
     rights = csvc.detail_rights(user, c)
     stages = c.stages.select_related("assigned_department", "assigned_to").order_by("entered_at", "id")
     actions = [{"code": t.action_code, "label": t.label, "requires_remark": t.requires_remark,
-                "needs_referral_target": t.action_code == "refer"} for t in rights["actions"]]
+                "needs_referral_target": t.action_code == "refer",
+                "needs_officer": t.action_code == "assign"} for t in rights["actions"]]
     return {
         **complaint_row(c),
         "body": c.body,
@@ -723,7 +739,9 @@ def complaint_detail(c, user, request):
                         .select_related("escalated_to", "by").order_by("at")],
         "rights": {"can_write": rights["can_write"], "can_write_internal": rights["internal"],
                    "can_act": rights["can_act"], "act_why": rights["act_why"], "actions": actions,
-                   "can_escalate": rights["can_escalate"]},
+                   "can_escalate": rights["can_escalate"], "read_only": rights["read_only"],
+                   "watch_reason": rights["watch_reason"], "is_director": rights["is_director"],
+                   "is_officer": rights["is_officer"], "officers": [person(u) for u in rights["officers"]]},
     }
 
 

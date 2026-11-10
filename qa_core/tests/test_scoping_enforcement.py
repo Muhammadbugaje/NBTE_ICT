@@ -297,7 +297,7 @@ def test_layer3_cross_tenant_requests_answer_404(tenants, make_user, portal_host
         for pk in (tenants["b"].pk, tenants["b_user"].pk, b_pending.pk):
             r = portal.get(_fill(route, pk))
             assert r.status_code not in (200, 403) or "password/set" in route, (route, r.status_code)
-    page = portal.get("/").content.decode()
+    page = portal.get("/dashboard/").content.decode()
     assert "Alpha milestone" in page and "Bravo" not in page and "BBB" not in page
 
     # --- internal QA URLconf, as a DPAP officer, with B's (VTSD) objects

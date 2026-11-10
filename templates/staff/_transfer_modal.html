@@ -6,22 +6,15 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
     <h3 class="modal-title" id="sf-transfer-title">Transfer {{ staff.full_name }}</h3>
-    <p class="sf-sub">Now: <strong>{{ staff.department.name|default:"no department" }}{% if staff.office %} · {{ staff.office.name }}{% endif %}</strong>. The move is added to the staff file.</p>
+    <p class="sf-sub">Now: <strong>{{ staff.department.name|default:"no department" }}</strong>. The move is added to the staff file.</p>
     <form method="post" action="{% url 'staff:transfer' staff.pk %}" class="sf-transfer-form">
       {% csrf_token %}
-      <div class="promo-two">
+      <div>
         <div class="field">
-          <label for="sf-dept">New department or zonal office</label>
+          <label for="sf-dept">New department, unit or office</label>
           <select id="sf-dept" name="department" class="input">
             <option value="">Keep {{ staff.department.name|default:"—" }}</option>
-            {% for d in transfer_departments %}{% if d.pk != staff.department_id %}<option value="{{ d.pk }}">{{ d.name }}</option>{% endif %}{% endfor %}
-          </select>
-        </div>
-        <div class="field">
-          <label for="sf-office">Office / unit <span class="promo-optional">optional</span></label>
-          <select id="sf-office" name="office" class="input">
-            <option value="">{% if staff.office %}Keep {{ staff.office.name }}{% else %}None{% endif %}</option>
-            {% for o in transfer_offices %}{% if o.pk != staff.office_id %}<option value="{{ o.pk }}">{{ o.name }}</option>{% endif %}{% endfor %}
+            {% for d in transfer_departments %}{% if d.pk != staff.department_id %}<option value="{{ d.pk }}">{{ d.name }}{% if d.kind != "department" %} ({{ d.kind_label }}){% endif %}</option>{% endif %}{% endfor %}
           </select>
         </div>
       </div>

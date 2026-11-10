@@ -1,0 +1,30 @@
+{% if not fragment_only %}<div id="office-qr" hx-get="{% url 'attendance:office_qr' p.location.pk %}" hx-trigger="every {{ p.seconds_left }}s" hx-swap="outerHTML">{% endif %}
+<section class="qr-panel" data-qr-left="{{ p.seconds_left }}" data-qr-rot="{{ p.rotation }}">
+  <div class="qr-ring">
+    <svg class="qr-progress" viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="qr-track" cx="50" cy="50" r="47"></circle>
+      <circle class="qr-arc" cx="50" cy="50" r="47"></circle>
+    </svg>
+    {% if qr %}
+      <div class="qr-code" role="img" aria-label="Office QR code for {{ p.location.name }}">{{ qr|safe }}</div>
+    {% else %}
+      <div class="qr-closed"><strong>Closed</strong><br>QR and codes show during office hours on working days.</div>
+    {% endif %}
+  </div>
+  <div class="qr-info">
+    <span class="hrd-eyebrow">Office attendance</span>
+    <h1>{{ p.location.name }}</h1>
+    <p>Scan with your phone camera to check in, or to check out when you leave.</p>
+    {% if p.code %}
+      <div class="qr-digits" aria-label="Current office code">{{ p.code }}</div>
+      <p class="hrd-sub">Or type this code on the attendance page.</p>
+    {% endif %}
+    {% if qr %}<div class="qr-count"><span class="status-dot"></span> New QR in <b data-qr-count>{{ p.seconds_left }} s</b></div>{% endif %}
+    <ol class="qr-steps">
+      <li>Open the camera and point it at the code.</li>
+      <li>Tap the link and sign in if asked.</li>
+      <li>Confirm. A QR older than {{ p.rotation }} seconds is refused.</li>
+    </ol>
+  </div>
+</section>
+{% if not fragment_only %}</div>{% endif %}

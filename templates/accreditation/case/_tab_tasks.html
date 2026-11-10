@@ -13,8 +13,7 @@
         <td>{% if link.closed_at %}{{ link.closed_at|date:"j M, H:i" }}<br><span class="qa-small qa-muted">{{ link.close_reason|humanize_code }}</span>{% else %}<span class="qa-chip qa-tone-pending">Open</span>{% endif %}</td>
         {% if reassign_choices %}<td>{% if link.can_reassign %}
           <form class="qa-inline-form" method="post" action="{% url 'qa_case:reassign' case.pk link.pk %}" hx-post="{% url 'qa_case:reassign' case.pk link.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="tasks">
-            <label class="sr-only" for="ra-{{ link.pk }}">New holder</label>
-            <select class="input" id="ra-{{ link.pk }}" name="to_user" required><option value="">Choose…</option>{% for u in reassign_choices %}<option value="{{ u.pk }}">{{ u|who }}{% if u.department %} · {{ u.department.name }}{% endif %}</option>{% endfor %}</select>
+            {% with pk_s=link.pk|stringformat:"s" %}{% with ra_id="ra-"|add:pk_s %}{% include "qa_core/partials/_person_picker.html" with pp_name="to_user" pp_id=ra_id pp_label="New holder" pp_people=reassign_people pp_required=True pp_placeholder="Choose the new holder" %}{% endwith %}{% endwith %}
             <button class="btn btn-xs btn-subtle" type="submit">Reassign</button>
           </form>{% endif %}</td>{% endif %}
       </tr>

@@ -1,0 +1,30 @@
+{% load qa_tags %}
+{% comment %}
+  "Next action" card (accreditation.journey.next_actions). Context: journey_actions.
+  Approve / Confirm act in one click; Reject asks for a reason.
+{% endcomment %}
+{% if journey_actions %}
+<section class="ux-card ob-next" aria-labelledby="ob-next-h" data-next-actions>
+  <header class="ux-card__head"><div><h2 id="ob-next-h">Next action</h2><p>The onboarding step waiting for you, oldest and overdue first.</p></div></header>
+  <ul class="qh-items" role="list">
+    {% for a in journey_actions %}
+    <li class="{% if a.overdue %}is-overdue{% endif %}" data-next-kind="{{ a.kind }}">
+      <a href="{{ a.url }}"><strong>{{ a.title }}</strong></a>
+      <span class="qh-items__s">{{ a.detail }}</span>
+      {% if a.due %}<span class="ux-chip {% if a.overdue %}ux-chip--red{% else %}ux-chip--gold{% endif %}">{% if a.overdue %}Overdue · {% else %}Due {% endif %}{{ a.due|date:"j M" }}</span>{% endif %}
+      <span class="ob-next__do">
+      {% if a.method == "post" %}
+        <form method="post" action="{{ a.post_url }}" style="display:inline">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-sm btn-primary" type="submit">{{ a.button_label }}</button></form>
+        {% if a.reject_url %}<details style="display:inline-block"><summary class="btn btn-sm btn-subtle">Reject</summary>
+          <form method="post" action="{{ a.reject_url }}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <label class="qa-field"><span>Reason</span><input class="input" name="remark" required minlength="3"></label>
+            <button class="btn btn-sm btn-subtle" type="submit">Reject approval</button></form></details>{% endif %}
+      {% else %}
+        <a class="btn btn-sm btn-primary" href="{{ a.url }}">{{ a.button_label }}</a>
+      {% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load qa_tags %}
+{% block title %}Import finished · Facilities &amp; equipment · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Facilities &amp; equipment{% endblock %}
+{% block content %}
+<div class="fx">
+  <header class="qa-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "check" 14 "2.2" %} Smart Excel import{% if r.file %} · {{ r.file }}{% endif %}</span>
+      <h1 data-qa-focus>Import finished</h1>
+      <p>{{ r.items_created }} item{{ r.items_created|pluralize }} added and {{ r.items_updated }} updated across {{ r.programmes|length }} programme{{ r.programmes|length|pluralize }}; {{ r.items_unchanged }} were already up to date.{% if r.masters_created %} {{ r.masters_created }} programme{{ r.masters_created|pluralize }} added to the national programme list.{% endif %}</p>
+      <div class="qa-hero__actions">
+        <a class="btn btn-primary" href="{% url 'facilities:index' %}">{% icon "layers" 16 %} Open the register</a>
+        <a class="btn btn-subtle" href="{% url 'facilities:smart_export' %}">{% icon "download" 16 %} Export (.xlsx)</a>
+        <a class="btn btn-subtle" href="{% url 'facilities:smart_import' %}">{% icon "upload" 16 %} Import another file</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--success"><strong>{{ r.programmes_created }}</strong><span>Programmes created</span></div>
+      <div class="qa-stat qa-stat--info"><strong>{{ r.facilities_created }}</strong><span>Facilities created</span></div>
+      <div class="qa-stat qa-stat--success"><strong>{{ r.items_created }}</strong><span>Items added</span></div>
+      <div class="qa-stat"><strong>{{ r.masters_linked }}</strong><span>Linked to programme list</span></div>
+    </div>
+  </header>
+  <ol class="fx-steps" aria-label="Steps"><li><b>1</b> Upload</li><li><b>2</b> Check &amp; decide</li><li class="is-on" aria-current="step"><b>3</b> Done</li></ol>
+  {% for m in messages %}<div class="alert alert-{{ m.tags }}">{{ m }}</div>{% endfor %}
+  <section class="fx-kpis" aria-label="Details">
+    <div class="fx-kpi is-new"><span>Programme list rows created</span><strong>{{ r.masters_created }}</strong></div>
+    <div class="fx-kpi is-upd"><span>Programmes updated</span><strong>{{ r.programmes_updated }}</strong></div>
+    <div class="fx-kpi"><span>Programmes left out</span><strong>{{ r.programmes_skipped }}</strong></div>
+    <div class="fx-kpi is-upd"><span>Facilities renamed / re-ordered</span><strong>{{ r.facilities_updated }}</strong></div>
+    <div class="fx-kpi {% if r.items_deactivated %}is-warn{% endif %}"><span>Items marked inactive</span><strong>{{ r.items_deactivated }}</strong></div>
+  </section>
+  <section class="card fx-card" aria-labelledby="fx-done">
+    <h2 id="fx-done">Programmes imported</h2>
+    <div class="fx-table-wrap"><table class="fx-table">
+      <thead><tr><th>Programme</th><th>Programme list</th><th class="num">Items added</th><th class="num">Updated</th></tr></thead>
+      <tbody>{% for p in r.programmes %}<tr class="{% if not p.new and not p.updated %}is-same{% endif %}"><td><a href="{% url 'facilities:programme' p.slug %}">{{ p.name }}</a></td><td>{{ p.master|default:"— not linked" }}</td><td class="num">{{ p.new }}</td><td class="num">{{ p.updated }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+</div>
+{% include "facilities/_smart_styles.html" %}
+{% endblock %}

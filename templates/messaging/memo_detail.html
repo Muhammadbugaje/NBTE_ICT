@@ -1,21 +1,25 @@
 {% extends "base.html" %}
-{% load ux_tags %}
+{% load ux_tags qa_tags %}{% load brand %}
 {% load static %}
 
 {% block title %}{{ memo.reference }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{{ memo.reference }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=8">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="memo-page memo-page-detail">
-  <a href="{% url 'messaging:memo_list' %}" class="msg-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Memos
-  </a>
+  <header class="qa-hero nbte-hero memo-qa-hero" data-qa-area="memos">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'messaging:memo_list' %}">{% icon "back" 14 "2.4" %} Memos</a>
+      <span class="qa-eyebrow">{% icon "file" 14 "2.2" %} Communication · Memo {{ memo.reference }}</span>
+      <h1>{{ memo.subject }}</h1>
+      <p><span class="memo-qa-hero__status is-{{ memo.status }}">{{ memo.get_status_display }}</span> From <strong>{{ memo.sender.get_full_name|default:memo.sender.email }}</strong> · {{ memo.created_at|date:"j M Y" }}</p>
+    </div>
+  </header>
 
   {# ---- Status banner ---- #}
   {% if memo.status == "awaiting" %}
@@ -93,10 +97,10 @@
   {% endif %}
 
   {# ---- Action bar: top (downloads + draft/sender actions) ---- #}
-  <div class="memo-actions memo-actions-top">
+  <div class="memo-actions memo-actions-top btn-group">
 
     {% url 'messaging:memo_download_pdf' memo.pk as memo_pdf_url %}
-    {% if memo.status == "published" or can_manage %}
+    {% if memo.status == "published" or can_download_document %}
       {% with memo.reference|add:".pdf" as memo_pdf_name %}{% preview_button memo_pdf_url memo_pdf_name label="Preview" %}{% endwith %}
     {% endif %}
     {% if memo.status == "published" %}
@@ -110,7 +114,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download Word
       </a>
-    {% elif can_manage %}
+    {% elif can_download_document %}
       <a href="{% url 'messaging:memo_download_pdf' memo.pk %}"
          class="btn btn-ghost" target="_blank" rel="noopener"
          title="Watermarked preview — downloads become public once published.">
@@ -152,9 +156,30 @@
       <div class="memo-draft-banner">◆ CANCELLED ◆</div>
     {% endif %}
 
+    {% if outbound %}
+    {# v2.1 Phase E (M8): the external letterhead - signed by the ES #}
+    <header class="memo-xhead">
+      <img loading="lazy" decoding="async" src="{% brand_logo_url 'formal' %}" alt="NBTE" class="memo-xhead-logo">
+      <div class="memo-xhead-org">{{ letterhead.org }}</div>
+      <div class="memo-xhead-band">
+        <div><strong>Executive Secretary:</strong><br>{{ es_name }}{% if letterhead.postnominals %}, {{ letterhead.postnominals }}{% endif %}</div>
+        <div class="memo-xhead-right"><strong>ADDRESS:</strong> {{ letterhead.address }}{% if letterhead.email %}<br><strong>Email:</strong> {{ letterhead.email }}{% endif %}{% if letterhead.phone %}<br><strong>Tel:</strong> {{ letterhead.phone }}{% endif %}</div>
+      </div>
+    </header>
+    <div class="memo-letterhead-rule memo-xhead-rule"></div>
+    <div class="memo-kind-row"><span class="memo-kind-badge memo-kind-badge-{{ memo.kind }}">{{ memo.get_kind_display }}</span></div>
+    <dl class="memo-doc-meta">
+      <div><dt>Ref:</dt><dd>{{ external_ref }}</dd></div>
+      <div><dt>Date:</dt><dd>{{ memo.published_at|default:memo.created_at|date:"F j, Y" }}</dd></div>
+    </dl>
+    <dl class="memo-doc-fields">
+      <div><dt>To:</dt><dd>{% if memo.kind == "general" %}All NBTE staff and {{ institutions_label }}{% else %}{{ institutions_label }}{% endif %}</dd></div>
+      <div><dt>Subject:</dt><dd><strong>{{ memo.subject }}</strong></dd></div>
+    </dl>
+    {% else %}
     <header class="memo-letterhead">
       <div class="memo-letterhead-logo">
-        <img src="{% static 'img/NBTE_logo.png' %}" alt="NBTE">
+        <img loading="lazy" decoding="async" src="{% brand_logo_url 'formal' %}" alt="NBTE">
       </div>
       <div class="memo-letterhead-text">
         <div class="memo-letterhead-org">National Board for Technical Education</div>
@@ -197,6 +222,7 @@
         <dd>{{ memo.subject }}</dd>
       </div>
     </dl>
+    {% endif %}
 
     <div class="memo-doc-rule-thin"></div>
 
@@ -231,12 +257,23 @@
       </div>
     {% endif %}
 
+    {% if outbound %}
+    <div class="memo-doc-sign memo-xsign">
+      <div class="memo-xsign-caption">{% if memo.signed_as == "from" %}From the Executive Secretary{% elif memo.signed_as == "approved" %}Approved by the Executive Secretary{% else %}Awaiting the Executive Secretary's approval{% endif %}</div>
+      {% if es_signature %}<img loading="lazy" decoding="async" src="{{ es_signature }}" alt="Signature of the Executive Secretary" class="memo-xsign-img">{% endif %}
+      <div class="memo-doc-sign-line"></div>
+      <div class="memo-doc-sign-name">{{ es_name|upper }}</div>
+      <div class="memo-doc-sign-meta">Executive Secretary</div>
+      {% if memo.signed_as != "from" %}<div class="memo-doc-sign-meta memo-xsign-init">Initiated by {{ sender_name }}{% if sender_desig %}, {{ sender_desig }}{% endif %}</div>{% endif %}
+    </div>
+    {% else %}
     <div class="memo-doc-sign">
       <div class="memo-doc-sign-line"></div>
       <div class="memo-doc-sign-name">{{ sender_name|upper }}</div>
       {% if sender_desig %}<div class="memo-doc-sign-meta">{{ sender_desig }}</div>{% endif %}
       {% if sender_dept %}<div class="memo-doc-sign-meta">{{ sender_dept }}</div>{% endif %}
     </div>
+    {% endif %}
   </article>
 
   {# ---- Approval chain ---- #}
@@ -305,6 +342,7 @@
     <div class="memo-action-bar">
       <div class="memo-action-bar-info">
         <strong>Your decision</strong>
+        {% if outbound %}<p class="memo-xapprove-note">This letter goes to institutions on NBTE's letterhead with your signature, marked “Approved by the Executive Secretary”. Preview the PDF above before you approve.</p>{% endif %}
         <p class="muted">
           {% if current_step %}{{ current_step.name }}{% endif %}
           {% if current_step.instructions %} — {{ current_step.instructions }}{% endif %}
@@ -326,7 +364,7 @@
           </button>
           <button type="submit" class="btn btn-primary">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            Approve
+            {% if outbound %}Approve and send to {{ institutions_label|lower|truncatechars:40 }}{% else %}Approve{% endif %}
           </button>
         </div>
       </form>
@@ -434,6 +472,18 @@
   </div>
 
   {# ---- Acknowledgment stats ---- #}
+  {% if outbound and memo.status == "published" and inst_receipts %}
+    <section class="memo-stats memo-inst-stats" aria-label="Institutions">
+      <header class="memo-chain-head"><h2>Institutions</h2>
+        <p class="muted">{{ inst_total }} received · {{ inst_read }} read · {{ inst_acked }} acknowledged</p></header>
+      <ul class="memo-inst-receipts" role="list">
+        {% for r in inst_receipts %}
+          <li><span>{{ r.institution.name }}</span><small>{% if r.acknowledged_at %}Acknowledged {{ r.acknowledged_at|date:"j M" }}{% elif r.read_at %}Read {{ r.read_at|date:"j M" }}{% else %}Not opened{% endif %}</small></li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
   {% if show_stats and memo.requires_acknowledgment and memo.status == "published" %}
     <section class="memo-stats">
       <header class="memo-stats-head">
@@ -532,5 +582,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/memo.js' %}?v=2" defer></script>
+<script src="{% static 'js/memo.js' %}" defer></script>
 {% endblock %}

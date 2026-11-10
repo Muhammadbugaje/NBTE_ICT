@@ -5,24 +5,16 @@
 
 {% block mm_page_class %}mm-page-narrow{% endblock %}
 
+{% block mm_hero %}
+{% if route %}{% url 'messaging_manage:route_detail' route.pk as back_url %}{% else %}{% url 'messaging_manage:route_list' as back_url %}{% endif %}
+{% if mode == "create" %}
+  {% include "partials/hero.html" with icon="send" eyebrow="Memo routing · Routes" title="New memo route" lede="Give the route a name and decide how it handles same-rank approvers." back_url=back_url back_label="Back" %}
+{% else %}
+  {% include "partials/hero.html" with icon="send" eyebrow="Memo routing · Routes" title=route.name lede="Edit this route's name, code and same-rank behaviour." back_url=back_url back_label="Back" %}
+{% endif %}
+{% endblock %}
+
 {% block mm_content %}
-
-<a href="{% if route %}{% url 'messaging_manage:route_detail' route.pk %}{% else %}{% url 'messaging_manage:route_list' %}{% endif %}" class="mm-back">
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-  Back
-</a>
-
-<header class="mm-hero">
-  <div class="mm-hero-inner">
-    <div class="mm-hero-icon">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    </div>
-    <div>
-      <h1>{% if mode == "create" %}New memo route{% else %}Edit route{% endif %}</h1>
-      <p>Give it a name and decide how it handles same-rank actors.</p>
-    </div>
-  </div>
-</header>
 
 <section class="mm-card">
   <div class="mm-card-body">

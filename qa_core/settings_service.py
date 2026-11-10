@@ -18,7 +18,10 @@ DEFAULT_EDIT_PERMISSION = "qa_core.edit_qa_settings"
 
 
 def qa_entries():
-    return ConfigEntry.objects.filter(key__startswith="qa.", scope="global")
+    # v2.2: the honoraria.* rows belong to QA too (they were editable nowhere).
+    from django.db.models import Q
+
+    return ConfigEntry.objects.filter(Q(key__startswith="qa.") | Q(key__startswith="honoraria."), scope="global")
 
 
 def edit_permission(entry):

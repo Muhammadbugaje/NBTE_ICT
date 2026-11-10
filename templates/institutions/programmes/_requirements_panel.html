@@ -1,0 +1,60 @@
+{% load qa_tags %}
+{% include "institutions/programmes/_subnav.html" %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "institution" 14 "2.2" %} Programmes</span>
+    <h1 data-qa-focus>Curriculum requirements</h1>
+    <p>The quantities a programme must have — same catalogue the SSQ builders draw from. Editing follows the catalogue rule: adding writes a new version, nothing already submitted changes.</p>
+  </div>
+</header>
+<section class="qa-card" aria-label="Requirements">
+  <form class="qa-toolbar" role="search" method="get" action="{% url 'qa_programmes:requirements' %}">
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Item name" autocomplete="off"></label>
+    <select class="input qa-select" name="programme" aria-label="Programme">
+      <option value="">All programmes</option>
+      {% for name in programmes %}<option value="{{ name }}"{% if filters.programme == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+    <select class="input qa-select" name="kind" aria-label="Kind">
+      <option value="">Facilities &amp; equipment</option>
+      {% for value, label in kinds %}<option value="{{ value }}"{% if filters.kind == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <select class="input qa-select" name="show" aria-label="Show">
+      <option value="active"{% if show == 'active' %} selected{% endif %}>Active</option>
+      <option value="all"{% if show == 'all' %} selected{% endif %}>Retired too</option>
+    </select>
+    <button class="btn btn-subtle" type="submit">Show</button>
+  </form>
+
+  {% if can_catalogue %}
+  <form class="qa-form qa-form--toolbar" method="post" action="{% url 'qa_programmes:requirements_add' %}">{% csrf_token %}
+    <h2 class="qa-small qa-mt-sm">Add a requirement line</h2>
+    <div class="qa-fields">
+      <div class="qa-field"><label for="cat-prog-line">Programme <span class="qa-muted" aria-hidden="true">one programme; blank = whole category</span></label>
+        <input class="input" id="cat-prog-line" name="programme_name" list="cat-prog-list" value="{{ filters.programme|default:'' }}" placeholder="e.g. Computer Science">
+        <datalist id="cat-prog-list">{% for name in master_names %}<option value="{{ name }}"></option>{% endfor %}</datalist></div>
+      <div class="qa-field"><label for="cat-kind">Kind</label><select class="input" id="cat-kind" name="kind">
+        {% for value, label in kinds %}<option value="{{ value }}" {% if value == 'equipment' %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+      <div class="qa-field"><label for="cat-name">Item</label><input class="input" id="cat-name" name="name" required placeholder="e.g. Microscope"></div>
+      <div class="qa-field"><label for="cat-qty">Required quantity</label><input class="input" id="cat-qty" name="required_quantity" inputmode="decimal" value="1"></div>
+      <div class="qa-field"><label for="cat-unit">Unit</label><input class="input" id="cat-unit" name="unit" value="no."></div>
+      <div class="qa-field"><label for="cat-weight">Weight</label><input class="input" id="cat-weight" name="weight" inputmode="decimal" value="1"></div>
+      <div class="qa-field is-wide"><label for="cat-spec">Minimum specification</label><input class="input" id="cat-spec" name="min_spec" placeholder="Text or part numbers, optional"></div>
+      <div class="qa-field qa-field--check is-wide"><input type="checkbox" id="cat-crit" name="is_critical"><label for="cat-crit">Critical item (weight doubled)</label></div>
+    </div>
+    <div class="qa-form-actions"><button class="btn btn-primary" type="submit">Add requirement</button></div>
+  </form>
+  {% endif %}
+
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th scope="col">Programme / category</th><th scope="col">Item</th><th scope="col">Kind</th><th scope="col">Qty</th>
+      <th scope="col">Unit</th><th scope="col">Weight</th><th scope="col">v</th><th scope="col">Since</th>{% if can_catalogue %}<th scope="col"></th>{% endif %}</tr></thead>
+    <tbody>{% for item in items %}
+      <tr><td>{{ item.programme_name|default:item.category.name|default:"—" }} <span class="qa-small qa-muted">(v{{ item.version }})</span></td>
+        <td>{{ item.name }}{% if item.is_critical %} <span class="qa-chip qa-tone-danger">critical</span>{% endif %}</td>
+        <td>{{ item.get_kind_display }}</td><td class="num">{{ item.required_quantity }}</td>
+        <td>{{ item.unit }}</td><td>{{ item.weight|default:"1" }}</td><td>{{ item.version }}</td>
+        <td>{{ item.effective_from|date:"j M Y" }}</td>
+        {% if can_catalogue %}{% if item.is_active %}<td><form method="post" action="{% url 'qa_programmes:requirements_retire' item.pk %}">{% csrf_token %}<button class="btn btn-xs btn-danger" type="submit">Retire</button></form></td>{% else %}<td><span class="qa-chip">retired</span></td>{% endif %}{% endif %}</tr>
+    {% empty %}<tr><td colspan="9" class="qa-muted">Nothing in the catalogue{% if filters.kind or filters.programme %} that matches this filter{% else %} yet{% endif %}.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>

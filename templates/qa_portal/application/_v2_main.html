@@ -1,0 +1,60 @@
+{% load qa_tags %}{# v2.3: the application's action panels — one clear thing to do, with room around every button #}
+{% if returned_reviews %}
+<section class="qa-card" aria-labelledby="qa-ret-h" style="border-color:color-mix(in srgb,#e5484d 35%,var(--border))">
+  <header class="qa-card__head"><div><h2 id="qa-ret-h">{{ returned_reviews|length }} document{{ returned_reviews|length|pluralize }} to upload again</h2><p>Only these come back. Upload the new file and it goes straight back for review.</p></div></header>
+  <ul class="qa-rowlist" role="list">{% for r in returned_reviews %}
+    <li><a class="qa-rowlink" href="{% url 'qa_portal:documents' %}?state=returned"><span class="qa-rowlink__badge" style="background:color-mix(in srgb,#e5484d 12%,var(--surface));color:#b4262b">{% icon "alert" 18 %}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title" style="white-space:normal">{{ r.document.kind.name }}</span><span class="qa-rowlink__meta">{{ r.document.review_remark|default:r.director_remark }}</span></span><span class="qa-rowlink__side"><span class="btn btn-primary btn-sm">{% icon "upload" 14 %} Re-upload</span></span></a></li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% if app.status == "draft" %}
+<section class="pp-act pp-act--gold" id="qa-next" aria-labelledby="qa-pay-h">
+  {% if fee_timing == "after_clearance" %}
+    <span class="pp-act__kicker">{% icon "edit" 13 "2.4" %} Required first step</span>
+    <h2 id="qa-pay-h">Sign the declaration and start</h2>
+    <p>No payment is needed now. Your Chief Executive confirms that the information is true, and document uploads open straight away. The institutional processing fee is paid later — once NBTE has approved all your documents.</p>
+  {% else %}
+    <span class="pp-act__kicker">{% icon "card" 13 "2.4" %}{% if v3 %} Required first step{% else %} Last step{% endif %}</span>
+    <h2 id="qa-pay-h">{% if v3 %}Declare and pay before document processing{% else %}Declare and pay — you are submitted{% endif %}</h2>
+    <p>{% if v3 %}Institutional and processing fees for proposed {{ inst.institution_type.name }} accreditation. Document uploads open once NBTE Finance confirms the payment.{% else %}Processing fee for institutional accreditation. Your application submits itself once the payment is confirmed.{% endif %}</p>
+    <div class="pp-amount">{% if head.estimate and head.estimate.total %}<b>{{ head.estimate.total|naira }}</b><span>to pay after you declare</span>{% else %}<span>The amount is shown on the bill.</span>{% endif %}</div>
+  {% endif %}
+  {% if pay_blockers %}
+    <ul class="pp-blockers" role="list">{% for b in pay_blockers %}<li>{% icon "alert" 16 %} <span>{{ b }}</span></li>{% endfor %}</ul>
+  {% endif %}
+  {% if is_ce %}
+  <form method="post" action="{% url 'qa_portal:application_declare' %}">{% csrf_token %}
+    <label class="pp-declare"><input type="checkbox" name="declaration" required> <span>I confirm the information and documents are true and that I am authorised to apply on behalf of {{ inst.name }}.</span></label>
+    <div class="qa-form-actions">
+      {% if fee_timing == "after_clearance" %}
+        <button class="btn btn-primary btn-lg" type="submit"{% if pay_blockers or request.is_impersonating %} disabled{% endif %}>{% icon "edit" 16 %} Sign the declaration and start</button>
+      {% else %}
+        <button class="btn btn-primary btn-lg" type="submit"{% if pay_blockers or request.is_impersonating %} disabled{% endif %}>{% icon "card" 16 %} Declare and pay</button>
+      {% endif %}
+    </div>
+  </form>
+  {% else %}
+  <div class="pp-note pp-note--lock" role="note">{% icon "lock" 16 %}<span>Waiting for the Chief Executive to sign the declaration{% if fee_timing != "after_clearance" %} and pay{% endif %}. Only the Chief Executive's account can do this — ask them to sign in to the portal.</span></div>
+  {% endif %}
+</section>
+{% endif %}
+{% if v3 and app.status == "document_upload" %}
+<section class="pp-act pp-act--gold" id="qa-next" aria-labelledby="qa-doc-submit-h">
+  <span class="pp-act__kicker">{% icon "upload" 13 "2.4" %} Your next step</span>
+  <h2 id="qa-doc-submit-h">Upload your required documents</h2>
+  <p>{% if fee_timing == "after_clearance" %}Your declaration is signed.{% else %}NBTE Finance has confirmed your payment.{% endif %} Upload every required file, then the Chief Executive submits them for review. Each document goes to the NBTE department responsible for it.</p>
+  {% if document_blockers %}<ul class="pp-blockers" role="list">{% for b in document_blockers %}<li>{% icon "alert" 16 %} <span>{{ b }}</span></li>{% endfor %}</ul>
+  {% else %}<div class="pp-note" style="margin-bottom:16px">{% icon "check" 16 "2.4" %}<span>All required documents are uploaded.</span></div>{% endif %}
+  {% if is_ce %}
+  <form method="post" action="{% url 'qa_portal:application_submit' %}">{% csrf_token %}
+    <div class="qa-form-actions">
+      <button class="btn btn-primary btn-lg" type="submit"{% if document_blockers or request.is_impersonating %} disabled{% endif %}>{% icon "arrow" 16 "2.4" %} Submit documents to NBTE</button>
+      <a class="btn btn-subtle" href="{% url 'qa_portal:documents' %}">{% icon "file" 16 %} Open document checklist</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="pp-note pp-note--lock" role="note" style="margin-bottom:16px">{% icon "lock" 16 %}<span>Only the Chief Executive can submit these documents. Ask them to sign in after uploads are complete.</span></div>
+  <div class="qa-form-actions"><a class="btn btn-primary" href="{% url 'qa_portal:documents' %}">{% icon "upload" 16 %} Open document checklist</a></div>
+  {% endif %}
+</section>
+{% endif %}

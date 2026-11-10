@@ -38,6 +38,15 @@ def register_value_validator(value_type, func):
     _VALUE_VALIDATORS[value_type] = func
 
 
+# Per-key validators (v2.1 A9: the appearance colour validator). `func(entry)`
+# raises ValidationError; keyed by exact key.
+_KEY_VALIDATORS = {}
+
+
+def register_key_validator(key, func):
+    _KEY_VALIDATORS[key] = func
+
+
 class ConfigEntry(TimeStampedModel):
     """One admin-editable business-rule number/limit/list (doc 30 §5.3, NR-06).
     NEVER for secrets or deployment identity - those are env vars only.
@@ -150,6 +159,9 @@ class ConfigEntry(TimeStampedModel):
         validator = _VALUE_VALIDATORS.get(self.value_type)
         if validator is not None:
             validator(self)
+        key_validator = _KEY_VALIDATORS.get(self.key)
+        if key_validator is not None:
+            key_validator(self)
         self._check_lock()
 
     # -- locked keys (v1.1) ----------------------------------------------------
@@ -186,3 +198,56 @@ class ConfigEntry(TimeStampedModel):
         if self.is_locked:
             raise ValidationError(f"{self.key} is fixed by policy and cannot be deleted.")
         return super().delete(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# v2.1 Phase A (A5, A6, T-CONS-7): brand marks and slots (ported from EE Hub).
+# ---------------------------------------------------------------------------
+def _validate_brand_image(upload):
+    """PNG / JPEG / WebP only: SVG uploads are blocked in media (U7); the
+    built-in SVG marks live in static/img/brand/."""
+    import os
+
+    ext = os.path.splitext(getattr(upload, "name", "") or "")[1].lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise ValidationError("Upload a PNG, JPEG or WebP image (SVG uploads are not accepted).")
+    if getattr(upload, "size", 0) and upload.size > 2 * 1024 * 1024:
+        raise ValidationError("The image must be 2 MB or smaller.")
+
+
+class BrandLogo(TimeStampedModel):
+    """A mark the administrator can put in a slot (Settings → Branding).
+
+    Built-ins point at the SVG files in static/img/brand/ (light and dark
+    variants). Uploads (PNG/JPEG/WebP, optional dark version) override them
+    by being chosen for a slot. Which mark goes where is decided by the
+    settings keys brand.logo.primary / formal / app_icon / wordmark."""
+
+    AUDITED = True
+    MEDIA_SUBDIR = "branding"
+
+    code = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=80)
+    tagline = models.CharField(max_length=120, blank=True)
+    use_note = models.CharField(max_length=255, blank=True)
+    static_path = models.CharField(
+        max_length=200, blank=True,
+        help_text="Built-in marks: path under static/ (light grounds).")
+    static_path_dark = models.CharField(
+        max_length=200, blank=True, help_text="Built-in marks: path under static/ for dark grounds.")
+    image = models.ImageField(upload_to="branding/", blank=True, validators=[_validate_brand_image],
+                              help_text="Upload a PNG, JPEG or WebP (light grounds).")
+    image_dark = models.ImageField(upload_to="branding/", blank=True, validators=[_validate_brand_image],
+                                   help_text="Optional version for dark grounds.")
+    aspect = models.DecimalField(max_digits=5, decimal_places=3, default=decimal.Decimal("0.929"),
+                                 help_text="Width ÷ height, used to size the image without layout shift.")
+    is_builtin = models.BooleanField(default=False)
+    is_wordmark = models.BooleanField(default=False)
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "name"]
+        permissions = [("manage_branding", "Can choose and upload the site's logos")]
+
+    def __str__(self):
+        return self.name

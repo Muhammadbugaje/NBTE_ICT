@@ -4,45 +4,149 @@
   <span aria-hidden="true">/</span><a href="{% url 'qa_req:detail' req.pk %}" hx-get="{% url 'qa_req:detail' req.pk %}" hx-target="#qa-panel" hx-push-url="true">{{ req.reference }}</a>
   <span aria-hidden="true">/</span><span aria-current="page">{{ programme }} · v{{ ssq.version }}</span>
 </nav>
-<header class="qa-inst-head">
-  <span class="qa-inst-head__code" aria-hidden="true">{{ inst.code }}</span>
+<header class="qa-hero ssq-hero">
   <div>
-    <span class="qa-eyebrow">SSQ · {{ req.qa_type.name }} · template v{{ ssq.template.version }}</span>
+    <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} SSQ · {{ req.qa_type.name }} · template v{{ ssq.template.version }}</span>
     <h1 data-qa-focus>{{ programme }}</h1>
-    <div class="qa-inst-head__meta">
-      <span class="qa-chip {{ ssq.status|tone }}">{{ public }}</span>
-      <span>{{ inst.name }}</span>
-      <span>Version {{ ssq.version }}{% if ssq.supersedes_id %} (supersedes v{{ ssq.supersedes.version }}){% endif %}</span>
-      {% if submission %}<span>{% icon "clock" 14 %} Submitted {{ submission.submitted_at|date:"j M Y, H:i" }} by {{ submission.submitted_by|who }}</span>{% endif %}
+    <p>{{ inst.name }} <span class="qa-muted">({{ inst.code }})</span> · version {{ ssq.version }}{% if ssq.supersedes_id %} (supersedes v{{ ssq.supersedes.version }}){% endif %}{% if submission %} · submitted {{ submission.submitted_at|date:"j M Y, H:i" }} by {{ submission.submitted_by|who }}{% endif %}</p>
+    <div class="qa-hero__actions">
+      {% if can_review %}<a class="btn btn-primary" href="#rev-h">{% icon "check" 16 "2.4" %} Decide</a>{% endif %}
+      {% if can_submit_assessment %}<a class="btn btn-primary" href="#ssq-assess-h">{% icon "check" 16 "2.4" %} Submit assessment</a>{% endif %}
+      {% if can_assign %}<a class="btn btn-primary" href="#asg-h">{% icon "users" 16 %} Assign an officer</a>{% endif %}
+      {% if can_query %}<a class="btn btn-subtle" href="#rev-q">{% icon "message" 16 %} Raise query</a>{% endif %}
+      <a class="btn btn-subtle" href="{% url 'qa_req:detail' req.pk %}" hx-get="{% url 'qa_req:detail' req.pk %}" hx-target="#qa-panel" hx-push-url="true">{% icon "layers" 16 %} QA request</a>
     </div>
+  </div>
+  <div class="qa-hero__stats" aria-label="Status">
+    <div class="qa-stat"><strong class="ssq-hero__stage"><span class="qa-chip {{ who.tone }}">{{ who.label }}</span></strong><span>Stage</span></div>
+    <div class="qa-stat"><strong class="ssq-hero__name">{{ who.holder_label|default:"—" }}</strong><span>Now with</span></div>
+    <div class="qa-stat{% if who.overdue %} qa-stat--danger{% endif %}"><strong>{% if who.days is not None %}{{ who.days }}{% else %}—{% endif %}</strong><span>Days at this stage</span></div>
+    <div class="qa-stat"><strong>{{ who.department.name|default:"—" }}</strong><span>Handling department</span></div>
   </div>
 </header>
 
-{% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+{% if action_error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=action_error %}
+{% elif action_ok %}{% include "qa_core/partials/_callout.html" with kind="success" title=action_ok message=action_ok_body|default:action_ok %}{% endif %}
 {% if submission %}
-  <p class="qa-small qa-row qa-gap-sm qa-muted">{% icon "lock" 14 %} Immutable submission snapshot #{{ submission.version }} · checksum <span class="qa-mono">{{ submission.checksum|slice:":12" }}…</span> {% if checksum_ok %}<span class="qa-chip qa-tone-success">Verified</span>{% else %}<span class="qa-chip qa-tone-danger">Checksum mismatch</span>{% endif %}</p>
+  <p class="qa-small qa-row qa-gap-sm qa-muted ssq-integrity">{% icon "lock" 14 %} Immutable submission snapshot #{{ submission.version }} · checksum <span class="qa-mono">{{ submission.checksum|slice:":12" }}…</span> {% if checksum_ok %}<span class="qa-chip qa-tone-success">Verified</span>{% else %}<span class="qa-chip qa-tone-danger">Checksum mismatch</span>{% endif %}</p>
 {% else %}
   {% include "qa_core/partials/_callout.html" with title="Not submitted yet" message="This is a live preview of the institution's draft. Nothing here is final until they submit." %}
 {% endif %}
 
-<div class="qa-cols">
+<div class="qa-cols ssq-cols">
   <div class="qa-stack">
+    <section class="qa-card ssq-who-card" aria-labelledby="ssq-who-h">
+      <header class="qa-card__head"><div><span class="qa-eyebrow">Routing</span><h2 id="ssq-who-h">Who is handling this SSQ</h2>
+        <p>Handed over on submission to the department that handles {{ inst.name }}; its director assigns the officer and approves.</p></div></header>
+      <div class="qa-card__body">{% include "accreditation/qa/_ssq_who.html" with nudge_from="detail" %}</div>
+    </section>
     {% include "accreditation/qa/_snapshot.html" %}
   </div>
-  <aside class="qa-stack qa-sticky">
-    <section class="qa-card" aria-labelledby="rev-h">
-      <header class="qa-card__head"><div><h2 id="rev-h">Review</h2><p>{% if can_review %}Accept, or return with what must change.{% else %}{{ review_reason }}{% endif %}</p></div></header>
+  <aside class="qa-stack ssq-aside">
+    {% if can_assign or assignment %}
+    {# v2.1 Part 2.2: strict assignment — the director of the involved department (or the ES) picks one officer #}
+    <section class="qa-card qa-ssq-assignment" aria-labelledby="asg-h">
+      <header class="qa-card__head qa-ssq-assignment__head">
+        <div>
+          <span class="qa-eyebrow">Step 1 · assignment</span>
+          <h2 id="asg-h">Assessing officer</h2>
+          <p>{% if assignment %}Assigned to <strong>{{ assignment.assignee.get_full_name|default:assignment.assignee.email }}</strong> by {{ assignment.assigned_by|who:"the system" }}{% if assignment.due_at %} · due {{ assignment.due_at|date:"j M Y" }}{% endif %}.{% else %}Choose one officer from {{ who.department.name|default:"the handling department" }}. The SSQ stays private until that officer accepts.{% endif %}</p>
+        </div>
+        {% if assignment %}<span class="qa-chip qa-ssq-assignment__status">{{ assignment.get_status_display }}</span>{% endif %}
+      </header>
+      {% if can_assign %}
+      <form class="qa-card__body qa-ssq-assignment__form" method="post" action="{% url 'qa_req:ssq_assign' ssq.pk %}"
+            hx-post="{% url 'qa_req:ssq_assign' ssq.pk %}" hx-target="#qa-panel">
+        {% csrf_token %}
+        {% if assign_error %}<p class="qa-callout qa-callout--danger qa-ssq-assignment__error" role="alert">{{ assign_error }}</p>{% endif %}
+        {% if assign_suggested %}
+          <div class="qa-ssq-assignment__recommendation">
+            <div class="qa-ssq-assignment__recommendation-icon" aria-hidden="true">{% icon "rotate" 18 %}</div>
+            <div class="qa-ssq-assignment__recommendation-copy">
+              <span class="qa-ssq-assignment__label">Recommended by staff rotation</span>
+              <strong>{{ assign_suggested.get_full_name|default:assign_suggested.email }}</strong>
+              <span class="qa-small qa-muted">Balanced against recent assignments and current workload.</span>
+            </div>
+            <button class="btn btn-primary" type="submit" name="accept_suggestion" value="1">Assign recommended</button>
+          </div>
+          <div class="qa-ssq-assignment__divider"><span>or choose another officer</span></div>
+        {% endif %}
+        <div class="qa-field qa-ssq-assignment__field">
+          <label for="asg-officer">Select an officer <span class="qa-muted">{{ who.department.name|default:"Handling department" }}</span></label>
+          <select class="input" id="asg-officer" name="officer" data-pp-auto data-pp-noun="officer">
+            <option value="">Choose an officer…</option>
+            {% for u, n, ok, why in assign_candidates %}<option value="{{ u.pk }}"{% if not ok %} data-status="busy"{% endif %}>{{ u.get_full_name|default:u.email }} · {{ n }}/{{ assign_cap }} active reviews{% if why %} · {{ why|join:"; " }}{% endif %}</option>{% empty %}<option value="" disabled>No active officers in this department</option>{% endfor %}
+          </select></div>
+        <div class="qa-ssq-assignment__footer">
+          <label class="qa-field qa-ssq-assignment__reason" for="asg-reason">
+            <span>Reason for an exception <span class="qa-muted">(if skipping rotation or exceeding the cap)</span></span>
+            <input class="input" id="asg-reason" name="reason" maxlength="255" autocomplete="off">
+          </label>
+          {% if not assign_suggested %}<button class="btn btn-primary" type="submit">Assign officer</button>{% else %}<button class="btn btn-subtle" type="submit">Assign selected officer</button>{% endif %}
+        </div>
+      </form>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if can_submit_assessment or can_send_back %}
+    <section class="qa-card ssq-assess" aria-labelledby="ssq-assess-h">
+      <header class="qa-card__head"><div><span class="qa-eyebrow">Step 2 · assessment</span><h2 id="ssq-assess-h">{% if can_submit_assessment %}Submit your assessment{% else %}Officer's assessment{% endif %}</h2>
+        <p>{% if can_submit_assessment %}Recommend a decision. {{ who.approver|who:"The approver" }} approves it.{% else %}{{ who.assessment.by_name|default:"The officer" }} recommends <strong>{% if who.assessment.recommendation == "return" %}return{% else %}accept{% endif %}</strong>. Decide below, or send it back to the officer.{% endif %}</p></div></header>
+      <form class="qa-card__body qa-stack" method="post" action="{% url 'qa_req:ssq_assessment' ssq.pk %}" hx-post="{% url 'qa_req:ssq_assessment' ssq.pk %}" hx-target="#qa-panel">
+        {% csrf_token %}
+        {% if can_submit_assessment %}
+          <fieldset class="ssq-assess__choices"><legend class="sr-only">Recommendation</legend>
+            {% for value, label in recommendations %}<label class="ssq-assess__choice"><input type="radio" name="recommendation" value="{{ value }}"{% if forloop.first %} checked{% endif %}> <span>{{ label }}</span></label>{% endfor %}
+          </fieldset>
+          <div class="qa-field"><label for="ssq-assess-remark">Assessment note <span class="qa-muted">(required to recommend a return)</span></label><textarea class="input" id="ssq-assess-remark" name="remark" rows="3" maxlength="2000">{{ assessment_remark|default:'' }}</textarea></div>
+          <input type="hidden" name="action" value="submit">
+          <button class="btn btn-primary btn-block" type="submit">{% icon "arrow" 16 "2.4" %} Submit for approval</button>
+        {% else %}
+          <div class="qa-field"><label for="ssq-sendback-remark">Note to the officer</label><textarea class="input" id="ssq-sendback-remark" name="remark" rows="2" maxlength="500">{{ assessment_remark|default:'' }}</textarea></div>
+          <input type="hidden" name="action" value="send_back">
+          <button class="btn btn-subtle btn-block" type="submit">{% icon "rewind" 16 %} Send back to the officer</button>
+        {% endif %}
+      </form>
+    </section>
+    {% endif %}
+
+    <section class="qa-card ssq-decide" aria-labelledby="rev-h">
+      <header class="qa-card__head"><div><span class="qa-eyebrow">Step 3 · decision</span><h2 id="rev-h">Approve or return</h2><p>{% if can_review %}Approve (accept) the SSQ, or return it with what must change.{% else %}{{ review_reason }}{% endif %}</p></div></header>
       {% if can_review %}
       <div class="qa-card__body qa-stack">
         <div class="qa-field"><label for="rev-remark">Remark <span class="qa-muted">(required to return; the institution sees it)</span></label><textarea class="input" id="rev-remark" name="remark" rows="4" maxlength="4000">{{ remark|default:'' }}</textarea></div>
         <div class="qa-decide__actions">
-          <form method="post" action="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-post="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-target="#qa-panel" hx-include="#rev-remark" hx-trigger="qa:confirmed" data-qa-confirm="The SSQ is accepted as submitted." data-qa-confirm-title="Accept this SSQ?" data-qa-confirm-label="Accept">{% csrf_token %}<input type="hidden" name="decision" value="accept"><button class="btn btn-primary btn-block" type="submit">{% icon "check" 16 "2.4" %} Accept</button></form>
+          <form method="post" action="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-post="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-target="#qa-panel" hx-include="#rev-remark" hx-trigger="qa:confirmed" data-qa-confirm="The SSQ is approved as submitted; the institution sees it as approved." data-qa-confirm-title="Approve this SSQ?" data-qa-confirm-label="Approve">{% csrf_token %}<input type="hidden" name="decision" value="accept"><button class="btn btn-primary btn-block" type="submit">{% icon "check" 16 "2.4" %} Approve</button></form>
           <form method="post" action="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-post="{% url 'qa_req:ssq_decide' ssq.pk %}" hx-target="#qa-panel" hx-include="#rev-remark" hx-trigger="qa:confirmed" data-qa-require="#rev-remark" data-qa-require-msg="Say what the institution must change" data-qa-confirm="The institution revises it as a new version; this submission stays on record unchanged." data-qa-confirm-title="Return the SSQ?" data-qa-confirm-label="Return" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="decision" value="return"><button class="btn btn-subtle btn-block qa-btn-reject" type="submit">Return to institution</button></form>
         </div>
       </div>
       {% endif %}
-      {% if ssq.review_remark %}<div class="qa-card__body"><p class="qa-small"><strong>Last remark:</strong> {{ ssq.review_remark }} — {{ ssq.reviewed_by|who }}, {{ ssq.reviewed_at|date:"j M Y" }}</p></div>{% endif %}
+      {% if ssq.review_remark or ssq.reviewed_by %}<div class="qa-card__body"><p class="qa-small"><strong>{% if ssq.status == "accepted" %}Approved{% elif ssq.status == "returned" %}Returned{% else %}Last decision{% endif %}</strong> by {{ ssq.reviewed_by|who }}, {{ ssq.reviewed_at|date:"j M Y" }}{% if ssq.review_remark %} — “{{ ssq.review_remark }}”{% endif %}</p></div>{% endif %}
     </section>
+
+    {% include "accreditation/qa/_shortfall_card.html" %}
+    {% if body_requirements %}
+    <section class="qa-card" aria-labelledby="breq-h">
+      <header class="qa-card__head"><div><h2 id="breq-h">Professional-body requirements</h2>
+        <p>{% if can_record_requirements %}Record each result. A mandatory requirement that is not met needs a remark to accept.{% else %}Read-only.{% endif %}</p></div></header>
+      <form class="qa-card__body qa-stack" method="post" action="{% url 'qa_req:ssq_requirements' ssq.pk %}"
+            hx-post="{% url 'qa_req:ssq_requirements' ssq.pk %}" hx-target="#qa-panel">
+        {% csrf_token %}
+        {% for requirement, check in requirement_rows %}
+        <div class="qa-field">
+          <label for="req-{{ requirement.pk }}">{{ requirement.text }}{% if requirement.is_mandatory %} <span class="qa-chip qa-tone-danger">Mandatory</span>{% endif %}</label>
+          <select class="input" id="req-{{ requirement.pk }}" name="req_{{ requirement.pk }}"{% if not can_record_requirements %} disabled{% endif %}>
+            {% for value, label in requirement_result_choices %}<option value="{{ value }}"{% if check and check.result == value %} selected{% elif not check and value == "not_applicable" %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+          <input class="input" name="req_remark_{{ requirement.pk }}" value="{{ check.remark|default:'' }}"
+                 placeholder="Remark (needed to accept a mandatory “not met”)"{% if not can_record_requirements %} disabled{% endif %}>
+        </div>
+        {% endfor %}
+        {% if can_record_requirements %}<button class="btn btn-subtle btn-block" type="submit">Save requirement checks</button>{% endif %}
+      </form>
+    </section>
+    {% endif %}
 
     <section class="qa-card" aria-labelledby="rev-q">
       <header class="qa-card__head"><div><h2 id="rev-q">Queries</h2><p>Ask for more information without returning the SSQ.</p></div>
@@ -52,7 +156,7 @@
     </section>
 
     <section class="qa-card" aria-labelledby="rev-v"><header class="qa-card__head"><h2 id="rev-v">Versions</h2></header>
-      <ul class="qa-rowlist" role="list">{% for v in versions %}<li><a class="qa-rowlink" href="{% url 'qa_req:ssq' v.pk %}" hx-get="{% url 'qa_req:ssq' v.pk %}" hx-target="#qa-panel" hx-push-url="true"{% if v.pk == ssq.pk %} aria-current="page"{% endif %}><span class="qa-rowlink__badge">v{{ v.version }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{% if v.is_current %}Current{% else %}Superseded{% endif %}</span><span class="qa-rowlink__meta">{{ v.submitted_at|date:"j M Y"|default:"not submitted" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ v.status|tone }}">{{ v.get_status_display }}</span></span></a></li>{% endfor %}</ul>
+      <ul class="qa-rowlist" role="list">{% for v in versions %}<li><a class="qa-rowlink" href="{% url 'qa_req:ssq' v.pk %}" hx-get="{% url 'qa_req:ssq' v.pk %}" hx-target="#qa-panel" hx-push-url="true"{% if v.pk == ssq.pk %} aria-current="page"{% endif %}><span class="qa-rowlink__badge">v{{ v.version }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{% if v.is_current %}Current{% else %}Superseded{% endif %}</span><span class="qa-rowlink__meta">{{ v.submitted_at|date:"j M Y"|default:"not submitted" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ v.status|tone }}">{{ v.status|humanize_code }}</span></span></a></li>{% endfor %}</ul>
     </section>
     <section class="qa-card" aria-labelledby="rev-hist"><header class="qa-card__head"><h2 id="rev-hist">History</h2></header>
       <div class="qa-card__body"><ol class="qa-tl">{% for e in history %}<li><span class="qa-tl__text"><strong>{{ e.action_code|humanize_code }}</strong> → {{ e.to_stage|humanize_code }}{% if e.remark %} — “{{ e.remark }}”{% endif %}</span><small>{{ e.actor|who:"System" }} · {{ e.at|date:"j M Y, H:i" }}</small></li>{% empty %}<li class="qa-muted">No events.</li>{% endfor %}</ol></div>

@@ -5,8 +5,11 @@ a status or adding a step is a settings change. The engine provides:
 
 Guards (Phase 1)
 * ``required_permission`` — a permission label the actor must hold;
-* ``required_role_setting`` — a setting naming the role the actor must hold
-  (e.g. ``qa.payment.final_approver_role``); superusers get no exception;
+* ``required_role_setting`` — a setting naming the role the actor must hold;
+  superusers get no exception. Phase B (B2): when the key ends in
+  ``_department`` (e.g. ``qa.payment.finance_department``) its value is a
+  department code and the actor must be **the director of that department**
+  (``org.is_director``) — there are no "director of X" roles;
 * ``condition`` — a formula over the subject's variables that must be true;
 * ``requires_remark`` — a non-empty remark (every ``return``, R-24);
 * ``requires_confirmation`` — must go through a PendingAction instead.
@@ -142,18 +145,60 @@ def current_version(code):
 
 
 def instance_for(subject, code=None):
-    """The newest FlowInstance whose subject is `subject` (optionally of flow `code`)."""
+    """The newest FlowInstance whose subject is `subject` (optionally of flow `code`).
+
+    v2.4 speed pass: remembered for the life of one web request on one thread
+    (the streaming stage lists ask once per stage-row otherwise). Cleared when
+    the request starts/ends and whenever a FlowInstance row is written (wired in
+    qa_core/apps.py). Anywhere else it reads fresh every time."""
     from .models import FlowInstance
 
     if subject is None or getattr(subject, "pk", None) is None:
         return None
-    qs = FlowInstance.objects.filter(
-        content_type=ContentType.objects.get_for_model(subject, for_concrete_model=True),
-        object_id=subject.pk,
-    ).select_related("flow_version")
-    if code:
-        qs = qs.filter(flow_version__code=code)
-    return qs.order_by("-id").first()
+
+    def build():
+        qs = FlowInstance.objects.filter(
+            content_type=ContentType.objects.get_for_model(subject, for_concrete_model=True),
+            object_id=subject.pk,
+        ).select_related("flow_version")
+        if code:
+            qs = qs.filter(flow_version__code=code)
+        return qs.order_by("-id").first()
+
+    key = ("instance_for", subject.pk, code or "")
+    if getattr(_FLOWI, "in_request", False):
+        store = _instance_memo()
+        if key not in store:
+            store[key] = build()
+        return store[key]
+    return build()
+
+
+import threading as _threading  # noqa: E402
+
+_FLOWI = _threading.local()
+
+
+def _instance_memo():
+    store = getattr(_FLOWI, "store", None)
+    if store is None:
+        store = _FLOWI.store = {}
+    return store
+
+
+def flow_memo_started(*_args, **_kwargs):
+    """v2.4: a new request on this thread forgets the memos of the last one."""
+    _FLOWI.store = {}
+    _FLOWI.in_request = True
+
+
+def flow_memo_finished(*_args, **_kwargs):
+    _FLOWI.store = {}
+    _FLOWI.in_request = False
+
+
+def flow_memo_bump(*_args, **_kwargs):
+    flow_memo_started()
 
 
 def stage(instance, code):
@@ -195,10 +240,17 @@ def start(code, subject, *, actor=None):
 # Guards
 # ---------------------------------------------------------------------------
 def required_role_for(transition):
-    """Role code the actor must hold for `transition`, or ''."""
+    """Role code (or, for a ``*_department`` setting, department code) the
+    actor must hold / direct for `transition`, or ''."""
     if not transition.required_role_setting:
         return ""
-    return str(config.get(transition.required_role_setting, "") or "").strip()
+    default = "finance" if transition.required_role_setting == "qa.payment.finance_department" else ""
+    return str(config.get(transition.required_role_setting, default) or "").strip()
+
+
+def is_department_setting(key):
+    """A guard setting whose value is a department code (director seat check)."""
+    return bool(key) and key.endswith("_department")
 
 
 def check(transition, actor, *, variables=None, remark=""):
@@ -207,7 +259,17 @@ def check(transition, actor, *, variables=None, remark=""):
         if actor is None or not actor.has_perm(transition.required_permission):
             raise TransitionRefused(
                 f"'{transition.label}' needs the permission {transition.required_permission}.")
-    if transition.required_role_setting:
+    if transition.required_role_setting and is_department_setting(transition.required_role_setting):
+        import org
+
+        from .departments import qa_department
+        dept_code = required_role_for(transition)
+        dept = qa_department(dept_code) if dept_code else None
+        if dept is None or not org.is_director(actor, dept):
+            raise TransitionRefused(
+                f"'{transition.label}' can only be taken by the director of the department "
+                f"'{dept_code or '(not set)'}' ({transition.required_role_setting}).")
+    elif transition.required_role_setting:
         role_code = required_role_for(transition)
         actor_role = getattr(getattr(actor, "role", None), "code", "")
         if not role_code or actor_role != role_code:

@@ -1,0 +1,39 @@
+{% comment %}One new-subtask row (H9: the page shows ONE until "Add another subtask").
+`f` is a SubtaskSpecForm (or the formset's empty_form inside a <template>).{% endcomment %}
+<div class="tsk-subform-row">
+  <div class="tsk-subform-grid">
+    <label class="tsk-field tsk-subform-title">
+      <span class="tsk-field-label">Title</span>
+      {{ f.title }}
+      {% if f.title.errors %}<span class="tsk-field-error">{{ f.title.errors|join:" " }}</span>{% endif %}
+    </label>
+    <div class="tsk-field">
+      <span class="tsk-field-label">Person</span>
+      {% include "tasks/_assignee_picker.html" with picker_name=f.assignee.html_name picker_single=True picker_task=task picker_placeholder="Choose a person" %}
+      {% if f.assignee.errors %}<span class="tsk-field-error">{{ f.assignee.errors|join:" " }}</span>{% endif %}
+    </div>
+    <label class="tsk-field">
+      <span class="tsk-field-label">Due</span>
+      {{ f.due_date }}
+    </label>
+  </div>
+  <div class="tsk-subform-grid tsk-subform-grid-2">
+    <label class="tsk-field">
+      <span class="tsk-field-label">Or send to another department</span>
+      {{ f.department }}
+    </label>
+    <label class="tsk-field">
+      <span class="tsk-field-label">Priority</span>
+      {{ f.priority }}
+    </label>
+  </div>
+  <label class="tsk-field">
+    <span class="tsk-field-label">Details</span>
+    {{ f.description }}
+  </label>
+  {% if removable %}
+    <div class="btn-group btn-group--end">
+      <button type="button" class="tsk-btn tsk-btn-ghost tsk-btn-sm" data-remove-row>Remove this subtask</button>
+    </div>
+  {% endif %}
+</div>

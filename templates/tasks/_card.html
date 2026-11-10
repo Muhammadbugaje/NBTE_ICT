@@ -2,6 +2,8 @@
 <a href="{% url 'tasks:detail' task.pk %}"
    class="tsk-card"
    data-state="{{ task.state }}"
+   data-priority="{{ task.priority }}"
+   data-cat="{{ task.category.code|default:'none' }}"
    data-task-id="{{ task.pk }}">
   <button type="button"
           class="tsk-select-toggle"
@@ -14,6 +16,8 @@
     <span class="tsk-chip {{ task.state|state_chip_class }}">
       <span class="tsk-chip-dot"></span>{{ task.get_state_display }}
     </span>
+    {% if task.division_id %}<span class="tsk-chip tsk-chip-group">Group · {{ task.division.name }}</span>{% endif %}
+    {% if task.owner_department_id %}<span class="tsk-chip tsk-chip-outline">{{ task.owner_department.name }}</span>{% endif %}
   </div>
 
   {# ---------- Title ---------- #}
@@ -30,13 +34,13 @@
       </span>
     {% endif %}{% endwith %}
     {% if task.category %}
-      <span class="tsk-card-meta-item">
+      <span class="tsk-card-meta-item tsk-cat-pill">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
         {{ task.category.name }}
       </span>
     {% endif %}
     {% if task.due_date %}
-      <span class="tsk-card-meta-item {% if task.is_overdue %}is-overdue{% endif %}">
+      <span class="tsk-card-meta-item tsk-due-pill{% if task.is_overdue %} is-overdue{% endif %}">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         {{ task.due_date|date:"M j" }}{% if task.is_overdue %} · Overdue{% endif %}
       </span>

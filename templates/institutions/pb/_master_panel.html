@@ -1,0 +1,19 @@
+{% load qa_tags %}
+{% include "institutions/pb/_subnav.html" %}
+<header class="qa-hero"><div>
+  <h1 data-qa-focus>Programme master list</h1>
+  <p>Every programme NBTE recognises, and the professional body that regulates it. Institutions pick from this list when they add a programme, so the body fills itself in.</p>
+  <div class="qa-hero__actions btn-group">
+    {% if can_manage_master %}<a class="btn btn-primary" href="{% url 'core:import_upload' 'programme_master' %}">{% icon "upload" 16 %} Import / mapping upload</a>{% endif %}
+    <a class="btn btn-ghost" href="{% url 'qa_pb:master_export' %}" download>{% icon "download" 16 %} Mapping template (Excel)</a>
+  </div>
+</div></header>
+<section class="qa-card" aria-label="Programme master list">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_pb:master' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Programme, alias, code or body" autocomplete="off"></label>
+    <select class="input qa-select" name="level" aria-label="Level"><option value="">Any level</option>{% for lv in levels %}<option value="{{ lv.code }}"{% if filters.level == lv.code %} selected{% endif %}>{{ lv.code|upper }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="body" aria-label="Professional body"><option value="">Any body</option><option value="none"{% if filters.body == "none" %} selected{% endif %}>No body</option>{% for b in bodies %}<option value="{{ b.pk }}"{% if filters.body == b.pk|stringformat:"s" %} selected{% endif %}>{{ b.acronym|default:b.name }}</option>{% endfor %}</select>
+    <select class="input qa-select" name="confirm" aria-label="Confirmation"><option value="">All rows</option><option value="1"{% if filters.confirm == "1" %} selected{% endif %}>To confirm</option></select>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "institutions/pb/_master_rows.html" %}</div>
+</section>

@@ -1,4 +1,5 @@
 {% extends base_template %}
+{% load ux_tags %}
 {% load qa_tags %}
 {% block title %}Programmes · {{ portal_name }}{% endblock %}
 {% block content %}
@@ -7,7 +8,7 @@
     <span class="qa-eyebrow">{% icon "layers" 14 "2.2" %} Programme status board</span>
     <h1 data-qa-focus>Programmes</h1>
     <p>Every programme on NBTE's record, with its approval, streams and when it expires. Re-accreditation opens {{ window }} months before a programme expires.</p>
-    <p><a class="btn btn-subtle btn-sm" href="{% url 'qa_portal:programme_list' %}">{% icon "search" 14 %} Search and filter all programmes</a></p>
+    <div class="pp-hero__actions"><a class="btn btn-primary" href="{% url 'qa_portal:programme_list' %}">{% icon "search" 16 %} Search and filter all programmes</a></div>
   </header>
   {% if cards %}
   <ul class="qa-prog-board" role="list">
@@ -33,13 +34,13 @@
         {% if c.can_renew %}<a class="btn btn-primary btn-sm" href="{% url 'qa_portal:qa_request_new' %}?type={{ renewal.code }}" hx-get="{% url 'qa_portal:qa_request_new' %}?type={{ renewal.code }}" hx-target="#qa-main" hx-push-url="true">{% icon "arrow" 14 %} Request re-accreditation</a>
         {% elif c.window_open and p.status != "denied" %}<span class="qa-small qa-muted">The re-accreditation window is open{% if p.status != "expired" %}; it may already be in an open request{% endif %}.</span>{% endif %}
         <a class="btn btn-subtle btn-sm" href="{% url 'qa_portal:programme' p.pk %}">Details</a>
-        {% if c.letter %}{% for copy in c.letter.copies.all %}<a class="btn btn-subtle btn-sm" href="{{ copy.portal_download_url }}">{% icon "download" 14 %} {% if copy.kind == "original" %}Letter{% else %}Duplicate{% endif %}</a>{% endfor %}{% endif %}
+        {% if c.letter %}{% for copy in c.letter.all_copies %}{% preview_button copy.portal_download_url copy.get_kind_display "" "Preview" True %}<a class="btn btn-subtle btn-sm" href="{{ copy.portal_download_url }}">{% icon "download" 14 %} {% if copy.kind == "original" %}Letter{% else %}Duplicate{% endif %}</a>{% endfor %}{% endif %}
       </div>
     </li>
     {% endwith %}{% endfor %}
   </ul>
   {% else %}
-  <section class="qa-card"><div class="qa-card__body"><p class="qa-muted">No programmes on NBTE's record yet.</p></div></section>
+  <section class="qa-card"><div class="pp-empty"><span class="pp-empty__art" aria-hidden="true">{% icon "layers" 28 %}</span><strong>No programmes on NBTE's record yet</strong><p>Ask NBTE to accredit a programme from QA requests. Approved programmes appear here with their status and expiry.</p><a class="btn btn-primary" href="{% url 'qa_portal:qa_requests' %}">{% icon "plus" 16 %} Open QA requests</a></div></section>
   {% endif %}
 </div>
 {% endblock %}

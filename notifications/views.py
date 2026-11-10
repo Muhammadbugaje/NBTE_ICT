@@ -203,8 +203,10 @@ def stream(request):
     """
     from core.polling import unread_response
 
-    unread = Notification.objects.filter(recipient=request.user, is_read=False).count()
-    return unread_response(request, unread)
+    from messaging.live import notification_unread
+
+    # v2.1 L9: 5-second cache, dropped whenever this person's notifications change.
+    return unread_response(request, notification_unread(request.user))
 
 
 

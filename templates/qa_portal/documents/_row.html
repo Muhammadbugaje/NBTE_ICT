@@ -10,6 +10,8 @@
       {% if row.document %}<span>Current: v{{ row.document.version }} · {{ row.document.display_name }} · {{ row.document.created_at|date:"j M Y" }}</span>{% endif %}
     </div>
     {% if row.state == "returned" and row.document.review_remark %}<div class="qa-doc__remark"><strong>NBTE:</strong> {{ row.document.review_remark }}</div>{% endif %}
+    {% if row.upload_lock_reason %}<div class="qa-doc__note" role="note">{% icon "lock" 14 %} {{ row.upload_lock_reason }}</div>{% endif %}
+    {% if routed_department %}<div class="qa-doc__note" role="status">{% icon "check" 14 "2.4" %} Sent back to {{ routed_department.name }} for review. You do not need to resubmit your application.</div>{% endif %}
     {% if error %}<div class="qa-doc__remark" role="alert">{{ error }}</div>{% endif %}
   </div>
   <div class="qa-doc__tools">
@@ -17,7 +19,7 @@
     {% if row.can_upload %}
       <form method="post" enctype="multipart/form-data" action="{% url 'qa_portal:document_upload' row.kind.pk %}" hx-post="{% url 'qa_portal:document_upload' row.kind.pk %}" hx-encoding="multipart/form-data" hx-target="closest li" hx-swap="outerHTML" hx-trigger="change" data-qa-progress class="qa-upload">
         {% csrf_token %}
-        <label class="btn btn-sm {% if row.state == 'missing' or row.state == 'returned' or row.state == 'expired' %}btn-primary{% else %}btn-subtle{% endif %} qa-upload__btn">{% icon "upload" 14 %} {% if row.document %}Upload new version{% else %}Upload{% endif %}
+        <label class="btn btn-sm {% if row.state == 'missing' or row.state == 'returned' or row.state == 'expired' %}btn-primary{% else %}btn-subtle{% endif %} qa-upload__btn">{% icon "upload" 14 %} {% if row.state == "returned" %}Re-upload{% elif row.document %}Upload new version{% else %}Upload{% endif %}
           <input type="file" name="file" accept="{{ row.accept }}" aria-label="Upload {{ row.kind.name }}"></label>
         <noscript><button class="btn btn-sm btn-subtle" type="submit">Send</button></noscript>
         <div class="qa-progress" hidden data-qa-progress-bar style="width:120px"><span></span></div>

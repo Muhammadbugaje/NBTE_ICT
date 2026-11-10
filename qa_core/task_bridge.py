@@ -102,6 +102,15 @@ def qa_url(link):
     """Where *Open in QA* goes for a link."""
     model = link.content_type.model
     if model == "qacase":
+        if link.stage_code == "capacity_assessment":
+            return f"/qa/cases/{link.object_id}/?tab=capacity&stage=post_visit_recommendation"
+        if link.stage_code.startswith("case_change_"):
+            request_id = link.stage_code[len("case_change_"):].split("_", 1)[0]
+            from accreditation.models import CaseChangeRequest
+
+            request = CaseChangeRequest.unscoped.filter(pk=request_id).only("kind").first()
+            tab = "visit" if request and request.kind == CaseChangeRequest.VISIT_DATE else "overview"
+            return f"/qa/cases/{link.object_id}/?tab={tab}#change-request-{request_id}"
         return f"/qa/cases/{link.object_id}/?stage={link.stage_code}"
     if model == "postvisitreport":  # Phase 5: the report sub-flow
         return f"/qa/inspection/reports/{link.object_id}/"
@@ -334,6 +343,9 @@ def _on_task_state_changed(sender, task, old, new, actor, action, metadata, **kw
     link = open_link_for(task)
     if link is None:
         return
+    if (link.kind == "assignment" and link.stage_code.startswith("case_change_")
+            and action in ("reassign", "return_to_assigner")):
+        raise PermissionDenied("This QA assignment is managed from its case workspace.")
     if action == "reassign":
         if is_bridge_active():
             return
@@ -510,8 +522,8 @@ def register_reconcile_check(fn):
 
 
 def reconcile(*, dry_run=False):
-    """Compare every open QATaskLink with its FlowInstance: close orphaned
-    tasks, open missing ones. Writes a TaskLinkDriftReport for the ICT monitor."""
+    """Reconcile stage tasks with their flow; subsystem-owned assignments keep
+    their own lifecycle. Writes a TaskLinkDriftReport for the ICT monitor."""
     from tasks.models import Task
 
     from .models import FlowInstance, FlowStage, QATaskLink, TaskLinkDriftReport
@@ -524,7 +536,7 @@ def reconcile(*, dry_run=False):
             problem = ""
             if inst is None or inst.completed_at is not None:
                 problem = "the workflow has ended"
-            elif link.stage_code not in (inst.current_stages or []):
+            elif link.kind != "assignment" and link.stage_code not in (inst.current_stages or []):
                 problem = f"the case is no longer at {link.stage_code}"
             elif link.task.state in (Task.CANCELLED, Task.COMPLETED):
                 problem = f"the task was {link.task.state} outside QA"

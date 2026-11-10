@@ -34,5 +34,14 @@ urlpatterns = [
          views.ticket_delete_attachment, name="delete_attachment"),
 
     path("<int:pk>/timeline/", views.ticket_timeline_partial, name="timeline_partial"),
-        path("<int:pk>/director-signoff/", views.ticket_director_signoff, name="director_signoff"),
+    path("<int:pk>/director-signoff/", views.ticket_director_signoff, name="director_signoff"),
+
+    # v2.1 Phase C
+    path("counts/", views.ticket_counts, name="counts"),
+    path("<int:pk>/route/", views.ticket_route, name="route"),
+    path("<int:pk>/division/accept/", views.ticket_division_accept, name="division_accept"),
+    path("<int:pk>/division/decline/", views.ticket_division_decline, name="division_decline"),
+    path("<int:pk>/request-funds/", views.ticket_request_funds, name="request_funds"),
+    path("<int:pk>/rate/", views.ticket_rate, name="rate"),
+    path("<int:pk>/report.pdf", views.ticket_report_pdf, name="report_pdf"),
 ]

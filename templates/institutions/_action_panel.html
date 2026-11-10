@@ -31,7 +31,7 @@
   <section class="qa-card qa-actcard-form" aria-labelledby="act-form-title">
     <header class="qa-card__head"><div><h2 id="act-form-title">{% if inst and handler.summary %}{{ handler.summary }}{% else %}Details{% endif %}</h2>{% if policy.description %}<p>{{ policy.description }}</p>{% endif %}</div>{% if form.fields %}<span class="qa-small qa-muted"><span aria-hidden="true">*</span> required</span>{% endif %}</header>
     <div class="qa-card__body">
-      <form method="post" class="qa-form qa-actform" novalidate
+      <form method="post" class="qa-form qa-actform" novalidate{% if form.is_multipart %} enctype="multipart/form-data" hx-encoding="multipart/form-data"{% endif %}
             {% if inst %}action="{% url 'qa_inst:action' inst.code policy.action_code %}" hx-post="{% url 'qa_inst:action' inst.code policy.action_code %}"{% else %}action="{% url 'qa_inst:add_tvet' %}" hx-post="{% url 'qa_inst:add_tvet' %}"{% endif %}
             hx-target="#qa-panel"
             {% if policy.action_code == "institutions.delist" %}data-qa-confirm="Delisting switches off portal sign-in and freezes open requests once a second officer confirms." data-qa-confirm-title="Request delisting?" data-qa-confirm-label="Send for confirmation" data-qa-confirm-tone="danger" hx-trigger="qa:confirmed"{% endif %}>
@@ -43,6 +43,7 @@
               {% if title == "Institution" %}<span class="qa-tile qa-tile--sm qa-tile--blue" aria-hidden="true">{% icon "building" 15 "2.3" %}</span>
               {% elif title == "Location" %}<span class="qa-tile qa-tile--sm qa-tile--teal" aria-hidden="true">{% icon "map" 15 "2.3" %}</span>
               {% elif title == "Contacts" %}<span class="qa-tile qa-tile--sm qa-tile--green" aria-hidden="true">{% icon "phone" 15 "2.3" %}</span>
+              {% elif title == "Chief executive and head of ICT" %}<span class="qa-tile qa-tile--sm qa-tile--green" aria-hidden="true">{% icon "users" 15 "2.3" %}</span>
               {% elif title == "Portal administrator" %}<span class="qa-tile qa-tile--sm qa-tile--indigo" aria-hidden="true">{% icon "users" 15 "2.3" %}</span>
               {% elif title == "Why" %}<span class="qa-tile qa-tile--sm qa-tile--orange" aria-hidden="true">{% icon "message" 15 "2.3" %}</span>
               {% else %}<span class="qa-tile qa-tile--sm qa-tile--slate" aria-hidden="true">{% icon "edit" 15 "2.3" %}</span>{% endif %}
@@ -55,7 +56,7 @@
                 {% if field.name == "state" %}
                   <div class="qa-field{% if field.errors %} has-error{% endif %}">
                     <label for="{{ field.id_for_label }}">{{ field.label }} <span class="qa-muted" aria-hidden="true">*</span></label>
-                    <select name="{{ field.html_name }}" id="{{ field.id_for_label }}" class="input" hx-get="{% url 'qa_inst:lga_options' %}" hx-target="#qa-lga-options" hx-trigger="change" hx-swap="innerHTML" data-qa-no-overlay>
+                    <select name="{{ field.html_name }}" id="{{ field.id_for_label }}" class="input" {% if form.lga_select %}hx-get="{% url 'qa_inst:lga_options' %}?select=1" hx-target="#id_lga"{% else %}hx-get="{% url 'qa_inst:lga_options' %}" hx-target="#qa-lga-options"{% endif %} hx-trigger="change" hx-swap="innerHTML" data-qa-no-overlay>
                       {% for v, l in field.field.choices %}<option value="{{ v }}"{% if field.value|stringformat:"s" == v|stringformat:"s" %} selected{% endif %}>{{ l }}</option>{% endfor %}
                     </select>
                     {% for e in field.errors %}<div class="qa-field__error" role="alert">{{ e }}</div>{% endfor %}

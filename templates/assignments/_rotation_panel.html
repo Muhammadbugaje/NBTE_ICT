@@ -1,0 +1,129 @@
+{% load qa_tags %}
+{% if clear_dialog %}<div id="rot-dialog" hx-swap-oob="true"></div>{% endif %}
+<div class="rot-page">
+  <header class="qa-hero rot-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "rotate" 14 "2.2" %} Quality Assurance · Rotation</span>
+      <h1 data-qa-focus>{{ dept.name }}</h1>
+      <p>Work that has entered {{ dept.name }} and has nobody on it yet. Pick the next task, check who is next in rotation, and give it to one of your staff — they are notified at once.</p>
+      <div class="qa-hero__actions">
+        {% if depts %}
+        <label class="sr-only" for="rot-dept">Department</label>
+        <select class="rot-select" id="rot-dept" name="dept" hx-get="{% url 'rotation:board' %}" hx-target="#rot-panel" hx-push-url="true">
+          {% for d in depts %}<option value="{{ d.code }}"{% if d.pk == dept.pk %} selected{% endif %}>{{ d.name }}{% with n=dept_counts|get_item:d.pk %}{% if n %} · {{ n }} waiting{% endif %}{% endwith %}</option>{% endfor %}
+        </select>
+        {% endif %}
+        {% if manage_pool %}<a class="btn btn-subtle" href="{% url 'rotation:pool_settings' %}?pool={{ manage_pool.code|urlencode }}">{% icon "key" 16 "2.2" %} Rules and members</a>{% endif %}
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat{% if waiting_total %} qa-stat--warn{% else %} qa-stat--success{% endif %}"><strong>{{ waiting_total }}</strong><span>Waiting for an officer</span></div>
+      <div class="qa-stat qa-stat--info"><strong>{{ kpis.staff }}</strong><span>Staff who can take work</span></div>
+      <div class="qa-stat"><strong>{{ kpis.open }}</strong><span>Open work held</span></div>
+    </div>
+  </header>
+
+  {% if done %}
+  <div class="rot-done" role="status">
+    <span class="rot-tile rot-tile--green">{% icon "check" 20 "2.4" %}</span>
+    <div><b>{{ done.name }} is assigned</b><small>{{ done.category }} · {{ done.title }} — {{ done.detail }}. They have been notified.</small></div>
+    {% if done.url %}<a class="btn btn-ghost btn-sm" href="{{ done.url }}">Open</a>{% endif %}
+  </div>
+  {% endif %}
+
+  <nav class="rot-cats" aria-label="Kinds of work">
+    {% for c in categories %}
+    <a class="rot-cat rot-cat--{{ c.chip }}{% if not c.count %} is-empty{% endif %}" href="#rot-cat-{{ c.code }}"{% if not c.count %} aria-disabled="true"{% endif %}>
+      <span class="rot-cat__icon">{% icon c.icon 16 "2.2" %}</span><span>{{ c.label }}</span><b>{{ c.count }}</b>
+    </a>
+    {% endfor %}
+  </nav>
+
+  {% for g in groups %}
+  <section class="rot-card rot-group" id="rot-cat-{{ g.meta.code }}" aria-labelledby="rot-h-{{ g.meta.code }}">
+    <div class="rot-card__head">
+      <span class="rot-tile rot-tile--{{ g.meta.chip }}">{% icon g.meta.icon 20 "2.2" %}</span>
+      <div><h2 id="rot-h-{{ g.meta.code }}">{{ g.meta.label }}</h2><p>{{ g.meta.blurb }}</p></div>
+      <span class="rot-count">{{ g.count }} waiting</span>
+    </div>
+
+    {% with j=g.head s=g.head_suggested %}
+    <div class="rot-next">
+      <div class="rot-next__job">
+        <span class="rot-sec rot-sec--flush">Next task at hand</span>
+        <b class="rot-next__title">{{ j.title }}</b>
+        <small>{{ j.detail }}</small>
+        <div class="rot-why">
+          <span class="rot-a rot-a--{{ g.meta.chip }}">{{ g.meta.short }}</span>
+          {% if j.waiting_days is not None %}<span class="rot-chip{% if j.waiting_days >= 3 %} rot-chip--warn{% endif %}">{% icon "clock" 12 "2.4" %}&nbsp;{% if j.waiting_days == 0 %}Arrived today{% else %}Waiting {{ j.waiting_days }} day{{ j.waiting_days|pluralize }}{% endif %}</span>{% endif %}
+          {% if j.url %}<a class="rot-chip rot-chip--link" href="{{ j.url }}">Open record</a>{% endif %}
+        </div>
+      </div>
+      <div class="rot-next__who">
+        {% if s %}
+        <span class="rot-sec rot-sec--flush">Next in rotation</span>
+        <div class="rot-person-card">
+          <span class="rot-av rot-av--lg" aria-hidden="true">{{ s.initials }}</span>
+          <div><b>{{ s.name }}</b><small>{{ s.role }} · {{ s.open }} open{% if s.summary %} · {{ s.summary }}{% endif %}</small>
+            {% if s.notes or s.warnings %}<div class="rot-why">{% for n in s.notes %}<span class="rot-chip rot-chip--ok">{{ n }}</span>{% endfor %}{% for w in s.warnings %}<span class="rot-chip rot-chip--warn">{{ w }}</span>{% endfor %}</div>{% endif %}
+          </div>
+        </div>
+        {% if g.head_rows|length > 1 %}
+        <p class="rot-then">Then: {% for r in g.head_rows|slice:"1:" %}{{ r.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+        {% endif %}
+        <div class="btn-group">
+          <form method="post" action="{% url 'rotation:assign' %}" hx-post="{% url 'rotation:assign' %}" hx-target="#rot-panel">
+            {% csrf_token %}<input type="hidden" name="job" value="{{ j.key }}"><input type="hidden" name="chosen" value="{{ s.user_id }}"><input type="hidden" name="dept" value="{{ dept.code }}">
+            <button type="submit" class="btn btn-primary btn-sm">{% icon "check" 16 "2.4" %} Assign to {{ s.user.first_name|default:s.name }}</button>
+          </form>
+          <button type="button" class="btn btn-ghost btn-sm" hx-get="{% url 'rotation:assign_dialog' %}?job={{ j.key|urlencode }}" hx-target="#rot-dialog">Choose someone else</button>
+        </div>
+        {% else %}
+        <div class="rot-empty">Nobody in {{ dept.name }} can take this work right now. Add staff to the department{% if manage_pool %} or check <a href="{% url 'rotation:pool_settings' %}?pool={{ manage_pool.code|urlencode }}">rules and members</a>{% endif %}.</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endwith %}
+
+    {% if g.jobs|length > 1 %}
+    <details class="rot-more"{% if g.jobs|length <= 6 %} open{% endif %}>
+      <summary>{{ g.jobs|length|add:"-1" }} more waiting after this</summary>
+      <ul class="rot-jobs">
+        {% for j in g.jobs|slice:"1:" %}
+        <li class="rot-job">
+          <div><b>{{ j.title }}</b><small>{{ j.detail }}{% if j.waiting_days %} · waiting {{ j.waiting_days }} day{{ j.waiting_days|pluralize }}{% endif %}</small></div>
+          <button type="button" class="btn btn-subtle btn-sm" hx-get="{% url 'rotation:assign_dialog' %}?job={{ j.key|urlencode }}" hx-target="#rot-dialog">Assign</button>
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </section>
+  {% empty %}
+  <section class="rot-card rot-empty-state" aria-label="Nothing waiting">
+    <span class="rot-tile rot-tile--green rot-tile--xl">{% icon "check" 28 "2.2" %}</span>
+    <h2>No work waiting for assignment in {{ dept.name }}</h2>
+    <p>When a document, an SSQ{% if dept.pk == ict_pk %} or a new institution needing an ICT supervisor{% endif %} enters your department, it appears here with the next person in rotation. There is nothing to assign until then.</p>
+  </section>
+  {% endfor %}
+
+  <section class="rot-card" aria-label="Who has what">
+    <div class="rot-card__head">
+      <span class="rot-tile rot-tile--amber">{% icon "users" 20 "2.2" %}</span>
+      <div><h2>Who has what</h2><p>{{ weeks.0.start|date:"j M" }} to {{ weeks.3.end|date:"j M" }} · your staff's work, week by week</p></div>
+      <div class="rot-legend"><span class="rot-a rot-a--docs">Docs</span><span class="rot-a rot-a--ssq">SSQ</span><span class="rot-a rot-a--visit">Visit</span><span class="rot-a rot-a--over">Oversight</span><span class="rot-a rot-a--leave">Leave</span></div>
+    </div>
+    {% if rows %}
+    <div class="rot-bwrap" data-rot-board><div class="rot-board" role="table" aria-label="Assignments by person and week">
+      <div class="rot-wk" role="columnheader">Staff</div>
+      {% for w in weeks %}<div class="rot-wk{% if w.now %} is-now{% endif %}" role="columnheader">{{ w.label }}{% if w.now %} · now{% endif %}</div>{% endfor %}
+      {% for r in rows %}
+        <div class="rot-person" role="rowheader"><span class="rot-av" aria-hidden="true">{{ r.initials }}</span><div><b title="{{ r.name }}">{{ r.name }}</b><small>{{ r.role|default:"Staff" }} · {% if r.paused %}{{ r.paused.pause_reason|default:"away"|lower }}{% else %}{{ r.open }} open{% endif %}{% if not r.in_pool %} · not in a pool{% endif %}</small>
+          {% if r.never %}<span class="rot-idle">{% icon "clock" 12 "2.4" %} Not assigned yet</span>{% elif r.idle %}<span class="rot-idle">{% icon "clock" 12 "2.4" %} Idle {{ r.idle }} days</span>{% endif %}</div></div>
+        {% for c in r.cells %}<div class="rot-cell{% if c.now %} is-now{% endif %}" role="cell">{% for ch in c.chips %}<span class="rot-a rot-a--{{ ch.cls }}{% if not ch.open and ch.cls != 'leave' %} is-done{% endif %}" title="{{ ch.kind }} · {{ ch.text }}">{{ ch.text }}</span>{% endfor %}</div>{% endfor %}
+      {% endfor %}
+    </div></div>
+    {% else %}<p class="rot-empty">{{ dept.name }} has no staff who can take work yet.</p>{% endif %}
+  </section>
+</div>
+<script>(function(){var b=document.querySelector("[data-rot-board]");if(b&&b.scrollWidth>b.clientWidth+40&&window.innerWidth<980){b.scrollLeft=150;}})();</script>

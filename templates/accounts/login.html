@@ -1,12 +1,12 @@
 {% extends "base_public.html" %}
-{% load static showcase_tags %}
+{% load static showcase_tags %}{% load brand %}
 
 {% block title %}Sign in · {{ SITE_NAME }}{% endblock %}
 {% block meta_description %}Sign in to the {{ site_info.department_name }} workspace.{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/auth.css' %}?v=2">
-  <link rel="stylesheet" href="{% static 'css/account-security.css' %}?v=1">{# Phase 9 #}
+  <link rel="stylesheet" href="{% static 'css/auth.css' %}">
+  <link rel="stylesheet" href="{% static 'css/account-security.css' %}">{# Phase 9 #}
 {% endblock %}
 
 {% block body %}
@@ -27,7 +27,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="carousel-fallback"><img src="{% static 'img/MBTE_logo.png' %}" alt=""></div>
+      <div class="carousel-fallback"><img loading="lazy" decoding="async" src="{% static 'img/brand/nbte-logo-mono-white.svg' %}" alt=""></div>
     {% endif %}
     <div class="carousel-scrim"></div>
     {% if bg_images|length > 1 %}<div class="carousel-dots"></div>{% endif %}
@@ -36,7 +36,7 @@
   <!-- Left: brand panel over the imagery -->
   <aside class="auth-hero" aria-hidden="true">
     <div class="auth-hero-logo-backdrop">
-      <img src="{% static 'img/MBTE_logo.png' %}" alt="">
+      <img loading="lazy" decoding="async" src="{% static 'img/brand/nbte-logo-mono-white.svg' %}" alt="">
     </div>
     <div class="auth-hero-blobs">
       <span class="auth-hero-blob auth-hero-blob-1"></span>
@@ -44,7 +44,7 @@
     </div>
     <div class="auth-hero-content">
       <a href="{% url 'core:landing' %}" class="auth-hero-brand">
-        <img src="{% static 'img/MBTE_logo.png' %}" alt="{{ site_info.organisation_name }}">
+        <img loading="lazy" decoding="async" src="{% brand_logo_url 'primary' %}" alt="{{ site_info.organisation_name }}">
         <span>
           <strong>Digital NBTE</strong>
           <em>{{ site_info.department_name }}</em>
@@ -87,7 +87,7 @@
 
     <div class="auth-form-inner">
       <div class="auth-form-brand">
-        <img src="{% static 'img/MBTE_logo.png' %}" alt="{{ site_info.organisation_name }}">
+        <img loading="lazy" decoding="async" src="{% brand_logo_url 'primary' %}" alt="{{ site_info.organisation_name }}">
         <h1>Sign in</h1>
         <p>Access your {{ site_info.department_name }} workspace.</p>
       </div>
@@ -98,7 +98,7 @@
           Use the email and password issued to you by ICT support.
         </div>
 
-        <form method="post" action="{% url 'accounts:login' %}" novalidate>
+        <form method="post" action="{% url 'accounts:login' %}" novalidate data-loading-text="Signing you in…" data-busy-text="Signing in…">
           {% csrf_token %}
           <input type="hidden" name="next" value="{{ next|default:'' }}">
 
@@ -170,5 +170,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/passkeys.js' %}?v=1" defer></script>{# Phase 9 #}
+  <script src="{% static 'js/passkeys.js' %}" defer></script>{# Phase 9 #}
 {% endblock %}

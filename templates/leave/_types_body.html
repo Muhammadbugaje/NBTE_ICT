@@ -1,0 +1,41 @@
+<div class="hrd-split">
+  <section class="hrd-card" aria-labelledby="lt-list-title">
+    <div class="btn-group btn-group--between">
+      <div>
+        <h2 id="lt-list-title">{{ types|length }} leave type{{ types|length|pluralize }}</h2>
+        <p class="hrd-sub">{{ active_count }} open for applications. Days marked [TO CONFIRM] are seeded defaults for HR to adjust.</p>
+      </div>
+      <a class="btn btn-primary btn-sm" href="?edit=new" hx-get="{% url 'leave:type_new' %}" hx-target="#lt-editor" hx-swap="innerHTML">New leave type</a>
+    </div>
+    <div class="hrd-list">
+      {% for t in types %}
+        <article class="hrd-row {% if not t.is_active %}is-off{% endif %} {% if saved and saved.pk == t.pk %}is-saved{% endif %}">
+          <div>
+            <strong>{{ t.name }}</strong> <span class="hrd-tag">{{ t.code }}</span>
+            <div class="hrd-meta">
+              <span class="hrd-tag {% if t.days %}is-ok{% endif %}">{% if t.days %}{{ t.days }} days / year{% else %}No yearly limit{% endif %}</span>
+              <span class="hrd-tag is-info">{% if t.is_days_mode %}Number of days{% else %}Date range{% endif %}</span>
+              <span class="hrd-tag">{% if t.counting == "working" %}Working days{% else %}Calendar days{% endif %}</span>
+              {% if not t.paid %}<span class="hrd-tag is-warn">Unpaid</span>{% endif %}
+              {% if t.gender_restriction %}<span class="hrd-tag">{{ t.get_gender_restriction_display }}</span>{% endif %}
+              {% if t.needs_document %}<span class="hrd-tag">Document</span>{% endif %}
+              {% if t.notice_days %}<span class="hrd-tag">{{ t.notice_days }} days' notice</span>{% endif %}
+              {% if t.max_days_per_application %}<span class="hrd-tag">Max {{ t.max_days_per_application }} at a time</span>{% endif %}
+              {% if not t.is_active %}<span class="hrd-tag is-danger">Closed</span>{% endif %}
+              {% if t.used_count %}<span class="hrd-tag">{{ t.used_count }} application{{ t.used_count|pluralize }}</span>{% endif %}
+            </div>
+          </div>
+          <div class="btn-group btn-group--end">
+            <a class="btn btn-ghost btn-sm" href="?edit={{ t.pk }}" hx-get="{% url 'leave:type_edit' t.pk %}" hx-target="#lt-editor" hx-swap="innerHTML">Edit</a>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+  <aside class="hrd-card hrd-sticky" id="lt-editor" aria-live="polite">
+    {% if edit_form %}{% include "leave/_type_editor.html" %}{% else %}
+      <h2>Edit a leave type</h2>
+      <p class="hrd-sub">Choose Edit on a type, or New leave type. Changes apply to new applications; approved leave keeps the rules it was approved under.</p>
+    {% endif %}
+  </aside>
+</div>

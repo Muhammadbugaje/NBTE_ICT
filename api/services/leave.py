@@ -30,7 +30,10 @@ def staff_of(user):
 
 
 def balance_item(balance):
-    return {"leave_type": LEAVE_CODE, "name": "Annual leave", "year": balance["year"],
+    lt = balance.get("leave_type")
+    is_annual = lt is None or lt.code == "annual"
+    return {"leave_type": LEAVE_CODE if is_annual else lt.code, "name": "Annual leave" if is_annual else lt.name,
+            "year": balance["year"],
             "entitlement": str(balance["entitlement"]), "used": str(balance["used"]),
             "pending": str(balance["pending"]), "remaining": str(balance["remaining"]),
             "is_set": balance["is_set"], "entitlement_source": balance["entitlement_source"]}
@@ -51,13 +54,14 @@ def application_item(app, user):
     req = app.request
     return {"id": app.pk, "request_id": req.pk, "reference": req.reference, "start_date": app.start_date,
             "end_date": app.end_date, "working_days": working_days(app.start_date, app.end_date, user=app.staff.user),
+            "leave_type": app.leave_type.code, "leave_type_name": app.leave_type.name,
             "status": req.status, "status_display": req.get_status_display(),
             "current_step": current_step_name(req), "created_at": iso(app.created_at),
             "can_cancel": req.requester_id == user.pk and req.status not in Request.CLOSED_STATUSES}
 
 
 def overview(user, year=None):
-    from leave.services import balance_for, dashboard_data
+    from leave.services import balance_for, balances_for, dashboard_data
 
     staff = staff_of(user)
     if staff is None:
@@ -69,7 +73,8 @@ def overview(user, year=None):
     return {
         "staff_linked": True,
         "can_apply": leave_type_available() is not None,
-        "balances": [balance_item(balance)],
+        "balances": [balance_item(balance)] + [balance_item(b) for b in balances_for(staff, year)
+                                               if b["leave_type"].code != "annual"],
         "current": application_item(data["current"], user) if data["current"] else None,
         "upcoming": application_item(data["upcoming"], user) if data["upcoming"] else None,
         "resumption_date": data["resumption_date"],
@@ -95,6 +100,19 @@ def applications(user, status="all"):
     return qs.order_by("-start_date", "-pk")
 
 
+def _form_data(values):
+    """Form data for leave.services from the API body (v2.1: any type; a
+    days-mode type takes ``days`` instead of ``end_date``)."""
+    data = {"start_date": values["start_date"].isoformat()}
+    if values.get("leave_type"):
+        data["leave_type"] = values["leave_type"]
+    if values.get("days"):
+        data["days"] = values["days"]
+    if values.get("end_date"):
+        data["end_date"] = values["end_date"].isoformat()
+    return data
+
+
 def apply(user, values):
     from rest_framework import serializers
 
@@ -102,36 +120,47 @@ def apply(user, values):
 
     leave_type = leave_type_available()
     if leave_type is None:
-        raise serializers.ValidationError({"non_field_errors": ["Annual leave applications are closed."]})
-    start, end = values["start_date"], values["end_date"]
-    subject = (values.get("subject") or "").strip() or "Annual leave application"
-    body = (values.get("body") or "").strip() or f"Annual leave from {start:%d %b %Y} to {end:%d %b %Y}."
-    req = create(user, leave_type, {"subject": subject, "body": body, "priority": values.get("priority") or "normal",
-                                    "fields": {"start_date": start, "end_date": end}})
-    return req.annual_leave_application
-
-
-def preview(user, start, end):
-    from leave.services import balance_for, resumption_date, validate_application, working_days
+        raise serializers.ValidationError({"non_field_errors": ["Leave applications are closed."]})
+    if not values.get("leave_type") and not values.get("days"):
+        # v2 body: annual leave, dates only (kept unchanged for the mobile app)
+        start, end = values["start_date"], values["end_date"]
+        subject = (values.get("subject") or "").strip() or "Annual leave application"
+        body = (values.get("body") or "").strip() or f"Annual leave from {start:%d %b %Y} to {end:%d %b %Y}."
+        req = create(user, leave_type, {"subject": subject, "body": body,
+                                        "priority": values.get("priority") or "normal",
+                                        "fields": {"start_date": start, "end_date": end}})
+        return req.annual_leave_application
+    from leave import services as leave_services
 
     from .work import run
 
-    staff, start, end = run(validate_application, user,
-                            {"start_date": start.isoformat(), "end_date": end.isoformat()})
-    days = working_days(start, end, user=user)
+    req = run(leave_services.apply_for_leave, user, _form_data(values), reason=values.get("body") or "",
+              require_document=False)  # no upload in the app: HR asks on the request
+    return req.annual_leave_application
+
+
+def preview(user, start, end, leave_type=None, days=None):
+    from leave.services import balance_for, check_application, counted_days, resumption_date
+
+    from .work import run
+
+    values = {"start_date": start, "end_date": end, "leave_type": leave_type, "days": days}
+    check = run(check_application, user, _form_data(values))
+    start, end, lt = check.start_date, check.end_date, check.leave_type
     first_year_end = min(end, date(start.year, 12, 31))
-    days_in_start_year = working_days(start, first_year_end, user=user)
-    balance = balance_for(staff, start.year)
+    days_in_start_year = counted_days(start, first_year_end, lt, user=user)
+    balance = balance_for(check.staff, start.year, lt)
     before = after = None
     over = False
     if balance["is_set"]:
         before = balance["remaining"]
         after = before - days_in_start_year
         over = after < 0
-    return {"start_date": start, "end_date": end, "working_days": days,
+    return {"start_date": start, "end_date": end, "working_days": check.days,
             "resumption_date": resumption_date(end, user=user),
             "remaining_before": str(before) if before is not None else None,
-            "remaining_after": str(after) if after is not None else None, "is_over_balance": over}
+            "remaining_after": str(after) if after is not None else None, "is_over_balance": over,
+            "leave_type": lt.code, "leave_type_name": lt.name}
 
 
 def cancel(user, app, reason=""):

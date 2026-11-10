@@ -1,34 +1,30 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Announcements · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Announcements{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/announcements.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/announcements.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="ann-page">
-  <header class="ann-hero">
-    <div class="ann-hero-title">
-      <span class="ann-hero-mark" aria-hidden="true">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-      </span>
-      <div>
-        <span class="ann-hero-eyebrow">NBTE Announcements</span>
-        <h1>Announcements</h1>
-        <p>Official notices from management, ICT and HR.{% if counts.ack %} <strong>{{ counts.ack }}</strong> waiting for your acknowledgement.{% endif %}</p>
+  <header class="qa-hero nbte-hero ann-qa-hero" data-qa-area="announcements">
+    <div>
+      <span class="qa-eyebrow">{% icon "megaphone" 14 "2.2" %} Communication · Announcements</span>
+      <h1>Announcements</h1>
+      <p>Official notices from management, ICT and HR.{% if counts.ack %} <strong>{{ counts.ack }}</strong> waiting for your acknowledgement.{% endif %}</p>
+      {% if can_post %}
+      <div class="qa-hero__actions">
+        <a href="{% url 'announcements:create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New announcement</a>
       </div>
+      {% endif %}
     </div>
-    {% if can_post %}
-      <div class="ann-hero-actions">
-        <a href="{% url 'announcements:create' %}" class="btn btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New announcement
-        </a>
-      </div>
-    {% endif %}
+    <div class="qa-hero__stats" aria-label="Summary">
+      <a class="qa-stat qa-stat--link{% if counts.unread %} qa-stat--info{% endif %}" href="?filter=unread"><strong>{{ counts.unread|default:0 }}</strong><span>Unread</span></a>
+      <a class="qa-stat qa-stat--link{% if counts.ack %} qa-stat--warn{% endif %}" href="?filter=ack"><strong>{{ counts.ack|default:0 }}</strong><span>To acknowledge</span></a>
+    </div>
   </header>
 
   <div class="ann-toolbar">

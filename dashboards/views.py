@@ -8,6 +8,8 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import render
 from django.utils import timezone
 
+import org
+
 from . import services
 
 
@@ -16,7 +18,8 @@ def _guard(user, *allowed_role_codes, permission=None):
         raise PermissionDenied
     if user.is_superuser:
         return
-    if user.role_id and user.role.code in allowed_role_codes:
+    import org
+    if org.has_role(user, *allowed_role_codes):
         return
     if permission and user.has_perm(permission):
         return
@@ -32,6 +35,19 @@ def _render(request, template, key, title, ctx):
             ctx["qa"] = qa_metrics.overview()
         except Exception:  # never break a dashboard over the QA panel
             ctx["qa"] = None
+    # v2.2: new institutions spotlight (ES, super admin, Director of ICT,
+    # handling directors) and the ICT officer's tracker.
+    try:
+        from qa_core import spotlight
+
+        ctx.setdefault("spotlight", spotlight.new_institutions(request.user))
+        ctx.setdefault("tracked", spotlight.tracked(request.user))
+    except Exception:  # never break a dashboard over the spotlight
+        ctx.setdefault("spotlight", None)
+    from assignments import inbox   # v2.3: "Your work" opens each task where it is done
+
+    for k, v in inbox.context(request.user).items():
+        ctx.setdefault(k, v)
     ctx["dashboard_key"] = key
     ctx["dashboard_title"] = title
     ctx["now"] = timezone.now()
@@ -45,6 +61,16 @@ def self_service(request):
     from . import insights
 
     ctx["insights"] = insights.chart_context(request.user, request.GET.get("period"))
+    try:
+        from qa_core import spotlight
+
+        ctx["spotlight"] = spotlight.new_institutions(request.user)
+        ctx["tracked"] = spotlight.tracked(request.user)
+    except Exception:
+        pass
+    from assignments import inbox   # v2.3: officers see their assigned documents/SSQs first
+
+    ctx.update(inbox.context(request.user))
     return render(request, "dashboards/self_service.html", ctx)
 
 
@@ -110,7 +136,7 @@ def superadmin(request):
 def audit_log(request):
     if not (request.user.is_superuser
             or request.user.has_perm("accounts.access_all_departments")
-            or (request.user.role_id and request.user.role.code in {"super-admin", "director"})):
+            or org.has_role(request.user, "super-admin", "director")):
         raise PermissionDenied
 
     try:
@@ -186,7 +212,7 @@ def export_audit_log(request):
     """
     if not (request.user.is_superuser
             or request.user.has_perm("accounts.access_all_departments")
-            or (request.user.role_id and request.user.role.code in {"super-admin", "director"})):
+            or org.has_role(request.user, "super-admin", "director")):
         raise PermissionDenied
 
     def _int_or_none(key):
@@ -217,7 +243,10 @@ def export_audit_log(request):
             department = Department.objects.filter(pk=dept_id).first()
 
     if not request.user.is_superuser and not request.user.has_perm("accounts.access_all_departments"):
-        actor = request.user
+        if request.user.department_id and org.is_director(request.user, request.user.department_id):
+            department = request.user.department  # Phase B (B10): own department only
+        else:
+            actor = request.user
 
     days = _int_or_none("days")
     since = None

@@ -4,20 +4,18 @@
 {% block title %}{% if mode == "create" %}New position{% else %}Edit position{% endif %} · {{ SITE_NAME }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="lead-page lead-page-narrow">
 
-  <a href="{% url 'staff:leadership_panel' %}" class="lead-back">← Leadership panel</a>
-
-  <header class="lead-hero">
-    <div>
-      <h1>{% if mode == "create" %}New leadership position{% else %}Edit position{% endif %}</h1>
-      <p>Positions outlive individual holders — define roles here.</p>
-    </div>
-  </header>
+  {% url 'staff:leadership_panel' as back_url %}
+  {% if mode == "create" %}
+    {% include "partials/hero.html" with icon="flag" eyebrow="User management · Leadership" title="New leadership position" lede="Positions outlive individual holders, so define the role here." back_url=back_url back_label="Leadership panel" %}
+  {% else %}
+    {% include "partials/hero.html" with icon="flag" eyebrow="User management · Leadership" title="Edit position" lede="Positions outlive individual holders, so define the role here." back_url=back_url back_label="Leadership panel" %}
+  {% endif %}
 
   <form method="post" class="lead-form" novalidate>
     {% csrf_token %}

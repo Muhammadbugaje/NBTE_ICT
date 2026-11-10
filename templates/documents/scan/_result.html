@@ -1,0 +1,59 @@
+{% load qa_tags %}{% comment %}
+  Result card (design 27). `card` comes from documents.verify (public fields only for visitors;
+  signature thumbnails are inline data: URIs for staff - no URL serves a signature).
+{% endcomment %}
+<div class="sv-result-in" data-scan-card data-status="{{ card.status }}">
+{% if not card.found %}
+  <div class="sv-top-band" data-status="{{ card.status }}">
+    <span class="sv-mark" aria-hidden="true">{% if card.status == "rate_limited" %}{% icon "clock" 26 "2.4" %}{% else %}{% icon "x" 26 "2.6" %}{% endif %}</span>
+    <div>
+      <div class="sv-word">{% if card.status == "rate_limited" %}SLOW DOWN{% else %}NOT FOUND{% endif %}</div>
+      <small>{% if card.status == "rate_limited" %}Too many checks from this connection. Try again in an hour.{% else %}This is not an NBTE code, or it was typed wrongly. Check the code under the QR (NBTE-XXXX-XXXX) and try again.{% endif %}</small>
+    </div>
+  </div>
+{% else %}
+  <div class="sv-top-band" data-status="{{ card.status }}">
+    <span class="sv-mark" aria-hidden="true">{% if card.status == "valid" %}{% icon "check" 28 "2.8" %}{% elif card.status == "revoked" %}{% icon "x" 26 "2.6" %}{% else %}{% icon "alert" 26 "2.4" %}{% endif %}</span>
+    <div>
+      <div class="sv-word">{% if card.status == "valid" %}VALID{% elif card.status == "revoked" %}REVOKED{% else %}SUPERSEDED{% endif %}</div>
+      <small>{% if card.status == "valid" %}Issued by NBTE and unchanged since.{% elif card.status == "revoked" %}NBTE revoked this document{% if card.revoked_at %} on {{ card.revoked_at|date:"j M Y" }}{% endif %}. Do not rely on it.{% else %}A newer copy replaces this one{% if card.superseded_by %} ({{ card.superseded_by }}){% endif %}.{% endif %} Checked {% now "j M Y, H:i" %}.</small>
+    </div>
+    {% if card.status == "valid" %}<span class="sv-chip sv-chip--ok">{% icon "shield" 14 "2.4" %} Genuine</span>{% endif %}
+  </div>
+  {% if card.title %}<p class="sv-sub"><b>{{ card.title }}</b></p>{% endif %}
+  <dl class="sv-kv">
+    <dt>Document</dt><dd>{{ card.kind_label }}</dd>
+    {% if card.reference %}<dt>Reference</dt><dd class="sv-mono">{{ card.reference }}</dd>{% endif %}
+    {% if card.institution %}<dt>Institution</dt><dd>{{ card.institution }}{% if card.code %} ({{ card.code }}){% endif %}</dd>{% endif %}
+    {% if card.amount %}<dt>Amount</dt><dd>{{ card.amount }}</dd>{% endif %}
+    {% if card.payment_reference and card.payment_reference != card.reference %}<dt>Payment reference</dt><dd class="sv-mono">{{ card.payment_reference }}</dd>{% endif %}
+    {% if card.issued_at %}<dt>Issued</dt><dd>{{ card.issued_at|date:"j M Y, H:i" }}</dd>{% endif %}
+    <dt>Status</dt><dd><span class="sv-states">
+      <span class="sv-chip {% if card.status == 'valid' %}sv-chip--ok{% elif card.status == 'revoked' %}sv-chip--bad{% else %}sv-chip--warn{% endif %}">{{ card.status_label }}</span>
+      {% if card.provisional and not card.official_at %}<span class="sv-chip sv-chip--warn">Provisional — official copy to follow</span>{% endif %}
+      {% if card.official_at %}<span class="sv-chip sv-chip--info">Official copy issued {{ card.official_at|date:"j M Y" }}</span>{% endif %}
+    </span></dd>
+    {% if card.short_code %}<dt>Code</dt><dd class="sv-mono">{{ card.short_code }}</dd>{% endif %}
+    {% if card.staff and card.revoke_reason %}<dt>Reason</dt><dd>{{ card.revoke_reason }}</dd>{% endif %}
+  </dl>
+  {% if card.signatories %}
+  <div>
+    <h2 style="margin:0 0 4px;font-size:1rem">Signatories</h2>
+    <div class="sv-signers">{% for s in card.signatories %}
+      <div class="sv-signer">
+        {% if s.thumb %}<span class="sv-sig"><img loading="lazy" decoding="async" src="{{ s.thumb }}" alt="Signature of {{ s.name }}"></span>{% else %}<span class="sv-sig sv-sig--none">{% if s.on_file %}Signed{% else %}No image{% endif %}</span>{% endif %}
+        <div><b>{{ s.name }}</b><small>{{ s.designation }}{% if s.signed_at %} · signed {{ s.signed_at|date:"j M Y" }}{% endif %}</small></div>
+        {% if s.on_file %}<span class="sv-chip sv-chip--ok">{% icon "check" 12 "3" %} Signature on file</span>{% endif %}
+      </div>{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% if card.legacy %}<p class="sv-note">A payment document printed before October 2026. Its details come from NBTE's payment records.</p>{% endif %}
+  {% if card.staff %}
+  <div class="btn-group">
+    {% if card.register_url %}<a class="btn btn-ghost btn-sm" href="{{ card.register_url }}">{% icon "file" 14 %} Open in the register</a>{% endif %}
+    {% if card.verify_count is not None %}<span class="sv-note">Checked {{ card.verify_count }} time{{ card.verify_count|pluralize }}</span>{% endif %}
+  </div>
+  {% endif %}
+{% endif %}
+</div>

@@ -1,0 +1,72 @@
+{% extends "qa_core/_shell.html" %}
+{% load static qa_tags %}
+{% block qa_title %}Who's next to be paid · Honoraria{% endblock %}
+{% block qa_page_title %}Honoraria{% endblock %}
+{% block panel %}
+<div class="uxf uxf-roller">
+<header class="ux-hero uxf-hero">
+  <div>
+    <span class="ux-hero__eyebrow">Finance · Honoraria</span>
+    <h1 data-qa-focus>Who's next to be paid</h1>
+    <p>Everyone who has finished payable work — document assessment, internal SSQ review, external SSQ review and visits — in the order they should be paid. People with confirmed bank details come first, oldest work first.</p>
+  </div>
+  <div class="uxf-hero__figure"><span>Total owed</span><strong>{{ total_owed|naira }}</strong><small>{{ rows|length }} person{{ rows|length|pluralize }}</small></div>
+</header>
+{% include "honoraria/_nav.html" with tab="roller" %}
+{% if messages %}{% for m in messages %}<div class="uxf-flash uxf-flash--{{ m.tags }}" role="status">{{ m }}</div>{% endfor %}{% endif %}
+
+<div class="ux-stats">
+  <div class="ux-stat"><span class="ux-stat__label">People owed</span><span class="ux-stat__value">{{ rows|length }}</span><span class="ux-stat__hint">Across every institution</span></div>
+  <div class="ux-stat ux-stat--gold"><span class="ux-stat__label">Total owed</span><span class="ux-stat__value">{{ total_owed|naira }}</span><span class="ux-stat__hint">At the rates in Settings</span></div>
+  <div class="ux-stat {% if missing_bank %}ux-stat--red{% else %}ux-stat--teal{% endif %}"><span class="ux-stat__label">Missing bank details</span><span class="ux-stat__value">{{ missing_bank }}</span><span class="ux-stat__hint">{% if missing_bank %}They cannot be paid until they confirm{% else %}Everyone can be paid{% endif %}</span></div>
+</div>
+
+{% if rows and rows.0.bank_ok %}
+<div class="ux-next">
+  <span class="ux-next__badge" aria-hidden="true">1</span>
+  <div><h3>Next: {{ rows.0.name }} — {{ rows.0.amount|naira }}</h3><p>{{ rows.0.kinds|join:", " }} · waiting since {{ rows.0.oldest|date:"j M Y"|default:"—" }}. Prefer paying a whole institution? Use its <a href="{% url 'honoraria_sched:files' %}">honorarium file</a>.</p></div>
+  {% if can_pay %}<a class="btn btn-primary" href="#pay-order">Prepare payment</a>{% else %}<span></span>{% endif %}
+</div>
+{% endif %}
+
+<form id="pay-order" method="post" action="{% url 'honoraria_sched:roller_prepare' %}" class="ux-card">{% csrf_token %}
+  <div class="ux-card__head"><div><h2>Payment order</h2><p>Tick who to pay now and press <strong>Prepare payment</strong>. You then approve the draft and record the transfer; each person is notified and confirms receipt.</p></div></div>
+  {% if rows %}
+  <div class="uxf-table-wrap"><table class="uxf-table">
+    <thead><tr>{% if can_pay %}<th scope="col" class="uxf-col-pick"><span class="sr-only">Pick</span></th>{% endif %}<th scope="col">#</th><th scope="col">Person</th><th scope="col">Work</th><th scope="col" class="ux-num">Items</th><th scope="col" class="ux-num">Owed</th><th scope="col">Waiting since</th><th scope="col">Bank details</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr class="{% if forloop.first and r.bank_ok %}uxf-row-next{% endif %}">
+        {% if can_pay %}<td class="uxf-col-pick"><input type="checkbox" name="payee" value="{% if r.resource_person %}rp:{{ r.resource_person.pk }}{% else %}user:{{ r.user.pk }}{% endif %}" {% if r.bank_ok and forloop.counter <= 10 %}checked{% endif %} {% if not r.bank_ok %}disabled title="Bank details missing or not confirmed"{% endif %} aria-label="Pay {{ r.name }}"></td>{% endif %}
+        <td><span class="uxf-pos">{{ r.position }}</span></td>
+        <td><div class="uxf-person"><span class="ux-avatar{% if r.resource_person %} ux-avatar--violet{% endif %}" aria-hidden="true">{{ r.name|slice:":1" }}</span><div><strong>{{ r.name }}</strong>{% if forloop.first and r.bank_ok %}<small>Next to be paid</small>{% endif %}</div></div></td>
+        <td><div class="uxf-kinds">{% for k in r.kinds %}<span class="ux-chip ux-chip--plain">{{ k }}</span>{% endfor %}</div></td>
+        <td class="ux-num">{{ r.items }}</td>
+        <td class="ux-num"><strong>{{ r.amount|naira }}</strong></td>
+        <td>{{ r.oldest|date:"j M Y"|default:"—" }}</td>
+        <td>
+          {% if r.bank %}<span class="uxf-bank{% if r.bank_ok %} is-ok{% else %} is-warn{% endif %}">{{ r.bank.bank.name }} <span class="qa-mono">{{ r.bank.masked }}</span></span>{% if not r.bank_ok %}<small class="uxf-note">Not confirmed by owner</small>{% endif %}{% else %}<span class="uxf-bank is-missing">Missing</span>{% endif %}
+          {% if can_view_bank and r.bank %}<div id="bank-{{ forloop.counter }}" class="uxf-reveal"><button type="button" class="uxf-link" hx-post="{% url 'honoraria_sched:roller_bank' %}" hx-vals='{"payee": "{% if r.resource_person %}rp:{{ r.resource_person.pk }}{% else %}user:{{ r.user.pk }}{% endif %}"}' hx-target="#bank-{{ forloop.counter }}" hx-swap="innerHTML" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>View full details (logged)</button></div>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% if can_pay %}
+  <div class="uxf-footbar">
+    <p>Ticked people go into one draft batch; you approve it, then record the transfer.</p>
+    <div class="ux-gap"><label class="sr-only" for="ro-title">Title</label><input class="input" id="ro-title" name="title" placeholder="Title, e.g. November honoraria"><button class="btn btn-primary" type="submit">Prepare payment</button></div>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="ux-empty"><div class="ux-empty__art">✓</div><strong>Nobody is owed anything right now</strong><span>Payable work appears here when it completes.</span></div>
+  {% endif %}
+</form>
+
+{% if recent %}
+<section class="ux-card">
+  <div class="ux-card__head"><div><h2>Payment log</h2><p>The latest payments recorded (also in the audit trail and the ledger).</p></div></div>
+  <div class="uxf-table-wrap"><table class="uxf-table"><thead><tr><th scope="col">When</th><th scope="col">Payee</th><th scope="col" class="ux-num">Amount</th><th scope="col">Reference</th><th scope="col">Paid by</th><th scope="col">Receipt</th></tr></thead>
+  <tbody>{% for l in recent %}<tr><td>{{ l.paid_at|date:"j M Y, H:i" }}</td><td>{{ l.name }}</td><td class="ux-num"><strong>{{ l.amount|naira }}</strong></td><td><span class="qa-mono">{{ l.payment_reference }}</span><small class="uxf-note"><a href="{% url 'honoraria_sched:detail' l.schedule.pk %}">{{ l.schedule.reference }}</a></small></td><td>{{ l.paid_by.get_full_name|default:"—" }}</td><td>{% if l.confirmed_at %}<span class="ux-chip ux-chip--green">Confirmed {{ l.confirmed_at|date:"j M" }}</span>{% else %}<span class="ux-chip ux-chip--violet">Awaiting</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+</div>
+{% endblock %}

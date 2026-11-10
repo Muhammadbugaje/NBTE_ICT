@@ -1,0 +1,40 @@
+{% load qa_tags %}{% with name="f__"|add:f.key %}
+<div class="qa-field{% if f.type == 'table' or f.type == 'textarea' or f.width != 'half' %} qa-field--wide{% endif %}" id="rf-f-{{ f.key }}">
+  {% if f.type == "table" or f.type == "yes_no" or f.type == "multi_choice" %}<span class="qa-label" id="lbl-{{ f.key }}">{{ f.label }}{% if f.required %} <span class="qa-req">*</span>{% endif %}</span>
+  {% else %}<label for="in-{{ f.key }}">{{ f.label }}{% if f.required %} <span class="qa-req">*</span>{% endif %}</label>{% endif %}
+  {% if f.help %}<p class="qa-help">{{ f.help }}</p>{% endif %}
+  {% if f.suggestion %}<p class="qa-small qa-tone-info">Suggested: <strong>{{ f.suggestion.0|humanize_code }}</strong> — {{ f.suggestion.1 }}</p>{% endif %}
+  {% if f.type == "textarea" %}
+    <textarea class="input" id="in-{{ f.key }}" name="{{ name }}" rows="3"{% if not can_edit %} disabled{% endif %}>{{ f.value|default:'' }}</textarea>
+  {% elif f.type == "choice" %}
+    <select class="input" id="in-{{ f.key }}" name="{{ name }}"{% if not can_edit %} disabled{% endif %}><option value="">— choose —</option>{% for v, l in f.choices %}<option value="{{ v }}"{% if f.value == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  {% elif f.type == "yes_no" %}
+    <div class="qa-row qa-gap-sm" role="radiogroup" aria-labelledby="lbl-{{ f.key }}">
+      <label class="qa-field--check"><input type="radio" name="{{ name }}" value="yes"{% if f.value == "yes" %} checked{% endif %}{% if not can_edit %} disabled{% endif %}> Yes</label>
+      <label class="qa-field--check"><input type="radio" name="{{ name }}" value="no"{% if f.value == "no" %} checked{% endif %}{% if not can_edit %} disabled{% endif %}> No</label>
+    </div>
+  {% elif f.type == "multi_choice" %}<input type="hidden" name="{{ name }}__present" value="1">
+    <div class="qa-row qa-gap-sm qa-wrap" role="group" aria-labelledby="lbl-{{ f.key }}">{% for v, l in f.choices %}<label class="qa-field--check"><input type="checkbox" name="{{ name }}" value="{{ v }}"{% if v in f.value %} checked{% endif %}{% if not can_edit %} disabled{% endif %}> {{ l }}</label>{% endfor %}</div>
+  {% elif f.type == "table" %}<input type="hidden" name="{{ name }}__present" value="1">
+    <div class="qa-table-wrap" role="region" aria-label="{{ f.label }} table" tabindex="0" data-report-table data-max-rows="{{ f.render_max_rows }}"><table class="qa-table qa-table--compact qa-table--scroll" aria-labelledby="lbl-{{ f.key }}">
+      <thead><tr>{% for c in f.columns %}<th scope="col">{{ c.label }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in f.rows %}{% with i=forloop.counter0 %}<tr>{% for c in f.columns %}{% with cell=row|get_item:c.key %}<td data-label="{{ c.label }}">
+        {% if c.type == "choice" or c.type == "yes_no" %}<select class="input" aria-label="{{ c.label }}, row {{ i|add:1 }}" name="{{ name }}__{{ i }}__{{ c.key }}"{% if not can_edit %} disabled{% endif %}><option value="">—</option>{% if c.type == "yes_no" %}<option value="yes"{% if cell == "yes" %} selected{% endif %}>Yes</option><option value="no"{% if cell == "no" %} selected{% endif %}>No</option>{% else %}{% for v, l in c.choices %}<option value="{{ v }}"{% if cell == v %} selected{% endif %}>{{ l }}</option>{% endfor %}{% endif %}</select>
+        {% else %}<input class="input" aria-label="{{ c.label }}, row {{ i|add:1 }}" name="{{ name }}__{{ i }}__{{ c.key }}" value="{{ cell|default:'' }}"{% if c.type == "date" %} type="date"{% elif c.type == "number" or c.type == "integer" %} inputmode="decimal"{% endif %}{% if not can_edit %} disabled{% endif %}>{% endif %}
+      </td>{% endwith %}{% endfor %}</tr>{% endwith %}{% endfor %}</tbody>
+    </table></div>
+    {% if can_edit %}<button class="btn btn-sm btn-subtle" type="button" data-add-table-row aria-controls="rf-f-{{ f.key }}">+ Add another row</button>{% endif %}
+    <p class="qa-small qa-muted">Blank rows are ignored. Add as many rows as the template permits.</p>
+  {% elif f.type == "file" %}
+    {% if can_edit %}<input class="input" id="in-{{ f.key }}" type="file" name="{{ name }}"{% if f.multiple %} multiple{% endif %} accept="image/jpeg,image/png">{% endif %}
+    {% if f.attachments %}<ul class="qa-small">{% for attachment in f.attachments %}<li><a href="{{ attachment.download_url }}">{{ attachment.display_name }}</a></li>{% endfor %}</ul>
+    {% elif not can_edit %}<p class="qa-small qa-muted">No photograph uploaded.</p>{% endif %}
+  {% elif f.type == "catalogue" %}
+    <p class="qa-small qa-muted">Not captured on this form.</p>
+  {% else %}
+    <input class="input" id="in-{{ f.key }}" name="{{ name }}" value="{{ f.value|default:'' }}" autocomplete="off"{% if f.placeholder %} placeholder="{{ f.placeholder }}"{% endif %}
+      {% if f.type == "date" %}type="date"{% elif f.type == "number" or f.type == "integer" %}inputmode="decimal"{% else %}type="text"{% endif %}{% if not can_edit %} disabled{% endif %}>
+  {% endif %}
+  {% if f.error %}<p class="qa-field-error" role="alert">{{ f.error }}</p>{% endif %}
+</div>
+{% endwith %}

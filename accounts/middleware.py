@@ -37,6 +37,8 @@ ALLOWED_PATH_PREFIXES = (
     "/admin/logout/",
     "/favicon.ico",
     "/robots.txt",
+    "/sw.js",       # NBTE service worker (core/pwa.py)
+    "/offline/",    # its offline page
 )
 
 
@@ -153,7 +155,7 @@ class ExternalUserGuardMiddleware:
     """
 
     # Paths that always pass (static files, health checks).
-    PASS_PREFIXES = ("/static/", "/media/", "/favicon.ico", "/robots.txt")
+    PASS_PREFIXES = ("/static/", "/media/", "/favicon.ico", "/robots.txt", "/sw.js", "/offline/")
 
     def __init__(self, get_response):
         self.get_response = get_response

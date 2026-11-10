@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .. import serializers_attendance as s
-from ..exceptions import ApiError, NotReady
+from ..exceptions import ApiError
 from ..pagination import StandardPagination
 from ..services import attendance as svc
 from ..services.work import paginate
@@ -20,6 +20,10 @@ class MockLocation(ApiError):
 
 class CheckInRefused(ApiError):
     status_code, code = 400, "check_in_refused"
+
+
+class CheckOutRefused(ApiError):
+    status_code, code = 400, "check_out_refused"
 
 
 class TodayView(APIView):
@@ -93,11 +97,33 @@ class CodeCheckInView(APIView):
 
 
 class CheckOutView(APIView):
-    @extend_schema(operation_id="attendance_check_out", request=None,
-                   responses={501: OpenApiResponse(description="not_ready: the website records check-in only."),
+    @extend_schema(operation_id="attendance_check_out", request=s.CheckOutRequestSerializer,
+                   responses={200: s.CheckOutResultSerializer,
+                              400: OpenApiResponse(description="validation_error (code / token / reading); "
+                                                               "check_out_refused (not checked in, already "
+                                                               "checked out, outside every office: use the "
+                                                               "code or QR)"),
                               **AUTHED_ERRORS})
     def post(self, request):
-        raise NotReady("Check-out is not recorded: attendance only records your check-in.")
+        """v2.1 G1/G2: check out after proving presence by GPS, the current
+        office code or the office QR (attendance.checkout.check_out, the
+        website's button uses it too). The day counts from the check-in."""
+        from attendance import checkout
+
+        body = s.CheckOutRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        v = body.validated_data
+        token = (v.get("token") or "").strip()
+        if "/scan/" in token:
+            token = token.rstrip("/").rsplit("/scan/", 1)[-1]
+        out = checkout.check_out(request.user, method=v["method"], lat=v.get("latitude"), lng=v.get("longitude"),
+                                 accuracy=v.get("accuracy"), code=v.get("code") or "", token=token)
+        if not out.ok:
+            if out.error in ("code", "qr"):
+                raise serializers.ValidationError({"code" if out.error == "code" else "token": [out.message]})
+            raise CheckOutRefused(out.message)
+        return Response(s.CheckOutResultSerializer({"message": out.message,
+                                                     "record": svc.record_item(out.record)}).data)
 
 
 class HistoryView(APIView):

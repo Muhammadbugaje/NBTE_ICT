@@ -4,7 +4,12 @@
 
 /* ---------- Batch selection (label printing) ---------- */
 .asset-card-wrap { position: relative; }
-.asset-card-wrap .asset-card { padding-left: 46px; }
+/* Checkboxes appear only in select mode (the "Select" button). */
+.asset-select-toolbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }
+.asset-select-mode-btn { display: inline-flex; }
+.asset-select { display: none !important; }
+html.asset-selecting .asset-select { display: flex !important; }
+html.asset-selecting .asset-card-wrap .asset-card { padding-left: 46px; }
 .asset-select {
   position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
   z-index: 2; display: flex; align-items: center; cursor: pointer;
@@ -1311,3 +1316,165 @@
 
 /* Resolution note on an issue (was an inline background). */
 .asset-issue-body.asset-issue-body-resolved { background: var(--primary-subtle); }
+
+/* v2.1 Phase C: assignment modes (K1, K2) and temporary access (X5) */
+.badge-mode-individual { background: var(--bg-sunken); color: var(--fg-muted); }
+.badge-mode-department { background: var(--accent-info-soft); color: var(--accent-info); }
+.badge-mode-shared { background: var(--primary-soft); color: var(--primary-soft-fg); }
+.access-banner { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 16px; padding: 14px 16px;
+  border-radius: var(--radius-lg, 14px); background: var(--accent-warn-soft); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--accent-warn) 30%, transparent); }
+.access-banner-icon { flex: none; color: var(--accent-warn); margin-top: 2px; }
+.access-banner strong { display: block; font-size: .95rem; }
+.access-banner p { margin: 2px 0 0; color: var(--fg-muted); font-size: .9rem; overflow-wrap: anywhere; }
+.access-banner a { color: var(--accent-warn); font-weight: 600; }
+.asset-holders { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.asset-holder { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border); }
+.asset-holder:first-child { border-top: 0; padding-top: 0; }
+.asset-holder strong { display: block; overflow-wrap: anywhere; }
+.asset-holder-meta { font-size: .8rem; color: var(--fg-subtle); }
+.asset-ticket-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.asset-ticket-list li { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border); min-width: 0; }
+.asset-ticket-list li:last-child { border-bottom: 0; }
+.asset-ticket-ref { font-family: var(--font-mono, monospace); font-size: .85rem; font-weight: 600; }
+.asset-ticket-subject { font-weight: 600; overflow-wrap: anywhere; }
+.asset-ticket-meta { flex-basis: 100%; font-size: .82rem; color: var(--fg-subtle); overflow-wrap: anywhere; }
+
+/* --------------------------------------------------------------------------
+   Page hero (shared qa-hero pattern, data-qa-area="assets")
+   -------------------------------------------------------------------------- */
+.asset-qa-hero .asset-header-sub { margin: 0; font-family: var(--font-mono); font-size: 0.8125rem; letter-spacing: 0.02em; }
+.asset-qa-hero .asset-qa-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.asset-qa-hero--detail { align-items: center; }
+.asset-qa-hero .asset-header-qr { justify-self: end; align-self: center; }
+.asset-qa-hero .asset-header-qr svg { width: 112px; height: 112px; }
+@media (min-width: 640px) {
+  .asset-qa-hero--detail { grid-template-columns: minmax(0, 1fr) auto; }
+}
+@media (max-width: 639px) {
+  /* on a phone the QR is what you just scanned (or the printed label) — keep the hero short */
+  .asset-qa-hero .asset-header-qr { display: none; }
+}
+.scan-page > .asset-qa-hero { text-align: start; }
+
+/* ==========================================================================
+   Scan page — scanner console (camera panel + manual / handheld lookup),
+   result card, recent scans. Overrides the older .scan-* rules above.
+   ========================================================================== */
+.scan-page { max-width: 1040px; margin-inline: auto; }
+
+.scan-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 18px 40px -26px rgba(16, 24, 40, 0.22);
+}
+@media (min-width: 860px) {
+  .scan-console { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 22px; padding: 16px; }
+}
+
+/* camera panel */
+.scan-cam {
+  position: relative;
+  display: grid;
+  min-height: 260px;
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--qa-c-pink, #e2456e) 9%, transparent), transparent 60%),
+    var(--bg-sunken);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.scan-cam-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px 18px;
+  text-align: center;
+}
+.scan-cam:has(#camera-wrap:not([hidden])) .scan-cam-idle { display: none; }
+.scan-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  color: var(--fg-subtle);
+}
+.scan-frame__c { position: absolute; width: 26px; height: 26px; border: 3px solid var(--qa-c-pink, #e2456e); }
+.scan-frame__c--tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 12px; }
+.scan-frame__c--tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 12px; }
+.scan-frame__c--bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 12px; }
+.scan-frame__c--br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 12px; }
+.scan-frame::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 50%;
+  height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--qa-c-pink, #e2456e) 70%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--qa-c-pink, #e2456e) 60%, transparent);
+  animation: scanLine 2.4s ease-in-out infinite;
+}
+@keyframes scanLine { 0%, 100% { transform: translateY(-34px); } 50% { transform: translateY(34px); } }
+@media (prefers-reduced-motion: reduce) { .scan-frame::after { animation: none; } }
+.scan-cam-idle__text { display: grid; gap: 4px; max-width: 34ch; }
+.scan-cam-idle__text strong { color: var(--fg); font-size: 0.9375rem; }
+.scan-cam-idle__text span { color: var(--fg-muted); font-size: 0.8125rem; line-height: 1.5; }
+.scan-cam .scan-cam-open { min-height: 42px; padding-inline: 20px; border-radius: 999px; }
+
+/* live camera inside the panel */
+.scan-cam .scan-camera-wrap { margin: 0; padding: 12px; border-radius: 0; background: #0b0d10; }
+.scan-cam .scan-camera-head { padding: 2px 2px 10px; }
+.scan-cam .scan-qr-reader { aspect-ratio: 4 / 3; border-radius: 12px; }
+
+/* manual / handheld lookup */
+.scan-manual { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 6px 4px 4px; }
+@media (min-width: 860px) { .scan-manual { justify-content: center; padding: 10px 6px 10px 0; } }
+.scan-manual__label { color: var(--fg); font-size: 0.9375rem; font-weight: 650; }
+.scan-manual .scan-form-inline { flex: none; min-width: 0; }
+.scan-manual .scan-input-wrap { height: 52px; padding: 0 6px 0 14px; border-width: 1px; border-radius: 14px; background: var(--bg); }
+.scan-manual .scan-input { height: 48px; font-size: 0.9375rem; }
+.scan-manual .scan-input::placeholder { font-size: 0.875rem; }
+.scan-lookup-btn { flex: none; min-height: 38px; border-radius: 10px; }
+.scan-tips { display: grid; gap: 8px; margin: 4px 0 0; padding: 0; list-style: none; }
+.scan-tips li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--bg-sunken); color: var(--fg-muted); font-size: 0.8125rem; line-height: 1.5; }
+.scan-tips strong { color: var(--fg); font-weight: 600; }
+.scan-tips__icon { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 8px; background: var(--bg-elevated); color: var(--fg-muted); border: 1px solid var(--border); }
+
+/* result + not found */
+.scan-result { margin-bottom: 18px; }
+.scan-result .scanned-card { box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 18px 40px -26px rgba(16, 24, 40, 0.28); border-radius: 20px; }
+.scan-result .scanned-card::before { background: linear-gradient(90deg, var(--qa-c-pink, #e2456e), color-mix(in srgb, var(--qa-c-pink, #e2456e) 40%, var(--primary))); }
+.scan-page .scan-error { margin-bottom: 18px; border-radius: 16px; }
+
+/* recent scans */
+.scan-recent { margin-bottom: 24px; }
+.scan-recent .scan-recent-title { margin: 0 0 10px; color: var(--fg); font-size: 0.9375rem; font-weight: 650; letter-spacing: 0; text-transform: none; }
+.scan-recent .scan-recent-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+@media (min-width: 760px) { .scan-recent .scan-recent-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.scan-recent .scan-recent-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-elevated); text-align: start; }
+.scan-recent .scan-recent-item:hover { border-color: color-mix(in srgb, var(--qa-c-pink, #e2456e) 40%, var(--border)); }
+.scan-recent .scan-recent-body { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.scan-recent .scan-recent-body strong, .scan-recent .scan-recent-body span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scan-recent-go { flex: none; color: var(--fg-subtle); }
+.scan-recent-empty { margin: 0; padding: 16px; border: 1px dashed var(--border-strong, var(--border)); border-radius: 14px; color: var(--fg-muted); font-size: 0.8125rem; text-align: center; }
+@media (max-width: 640px) {
+  .scan-console { padding: 10px; border-radius: 18px; }
+  .scan-cam { min-height: 220px; }
+  .scan-frame { width: 96px; height: 96px; }
+  @keyframes scanLine { 0%, 100% { transform: translateY(-26px); } 50% { transform: translateY(26px); } }
+}
+.scan-manual .scan-input-wrap .scan-input { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding-inline: 4px; }
+.scan-manual .scan-input-wrap .scan-input:focus { outline: none; box-shadow: none; }
+@media (max-width: 640px) { .scan-result .scanned-qr svg { width: 72px; height: 72px; } }

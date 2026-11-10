@@ -19,9 +19,9 @@ from qa_core import flow, references, task_bridge, timeline
 
 from . import rules
 from .models import (
-    VISIT_DUTIES, Inspection, InspectionTeamMember, PostVisitPersonnel, PostVisitReport, QAMapping, QAPersonnel,
-    ReportEndorsement, ResourcePerson, ResourcePersonDiscipline, ResourcePersonFile, ServiceRecord,
-    SSQReviewAssignment,
+    VISIT_DUTIES, Inspection, InspectionTeamMember, PostVisitMemberReport, PostVisitMemberReview,
+    PostVisitPersonnel, PostVisitReport, QAMapping, QAPersonnel, ReportEndorsement, ResourcePerson,
+    ResourcePersonDiscipline, ResourcePersonFile, ServiceRecord, SSQReviewAssignment,
 )
 
 LAYER_FOR_STAGE = {"submitted": "division_head", "division_endorsed": "deputy_director",
@@ -186,7 +186,8 @@ def invite_to_portal(rp, *, actor, request=None):
     from qa_core.hosts import portal_absolute, portal_reverse
     from qa_core.portal_tokens import link_valid_hours, portal_token_generator
 
-    _staff(actor)
+    if actor is not None:
+        _staff(actor)
     if rp.status != ResourcePerson.ACTIVE:
         raise ValidationError("Only an active resource person can be invited.")
     user = rp.user
@@ -275,6 +276,76 @@ def propose_mapping(case, row, *, duty, person, actor, start=None, end=None, exp
     return mapping, pa
 
 
+def mapping_approval_state(mapping):
+    """Where a mapping sits in the v2.7 two-step approval (Director → ES)."""
+    if mapping.es_approved_at:
+        return "es_approved", "Approved by the ES"
+    if mapping.director_approved_at:
+        return "director_approved", "Director approved — waiting for the ES"
+    return "pending", "Waiting for the Director"
+
+
+def can_approve_mapping(mapping, user, layer):
+    """Director layer: the handling department's Director (or the ES /
+    superuser). ES layer: the ES (or a superuser)."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False, "Sign in as NBTE staff."
+    if is_monitor(user):
+        return False, "The ICT monitor has read-only access (R-13)."
+    import org
+
+    if user.is_superuser:
+        return True, ""
+    if layer == "es":
+        return (org.is_es(user), "Only the Executive Secretary approves this step.")
+    if org.is_es(user):
+        return True, ""
+    dept = mapping.case.owning_department or getattr(mapping.case.institution, "handling_department", None)
+    if dept is not None and org.is_director(user, dept):
+        return True, ""
+    return False, ("Only the handling department Director approves the mapping "
+                   "(the ES may also act).")
+
+
+@transaction.atomic
+def approve_mapping(mapping, *, actor, layer, approve=True, remark=""):
+    """v2.7: the Director approves (or sends back) a mapping, then the ES
+    confirms it. Approval is visibility, not eligibility: rules still decide
+    who may be mapped, and every mapping is shown to the whole case team."""
+    mapping = QAMapping.unscoped.select_for_update().get(pk=mapping.pk)
+    ok, why = can_approve_mapping(mapping, actor, layer)
+    if not ok:
+        raise PermissionDenied(why)
+    now = timezone.now()
+    if layer == "director":
+        if mapping.es_approved_at:
+            raise ValidationError("The ES has already approved this mapping.")
+        mapping.director_approved_by = actor if approve else None
+        mapping.director_approved_at = now if approve else None
+        if not approve:
+            mapping.es_approved_by = None
+            mapping.es_approved_at = None
+    else:
+        if not mapping.director_approved_at:
+            raise ValidationError("The Director must approve the mapping first.")
+        mapping.es_approved_by = actor if approve else None
+        mapping.es_approved_at = now if approve else None
+    mapping.save(update_fields=["director_approved_by", "director_approved_at", "es_approved_by",
+                                "es_approved_at", "updated_at"])
+    try:
+        from qa_core import timeline
+
+        timeline.record(mapping.case.institution, event_code="qa.mapping.approved", subject=mapping.case,
+                        actor=actor,
+                        internal_text=(f"{mapping.person} → {mapping.qa_request_programme.programme} "
+                                       f"({mapping.get_duty_display()}): {layer} "
+                                       f"{'approved' if approve else 'sent back'}"
+                                       f"{(' — ' + remark) if remark else ''}"))
+    except Exception:  # the approval itself must stand
+        pass
+    return mapping
+
+
 def on_mapping_active(mapping):
     """An active visit-duty mapping joins the planned team of a scheduled inspection."""
     if mapping.duty not in VISIT_DUTIES:
@@ -284,6 +355,25 @@ def on_mapping_active(mapping):
                                                                             qa_mapping=mapping).exists():
         InspectionTeamMember.unscoped.create(inspection=inspection, qa_mapping=mapping,
                                              role_on_team=mapping.get_duty_display())
+    if inspection is not None and mapping.resource_person_id:
+        person = mapping.resource_person
+        if person.user_id and person.user.is_active:
+            from django.db import transaction
+
+            from notifications.services import notify
+
+            dates = f"{inspection.scheduled_start:%d %b %Y}"
+            if inspection.scheduled_end and inspection.scheduled_end != inspection.scheduled_start:
+                dates += f" to {inspection.scheduled_end:%d %b %Y}"
+            transaction.on_commit(
+                lambda user=person.user, dates=dates: notify(
+                    user,
+                    title="You have been assigned to a QA visit",
+                    body=f"{inspection.case.institution.name}: {dates}. "
+                         "Review the engagement and submit your findings in My engagements.",
+                    url="/engagements/",
+                )
+            )
 
 
 # ===========================================================================
@@ -320,6 +410,7 @@ def create_for_case(case, *, actor=None):
                         visibility="public",
                         public_text=f"QA visit scheduled for {visit.planned_start:%d %b %Y} – "
                                     f"{visit.planned_end:%d %b %Y}.")
+        _notify_bodies_of_visit(case, visit)  # v2.1 R.5 X43
     else:
         Inspection.unscoped.filter(pk=inspection.pk).update(
             team_lead=lead_user, scheduled_start=visit.planned_start, scheduled_end=visit.planned_end,
@@ -334,7 +425,17 @@ def create_for_case(case, *, actor=None):
     for mapping in QAMapping.unscoped.filter(case=case, status="active", duty__in=VISIT_DUTIES):
         on_mapping_active(mapping)
     inspection.refresh_from_db()
+    _sync_attendance_duty(inspection)
+    _notify_team_of_visit(inspection)
     return inspection
+
+
+def _sync_attendance_duty(inspection):
+    """v2.1 G7: the visit's team is "On official duty" on the visit days
+    (dates are written with .update(), which sends no signal)."""
+    from attendance.duty import sync_visit_duty
+
+    sync_visit_duty(inspection)
 
 
 def team(inspection):
@@ -369,6 +470,12 @@ def complete(inspection, *, actor, actual_start=None, actual_end=None, absent=()
         raise ValidationError({"actual_end": "The visit cannot end before it starts."})
     if actual_end > today:
         raise ValidationError({"actual_end": "The visit has not ended yet; record it when it has."})
+    if (inspection.scheduled_start and actual_start != inspection.scheduled_start) or (
+            inspection.scheduled_end and actual_end != inspection.scheduled_end):
+        # v2.7: the dates are the approved schedule. A move is a controlled
+        # change (Director → ES), applied on the case page before recording.
+        raise ValidationError("The visit dates are the approved schedule. Ask for a date change on the case "
+                              "page; an approved change updates the schedule first.")
     absent = {str(a) for a in absent}
     PostVisitPersonnel.unscoped.filter(inspection=inspection).delete()
     for member in team(inspection):
@@ -394,7 +501,98 @@ def complete(inspection, *, actor, actual_start=None, actual_end=None, absent=()
     inspection.refresh_from_db()
     timeline.record(inspection.case.institution, "inspection.completed", subject=inspection, actor=actor,
                     visibility="public", public_text="The QA visit has taken place.")
+    _sync_attendance_duty(inspection)  # v2.1 G7: actual dates replace the scheduled ones
+    _close_recording_task(inspection, actor=actor)
     return inspection
+
+
+# ---------------------------------------------------------------------------
+# The record-the-visit task, opened on its own (v2.6)
+# ---------------------------------------------------------------------------
+REC_RECORD_STAGE = "record_visit"
+
+
+def auto_recording_task(inspection, *, now=None):
+    """v2.6: the team lead's board gains the *record the visit* task by itself
+    on the visit's last day (or the first run after it, if nobody recorded):
+    the actual dates on the form come prefilled from the schedule, and the
+    lead may only change or extend them. Idempotent — one open task at most."""
+    from datetime import timedelta
+
+    from django.contrib.contenttypes.models import ContentType
+    from config import registry as config
+    from notifications.models import Notification
+    from notifications.services import notify
+    from tasks import services as task_services
+    from tasks.models import TaskCategory, TaskAssignee
+
+    from qa_core.models import QATaskLink
+
+    if inspection.team_lead_id is None:
+        return None
+    ct = ContentType.objects.get_for_model(Inspection, for_concrete_model=True)
+    if (QATaskLink.objects.filter(content_type=ct, object_id=inspection.pk, stage_code=REC_RECORD_STAGE,
+                                  closed_at__isnull=True).exists()):
+        return None
+    sys_user = task_bridge.system_user()
+    lead = inspection.team_lead
+    inst = inspection.case.institution.name if inspection.case.institution_id else "the institution"
+    grace = int(config.get("qa.visit.recording_grace_days", 3) or 3)
+    due_date = inspection.scheduled_end + timedelta(days=grace)
+    title = f"[QA] Record the visit — {inst} ({inspection.reference})"
+    description = (f"The visit to {inst} has reached its last day "
+                   f"({inspection.scheduled_start:%d %b %Y} – {inspection.scheduled_end:%d %b %Y}).\n\n"
+                   "Open it in QA and record the visit. The actual dates come prefilled from the schedule — "
+                   "only change or extend them if the visit ran longer; then tick anyone who did not attend. "
+                   "The task closes by itself when the visit is recorded.")
+    with task_bridge.bridge_active():
+        category = TaskCategory.objects.filter(code="qa-inspection").first() or \
+            TaskCategory.objects.filter(code="qa-sop03").first()
+        task = task_services.create_task(created_by=sys_user, title=title[:200], description=description,
+                                         category=category, due_date=due_date, requires_review=False,
+                                         priority=None)
+        if not TaskAssignee.objects.filter(task=task, user=lead).exists():
+            TaskAssignee.objects.create(task=task, user=lead, state=TaskAssignee.ASSIGNED, assigned_by=sys_user)
+            task_services.log_activity(task, "assignee_added", actor=sys_user,
+                                       message=f"Assigned by QA to {(lead.get_full_name() or lead.email)}",
+                                       metadata={"assignee_id": lead.pk})
+        QATaskLink.objects.create(task=task, content_type=ct, object_id=inspection.pk,
+                                  stage_code=REC_RECORD_STAGE, kind="stage_action",
+                                  due_at=timezone.now() + timedelta(days=grace))
+        task_services.open_task(task, sys_user)
+    timeline.record(inspection.case.institution, "inspection.record_task_opened", subject=inspection,
+                    actor=sys_user, visibility="internal",
+                    internal_text="Record-the-visit task opened for the team lead "
+                    f"{(lead.get_full_name() or lead.email) or ''}.")
+    notify(lead, title=f"Record the visit to {inst}",
+           body=f"The visit ({inspection.reference}) reached its last day "
+                f"{inspection.scheduled_end:%d %b %Y}. Record the attendance: the dates are pre-filled.",
+           url=f"/qa/inspection/inspections/{inspection.pk}/", category=Notification.QA)
+    return task
+
+
+def visit_recording_sweep(now=None):
+    """v2.6: open the record-the-visit task for every scheduled inspection
+    whose last day has arrived or passed and whose visit nobody recorded yet.
+    Returns counts (called from the nightly reminders run)."""
+    today = timezone.localdate(now) if now else timezone.localdate()
+    due = [i for i in Inspection.unscoped.filter(status="scheduled", scheduled_end__lte=today, team_lead__isnull=False)
+           .select_related("case", "case__institution", "team_lead")]
+    opened = 0
+    for inspection in due:
+        if auto_recording_task(inspection, now=now) is not None:
+            opened += 1
+    return {"due": len(due), "opened": opened}
+
+
+def _close_recording_task(inspection, *, actor=None):
+    """The visit is recorded — the auto task closes itself."""
+    try:
+        task_bridge.close_for_stage(inspection, REC_RECORD_STAGE, reason="recorded", actor=actor)
+    except Exception:  # noqa: BLE001 — the visit recording never fails over the task bridge
+        import logging
+
+        logging.getLogger(__name__).exception("recording task close failed (inspection %s)", inspection.pk)
 
 
 def on_inspection_closed(ctx):
@@ -406,6 +604,8 @@ def on_inspection_closed(ctx):
     # Visit duties are done: release their mappings (R-11 / the load count).
     QAMapping.unscoped.filter(case=inspection.case, status="active", duty__in=VISIT_DUTIES).update(
         status="released", released_at=timezone.now(), updated_at=timezone.now())
+    for report in PostVisitReport.unscoped.filter(inspection=inspection):
+        ensure_member_reports(report)
 
 
 def attendance(inspection):
@@ -468,8 +668,8 @@ def record_ssq_review(ssq, *, reviewer, outcome):
     if assignment is None:
         assignment = SSQReviewAssignment.unscoped.create(ssq=ssq, reviewer=reviewer,
                                                          assigned_at=ssq.submitted_at or now)
-    SSQReviewAssignment.unscoped.filter(pk=assignment.pk).update(completed_at=now, outcome=outcome[:20],
-                                                                 updated_at=now)
+    assignment.completed_at, assignment.outcome = now, outcome[:20]
+    assignment.save(update_fields=["completed_at", "outcome", "updated_at"])
     row = ssq.qa_request_programme
     programme = row.programme
     qp = QAPersonnel.objects.filter(staff__user=reviewer).first()
@@ -527,6 +727,9 @@ def apply_attendance(inspection, changes, *, actor, pending_action=None):
                 void_service(pvp, reason=reason or "Did not attend (override)")
     timeline.record(inspection.case.institution, "inspection.attendance_overridden", subject=inspection,
                     actor=actor, visibility="internal", internal_text="Post-visit personnel corrected.")
+    if closed:
+        for report in PostVisitReport.unscoped.filter(inspection=inspection):
+            ensure_member_reports(report)
 
 
 # ===========================================================================
@@ -536,6 +739,120 @@ def reports_of(case):
     return list(PostVisitReport.unscoped.filter(inspection__case=case)
                 .select_related("qa_request_programme__programme__level", "submitted_by", "inspection")
                 .order_by("pk"))
+
+
+def _member_programmes(inspection, attendee):
+    if attendee.resource_person_id:
+        identity = {"resource_person_id": attendee.resource_person_id}
+    elif attendee.qa_personnel_id:
+        identity = {"qa_personnel_id": attendee.qa_personnel_id}
+    else:
+        qa_personnel = QAPersonnel.objects.filter(staff_id=attendee.staff_id).first()
+        if qa_personnel is None:
+            return set(PostVisitReport.unscoped.filter(inspection=inspection).values_list(
+                "qa_request_programme_id", flat=True))
+        identity = {"qa_personnel_id": qa_personnel.pk}
+    mappings = QAMapping.unscoped.filter(case=inspection.case, duty__in=VISIT_DUTIES, **identity)
+    programme_ids = set(mappings.values_list("qa_request_programme_id", flat=True))
+    if programme_ids:
+        return programme_ids
+    return set(PostVisitReport.unscoped.filter(inspection=inspection).values_list(
+        "qa_request_programme_id", flat=True))
+
+
+def _member_identity(attendee):
+    user = attendee.user
+    return ("user", user.pk) if user is not None else (attendee.person_type, attendee.person_id)
+
+
+def _attendees_for_report(report):
+    grouped = {}
+    for attendee in attendance(report.inspection):
+        if report.qa_request_programme_id not in _member_programmes(report.inspection, attendee):
+            continue
+        grouped.setdefault(_member_identity(attendee), []).append(attendee)
+    return [next((item for item in candidates if item.attended), candidates[0])
+            for candidates in grouped.values()]
+
+
+def ensure_member_reports(report):
+    """Create one owned contribution for each eligible, attended person."""
+    if report.inspection.status != "closed":
+        return []
+    for attendee in _attendees_for_report(report):
+        if not attendee.attended:
+            continue
+        user = attendee.user
+        if user is not None:
+            member_report, created = PostVisitMemberReport.unscoped.get_or_create(
+                report=report, attendee=attendee, defaults={"author": user})
+            if created:
+                _notify_member_report_user(
+                    user, report, title="Your post-visit report is ready",
+                    body=f"Submit your individual findings for "
+                         f"{report.qa_request_programme.programme}. The Team Lead will review them.")
+    return list(PostVisitMemberReport.unscoped.filter(report=report).select_related(
+        "attendee__staff__user", "attendee__qa_personnel__staff__user",
+        "attendee__resource_person__user", "author", "reviewed_by"))
+
+
+def member_report_for_user(report, user):
+    if report is None or user is None:
+        return None
+    return next((row for row in ensure_member_reports(report) if row.author_id == user.pk), None)
+
+
+def member_report_roster(report, *, user=None):
+    """Return each relevant team member, including absentees and missing accounts."""
+    from types import SimpleNamespace
+
+    rows = []
+    reports = {item.attendee_id: item for item in ensure_member_reports(report)}
+    for attendee in _attendees_for_report(report):
+        member_report = reports.get(attendee.pk)
+        rows.append(SimpleNamespace(
+            attendee=attendee, person=attendee.person, member_report=member_report,
+            status=("Absent" if not attendee.attended else
+                    "No portal account linked" if attendee.user is None else
+                    member_report.get_status_display() if member_report is not None else "Report not assigned"),
+            can_view=(getattr(attendee.user, "pk", None) == getattr(user, "pk", None)
+                      or report.inspection.team_lead_id == getattr(user, "pk", None)
+                      or report.submitted_at is not None),
+        ))
+    return rows
+
+
+def member_report_counts(report):
+    rows = member_report_roster(report, user=report.inspection.team_lead)
+    counts = {"total": len(rows), "absent": 0, "pending": 0, "submitted": 0,
+              "returned": 0, "accepted": 0, "skipped": 0, "unlinked": 0}
+    for row in rows:
+        if not row.attendee.attended:
+            counts["absent"] += 1
+        elif row.member_report is None:
+            counts["unlinked"] += 1
+        else:
+            counts[row.member_report.status] = counts.get(row.member_report.status, 0) + 1
+            if row.member_report.status in ("draft", "returned"):
+                counts["pending"] += 1
+    counts["awaiting_review"] = counts["submitted"]
+    return counts
+
+
+def member_reports_ready(report):
+    roster = member_report_roster(report, user=report.inspection.team_lead)
+    pending = []
+    for row in roster:
+        if not row.attendee.attended:
+            continue
+        contribution = row.member_report
+        if contribution is None:
+            pending.append(str(row.person) + " (no linked portal account)")
+        elif contribution.author_id == report.inspection.team_lead_id and contribution.status == "submitted":
+            continue
+        elif contribution.status not in ("accepted", "skipped"):
+            pending.append(str(row.person) + f" ({row.status.lower()})")
+    return pending
 
 
 def report_variables(case, *, endorsed_now=None):
@@ -596,22 +913,235 @@ def report_holders(report):
     link = QATaskLink.objects.filter(content_type=ContentType.objects.get_for_model(PostVisitReport),
                                      object_id=report.pk, stage_code=report.status, closed_at__isnull=True
                                      ).select_related("task").first()
-    if link is None:
-        return [], None
-    return [r.user for r in link.task.assignee_rows.select_related("user").exclude(state="declined")], link
+    holders = ([r.user for r in link.task.assignee_rows.select_related("user").exclude(state="declined")]
+               if link is not None else [])
+    if holders:
+        return holders, link
+    if report.status in ("draft", "returned"):
+        if report.status == "returned" and report.submitted_by_id:
+            return [report.submitted_by], link
+        from accreditation import case_services as cs
+
+        fallback = cs.post_visit_fallback_holders(report.inspection.case)
+        if fallback:
+            return [fallback[0]], link
+    return [], link
+
+
+def ict_assignees(inspection):
+    """The people allowed to complete the ICT verification (VVT/001):
+    the tracking ICT officers of the case, plus anyone on the team whose duty
+    is ICT. Superusers, the ES and the Director of ICT are added by the check."""
+    from django.contrib.contenttypes.models import ContentType
+
+    users = list(inspection.case.tracking_ict_officers.select_related("role").all())
+    for member in InspectionTeamMember.unscoped.filter(inspection=inspection).select_related("staff__user"):
+        if member.staff_id and member.staff.user_id and "ict" in (member.role_on_team or "").lower():
+            users.append(member.staff.user)
+    seen, out = set(), []
+    for u in users:
+        if u is not None and u.pk not in seen:
+            seen.add(u.pk)
+            out.append(u)
+    return out
+
+
+def can_edit_ict(inspection, user):
+    """v2.7: the ICT verification is the assigned ICT officer's alone. The
+    Director of ICT, the ES and a super administrator may open it; everyone
+    else is locked out (even other visit-team members)."""
+    if user is None or not getattr(user, "is_authenticated", False) or getattr(user, "user_type", "") != "staff":
+        return False, "Sign in to complete the ICT verification."
+    if is_monitor(user):
+        return False, "The ICT monitor has read-only access (R-13)."
+    if user.is_superuser:
+        return True, ""
+    import org
+
+    if org.is_es(user) or org.is_super_admin(user) or org.is_director(user, "ict"):
+        return True, ""
+    if user in ict_assignees(inspection):
+        return True, ""
+    names = ", ".join(_name(u) for u in ict_assignees(inspection)) or "nobody yet"
+    return False, (f"The ICT verification is completed by the assigned ICT officer ({names}). "
+                   "It is locked for everyone else.")
+
+
+def can_review_cqac_evidence(case, user):
+    """Active decision holders and the handling-department Director may review evidence.
+
+    Reviewing the case record does not grant authority to submit a decision.
+    """
+    from accreditation import case_services as cs, decisions
+    from accreditation.models import Decision
+
+    if cs.is_monitor(user):
+        return False
+    current = set(cs.current_stages(case))
+    decision_stages = (("cqac_recommendation", Decision.CQAC),
+                       ("cqac_chair_approval", Decision.CHAIR),
+                       ("es_final_approval", Decision.ES))
+    for code, stage in decision_stages:
+        if code in current and decisions.can_decide(case, user, stage)[0]:
+            return True
+    if current.intersection(code for code, _stage in decision_stages):
+        from accreditation.case_changes import is_handling_director
+
+        return is_handling_director(case, user)
+    return False
 
 
 def can_write(report, user):
-    """B17: only someone who actually attended writes / submits the report."""
+    """Only the Team Lead compiles and submits the programme report."""
     if user is None or not user.is_authenticated or is_monitor(user):
         return False, "The ICT monitor has read-only access (R-13)."
     if report.status not in ("draft", "returned"):
         return False, "The report is with the endorsers."
     if report.inspection.status != "closed":
         return False, "Record the visit first (the Team Lead marks it completed)."
-    if user.pk not in attended_users(report.inspection):
-        return False, "Only someone who attended the visit can write and submit the report (B17)."
+    if not (user.is_superuser or report.inspection.team_lead_id == user.pk):
+        return False, "Only the assigned Team Lead compiles and submits the programme report."
     return True, ""
+
+
+def can_write_member_report(member_report, user):
+    if user is None or not user.is_authenticated or is_monitor(user):
+        return False, "The ICT monitor has read-only access (R-13)."
+    if member_report.author_id != user.pk:
+        return False, "This contribution belongs to another visit attendee."
+    if member_report.attendee.inspection_id != member_report.report.inspection_id or \
+            member_report.report.qa_request_programme_id not in _member_programmes(
+                member_report.report.inspection, member_report.attendee):
+        return False, "This attendee is not assigned to this programme's visit report."
+    if not member_report.attendee.attended:
+        return False, "You were recorded as absent and cannot submit a visit report."
+    if member_report.report.inspection.status != "closed":
+        return False, "Record the visit before submitting an individual report."
+    if member_report.report.status not in ("draft", "returned"):
+        return False, "The Team Lead has submitted the programme compilation."
+    if member_report.status not in ("draft", "returned"):
+        return False, "Your report is with the Team Lead for review."
+    return True, ""
+
+
+def _notify_member_report_user(user, report, *, title, body):
+    if user is None or not user.is_active:
+        return
+    from notifications.models import Notification
+    from notifications.services import notify
+
+    url = ("/engagements/" if user.user_type == "resource_person" else
+           f"/qa/inspection/reports/{report.pk}/")
+    transaction.on_commit(lambda: notify(user, title=title, body=body, url=url, category=Notification.QA))
+
+
+@transaction.atomic
+def save_member_report(member_report, *, user, summary="", findings=None, recommendation="", submit=False):
+    member_report = PostVisitMemberReport.unscoped.select_for_update().select_related(
+        "report__inspection", "attendee").get(pk=member_report.pk)
+    ok, why = can_write_member_report(member_report, user)
+    if not ok:
+        raise PermissionDenied(why)
+    summary = (summary or "").strip()
+    if submit:
+        errors = {}
+        if len(summary) < 20:
+            errors["summary"] = "Write your findings summary (at least 20 characters)."
+        if recommendation not in dict(PostVisitReport.RECOMMENDATION_CHOICES):
+            errors["recommendation"] = "Choose your own recommendation."
+        if errors:
+            raise ValidationError(errors)
+    member_report.summary = summary
+    member_report.findings = {key: (value or "").strip() for key, value in (findings or {}).items()}
+    member_report.recommendation = recommendation
+    member_report.version += 1 if member_report.status == "returned" and submit else 0
+    if submit:
+        member_report.submitted_at = timezone.now()
+        if member_report.author_id == member_report.report.inspection.team_lead_id:
+            member_report.status = "accepted"
+            member_report.reviewed_by = user
+            member_report.reviewed_at = timezone.now()
+            member_report.review_note = "Team Lead contribution included in the compilation."
+        else:
+            member_report.status = "submitted"
+            member_report.reviewed_by = None
+            member_report.reviewed_at = None
+            member_report.review_note = ""
+            lead = member_report.report.inspection.team_lead
+            _notify_member_report_user(
+                lead, member_report.report, title="Attendee report needs your review",
+                body=f"{user.get_full_name() or user.email} submitted findings for "
+                     f"{member_report.report.qa_request_programme.programme}.")
+    member_report.save()
+    return member_report
+
+
+@transaction.atomic
+def review_member_report(member_report, *, user, action, content=""):
+    member_report = PostVisitMemberReport.unscoped.select_for_update().select_related(
+        "report__inspection", "author").get(pk=member_report.pk)
+    inspection = member_report.report.inspection
+    if user is None or not user.is_authenticated or is_monitor(user):
+        raise PermissionDenied("Sign in as the Team Lead to review attendee reports.")
+    if not (user.is_superuser or inspection.team_lead_id == user.pk):
+        raise PermissionDenied("Only the assigned Team Lead reviews individual visit reports.")
+    content = (content or "").strip()
+    if action not in ("accept", "return", "skip"):
+        raise ValidationError("Choose accept, return, or skip.")
+    if action in ("return", "skip") and len(content) < 3:
+        raise ValidationError({"content": "Give a note explaining the return or skip decision."})
+    if action == "skip":
+        # The Team Lead may set aside any contribution, even one that was never
+        # submitted or is still a draft. The note is the audit trail the CQAC sees.
+        if member_report.status == "skipped" and member_report.review_note == content:
+            return member_report
+    else:
+        if member_report.author_id == user.pk:
+            raise PermissionDenied("You cannot review your own individual report.")
+        if member_report.status != "submitted":
+            raise ValidationError("Only a submitted attendee report can be reviewed.")
+    member_report.status = {"accept": "accepted", "return": "returned", "skip": "skipped"}[action]
+    member_report.reviewed_by = user
+    member_report.reviewed_at = timezone.now()
+    member_report.review_note = content
+    member_report.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_note", "updated_at"])
+    PostVisitMemberReview.unscoped.create(member_report=member_report, action=action, content=content, actor=user)
+    _notify_member_report_user(
+        member_report.author, member_report.report,
+        title={"return": "Team Lead returned your report", "skip": "Team Lead skipped your report",
+               "accept": "Team Lead accepted your report"}[action],
+        body=(content or "Your contribution was accepted for the programme compilation."))
+    return member_report
+
+
+@transaction.atomic
+def skip_attendee_report(report, *, attendee, user, content=""):
+    """Skip an attendee who has no report row yet (no portal account or never
+    started). Keeps the decision and note visible to the Team Lead and CQAC."""
+    report = PostVisitReport.unscoped.select_for_update().select_related(
+        "inspection").get(pk=report.pk)
+    inspection = report.inspection
+    if user is None or not user.is_authenticated or is_monitor(user):
+        raise PermissionDenied("Sign in as the Team Lead to review attendee reports.")
+    if not (user.is_superuser or inspection.team_lead_id == user.pk):
+        raise PermissionDenied("Only the assigned Team Lead can skip an attendee report.")
+    content = (content or "").strip()
+    if len(content) < 3:
+        raise ValidationError({"content": "Give a note explaining the skip decision."})
+    if attendee.inspection_id != inspection.pk:
+        raise ValidationError("That attendee is not on this visit.")
+    member_report, _created = PostVisitMemberReport.unscoped.get_or_create(
+        report=report, attendee=attendee, defaults={"author": attendee.user})
+    member_report.status = "skipped"
+    member_report.reviewed_by = user
+    member_report.reviewed_at = timezone.now()
+    member_report.review_note = content
+    member_report.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_note", "updated_at"])
+    PostVisitMemberReview.unscoped.create(member_report=member_report, action="skip", content=content, actor=user)
+    _notify_member_report_user(
+        attendee.user, report, title="Team Lead skipped your report",
+        body=content)
+    return member_report
 
 
 def can_endorse(report, user):
@@ -627,6 +1157,55 @@ def can_endorse(report, user):
         return True, ""
     names = ", ".join(_name(u) for u in holders) or "nobody yet (department queue)"
     return False, f"This layer ({LAYER_LABEL[layer]}) is with {names}."
+
+
+REPORT_ENDORSEMENT_STAGES = ("submitted", "division_endorsed", "deputy_verified")
+
+
+def _report_stage_users(report, stage_code):
+    from accreditation import case_services as cs
+
+    instance = flow.instance_for(report, "post_visit_report")
+    stage = flow.stage(instance, stage_code) if instance is not None else None
+    if stage is None:
+        return []
+    users, _department, _title = cs.resolve_actors(report.inspection.case, stage, None)
+    return [user for user in users if user is not None and user.is_active]
+
+
+def _report_submission_stage(report):
+    """Pick the first required endorsement stage after the Team Lead compiles."""
+    lead = report.inspection.team_lead
+    if lead is None:
+        raise ValidationError("Assign the visit's Team Lead before submitting the compilation.")
+    import org
+
+    department = report.inspection.case.owning_department
+    lead_is_deputy_or_director = org.is_director(lead, department) or \
+        (department is not None and lead in org.deputies_of(department))
+    candidates = ("deputy_verified",) if lead_is_deputy_or_director else REPORT_ENDORSEMENT_STAGES
+    for stage_code in candidates:
+        users = _report_stage_users(report, stage_code)
+        if not users:
+            continue
+        if stage_code != "deputy_verified" and any(user.pk == lead.pk for user in users):
+            continue
+        return stage_code
+    raise ValidationError(
+        "No active Director is assigned to the handling department, so the report cannot be routed for approval.")
+
+
+def _report_next_endorsement_stage(report):
+    """Return the next staffed stage, skipping vacant intermediate roles."""
+    current = report.status
+    if current not in REPORT_ENDORSEMENT_STAGES:
+        raise ValidationError("The report is not at an endorsement stage.")
+    start = REPORT_ENDORSEMENT_STAGES.index(current) + 1
+    for stage_code in REPORT_ENDORSEMENT_STAGES[start:]:
+        if _report_stage_users(report, stage_code):
+            return stage_code
+    raise ValidationError(
+        "No active Director is assigned to the handling department, so the report cannot advance.")
 
 
 @transaction.atomic
@@ -664,7 +1243,19 @@ def submit_report(report, *, user):
         errors["recommendation"] = "Choose the team's recommendation."
     if errors:
         raise ValidationError(errors)
-    action = "submit" if report.status == "draft" else "resubmit"
+    pending = member_reports_ready(report)
+    if pending:
+        names = ", ".join(pending[:4])
+        more = f" and {len(pending) - 4} more" if len(pending) > 4 else ""
+        raise ValidationError(f"Every present attendee must submit a report and the Team Lead must accept it "
+                              f"before compiling. Still pending: {names}{more}.")
+    target_stage = _report_submission_stage(report)
+    action_prefix = "submit" if report.status == "draft" else "resubmit"
+    action = {
+        "submitted": action_prefix,
+        "division_endorsed": f"{action_prefix}_to_deputy",
+        "deputy_verified": f"{action_prefix}_to_director",
+    }[target_stage]
     report.submitted_by, report.submitted_at = user, timezone.now()
     if action == "resubmit":
         report.version += 1
@@ -700,7 +1291,10 @@ def endorse(report, *, user, action, content=""):
         flow.transition(instance, "return", user, remark=content)
     elif action == "endorse":
         ReportEndorsement.unscoped.create(report=report, layer=layer, action="endorse", content=content, actor=user)
-        flow.transition(instance, "endorse", user, remark=content)
+        transition_action = "endorse"
+        if report.status == "submitted" and _report_next_endorsement_stage(report) == "deputy_verified":
+            transition_action = "endorse_to_director"
+        flow.transition(instance, transition_action, user, remark=content)
     else:
         raise ValidationError("Unknown action.")
     # The bridge's pins: the person who acted holds this layer for the case's later reports.
@@ -788,8 +1382,14 @@ def _report_resolver(report, stage, prefer_user):
         user = None
         if stage.form_key == "team_lead":
             user = report.inspection.team_lead
+            if user is None:
+                visit = getattr(case, "visit", None)
+                user = getattr(getattr(visit, "team_lead", None), "user", None)
         elif stage.form_key == "submitted_by":
             user = report.submitted_by or report.inspection.team_lead
+        if user is None or not user.is_active:
+            user = next((holder for holder in cs.post_visit_fallback_holders(case)
+                         if holder is not None and holder.is_active), None)
         return ([user] if user is not None else []), dept, title
     users, dept, _t = cs.resolve_actors(case, stage, None)
     return users, dept, title
@@ -922,6 +1522,14 @@ def findings_open(mapping):
     team submits the programme's report."""
     if mapping.duty not in VISIT_DUTIES or mapping.status not in ("active", "released"):
         return False, "Findings open once your engagement is confirmed."
+    inspection = live_inspection(mapping.case)
+    if inspection is not None and inspection.status == "closed":
+        attended = PostVisitPersonnel.unscoped.filter(
+            inspection=inspection,
+            **({"resource_person": mapping.resource_person} if mapping.resource_person_id else
+               {"qa_personnel": mapping.qa_personnel}), attended=True).exists()
+        if not attended:
+            return False, "You were recorded as absent and cannot submit visit findings."
     report = PostVisitReport.unscoped.filter(inspection__case=mapping.case,
                                              qa_request_programme=mapping.qa_request_programme).first()
     if report is not None and report.status not in ("draft", "returned"):
@@ -943,15 +1551,42 @@ def submit_findings(mapping, *, user, text):
         raise ValidationError({"findings": "Write your findings (at least 20 characters)."})
     QAMapping.unscoped.filter(pk=mapping.pk).update(findings=text)
     mapping.findings = text
+    inspection = Inspection.unscoped.filter(case=mapping.case, status__in=("scheduled", "closed")) \
+        .select_related("team_lead").order_by("-pk").first()
+    if inspection and inspection.team_lead_id:
+        from django.db import transaction
+
+        from notifications.services import notify
+
+        transaction.on_commit(
+            lambda recipient=inspection.team_lead: notify(
+                recipient,
+                title="Resource-person findings submitted",
+                body=f"{mapping.resource_person.full_name} submitted findings for "
+                     f"{mapping.qa_request_programme.programme}.",
+                url=f"/qa/inspection/inspections/{inspection.pk}/",
+            )
+        )
     return mapping
 
 
 def rp_findings_for(report):
     """Findings resource persons submitted for this report's programme —
     shown to the team on the report page."""
-    return list(QAMapping.unscoped.filter(case=report.inspection.case,
+    rows = list(QAMapping.unscoped.filter(case=report.inspection.case,
                                           qa_request_programme=report.qa_request_programme)
                 .exclude(findings="").select_related("resource_person", "qa_personnel__staff"))
+    if report.inspection.status == "closed":
+        present = set()
+        for attendee in attendance(report.inspection):
+            if attendee.attended:
+                present.add(("rp", attendee.resource_person_id) if attendee.resource_person_id else
+                            ("qa", attendee.qa_personnel_id) if attendee.qa_personnel_id else
+                            ("staff", attendee.staff_id))
+        rows = [mapping for mapping in rows
+                if (("rp", mapping.resource_person_id) if mapping.resource_person_id else
+                    ("qa", mapping.qa_personnel_id)) in present]
+    return rows
 
 
 def institution_inspections(user):
@@ -973,3 +1608,65 @@ def lapsed_people_report():
             out.append({"kind": "no longer eligible", "subject": f"QA personnel {qp.staff}", "stage": "",
                         "why": "; ".join(str(p) for p in rules.staff_problems(qp.staff))})
     return out
+
+
+def _notify_bodies_of_visit(case, visit):
+    """v2.1 R.5 (X43): tell each programme's professional body the visit dates."""
+    from django.db import transaction
+
+    from accreditation.models import QARequestProgramme
+    from institutions import pb_portal
+
+    rows = (QARequestProgramme.unscoped.filter(qa_request=case.qa_request, status=QARequestProgramme.ACTIVE,
+                                               programme__professional_body__isnull=False)
+            .select_related("programme", "programme__institution", "programme__professional_body"))
+    extra = f" ({visit.planned_start:%d %b %Y} to {visit.planned_end:%d %b %Y})"
+    for row in rows:
+        programme = row.programme
+        transaction.on_commit(lambda p=programme: pb_portal.notify_body(p, "visit_scheduled", extra=extra))
+
+
+def team_members_of(inspection):
+    """[(user, role)] on the planned team: the lead, mapped personnel and
+    mapped resource people (with a portal account)."""
+    from .models import InspectionTeamMember
+
+    out = []
+    seen = set()
+    lead = inspection.team_lead
+    if getattr(lead, "pk", None):
+        out.append((lead, "Team lead"))
+        seen.add(lead.pk)
+    for tm in InspectionTeamMember.unscoped.filter(inspection=inspection).select_related("qa_mapping", "staff"):
+        user = role = None
+        if tm.qa_mapping_id:
+            role = tm.role_on_team or "Visitor"
+            person = tm.qa_mapping
+            if person.qa_personnel_id:
+                user = person.qa_personnel.user
+            elif person.resource_person_id and person.resource_person.user_id:
+                user = person.resource_person.user
+        elif tm.staff_id and getattr(tm.staff, "user_id", None):
+            user, role = tm.staff.user, tm.role_on_team or "Visitor"
+        if user is not None and getattr(user, "is_active", False) and user.pk not in seen:
+            out.append((user, role))
+            seen.add(user.pk)
+    return out
+
+
+def _notify_team_of_visit(inspection):
+    """Tell every planned team member the visit dates (staff and external
+    resource people with a portal account)."""
+    from institutions import services as inst_services
+
+    if inspection.scheduled_start is None:
+        return
+    members = team_members_of(inspection)
+    if not members:
+        return
+    ctx = {"institution": inspection.case.institution.name if inspection.case.institution_id else "",
+           "reference": inspection.reference,
+           "dates": f"{inspection.scheduled_start:%d %b %Y} to "
+                    f"{inspection.scheduled_end or inspection.scheduled_start:%d %b %Y}"}
+    inst_services.notify_role("inspection.visit_scheduled", ctx, [u for u, _role in members],
+                              url=f"/qa/inspection/inspections/{inspection.pk}/")

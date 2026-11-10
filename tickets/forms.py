@@ -149,12 +149,15 @@ class AssignTicketForm(forms.Form):
         }),
     )
 
-    def __init__(self, *args, department=None, **kwargs):
+    def __init__(self, *args, department=None, division=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from accounts.models import User
-        qs = User.objects.filter(is_active=True)
+        from accounts.selectors import staff_users
+        qs = staff_users()  # Phase 0 (H22)
         if department is not None:
             qs = qs.filter(department=department)
+        if division is not None:  # v2.1 H23: a division head picks among the division's members
+            from django.db.models import Q
+            qs = qs.filter(Q(staff_profile__division=division) | Q(pk=division.head_id))
         self.fields["assignee"].queryset = qs.order_by("first_name", "last_name", "email")
 
 

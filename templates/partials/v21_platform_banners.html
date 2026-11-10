@@ -1,0 +1,32 @@
+{% load static %}{% if banners %}
+{# v2.1 V7: v21-platform.css is in the "finish" bundle (base.html) #}
+<div class="pf-banners">
+  {% for b in banners %}
+  <div class="pf-banner pf-banner--{{ b.tone }}" role="region" aria-label="{{ b.title }}" data-pf-banner="{{ b.key }}"{% if b.dismissible %} data-pf-dismissible{% endif %}>
+    <div class="pf-banner__text"><strong>{{ b.title }}</strong><span>{{ b.text }}</span></div>
+    <div class="btn-group">
+      {% if b.confirm %}
+      <form method="post" action="{% url 'honoraria:banner_confirm' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button class="btn btn-primary btn-sm" type="submit">Yes, they are correct</button></form>
+      <a class="btn btn-ghost btn-sm" href="{% url b.url_name %}?change=1">{{ b.action }}</a>
+      {% else %}
+      <a class="btn btn-primary btn-sm" href="{% url b.url_name %}">{{ b.action }}</a>
+      {% endif %}
+      {% if b.dismissible %}<button type="button" class="pf-banner__close" data-pf-banner-close aria-label="Hide for this session">×</button>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<script>
+(function () {
+  document.querySelectorAll("[data-pf-dismissible]").forEach(function (el) {
+    var key = "nbte.banner." + el.getAttribute("data-pf-banner");
+    try { if (sessionStorage.getItem(key)) { el.hidden = true; } } catch (e) {}
+    var btn = el.querySelector("[data-pf-banner-close]");
+    if (btn) btn.addEventListener("click", function () {
+      el.hidden = true; try { sessionStorage.setItem(key, "1"); } catch (e) {}
+    });
+  });
+})();
+</script>
+{% endif %}

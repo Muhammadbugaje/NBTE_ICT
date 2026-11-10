@@ -205,6 +205,23 @@ def isolate(selector, width=880):
             f"width:{width}px!important;max-width:none!important;z-index:9999!important}}</style>")
 
 
+def _snapshot(path, out, size):
+    """Rasterise a local HTML/SVG file: Quick Look on macOS, else headless Chromium (Playwright)."""
+    if sys.platform == "darwin" and shutil.which("qlmanage"):
+        subprocess.run(["qlmanage", "-t", "-s", str(size), "-o", os.path.dirname(out), path], check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(viewport={"width": size, "height": 900})
+        page.goto("file://" + path)
+        page.wait_for_timeout(400)
+        page.screenshot(path=out, full_page=True)
+        browser.close()
+
+
 def rasterise(html, shot, dest, tmp):
     width = shot["width"]
     x, y, w, h = shot["region"]
@@ -226,8 +243,7 @@ def rasterise(html, shot, dest, tmp):
     thumb = frame + ".png"
     if os.path.exists(thumb):
         os.remove(thumb)
-    subprocess.run(["qlmanage", "-t", "-s", "2000", "-o", tmp, frame], check=False,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _snapshot(frame, thumb, max(320, round(w * zoom) + 8))
     if not os.path.exists(thumb):
         return False
     from PIL import Image, ImageChops
@@ -293,7 +309,7 @@ def cover_art():
             print("cover_map.png")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    logo = Image.open(os.path.join(ROOT, "static", "img", "NBTE_logo.png")).convert("RGBA")
+    logo = Image.open(os.path.join(ROOT, "static", "img", "brand", "nbte-logo-512.png")).convert("RGBA")
     size = 600
     disc = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ImageDraw.Draw(disc).ellipse((0, 0, size - 1, size - 1), fill=(255, 255, 255, 255))
@@ -338,9 +354,12 @@ def main(argv=None):
     parser.add_argument("--keep-db", action="store_true", help="Reuse the demo database from the last run.")
     parser.add_argument("--no-extras", action="store_true", help="Skip the cover art and diagrams.")
     args = parser.parse_args(argv)
-    if sys.platform != "darwin" or not shutil.which("qlmanage"):
-        print("Quick Look (macOS) is needed to capture screenshots.", file=sys.stderr)
-        return 2
+    if not (sys.platform == "darwin" and shutil.which("qlmanage")):
+        try:
+            import playwright  # noqa: F401  (v2.3: headless Chromium works on any system)
+        except ImportError:
+            print("Quick Look (macOS) or Playwright is needed to capture screenshots.", file=sys.stderr)
+            return 2
     work = os.path.join(tempfile.gettempdir(), "nbte-guide-shots")
     os.makedirs(work, exist_ok=True)
     db_copy = os.path.join(work, "guide.sqlite3")

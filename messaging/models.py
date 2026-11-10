@@ -19,12 +19,15 @@ Memos (added):
 - `Memo.status` is the source of truth; `is_draft` is synced for
   backward compatibility.
 """
-from django.db import models
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
+from django.db import models
 from django.utils import timezone
 
 from core.models import TimeStampedModel
 from core.restricted import RestrictedFileModel
+from core.storage import restricted_storage, uuid_upload_to
 
 # Module-level visibility choices — shared by MemoRouteRule and Memo.
 MEMO_VISIBILITY_CHOICES = [
@@ -34,6 +37,25 @@ MEMO_VISIBILITY_CHOICES = [
     ("department",    "A department"),
     ("role",          "Specific roles"),
     ("individuals",   "A list of people"),
+    # v2.1 Phase E (M6): staff picked by department, rank range, designation and role.
+    ("staff_filter",  "Staff matching filters"),
+    # v2.1 Phase E (M1): an external memo goes to institutions only.
+    ("no_staff",      "No staff (institutions only)"),
+]
+
+# v2.1 Phase E (M1, M7): what kind of memo this is.
+MEMO_KIND_CHOICES = [
+    ("internal", "Internal memo"),
+    ("external", "External memo (to institutions)"),
+    ("general",  "General memo (staff and institutions)"),
+]
+
+# v2.1 Phase E (M4): which institutions an external or general memo goes to.
+MEMO_INSTITUTION_SCOPE_CHOICES = [
+    ("", "No institutions"),
+    ("all", "All institutions"),
+    ("selected", "Selected institutions"),
+    ("filter", "Institutions matching filters"),
 ]
 
 # ===========================================================================
@@ -53,8 +75,46 @@ class Thread(TimeStampedModel):
     )
     last_message_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
+    # ---- v2.1 Phase E (L3): group information and settings ----------------
+    # Who may do what in a group: everyone, or the owner and admins only.
+    ALL, ADMINS = "all", "admins"
+    POLICY_CHOICES = [(ALL, "All members"), (ADMINS, "Only admins")]
+    description = models.TextField(blank=True, max_length=500)
+    photo = models.FileField(upload_to=uuid_upload_to, storage=restricted_storage, blank=True,
+                             help_text="Group photo (served to participants only).")
+    send_policy = models.CharField(max_length=8, choices=POLICY_CHOICES, default=ALL,
+                                   help_text="Who can send messages.")
+    edit_info_policy = models.CharField(max_length=8, choices=POLICY_CHOICES, default=ADMINS,
+                                        help_text="Who can change the name, photo and description.")
+    add_members_policy = models.CharField(max_length=8, choices=POLICY_CHOICES, default=ADMINS,
+                                          help_text="Who can add members and share the invite link.")
+
+    # ---- v2.1 X41: groups that belong to a subject (SSQ team, visit panel) --
+    # `subject` stays the human title (existing column); the linked object is
+    # `subject_object` (generic FK over subject_ct / subject_id).
+    PURPOSE_SSQ_TEAM, PURPOSE_VISIT_PANEL = "ssq_team", "visit_panel"
+    subject_ct = models.ForeignKey(ContentType, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+    subject_id = models.CharField(max_length=64, blank=True, default="")
+    subject_object = GenericForeignKey("subject_ct", "subject_id")
+    purpose = models.CharField(max_length=20, blank=True, default="",
+                               help_text="Why the system made this group, e.g. ssq_team or visit_panel.")
+    auto_managed = models.BooleanField(default=False,
+                                       help_text="Members follow the subject's team; nobody edits them by hand.")
+    archived_at = models.DateTimeField(null=True, blank=True,
+                                       help_text="Set when the subject closes: the group becomes read-only.")
+
     class Meta:
         ordering = ["-last_message_at", "-updated_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["subject_ct", "subject_id", "purpose"],
+                                    condition=models.Q(subject_ct__isnull=False),
+                                    name="messaging_thread_unique_subject_purpose"),
+        ]
+
+    @property
+    def is_read_only(self):
+        return self.archived_at is not None
 
     def __str__(self):
         if self.subject:
@@ -124,8 +184,16 @@ class ThreadParticipant(models.Model):
     pinned_at = models.DateTimeField(null=True, blank=True)
     # Null = not muted. "Always" is stored as a far-future date.
     muted_until = models.DateTimeField(null=True, blank=True)
+    # v2.1 Phase E (L3): the member's role in a group.
+    OWNER, ADMIN, MEMBER = "owner", "admin", "member"
+    ROLE_CHOICES = [(OWNER, "Owner"), (ADMIN, "Admin"), (MEMBER, "Member")]
+    role = models.CharField(max_length=8, choices=ROLE_CHOICES, default=MEMBER)
 
     MAX_PINNED = 5
+
+    @property
+    def is_admin(self):
+        return self.role in (self.OWNER, self.ADMIN)
 
     class Meta:
         unique_together = ("thread", "user")
@@ -161,6 +229,11 @@ class Message(models.Model):
         "tasks.Task", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="source_messages",
     )
+    # v2.1 Phase E (L6): pinned inside the chat (at most the setting
+    # messaging.pins_per_chat, default 3) - shown in the bar under the header.
+    pinned_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    pinned_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="+")
     linked_memo = models.ForeignKey(
         "Memo", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="source_messages",
@@ -384,6 +457,58 @@ class VoiceNotePlay(models.Model):
         ]
 
 
+# ===========================================================================
+# v2.1 Phase E: reminders (L7) and invite links (L4)
+# ===========================================================================
+class MessageReminder(models.Model):
+    """"Remind me about this message" - a notification at `remind_at`.
+    Sent by the beat task messaging.send_due_reminders (every minute)."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="message_reminders")
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="reminders")
+    remind_at = models.DateTimeField(db_index=True)
+    note = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    sent_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    class Meta:
+        ordering = ["remind_at", "id"]
+        indexes = [models.Index(fields=["sent_at", "remind_at"], name="messaging_reminder_due_idx")]
+
+    def __str__(self):
+        return f"Reminder {self.pk} for {self.user_id} at {self.remind_at:%Y-%m-%d %H:%M}"
+
+    @property
+    def is_pending(self):
+        return self.sent_at is None
+
+
+class ThreadInvite(models.Model):
+    """A join link for a group: random token (stored, so it can be revoked),
+    an expiry and an optional use limit. Staff only (services check)."""
+    thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name="invites")
+    token = models.CharField(max_length=43, unique=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    max_uses = models.PositiveIntegerField(null=True, blank=True)
+    use_count = models.PositiveIntegerField(default=0)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Invite to thread {self.thread_id}"
+
+    def is_usable(self, now=None):
+        now = now or timezone.now()
+        if self.revoked_at is not None or self.expires_at <= now:
+            return False
+        return self.max_uses is None or self.use_count < self.max_uses
+
+
 def start_thread(*, creator, participants, subject="", initial_body="",
                  thread_type=None):
     from django.db import transaction
@@ -399,6 +524,9 @@ def start_thread(*, creator, participants, subject="", initial_body="",
             ThreadParticipant.objects.create(
                 thread=thread, user=user,
                 last_read_at=timezone.now() if user == creator else None,
+                # v2.1 L3: whoever starts a group owns it.
+                role=(ThreadParticipant.OWNER if user == creator and thread_type == Thread.GROUP
+                      else ThreadParticipant.MEMBER),
             )
         Message.objects.create(thread=thread, sender=creator, body=initial_body)
         thread.last_message_at = timezone.now()
@@ -699,7 +827,15 @@ class Memo(TimeStampedModel):
     DEPARTMENT = "department"
     ROLE = "role"
     INDIVIDUALS = "individuals"
+    STAFF_FILTER = "staff_filter"
+    NO_STAFF = "no_staff"
     VISIBILITY_CHOICES = MEMO_VISIBILITY_CHOICES
+
+    # ---- Kind (v2.1 Phase E, M1) -----------------------------------
+    INTERNAL, EXTERNAL, GENERAL = "internal", "external", "general"
+    KIND_CHOICES = MEMO_KIND_CHOICES
+    INST_NONE, INST_ALL, INST_SELECTED, INST_FILTER = "", "all", "selected", "filter"
+    INSTITUTION_SCOPE_CHOICES = MEMO_INSTITUTION_SCOPE_CHOICES
 
     # ---- Identity ---------------------------------------------------
     reference = models.CharField(max_length=20, unique=True, db_index=True)
@@ -735,6 +871,25 @@ class Memo(TimeStampedModel):
         related_name="memos_addressed_individually",
         help_text="Set when visibility = 'individuals'.",
     )
+
+    # Staff filter (visibility = staff_filter, M6): {"departments": [ids],
+    # "rank_min": int, "rank_max": int, "designations": [ids], "roles": [codes]}.
+    staff_filter = models.JSONField(default=dict, blank=True)
+
+    # ---- Kind and institutions (v2.1 Phase E, M1-M5) -----------------
+    kind = models.CharField(max_length=10, choices=MEMO_KIND_CHOICES, default="internal", db_index=True)
+    institution_scope = models.CharField(max_length=10, choices=MEMO_INSTITUTION_SCOPE_CHOICES,
+                                         default="", blank=True)
+    # Filter builder (scope = filter): see messaging.memo_audience.INSTITUTION_FILTER_KEYS.
+    institution_filter = models.JSONField(default=dict, blank=True)
+    target_institutions = models.ManyToManyField(
+        "institutions.Institution", blank=True, related_name="memos_addressed",
+        help_text="Set when institution_scope = 'selected' (one or more).")
+    # The Executive Secretary's sign-off on an external / general memo: the
+    # sender when the ES sends it, else the ES who approved it (M3).
+    es_signatory = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    es_signed_at = models.DateTimeField(null=True, blank=True)
 
     # ---- Routing ----------------------------------------------------
     route = models.ForeignKey(
@@ -796,6 +951,8 @@ class Memo(TimeStampedModel):
             ("send_memo_broadcast",
              "Can address memos to All Staff, All Directors, or a whole department"),
             ("approve_memo", "Can act as an approver on memo routing steps"),
+            ("send_external_memo",
+             "Can send external memos to institutions (the Executive Secretary)"),
         ]
 
     def __str__(self):
@@ -843,6 +1000,18 @@ class Memo(TimeStampedModel):
     @property
     def acknowledged_count(self):
         return self.memo_recipients.filter(acknowledged_at__isnull=False).count()
+
+    @property
+    def is_outbound(self):
+        """External or general: it leaves NBTE, so the ES signs it (M2, M3)."""
+        return self.kind in (self.EXTERNAL, self.GENERAL)
+
+    @property
+    def signed_as(self):
+        """'from' when the ES sent it, 'approved' when the ES approved it."""
+        if not self.es_signatory_id:
+            return ""
+        return "from" if self.es_signatory_id == self.sender_id else "approved"
 
     @property
     def card_summary(self):
@@ -910,3 +1079,34 @@ class MemoAttachment(RestrictedFileModel):
         if self.memo.is_draft:
             return False
         return self.memo.memo_recipients.filter(user=user).exists()
+
+
+class MemoInstitutionRecipient(models.Model):
+    """An institution an external / general memo was delivered to (v2.1 M4).
+    Read and acknowledgement are per institution (any of its portal users)."""
+    memo = models.ForeignKey(Memo, on_delete=models.CASCADE, related_name="institution_recipients")
+    institution = models.ForeignKey("institutions.Institution", on_delete=models.CASCADE,
+                                    related_name="memo_receipts")
+    delivered_at = models.DateTimeField(default=timezone.now)
+    read_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    read_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="+")
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                        on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        unique_together = ("memo", "institution")
+        ordering = ["-delivered_at", "-pk"]
+        indexes = [models.Index(fields=["institution", "-delivered_at"])]
+
+    def __str__(self):
+        return f"{self.institution_id} on {self.memo.reference}"
+
+    @property
+    def is_read(self):
+        return self.read_at is not None
+
+    @property
+    def is_acknowledged(self):
+        return self.acknowledged_at is not None

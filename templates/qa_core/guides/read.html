@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load qa_tags %}
+{% block title %}{{ g.title }} · Guides · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Guides{% endblock %}
+{% block content %}
+<div class="gx gx-read gx-tone--{{ g.tone }}" data-gx-read>
+  <div class="gx-progress" aria-hidden="true"><i data-gx-bar></i></div>
+  <nav class="gx-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa:staff_guides' %}">{% icon "back" 14 %} Help centre</a><span aria-hidden="true">/</span><span aria-current="page">{{ g.title }}</span></nav>
+
+  <header class="gx-cover">
+    <span class="gx-cover__icon" aria-hidden="true">{% icon g.icon 28 "1.8" %}</span>
+    <div class="gx-cover__text">
+      <span class="gx-cover__kicker">{{ g.kicker }} · Staff guide</span>
+      <h1>{{ g.title }}</h1>
+      <p>{{ g.subtitle }}</p>
+      <ul class="gx-cover__meta" role="list">
+        <li>{% icon "clock" 14 %} {{ g.minutes }} min read</li>
+        <li>{% icon "layers" 14 %} {{ g.parts }} part{{ g.parts|pluralize }}</li>
+        <li>{% icon "users" 14 %} {{ g.audience }}</li>
+      </ul>
+    </div>
+    <div class="gx-cover__actions ux-actions">
+      <button class="btn btn-ghost" type="button" data-gx-print>{% icon "download" 16 %} Print or save as PDF</button>
+    </div>
+  </header>
+
+  <div class="gx-layout">
+    <aside class="gx-toc" aria-label="Contents">
+      <div class="gx-toc__card">
+        <div class="gx-toc__head"><strong>In this guide</strong><span data-gx-pct>0%</span></div>
+        <div class="ux-progress"><i data-gx-bar2 style="width:0%"></i></div>
+        <ol class="gx-toc__list">{% for a, t in toc %}<li><a href="#{{ a }}" data-gx-toc="{{ a }}">{{ t }}</a></li>{% endfor %}</ol>
+      </div>
+      <div class="gx-toc__card gx-toc__others">
+        <strong>Other guides</strong>
+        <ul role="list">{% for o in items %}{% if o.slug != slug %}<li><a class="gx-tone--{{ o.tone }}" href="{% url 'qa:staff_guide' o.slug %}"><span class="gx-mini-icon" aria-hidden="true">{% icon o.icon 14 %}</span>{{ o.title }}</a></li>{% endif %}{% endfor %}</ul>
+      </div>
+    </aside>
+
+    <div class="gx-main">
+      <article class="gd-body gx-body">{{ body }}</article>
+      <div class="gx-done">
+        <span class="gx-done__icon" aria-hidden="true">✓</span>
+        <div><strong>You've reached the end of this guide.</strong><p>Keep it handy: print it or save it as a PDF for your desk.</p></div>
+      </div>
+      <nav class="gx-pager" aria-label="More guides">
+        {% if prev_guide %}<a class="gx-pager__link" href="{% url 'qa:staff_guide' prev_guide.slug %}"><small>← Previous guide</small><strong>{{ prev_guide.title }}</strong></a>{% else %}<span></span>{% endif %}
+        {% if next_guide %}<a class="gx-pager__link gx-pager__link--next" href="{% url 'qa:staff_guide' next_guide.slug %}"><small>Next guide →</small><strong>{{ next_guide.title }}</strong></a>{% else %}<a class="gx-pager__link gx-pager__link--next" href="{% url 'qa:staff_guides' %}"><small>All done →</small><strong>Back to the help centre</strong></a>{% endif %}
+      </nav>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var root = document.querySelector("[data-gx-read]");
+  if (!root || root.dataset.ready) return; root.dataset.ready = "1";
+  var p = root.querySelector("[data-gx-print]"); if (p) p.addEventListener("click", function () { window.print(); });
+  var bar = root.querySelector("[data-gx-bar]"), bar2 = root.querySelector("[data-gx-bar2]"),
+      pct = root.querySelector("[data-gx-pct]"), body = root.querySelector(".gx-body");
+  var links = [].slice.call(root.querySelectorAll("[data-gx-toc]"));
+  var heads = links.map(function (a) { return document.getElementById(a.dataset.gxToc); }).filter(Boolean);
+  var ticking = false;
+  function update() {
+    ticking = false;
+    var r = body.getBoundingClientRect(), h = r.height - window.innerHeight * .6;
+    var v = Math.max(0, Math.min(1, -r.top / Math.max(h, 1)));
+    var n = Math.round(v * 100);
+    bar.style.width = n + "%"; bar2.style.width = n + "%"; pct.textContent = n + "%";
+    var current = null;
+    heads.forEach(function (h) { if (h.getBoundingClientRect().top < 140) current = h.id; });
+    links.forEach(function (a) {
+      var on = a.dataset.gxToc === current; a.classList.toggle("is-current", on);
+      if (on) a.setAttribute("aria-current", "location"); else a.removeAttribute("aria-current");
+      var idx = links.indexOf(a), cur = links.findIndex(function (x) { return x.dataset.gxToc === current; });
+      a.classList.toggle("is-read", cur > -1 && idx < cur);
+    });
+  }
+  window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+  update();
+})();
+</script>
+{% endblock %}

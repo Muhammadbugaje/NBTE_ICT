@@ -1,0 +1,5 @@
+{% load qa_tags %}{% if results %}<ul class="qa-combo__list" role="listbox" aria-label="Programmes on NBTE's master list">{% for m in results %}
+  <li role="option" aria-selected="false"><button type="button" class="qa-combo__opt" hx-get="{% url 'qa_portal:programme_master_pick' m.pk %}" hx-target="#qa-prog-pick" hx-swap="innerHTML">
+    <span class="qa-combo__name">{{ m.name }}</span>
+    <span class="qa-combo__meta">{{ m.level.code|upper }}{% if m.professional_body %} · {{ m.professional_body.acronym|default:m.professional_body.name }}{% else %} · No professional body{% endif %}</span></button></li>{% endfor %}
+</ul>{% elif searched %}<p class="qa-small qa-muted" role="status">Nothing on the master list matches “{{ q }}”. Use <strong>Not in the list?</strong> below.</p>{% endif %}

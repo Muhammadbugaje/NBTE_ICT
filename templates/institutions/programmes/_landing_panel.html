@@ -1,0 +1,57 @@
+{% load qa_tags %}
+{% include "institutions/programmes/_subnav.html" %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "institution" 14 "2.2" %} Programmes</span>
+    <h1 data-qa-focus>Programme set-up</h1>
+    <p>What NBTE recognises, which professional body regulates it, and the requirements it is measured against. Institutions pick programmes from the master list; bodies ask NBTE to put a programme under them.</p>
+  </div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <span class="qa-stat"><strong>{{ total }}</strong><span>Master programmes</span></span>
+    <a class="qa-stat qa-stat--success qa-stat--link" href="{% url 'qa_pb:mappings' %}"><strong>{{ mapped }}</strong><span>Regulated by a body</span></a>
+    <a class="qa-stat qa-stat--link" href="{% url 'qa_programmes:requirements' %}"><strong>{{ requirements }}</strong><span>Requirement lines</span></a>
+    <a class="qa-stat{% if pending %} qa-stat--warning{% endif %} qa-stat--link" href="{% url 'qa_programmes:requests' %}"><strong>{{ pending }}</strong><span>Waiting for NBTE</span></a>
+  </div>
+</header>
+
+{% if recent_pending %}
+<section class="qa-card" aria-labelledby="pr-h">
+  <header class="qa-card__head"><div><h2 id="pr-h">Waiting for NBTE</h2>
+    <p>Professional bodies asking for a programme mapping. The master-list custodian decides — one approver.</p></div>
+    <a class="btn btn-xs btn-subtle" href="{% url 'qa_programmes:requests' %}">All requests</a></header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th scope="col">Body</th><th scope="col">Programme</th><th scope="col">Institution</th><th scope="col">Level</th></tr></thead>
+    <tbody>{% for row in recent_pending %}
+      <tr><td>{{ row.body.acronym|default:row.body.name }}</td>
+        <td><a href="{% url 'qa_programmes:request_detail' row.pk %}">{{ row.programme_name }}</a></td>
+        <td>{{ row.institution.name }}</td><td>{{ row.level.code|upper|default:"Any" }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+
+<section class="qa-card" aria-labelledby="pop-h">
+  <header class="qa-card__head"><div><h2 id="pop-h">Most-used master programmes</h2>
+    <p>Cards: institution programmes drawn from each master row, and its professional body.</p></div>
+    <a class="btn btn-xs btn-subtle" href="{% url 'qa_pb:master' %}">Master list</a></header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th scope="col">Programme</th><th scope="col">Institution programmes</th><th scope="col">Professional body</th></tr></thead>
+    <tbody>{% for m in popular %}
+      <tr><td>{{ m.level.code|upper }} {{ m.name }}</td><td>{{ m.used }}</td>
+        <td>{% if m.professional_body %}{{ m.professional_body.acronym|default:m.professional_body.name }}{% else %}—{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="3" class="qa-muted">No master programmes yet — add rows in the master list or import from Excel.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+<section class="qa-card" aria-labelledby="rd-h">
+  <header class="qa-card__head"><h2 id="rd-h">Recent body request decisions</h2></header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th scope="col">Request</th><th scope="col">Body</th><th scope="col">Status</th><th scope="col">Decided</th></tr></thead>
+    <tbody>{% for row in recent_decided %}
+      <tr><td><a href="{% url 'qa_programmes:request_detail' row.pk %}">{{ row.programme_name }}</a></td>
+        <td>{{ row.body.acronym|default:row.body.name }}</td>
+        <td><span class="qa-chip {% if row.status == 'approved' %}qa-tone-success{% elif row.status == 'rejected' %}qa-tone-danger{% endif %}">{{ row.get_status_display }}</span></td>
+      <td>{{ row.decided_at|date:"j M Y" }}</td></tr>
+    {% empty %}<tr><td colspan="4" class="qa-muted">Nothing decided yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>

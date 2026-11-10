@@ -76,6 +76,8 @@ def letters(request):
     rows = list(OutcomeLetter.objects.for_user(request.user)
                 .select_related("programme__level", "decision__approval_type", "case")
                 .prefetch_related(_copies(request.user)).order_by("-generated_at"))
+    from documents.views_portal import letters_context  # v2.1 Phase F (X25): generated documents
+
     ctx = _shell_context(request, "letters", inst=inst, letters=rows,
-                         kinds=dict(OutcomeLetterCopy.KIND_CHOICES))
+                         kinds=dict(OutcomeLetterCopy.KIND_CHOICES), **letters_context(request.user))
     return render(request, "qa_portal/letters/page.html", ctx)

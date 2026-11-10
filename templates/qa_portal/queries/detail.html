@@ -9,6 +9,7 @@
     <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} {{ query.subject_label }}</span>
     <h1 data-qa-focus>{{ query.title }}</h1>
     <p class="qa-row qa-gap-sm"><span class="qa-chip {{ query.status|tone }}">{% if query.status == "open" %}Waiting for your answer{% else %}{{ query.get_status_display }}{% endif %}</span><span class="qa-mono qa-small">{{ query.reference }}</span><span class="qa-small">Respond by {{ query.due_at|date:"j M Y" }}</span>{% if query.is_overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}</p>
+    {% load nbte_calendar %}{% add_to_calendar "query" query %}
   </header>
   {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not sent" message=error %}{% endif %}
   <div class="qa-cols">

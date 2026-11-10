@@ -10,14 +10,14 @@
         <a href="{% url 'staff:leadership_tenure' t.pk %}" class="lead-preview-card">
           <div class="lead-preview-photo">
             {% if t.photo %}
-              <img src="{{ t.photo_thumb_url }}" alt="">
+              <img loading="lazy" decoding="async" src="{{ t.photo_thumb_url }}" alt="">
             {% elif t.staff.photo %}
-              <img src="{{ t.staff.photo_thumb_url }}" alt="">
+              <img loading="lazy" decoding="async" src="{{ t.staff.photo_thumb_url }}" alt="">
             {% else %}
-              {% staff_avatar_fallback t.staff %}
+              {% if t.staff %}{% staff_avatar_fallback t.staff %}{% else %}<span class="lead-avatar-initials">{{ t.person_initials }}</span>{% endif %}
             {% endif %}
           </div>
-          <div class="lead-preview-name">{{ t.staff.full_name }}</div>
+          <div class="lead-preview-name">{{ t.person_name }}</div>
           <div class="lead-preview-role">{{ t.position.name }}</div>
         </a>
       {% endfor %}

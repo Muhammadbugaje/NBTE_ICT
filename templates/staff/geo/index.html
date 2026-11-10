@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}States &amp; LGAs · Settings · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block extra_css %}{# v21-platform.css: in the finish bundle #}{% endblock %}
+{% block content %}
+<div class="pf-page geo">
+  {% url 'config:settings' as settings_url %}
+  {% include "partials/hero.html" with icon="map" eyebrow="Settings · Geography" title="States & LGAs" lede="The states, LGAs and zonal offices every form uses. LGAs in use are deactivated, never deleted." back_url=settings_url back_label="Settings" area="settings" s1=states|length s1_label="States and FCT" s2=total_lgas s2_label="Active LGAs" s3=offices|length s3_label="Zonal offices" %}
+  <div class="geo-layout">
+    <section class="pf-card geo-states" aria-labelledby="geo-states-title">
+      <header class="pf-card__head pf-card__head--tight">
+        <div><h2 id="geo-states-title">States</h2></div>
+      </header>
+      <form class="geo-search" method="get" action="{% url 'geo:index' %}" role="search">
+        <label class="sr-only" for="geo-q">Find a state or LGA</label>
+        <input class="input" id="geo-q" type="search" name="q" value="{{ q }}" placeholder="Find a state or LGA"
+               hx-get="{% url 'geo:index' %}" hx-trigger="input changed delay:300ms, search" hx-target="#geo-state-list" hx-swap="outerHTML" hx-vals='{"fragment": "list"}'>
+      </form>
+      {% include "staff/geo/_state_list.html" %}
+      <details class="geo-add">
+        <summary>Add a state</summary>
+        <form method="post" action="{% url 'geo:state_save' %}" class="pf-form">
+          {% csrf_token %}
+          <div class="pf-form__grid">
+            <div class="pf-form__row"><label for="ns-name">Name</label><input class="input" id="ns-name" name="name" required></div>
+            <div class="pf-form__row"><label for="ns-code">Code</label><input class="input" id="ns-code" name="code" maxlength="8" placeholder="e.g. kd" required></div>
+            <div class="pf-form__row"><label for="ns-zone">Zone</label><select class="input" id="ns-zone" name="zone" required>{% for v, l in zones %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+          </div>
+          <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">Add state</button></div>
+        </form>
+      </details>
+    </section>
+    {% include "staff/geo/_state_panel.html" %}
+  </div>
+
+  <section class="pf-card" aria-labelledby="geo-zones-title">
+    <header class="pf-card__head"><div><h2 id="geo-zones-title">Zonal offices</h2><p>From the NBTE Compendium. Addresses marked “to confirm” are incomplete in the source.</p></div></header>
+    <div class="geo-zones">
+      {% for o in offices %}
+      <article class="geo-zone">
+        <strong>{{ o.name }}</strong>
+        <span class="muted">{{ o.location }}</span>
+        <span>{% if o.email %}{{ o.email }}{% else %}<span class="pf-chip pf-chip--warn">E-mail to confirm</span>{% endif %}</span>
+        <span class="geo-zone__states">{% for s in o.states.all %}{{ s.name|title }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+      </article>
+      {% empty %}<p class="pf-empty">No zonal offices yet. Run <code>python manage.py seed_nbte --only geo</code>.</p>{% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

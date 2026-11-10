@@ -32,6 +32,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
+from accounts.audience import nbte_staff_records_q
 from core import audit
 
 from . import nbte_reference as ref
@@ -651,13 +652,19 @@ class LookupResolver:
 
     # Offices -------------------------------------------------------------
     def office(self, raw):
-        from .models import Office
+        """v2.2: an office column names a unit in the Department list."""
+        from .models import Department, Office
+        from .office_merge import _kind_and_parent_code
         name = ref.clean_text(raw)
         if not name:
             return None
-        obj = Office.objects.filter(name__iexact=name).first()
+        merged = Office.objects.filter(name__iexact=name, merged_into__isnull=False).select_related("merged_into").first()
+        obj = merged.merged_into if merged else Department.objects.filter(name__iexact=name).first()
         if obj is None:
-            obj = Office.objects.create(name=name, sort_order=500)
+            kind, parent_code = _kind_and_parent_code(name)
+            obj = Department.objects.create(name=name, kind=kind, sort_order=500,
+                                            parent=Department.objects.filter(code=parent_code).first()
+                                            if parent_code else None)
             self.created["Offices"].append(name)
         return obj
 
@@ -1010,6 +1017,7 @@ class NominalRollImporter:
                 return obj
         last, first, dob = data["last_name"], data["first_name"], data.get("date_of_birth")
         qs = (Staff.objects.filter(last_name__iexact=last, first_name__iexact=first)
+              .filter(nbte_staff_records_q())       # never adopt a portal account's record
               .exclude(pk__in=self._created_pks)
               .exclude(employee_no__in=self._incoming_nos))
         if dob:
@@ -1020,7 +1028,8 @@ class NominalRollImporter:
         if len(hit) == 1:
             return hit[0]
         if data.get("email"):
-            hit = list(Staff.objects.filter(email__iexact=data["email"]).exclude(pk__in=self._claimed)[:2])
+            hit = list(Staff.objects.filter(email__iexact=data["email"]).filter(nbte_staff_records_q())
+                       .exclude(pk__in=self._claimed)[:2])
             if len(hit) == 1:
                 return hit[0]
         return self._placeholder_match(data)
@@ -1034,7 +1043,8 @@ class NominalRollImporter:
         if not last:
             return None
         wanted = set(_norm_name(data["first_name"]).split())
-        cands = [s for s in Staff.objects.filter(last_name__iexact=last, user__isnull=False)
+        cands = [s for s in Staff.objects.filter(last_name__iexact=last, user__isnull=False,
+                                                 user__user_type="staff")
                  .exclude(pk__in=self._claimed)
                  if PLACEHOLDER_NO.match(s.employee_no or "")
                  and wanted & set(_norm_name(s.first_name).split())]
@@ -1069,7 +1079,10 @@ class NominalRollImporter:
         values["department"] = resolver.department(data.get("department"))
         values["designation"] = resolver.designation(data.get("designation"))
         values["state_of_origin"] = resolver.state_of_origin(data.get("state_of_origin"))
-        values["office"] = resolver.office(data.get("office"))
+        # v2.2: an office/unit column posts the person to that unit (one list).
+        unit = resolver.office(data.get("office"))
+        if unit is not None:
+            values["department"] = unit
         remark_state = resolver.staff_state(data.get("remarks"))
         for kind, names in resolver.created.items():
             for name in names[len(before.get(kind, [])):]:

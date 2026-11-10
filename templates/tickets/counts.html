@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% load static %}{% load icon from qa_tags %}
+
+{% block title %}Ticket counts · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Ticket counts{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="tk-page wk-page" data-qa-area="tickets">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tickets">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'tickets:list' %}">{% icon "back" 14 "2.4" %} All tickets</a>
+      <span class="qa-eyebrow">{% icon "chart" 14 "2.2" %} Tickets · Divisions &amp; counts</span>
+      <h1>Divisions &amp; counts</h1>
+      <p>{% if data.scope == 'all' %}All departments{% elif data.scope == 'department' %}Your department{% else %}{{ data.division.name }}{% endif %} · resolved counts since {{ data.since|date:"M j, Y" }}.</p>
+    </div>
+  </header>
+
+  <div class="tk-counts-grid">
+    <div class="tk-stat"><b>{{ data.totals.open }}</b><span>Open</span></div>
+    <div class="tk-stat"><b>{{ data.totals.with_division }}</b><span>Open with a division</span></div>
+    <div class="tk-stat"><b>{{ data.totals.awaiting_funds }}</b><span>Awaiting funds</span></div>
+    <div class="tk-stat"><b>{{ data.totals.resolved }}</b><span>Resolved this month</span></div>
+    <div class="tk-stat"><b>{{ data.totals.unrated }}</b><span>Resolved, not rated</span></div>
+  </div>
+
+  {% if queue %}
+  <section class="tk-block" id="queue">
+    <h2 class="tk-block-title">Division queue</h2>
+    <div class="tk-table-wrap"><table class="tk-table">
+      <thead><tr><th>Ticket</th><th>Subject</th><th>Division</th><th>Status</th><th>Assignee</th></tr></thead>
+      <tbody>
+      {% for t in queue %}
+        <tr><td><a href="{% url 'tickets:detail' t.pk %}">{{ t.reference }}</a></td><td>{{ t.subject }}</td>
+          <td>{{ t.division.name }}</td>
+          <td>{% if t.division_state == 'pending' %}<span class="tk-chip tk-chip-sla-warn">Accept or decline</span>{% else %}{{ t.get_state_display }}{% endif %}</td>
+          <td>{{ t.assigned_to.get_full_name|default:"—" }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+  {% endif %}
+
+  <section class="tk-block">
+    <h2 class="tk-block-title">Divisions</h2>
+    {% if data.divisions %}
+    <div class="tk-table-wrap"><table class="tk-table">
+      <thead><tr><th>Division</th>{% if data.scope == 'all' %}<th>Department</th>{% endif %}<th>Head</th><th class="num">Awaiting head</th><th class="num">Open</th><th class="num">Resolved</th><th>Load</th></tr></thead>
+      <tbody>
+      {% for d in data.divisions %}
+        <tr><td>{{ d.name }}</td>{% if data.scope == 'all' %}<td>{{ d.department.name }}</td>{% endif %}
+          <td>{{ d.head.get_full_name|default:"—" }}</td><td class="num">{{ d.pending }}</td><td class="num">{{ d.open }}</td><td class="num">{{ d.resolved }}</td><td>{{ d.load_label }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="tk-empty-note">No divisions yet.</p>{% endif %}
+  </section>
+
+  {% if data.departments %}
+  <section class="tk-block">
+    <h2 class="tk-block-title">Departments</h2>
+    <div class="tk-table-wrap"><table class="tk-table">
+      <thead><tr><th>Department</th><th class="num">Open</th><th class="num">Not routed</th><th class="num">Resolved</th></tr></thead>
+      <tbody>{% for d in data.departments %}<tr><td>{{ d.name }}</td><td class="num">{{ d.open }}</td><td class="num">{{ d.unrouted }}</td><td class="num">{{ d.resolved }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
+
+  <section class="tk-block">
+    <h2 class="tk-block-title">Paths taken</h2>
+    <div class="tk-table-wrap"><table class="tk-table">
+      <thead><tr><th>Path</th><th class="num">Times</th></tr></thead>
+      <tbody>{% for p in data.paths %}<tr><td>{{ p.label }}</td><td class="num">{{ p.count }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+</div>
+{% endblock %}

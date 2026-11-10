@@ -234,7 +234,7 @@ def request_detail_payload(user, req):
         "can_drop": bool(manage and svc.can_change_programmes(req, "drop_programme")),
         "can_replace": bool(manage and svc.can_change_programmes(req, "replace_programme")),
         "can_cancel": bool(manage and svc.is_cancellable(req)),
-        "can_submit": bool(manage and req.status == "draft"),
+        "can_submit": bool(manage and req.status == "draft" and _is_ce(user)),
         "cancellable_stages": [str(s) for s in svc.cancellable_stage_labels(req)],
         "max_streams": svc.max_streams(),
     }
@@ -273,8 +273,8 @@ def _field_payload(field, value, programme, *, prefilled, edited, evidence, reus
         out["value"] = list(value or [])
     if field["type"] == "catalogue":
         qty = value or {}
+        # X35: no required quantity for the institution.
         out["items"] = [{"id": item.pk, "name": item.name, "unit": getattr(item, "unit", "") or "",
-                         "required_quantity": str(getattr(item, "required_quantity", "") or ""),
                          "quantity": qty.get(str(item.pk), "")}
                         for item in engine.catalogue_items(field, programme)]
         out["value"] = dict(qty)
@@ -358,7 +358,8 @@ def ssq_payload(user, req, ssq):
                      for v in SSQ.objects.for_user(user).filter(qa_request_programme=ssq.qa_request_programme)
                      .order_by("-version")],
         "submission": ({"version": submission.version, "submitted_at": submission.submitted_at,
-                        "snapshot": submission.rendered_snapshot} if submission is not None and frozen else None),
+                        "snapshot": engine.for_audience(submission.rendered_snapshot, "institution")}
+                       if submission is not None and frozen else None),
         "max_mb": _max_mb(),
     }
 
@@ -551,3 +552,10 @@ def letters_queryset(user):
     return (OutcomeLetter.objects.for_user(user)
             .select_related("programme__level", "decision__approval_type", "case")
             .prefetch_related(ppv._copies(user)).order_by("-generated_at"))
+
+
+def _is_ce(user):
+    """X12 (Phase 0): only the Chief Executive submits to NBTE."""
+    from institutions.services import is_chief_executive
+
+    return is_chief_executive(user)

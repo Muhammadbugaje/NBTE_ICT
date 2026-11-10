@@ -96,7 +96,13 @@ def create_accounts(staff_qs, *, scheme, shared_password="", actor=None, send_em
         if staff.department_id:
             user.department_id = staff.department_id
         if role is not None:
-            user.role = role
+            from org import single_holder
+            taken = single_holder.conflict(user, role, staff.department_id)
+            if taken:  # Part 1a: a single-holder role (director, ES) is never given twice
+                warnings.append(f"{staff.full_name} ({staff.employee_no}): {taken} The account was created "
+                                "without that role.")
+            else:
+                user.role = role
         user.password = shared_hash or _hash(password)
         user._link_staff = staff           # accounts.signals links this record
         user.save()

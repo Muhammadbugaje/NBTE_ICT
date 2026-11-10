@@ -1,47 +1,87 @@
-{% load qa_tags %}
-{% for a in actions %}
-<section class="qa-stage-act{% if not a.can %} is-blocked{% endif %}{% if a.focus %} is-focus{% endif %}" aria-labelledby="act-{{ a.stage.code }}">
-  <header class="qa-stage-act__head">
-    {% if a.stage.sop_stage_no %}<span class="qa-stage-no">{{ a.stage.sop_stage_no }}</span>{% endif %}
-    <h2 id="act-{{ a.stage.code }}">{{ a.stage.label }}</h2>
-    <span class="qa-who-list">{% for u in a.holders %}<span class="qa-who"><span class="qa-who__av" aria-hidden="true">{{ u|initials }}</span>{{ u|who }}</span>{% empty %}<span class="qa-chip qa-tone-warn">Nobody yet — department queue</span>{% endfor %}</span>
-    {% if a.link and a.link.due_at %}<span class="qa-chip">{% icon "clock" 12 %} Due {{ a.link.due_at|date:"j M, H:i" }}</span>{% endif %}
-    {% if a.link %}<a class="btn btn-xs btn-subtle" href="{% url 'tasks:detail' a.link.task_id %}">Task {{ a.link.task.reference }}</a>{% endif %}
+{% load qa_tags %}{# One panel per current stage: what this step is · who must act · what to do · the form · the primary button. stage_tab limits the panels to one tab. #}
+{% for a in actions %}{% if not stage_tab or a.tab == stage_tab %}
+<section class="c3-stage{% if a.can %} is-mine{% else %} is-waiting{% endif %}{% if a.focus %} is-focus{% endif %}{% if a.overdue %} is-overdue{% endif %}" aria-labelledby="act-{{ a.stage.code }}">
+  <header class="c3-stage__head">
+    <span class="c3-stage__no" aria-hidden="true">{{ a.stage.sop_stage_no|default:"0" }}</span>
+    <div class="c3-stage__title">
+      <span class="c3-stage__kicker">{% if a.can and a.stage.code == "generate_cost" %}Step 2 · Submit cost sheet{% elif a.can and a.stage.code == "add_personnel" %}Step 2 · Submit personnel list{% elif a.can and a.stage.code == "add_visit_details" %}Step 2 · Submit visit details{% elif a.can and a.stage.code == "request_fund_release" %}Step 2 · Confirm funds released{% else %}{% if a.can %}Your step{% else %}In progress{% endif %} · Stage {{ a.stage.sop_stage_no|default:"0" }}{% endif %}</span>
+      <h2 id="act-{{ a.stage.code }}">{{ a.stage.label }}</h2>
+      {% if a.guide.what %}<p>{{ a.guide.what }}</p>{% endif %}
+    </div>
+    <div class="c3-stage__chips">
+      {% if a.overdue %}<span class="qa-chip qa-tone-danger">{% icon "alert" 12 "2.4" %} Overdue {{ a.link.due_at|timesince }}</span>
+      {% elif a.link and a.link.due_at %}<span class="qa-chip">{% icon "clock" 12 "2.4" %} Due {{ a.link.due_at|date:"j M, H:i" }}</span>{% endif %}
+      {% if a.link %}<a class="qa-chip c3-chip-link" href="{% url 'tasks:detail' a.link.task_id %}" title="The task behind this stage">Task {{ a.link.task.reference }}</a>{% endif %}
+    </div>
   </header>
-  <div class="qa-stage-act__body">
-    {% for c in a.pinned %}<div class="qa-pinned-remark" role="note"><strong>{% icon "flag" 14 %} Pinned remark</strong><span>{{ c.body }}</span><small>{{ c.author|who }} · {{ c.pinned_at|date:"j M Y, H:i" }}</small></div>{% endfor %}
-    {% if a.can %}
-      {% if a.stage.code == "case_opened" %}
-        <form class="qa-inline-form" method="post" action="{% url 'qa_case:desk_officer' case.pk %}" hx-post="{% url 'qa_case:desk_officer' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="stage" value="case_opened">
-          <div class="qa-field"><label for="desk-officer">Desk officer <span class="qa-muted">(builds the cost sheet, personnel list and visit details; GL {{ grade_min }}–{{ grade_max }}, R-20)</span></label>
-            <select class="input" id="desk-officer" name="officer" required><option value="">Choose…</option>{% for u in desk_choices %}<option value="{{ u.pk }}"{% if case.desk_officer_id == u.pk %} selected{% endif %}>{{ u|who }} — {{ u.role.name|default:"" }}</option>{% endfor %}</select></div>
-          <button class="btn btn-subtle" type="submit">Save desk officer</button>
-        </form>
-        <p class="qa-small qa-muted">Current desk officer: <strong>{{ case.desk_officer|who:"not chosen" }}</strong>.</p>
-      {% elif a.stage.code == "assign_audit_officer" or a.stage.code == "assign_finance_officer" or a.stage.code == "assign_ict_officer" %}
-        {% if a.stage.code == "assign_audit_officer" %}{% with kind="audit" choices=audit_choices current=case.supervising_audit_officer %}{% include "accreditation/case/_supervisor_form.html" %}{% endwith %}
-        {% elif a.stage.code == "assign_finance_officer" %}{% with kind="finance" choices=finance_choices current=case.supervising_finance_officer %}{% include "accreditation/case/_supervisor_form.html" %}{% endwith %}
-        {% else %}{% with kind="ict" choices=ict_choices %}{% include "accreditation/case/_supervisor_form.html" %}{% endwith %}{% endif %}
-      {% elif a.tab != "overview" %}
-        <p class="qa-small">The work for this stage is on the <a href="?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-get="{% url 'qa_case:detail' case.pk %}?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ a.tab|capfirst }}</strong> tab</a>. Review it, then approve or return.</p>
-      {% endif %}
-      {% if a.problems %}<div><strong class="qa-small">Before you can approve:</strong><ul class="qa-problems">{% for p in a.problems %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
-      <div class="qa-field"><label for="remark-{{ a.stage.code }}">Remark <span class="qa-muted">{% if a.returns %}(required to return — it is pinned on the returned task){% else %}(optional){% endif %}</span></label>
-        <textarea class="input" id="remark-{{ a.stage.code }}" name="remark" rows="2" maxlength="2000"></textarea></div>
-      <div class="qa-stage-act__btns">
-        <form method="post" action="{% url 'qa_case:act' case.pk %}" hx-post="{% url 'qa_case:act' case.pk %}" hx-target="#qa-panel" hx-include="#remark-{{ a.stage.code }}" hx-trigger="qa:confirmed" data-qa-confirm="This closes your task for “{{ a.stage.label }}” and opens the next stage's task." data-qa-confirm-title="{{ a.approve_label }}?" data-qa-confirm-label="{{ a.approve_label }}">{% csrf_token %}<input type="hidden" name="stage" value="{{ a.stage.code }}"><input type="hidden" name="action" value="approve">
-          <button class="btn btn-primary btn-block" type="submit"{% if a.problems %} disabled aria-disabled="true"{% endif %}>{% icon "check" 16 "2.4" %} {{ a.approve_label }}</button></form>
-        {% if a.returns %}
-        <form method="post" action="{% url 'qa_case:act' case.pk %}" hx-post="{% url 'qa_case:act' case.pk %}" hx-target="#qa-panel" hx-include="#remark-{{ a.stage.code }}" hx-trigger="qa:confirmed" data-qa-require="#remark-{{ a.stage.code }}" data-qa-require-msg="Write the remark: it is pinned on the task of the person you return it to" data-qa-confirm="It goes back to whoever submitted it, with your remark pinned." data-qa-confirm-title="Return this stage?" data-qa-confirm-label="Return" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="stage" value="{{ a.stage.code }}"><input type="hidden" name="action" value="return">
-          <button class="btn btn-subtle btn-block qa-btn-reject" type="submit">{% icon "back" 16 %} Return with remark</button></form>
-        {% endif %}
-      </div>
-    {% else %}
-      <p class="qa-small qa-muted">{{ a.why }}</p>
+
+  <div class="c3-stage__who">
+    <span class="c3-label">Who acts</span>
+    <span class="c3-people">{% for u in a.holders %}<span class="c3-person"><span class="c3-av" aria-hidden="true">{{ u|initials }}</span><span>{{ u|who }}{% if u == request.user %} <em class="c3-you-tag">you</em>{% endif %}</span></span>{% empty %}<span class="qa-chip qa-tone-warn">Nobody yet — in the department queue</span>{% endfor %}</span>
+    {% if a.guide.who %}<span class="c3-muted">{{ a.guide.who }}{% if a.since %} · waiting {{ a.since }}{% endif %}</span>{% elif a.since %}<span class="c3-muted">Waiting {{ a.since }}</span>{% endif %}
+    {% if can_remind and not a.can and a.holders %}
+    <form class="c3-remind" method="post" action="{% url 'qa_case:remind' case.pk a.stage.code %}" hx-post="{% url 'qa_case:remind' case.pk a.stage.code %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="{{ tab }}">
+      <button class="btn btn-sm btn-subtle" type="submit" title="Send {% for u in a.holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %} a reminder">{% icon "bell" 14 "2.2" %} Remind</button>
+    </form>
     {% endif %}
   </div>
+
+  {% for c in a.pinned %}<div class="c3-pinned" role="note">{% icon "flag" 14 "2.4" %}<div><strong>Returned with a remark</strong><p>{{ c.body }}</p><small>{{ c.author|who }} · {{ c.pinned_at|date:"j M Y, H:i" }}</small></div></div>{% endfor %}
+
+  {% if a.can and a.stage.code == "post_visit_recommendation" %}
+  <aside class="c3-capacity-callout" aria-label="Required capacity review">
+    <div><strong>Capacity assessment is required before CQAC.</strong><p>The assigned desk officer completes the five sections; you, as the owning department Director, confirm each programme's current assessment before submitting your recommendation.</p></div>
+    <a class="btn btn-primary" href="{% url 'qa_case:detail' case.pk %}?tab=capacity&stage={{ a.stage.code }}" hx-get="{% url 'qa_case:detail' case.pk %}?tab=capacity&stage={{ a.stage.code }}" hx-target="#qa-panel" hx-push-url="true">{% icon "arrow" 15 %} Open capacity review</a>
+  </aside>
+  {% endif %}
+
+  {% if a.can %}
+  <div class="c3-stage__grid{% if not a.guide.steps %} is-single{% endif %}">
+    {% if a.guide.steps %}
+    <ol class="c3-guide" aria-label="What to do">
+      {% for s in a.guide.steps %}<li>{{ s }}</li>{% endfor %}
+    </ol>
+    {% endif %}
+    <div class="c3-stage__work">
+      {% if a.stage.code == "case_opened" or a.stage.code == "assign_audit_officer" or a.stage.code == "assign_finance_officer" or a.stage.code == "assign_ict_officer" %}{# one click: pick, then assign #}
+        <form class="c3-form c3-assign" method="post" action="{% url 'qa_case:assign' case.pk %}" hx-post="{% url 'qa_case:assign' case.pk %}" hx-target="#qa-panel" data-qa-stage-pass="assign">{% csrf_token %}<input type="hidden" name="stage" value="{{ a.stage.code }}">
+          {% if a.stage.code == "case_opened" %}{% include "qa_core/partials/_person_picker.html" with pp_name="officer" pp_id="desk-officer" pp_label="Desk officer" pp_people=desk_people pp_selected=case.desk_officer_id pp_required=True pp_noun="desk officer" pp_placeholder="Choose the desk officer" pp_help=desk_help %}
+          {% elif a.stage.code == "assign_audit_officer" %}{% with kind="audit" people=audit_people current=case.supervising_audit_officer sup_label="Supervising Audit officer" %}{% include "accreditation/case/_supervisor_form.html" %}{% endwith %}
+          {% elif a.stage.code == "assign_finance_officer" %}{% with kind="finance" people=finance_people current=case.supervising_finance_officer sup_label="Supervising Finance officer" %}{% include "accreditation/case/_supervisor_form.html" %}{% endwith %}
+          {% else %}{% with kind="ict" people=ict_people %}{% include "accreditation/case/_supervisor_form.html" %}{% endwith %}{% endif %}
+          <div class="qa-field c3-assign__note"><label for="remark-{{ a.stage.code }}">Note for the officer <span class="qa-muted">(optional)</span></label>
+            <textarea class="input" id="remark-{{ a.stage.code }}" name="remark" rows="2" maxlength="2000" placeholder="Anything they should know"></textarea></div>
+          <div class="c3-decide__btns"><button class="btn btn-primary" type="submit">{% icon "check" 16 "2.4" %} {{ a.approve_label }}</button></div>
+        </form>
+        {% if a.returns %}<form class="c3-assign__return" method="post" action="{% url 'qa_case:act' case.pk %}" hx-post="{% url 'qa_case:act' case.pk %}" hx-target="#qa-panel" hx-include="#remark-{{ a.stage.code }}" hx-trigger="qa:confirmed" data-qa-require="#remark-{{ a.stage.code }}" data-qa-require-msg="Write a note saying why it is returned" data-qa-confirm="It goes back to whoever submitted it, with your note pinned on their task." data-qa-confirm-title="Return this step?" data-qa-confirm-label="Return" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="stage" value="{{ a.stage.code }}"><input type="hidden" name="action" value="return"><button class="btn btn-ghost qa-btn-reject" type="submit">{% icon "back" 16 %} Return with remark</button></form>{% endif %}
+      {% else %}
+      {% if a.tab != "overview" and a.tab != tab %}
+        <p class="c3-hint">{% icon "arrow" 14 "2.4" %} The work for this step is on the <a href="?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-get="{% url 'qa_case:detail' case.pk %}?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ a.tab_label }}</strong> tab</a>. Check it there, then come back to approve or return it.</p>
+      {% elif a.stage.code == "generate_cost" or a.stage.code == "add_personnel" or a.stage.code == "add_visit_details" or a.stage.code == "request_fund_release" %}
+        <p class="c3-hint">{% icon "arrow" 14 "2.4" %} Finish Step 1 above, then {{ a.approve_label|lower }} here.</p>
+      {% elif a.tab == tab %}
+        <p class="c3-hint">{% icon "arrow" 14 "2.4" %} Review the work in the {{ a.tab_label|lower }} above, then {{ a.approve_label|lower }} below.</p>
+      {% endif %}
+
+      {% if a.problems %}<div class="c3-problems" role="status"><strong>{% icon "alert" 14 "2.4" %} Before you can {{ a.approve_label|lower }}:</strong><ul>{% for p in a.problems %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
+
+      <div class="c3-decide">
+        <div class="qa-field"><label for="remark-{{ a.stage.code }}">Remark <span class="qa-muted">{% if a.returns %}(needed to return — it is pinned on the returned task){% else %}(optional){% endif %}</span></label>
+          <textarea class="input" id="remark-{{ a.stage.code }}" name="remark" rows="2" maxlength="2000" placeholder="{% if a.returns %}Say what needs fixing, or add a note for the next person{% else %}A note for the next person (optional){% endif %}"></textarea></div>
+        <div class="c3-decide__btns">
+          <form method="post" action="{% url 'qa_case:act' case.pk %}" hx-post="{% url 'qa_case:act' case.pk %}" hx-target="#qa-panel" hx-include="#remark-{{ a.stage.code }}" hx-trigger="qa:confirmed" data-qa-stage-pass="approve" data-qa-confirm="This closes your task for “{{ a.stage.label }}” and sends the case to the next step." data-qa-confirm-title="{{ a.approve_label }}?" data-qa-confirm-label="{{ a.approve_label }}">{% csrf_token %}<input type="hidden" name="stage" value="{{ a.stage.code }}"><input type="hidden" name="action" value="approve">
+            <button class="btn btn-primary" type="submit"{% if a.problems %} disabled aria-disabled="true"{% endif %}>{% icon "check" 16 "2.4" %} {{ a.approve_label }}</button></form>
+          {% if a.returns %}
+          <form method="post" action="{% url 'qa_case:act' case.pk %}" hx-post="{% url 'qa_case:act' case.pk %}" hx-target="#qa-panel" hx-include="#remark-{{ a.stage.code }}" hx-trigger="qa:confirmed" data-qa-require="#remark-{{ a.stage.code }}" data-qa-require-msg="Write the remark: it is pinned on the task of the person you return it to" data-qa-confirm="It goes back to whoever submitted it, with your remark pinned on their task." data-qa-confirm-title="Return this step?" data-qa-confirm-label="Return" data-qa-confirm-tone="danger">{% csrf_token %}<input type="hidden" name="stage" value="{{ a.stage.code }}"><input type="hidden" name="action" value="return">
+            <button class="btn btn-subtle qa-btn-reject" type="submit">{% icon "back" 16 %} Return with remark</button></form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}{# end one-click assign / normal step #}
+    </div>
+  </div>
+  {% else %}
+    <p class="c3-stage__why">{% icon "lock" 14 "2.2" %} {{ a.why }}</p>
+  {% endif %}
 </section>
-{% endfor %}
-{% if can_send_back %}
-<p class="qa-small qa-muted">Need Audit to look at the cost again? Use <a href="{% url 'qa_inst:action' inst.code 'accreditation.send_back_to_audit' %}">Send Back To Audit</a> (a two-officer action: it returns the case to stage 5 with your remark).</p>
-{% endif %}
+{% endif %}{% endfor %}

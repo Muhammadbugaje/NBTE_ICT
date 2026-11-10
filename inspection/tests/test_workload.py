@@ -176,7 +176,10 @@ def test_staff_first_and_resource_persons_only_when_no_staff(p5):
         rules.check_assignment(p5.rps["rp_eng"], need(p5))
 
 
-def test_lists_and_finder_show_the_load(p5):
+def test_lists_and_finder_show_the_load(p5, department_mode):
+    # The rows and loads resolve through the viewer's institution scope; the
+    # deployed department privacy mode (dev DB) shows them to DPAP. A fresh
+    # install defaults to assignment mode (v2.1 X1).
     from qa_core.tests.phase4_fixtures import staff_client
 
     c = staff_client(p5.people.desk_officer)

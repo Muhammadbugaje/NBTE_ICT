@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Scan asset · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Scan asset{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/assets.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/assets.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -14,107 +14,102 @@
      data-json-url-template="/assets/__TAG__/json/">
 
   {# ---------- Header ---------- #}
-  <div class="scan-hero">
-    <div class="scan-icon">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
-    </div>
-    <h1>Scan or look up an asset</h1>
-    <p>Open the camera to scan a QR, or type a tag below. Details appear instantly — no page reloads.</p>
-  </div>
-
-  {# ---------- Camera + manual lookup ---------- #}
-  <div class="scan-actions">
-    <button type="button" class="btn btn-primary btn-lg" id="open-camera-btn">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-      Open camera
-    </button>
-    <span class="scan-or">or</span>
-    <form method="get" action="{% url 'assets:scan' %}" class="scan-form-inline" autocomplete="off" id="manual-form">
-      <div class="scan-input-wrap">
-        <svg class="scan-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" name="tag" id="scan-input"
-               class="scan-input" placeholder="Type a tag…"
-               autocomplete="off" spellcheck="false">
-        <div id="scan-suggestions" class="scan-suggestions" hidden></div>
+  <header class="qa-hero nbte-hero asset-qa-hero" data-qa-area="assets">
+    <div>
+      <span class="qa-eyebrow">{% icon "qr" 14 "2.2" %} Assets · Scan</span>
+      <h1>Scan or look up an asset</h1>
+      <p>Point the camera at an asset label, use a handheld scanner, or type a tag. The asset opens right here — no page reloads.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'assets:my_assets' %}" class="btn btn-subtle">{% icon "user" 15 "2.2" %} My assets</a>
+        <a href="{% url 'assets:list' %}" class="btn btn-subtle">{% icon "list" 15 "2.2" %} All assets</a>
       </div>
-    </form>
-  </div>
+    </div>
+  </header>
 
-  {# ---------- Camera view ---------- #}
-  <div class="scan-camera-wrap" id="camera-wrap" hidden>
-    <div class="scan-camera-head">
-      <span class="scan-camera-status" id="camera-status">
-        <span class="scan-pulse"></span> Point the camera at a QR code
-      </span>
-      <button type="button" class="btn btn-ghost btn-sm" id="close-camera-btn">Close camera</button>
+  {# ---------- Scanner console: camera (left) + manual / handheld lookup (right) ---------- #}
+  <section class="scan-console" aria-label="Scan an asset">
+    <div class="scan-cam">
+      <div class="scan-cam-idle">
+        <div class="scan-frame" aria-hidden="true">
+          <span class="scan-frame__c scan-frame__c--tl"></span><span class="scan-frame__c scan-frame__c--tr"></span>
+          <span class="scan-frame__c scan-frame__c--bl"></span><span class="scan-frame__c scan-frame__c--br"></span>
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>
+        </div>
+        <div class="scan-cam-idle__text">
+          <strong>Scan with the camera</strong>
+          <span>Allow camera access, then hold the label's QR inside the frame.</span>
+        </div>
+        <button type="button" class="btn btn-primary scan-cam-open" id="open-camera-btn">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Open camera
+        </button>
+      </div>
+
+      {# live camera view (shown by the script while scanning) #}
+      <div class="scan-camera-wrap" id="camera-wrap" hidden>
+        <div class="scan-camera-head">
+          <span class="scan-camera-status" id="camera-status">
+            <span class="scan-pulse"></span> Point the camera at a QR code
+          </span>
+          <button type="button" class="btn btn-ghost btn-sm" id="close-camera-btn">Close camera</button>
+        </div>
+        <div id="qr-reader" class="scan-qr-reader"></div>
+        <div class="scan-camera-fallback" id="camera-fallback" hidden>
+          <p>Camera access is not available here. Type the tag instead, or scan the QR with your phone's camera app to open the asset directly.</p>
+        </div>
+      </div>
     </div>
-    <div id="qr-reader" class="scan-qr-reader"></div>
-    <div class="scan-camera-fallback" id="camera-fallback" hidden>
-      <p>Camera access is not available here. You can still type a tag above, or use your phone's camera app to scan the QR and open the link directly.</p>
+
+    <div class="scan-manual">
+      <label class="scan-manual__label" for="scan-input">Type or scan a tag</label>
+      <form method="get" action="{% url 'assets:scan' %}" class="scan-form-inline" autocomplete="off" id="manual-form">
+        <div class="scan-input-wrap">
+          <svg class="scan-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" name="tag" id="scan-input"
+                 class="scan-input" placeholder="e.g. ICT-COMPUT-00042, a serial or a name"
+                 autocomplete="off" spellcheck="false">
+          <button type="submit" class="btn btn-primary btn-sm scan-lookup-btn">Look up</button>
+          <div id="scan-suggestions" class="scan-suggestions" hidden></div>
+        </div>
+      </form>
+      <ul class="scan-tips" role="list">
+        <li><span class="scan-tips__icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 11v2M10 11v2M14 11v2M18 11v2"/></svg></span><span><strong>Handheld scanner?</strong> Keep this box focused and scan the label — it looks up on its own.</span></li>
+        <li><span class="scan-tips__icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span><span><strong>Don't know the tag?</strong> Type two letters of the name, serial or location and pick a match.</span></li>
+      </ul>
     </div>
-  </div>
+  </section>
 
   {# ---------- Result card (populated by JS) ---------- #}
-  <div id="scan-result" class="scan-result" hidden></div>
+  <div id="scan-result" class="scan-result" hidden aria-live="polite"></div>
 
   {# ---------- Not found ---------- #}
-  <div id="scan-notfound" class="scan-error" hidden>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <div id="scan-notfound" class="scan-error" hidden role="status">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
     <div>
       <strong id="notfound-title">No asset matches that.</strong>
-      <p>Check the tag and try again, or search by name, serial, or location below.</p>
+      <p>Check the tag and try again, or type part of the name, serial or location.</p>
     </div>
   </div>
 
   {# ---------- Recent ---------- #}
-  {% if recent %}
-    <section class="scan-recent">
-      <h2 class="scan-recent-title">Recently scanned</h2>
+  <section class="scan-recent" aria-labelledby="scan-recent-title">
+    <h2 class="scan-recent-title" id="scan-recent-title">Recently scanned</h2>
+    {% if recent %}
       <div class="scan-recent-list">
         {% for a in recent %}
           <button type="button" class="scan-recent-item" data-quick-tag="{{ a.asset_tag }}">
-            <div class="scan-recent-tag">{{ a.asset_tag }}</div>
-            <div class="scan-recent-body">
+            <span class="scan-recent-tag">{{ a.asset_tag }}</span>
+            <span class="scan-recent-body">
               <strong>{{ a.display_name }}</strong>
-              <span class="muted">
-                {{ a.category.name }}
-                {% if a.current_custodian %}
-                  · {{ a.current_custodian.get_full_name|default:a.current_custodian.email }}
-                {% endif %}
-              </span>
-            </div>
+              <span class="muted">{{ a.category.name }}{% if a.current_custodian %} · {{ a.current_custodian.get_full_name|default:a.current_custodian.email }}{% endif %}</span>
+            </span>
+            <svg class="scan-recent-go" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
         {% endfor %}
       </div>
-    </section>
-  {% endif %}
-
-  {# ---------- Help ---------- #}
-  <section class="scan-help">
-    <h2 class="scan-help-title">How this works</h2>
-    <ul class="scan-help-list">
-      <li>
-        <span class="scan-help-num">1</span>
-        <div>
-          <strong>Scan with the camera</strong>
-          <p>Click "Open camera" — you'll be asked to allow access. Hold the QR in front of the camera. On success, the asset loads below instantly.</p>
-        </div>
-      </li>
-      <li>
-        <span class="scan-help-num">2</span>
-        <div>
-          <strong>USB / Bluetooth scanner</strong>
-          <p>Most handheld scanners type into whatever field has focus. Click the search box and scan the label — it will look up automatically.</p>
-        </div>
-      </li>
-      <li>
-        <span class="scan-help-num">3</span>
-        <div>
-          <strong>Type a tag</strong>
-          <p>Just know the tag? Type <code>ICT-COMPUT-00042</code> in the search box and press Enter.</p>
-        </div>
-      </li>
-    </ul>
+    {% else %}
+      <p class="scan-recent-empty">Nothing scanned yet. Assets you look up appear here for one-tap access.</p>
+    {% endif %}
   </section>
 </div>
 

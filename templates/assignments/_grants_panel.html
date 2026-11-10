@@ -1,0 +1,33 @@
+{% load qa_tags %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} Settings · Access</span>
+    <h1 data-qa-focus>Access grants log</h1>
+    <p>Every temporary access given because of work: who, to what, why and until when. Grants end by themselves when the work closes or expires.</p>
+    <div class="qa-hero__actions btn-group">
+      <a class="btn btn-subtle" href="{% url 'assignments:who_index' %}" hx-get="{% url 'assignments:who_index' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "eye" 16 %} Who can see an institution</a>
+    </div>
+  </div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <span class="qa-stat qa-stat--success"><strong>{{ counts.live }}</strong><span>Live</span></span>
+    <span class="qa-stat qa-stat--warn"><strong>{{ counts.long }}</strong><span>Older than 30 days</span></span>
+  </div>
+</header>
+<section class="qa-card" aria-label="Grants">
+  <form class="qa-toolbar" role="search" method="get" action="{% url 'assignments:grants' %}"
+        hx-get="{% url 'assignments:grants' %}" hx-target="#qa-rows" hx-push-url="true"
+        hx-trigger="input changed delay:350ms from:find input[type=search], change, submit" hx-sync="this:replace" data-qa-no-overlay>
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}
+      <input class="input" type="search" name="q" value="{{ q }}" placeholder="Person, institution or reason" autocomplete="off"></label>
+    <label class="sr-only" for="g-state">State</label>
+    <select class="input qa-select" id="g-state" name="state">
+      <option value="live"{% if state == "live" %} selected{% endif %}>Live</option>
+      <option value="ended"{% if state == "ended" %} selected{% endif %}>Ended</option>
+      <option value="all"{% if state == "all" %} selected{% endif %}>All</option>
+    </select>
+    <label class="sr-only" for="g-scope">Scope</label>
+    <select class="input qa-select" id="g-scope" name="scope"><option value="">Any scope</option>{% for v, l in scopes %}<option value="{{ v }}"{% if scope == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <noscript><button class="btn btn-sm btn-subtle" type="submit">Apply</button></noscript>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "assignments/_grant_rows.html" %}</div>
+</section>

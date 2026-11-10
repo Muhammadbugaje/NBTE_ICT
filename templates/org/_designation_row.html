@@ -1,0 +1,13 @@
+<tr id="desig-{{ d.pk }}"{% if saved %} class="is-saved"{% endif %}>
+  <td><strong>{{ d.name }}</strong>{% if error %}<div class="org-alert is-bad" role="alert">{{ error }}</div>{% endif %}{% if saved %}<span class="sr-only" role="status">Saved</span>{% endif %}</td>
+  <td colspan="5">
+    <form class="org-desig-form" hx-post="{% url 'org:designation_save' d.pk %}" hx-target="#desig-{{ d.pk }}" hx-swap="outerHTML" method="post" action="{% url 'org:designation_save' d.pk %}">
+      {% csrf_token %}
+      <input class="org-input" type="number" name="rank" value="{{ d.rank }}" min="0" aria-label="Rank of {{ d.name }}">
+      <select class="org-input" name="default_role" aria-label="Default role"><option value="">None</option>{% for r in roles %}<option value="{{ r.pk }}" {% if d.default_role_id == r.pk %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select>
+      <select class="org-input" name="grade_min" aria-label="Lowest grade"><option value="">—</option>{% for g in grades %}<option value="{{ g.pk }}" {% if d.grade_min_id == g.pk %}selected{% endif %}>{{ g.display }}</option>{% endfor %}</select>
+      <select class="org-input" name="grade_max" aria-label="Highest grade"><option value="">—</option>{% for g in grades %}<option value="{{ g.pk }}" {% if d.grade_max_id == g.pk %}selected{% endif %}>{{ g.display }}</option>{% endfor %}</select>
+      <div class="btn-group"><button class="btn btn-subtle" type="submit">Save</button></div>
+    </form>
+  </td>
+</tr>

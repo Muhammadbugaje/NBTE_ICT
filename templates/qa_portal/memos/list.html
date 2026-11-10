@@ -1,0 +1,38 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Memos · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} From NBTE</span>
+    <h1 data-qa-focus>Memos</h1>
+    <p>Circulars and letters the Executive Secretary sends to your institution. Open one to read it, download the signed letter and acknowledge receipt.</p>
+  </header>
+
+  <form class="pmemo-filters" method="get" action="{% url 'qa_portal:memos' %}" hx-get="{% url 'qa_portal:memos' %}" hx-target="#qa-main" hx-push-url="true" hx-trigger="change, submit">
+    <label class="pmemo-search"><span class="sr-only">Search memos</span>{% icon "search" 16 %}<input class="input" type="search" name="q" value="{{ q }}" placeholder="Search subject or reference"></label>
+    <div class="pmemo-tabs" role="radiogroup" aria-label="Show">
+      <label class="pmemo-tab"><input type="radio" name="show" value="" {% if not show %}checked{% endif %}><span>All</span></label>
+      <label class="pmemo-tab"><input type="radio" name="show" value="unread" {% if show == "unread" %}checked{% endif %}><span>Unread{% if unread %} · {{ unread }}{% endif %}</span></label>
+      <label class="pmemo-tab"><input type="radio" name="show" value="to_ack" {% if show == "to_ack" %}checked{% endif %}><span>To acknowledge</span></label>
+    </div>
+  </form>
+
+  <section class="qa-card" aria-label="Memos from NBTE">
+  {% if rows %}
+    <ul class="qa-rowlist" role="list">{% for r in rows %}
+      <li><a class="qa-rowlink{% if not r.read_at %} pmemo-unread{% endif %}" href="{% url 'qa_portal:memo' r.memo_id %}" hx-get="{% url 'qa_portal:memo' r.memo_id %}" hx-target="#qa-main" hx-push-url="true">
+        <span class="qa-rowlink__badge">{% icon "mail" 16 %}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{% if not r.read_at %}<span class="pmemo-dot" aria-label="Unread"></span>{% endif %}{{ r.memo.subject }}</span>
+          <span class="qa-rowlink__meta"><span class="qa-mono">{{ r.memo.reference }}</span><span>· {{ r.memo.published_at|date:"j M Y" }}</span><span>· {% if r.memo.signed_as == "from" %}From the Executive Secretary{% else %}Approved by the Executive Secretary{% endif %}</span></span></span>
+        <span class="qa-rowlink__side">
+          {% if r.memo.priority == "urgent" %}<span class="qa-chip qa-tone-danger">Urgent</span>{% elif r.memo.priority == "high" %}<span class="qa-chip qa-tone-warn">High</span>{% endif %}
+          {% if r.acknowledged_at %}<span class="qa-chip qa-tone-success">Acknowledged</span>{% elif r.memo.requires_acknowledgment %}<span class="qa-chip qa-tone-warn">Please acknowledge</span>{% elif r.read_at %}<span class="qa-chip">Read</span>{% else %}<span class="qa-chip qa-tone-info">New</span>{% endif %}
+        </span></a></li>
+    {% endfor %}</ul>
+  {% else %}
+    <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "mail" 28 %}</span><h3 class="nbte-empty-state__title">{% if show or q %}No memos match{% else %}No memos yet{% endif %}</h3><p class="nbte-empty-state__body">When NBTE sends your institution a memo, it appears here and you get a notification and an e-mail.</p></div>
+  {% endif %}
+  </section>
+</div>
+{% endblock %}

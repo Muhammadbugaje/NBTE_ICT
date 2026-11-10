@@ -20,16 +20,17 @@
           <li class="promo-diff-row{% if c.is_cascade %} promo-diff-row--cascade{% endif %}">
             <div class="promo-diff-who">
               <span class="promo-diff-name">{{ c.staff.last_name }} {{ c.staff.first_name }}</span>
-              <span class="promo-diff-meta">{{ c.staff.employee_no }}{% if c.staff.department %} · {{ c.staff.department.name }}{% endif %}{% if c.is_cascade %} · cascade with {{ c.root.last_name }}{% endif %}</span>
+              <span class="promo-diff-meta">{{ c.staff.employee_no }}{% if c.staff.department %} · {{ c.staff.department.name }}{% endif %}{% if c.is_cascade %} · cascade with {{ c.root.last_name }}{% endif %}{% if c.staff.grade_level and plan.cascade_scope == "grade" and c.is_cascade %} · GL {{ c.staff.grade_level }}{% endif %}</span>
             </div>
             <div class="promo-diff-change">
               <span class="promo-diff-old">{{ c.from_designation.name|default:"—" }}</span>
               <svg class="promo-diff-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-label="to"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
               <span class="promo-diff-new">{{ c.to_designation.name }}</span>
+              {% if c.override %}<span class="badge badge-warn" title="Skips past the next step: Executive Secretary override">ES override</span>{% endif %}
             </div>
             <div class="promo-diff-grade">
               GL {{ c.from_grade|default:"—" }} → <strong>{{ c.to_grade|default:"—" }}</strong>
-              {% if not c.grade_autofilled %}<span class="promo-diff-flag" title="The new designation has no CONTEDISS range, so the grade level stays as it is">unchanged</span>{% endif %}
+              {% if not c.grade_autofilled %}<span class="promo-diff-flag" title="{% if c.to_designation.contediss_min %}Already at or above the new designation's lowest grade, so the grade level stays as it is{% else %}The new designation has no CONTEDISS range, so the grade level stays as it is{% endif %}">unchanged</span>{% endif %}
             </div>
           </li>
         {% endfor %}

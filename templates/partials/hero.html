@@ -1,0 +1,40 @@
+{% load qa_tags %}{% comment %}
+  Shared page hero — the same "qa-hero" header used across QA and the internal
+  system (styles: static/css/qa-redesign.css, loaded by the "finish" bundle in
+  base.html, so it works on every internal page).
+
+  {% include "partials/hero.html" with icon="file" eyebrow="Documents" title="Issued documents" lede="…" %}
+
+  Optional:
+    area           hue key (sets data-qa-area: qa_inst, qa_app, qa_req, qa_case, settings…)
+    back_url / back_label             a small "‹ back" link above the eyebrow
+    action_url / action_label / action_icon        primary button
+    action2_url / action2_label / action2_icon     secondary button
+    action3_url / action3_label / action3_icon     tertiary button
+    s1 / s1_label / s1_tone / s1_url  … s4        up to four stats (tone: warn|info|success|danger)
+    focus          if set, the <h1> gets data-qa-focus (HTMX panels)
+  For anything richer, write the markup inline using the same classes.
+{% endcomment %}
+<header class="qa-hero nbte-hero"{% if area %} data-qa-area="{{ area }}"{% endif %}>
+  <div>
+    {% if back_url %}<a class="nbte-hero__back" href="{{ back_url }}">{% icon "back" 14 "2.4" %} {{ back_label|default:"Back" }}</a>{% endif %}
+    <span class="qa-eyebrow">{% icon icon|default:"layers" 14 "2.2" %} {{ eyebrow }}</span>
+    <h1{% if focus %} data-qa-focus{% endif %}>{{ title }}</h1>
+    {% if lede %}<p>{{ lede }}</p>{% endif %}
+    {% if action_url or action2_url or action3_url %}
+    <div class="qa-hero__actions">
+      {% if action_url %}<a class="btn btn-primary" href="{{ action_url }}">{% if action_icon %}{% icon action_icon 16 "2.4" %} {% endif %}{{ action_label }}</a>{% endif %}
+      {% if action2_url %}<a class="btn btn-subtle" href="{{ action2_url }}">{% if action2_icon %}{% icon action2_icon 16 "2.2" %} {% endif %}{{ action2_label }}</a>{% endif %}
+      {% if action3_url %}<a class="btn btn-subtle" href="{{ action3_url }}">{% if action3_icon %}{% icon action3_icon 16 "2.2" %} {% endif %}{{ action3_label }}</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% if s1_label %}
+  <div class="qa-hero__stats" aria-label="Summary">
+    {% if s1_url %}<a class="qa-stat qa-stat--link{% if s1_tone %} qa-stat--{{ s1_tone }}{% endif %}" href="{{ s1_url }}">{% else %}<div class="qa-stat{% if s1_tone %} qa-stat--{{ s1_tone }}{% endif %}">{% endif %}<strong>{{ s1|default:0 }}</strong><span>{{ s1_label }}</span>{% if s1_url %}</a>{% else %}</div>{% endif %}
+    {% if s2_label %}{% if s2_url %}<a class="qa-stat qa-stat--link{% if s2_tone %} qa-stat--{{ s2_tone }}{% endif %}" href="{{ s2_url }}">{% else %}<div class="qa-stat{% if s2_tone %} qa-stat--{{ s2_tone }}{% endif %}">{% endif %}<strong>{{ s2|default:0 }}</strong><span>{{ s2_label }}</span>{% if s2_url %}</a>{% else %}</div>{% endif %}{% endif %}
+    {% if s3_label %}{% if s3_url %}<a class="qa-stat qa-stat--link{% if s3_tone %} qa-stat--{{ s3_tone }}{% endif %}" href="{{ s3_url }}">{% else %}<div class="qa-stat{% if s3_tone %} qa-stat--{{ s3_tone }}{% endif %}">{% endif %}<strong>{{ s3|default:0 }}</strong><span>{{ s3_label }}</span>{% if s3_url %}</a>{% else %}</div>{% endif %}{% endif %}
+    {% if s4_label %}{% if s4_url %}<a class="qa-stat qa-stat--link{% if s4_tone %} qa-stat--{{ s4_tone }}{% endif %}" href="{{ s4_url }}">{% else %}<div class="qa-stat{% if s4_tone %} qa-stat--{{ s4_tone }}{% endif %}">{% endif %}<strong>{{ s4|default:0 }}</strong><span>{{ s4_label }}</span>{% if s4_url %}</a>{% else %}</div>{% endif %}{% endif %}
+  </div>
+  {% endif %}
+</header>

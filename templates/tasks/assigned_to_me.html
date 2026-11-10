@@ -1,24 +1,27 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load tasks_tags %}
 {% block title %}Assigned to me · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Assigned to me{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=3">{% endblock %}
-{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=3" defer></script>{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}" defer></script>{% endblock %}
 
 {% block content %}
-<div class="tsk-page">
-  <header class="tsk-page-head">
+<div class="tsk-page wk-page" data-qa-area="tasks">
+  {% capacity_for request.user as used_cap %}
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tasks">
     <div>
+      <span class="qa-eyebrow">{% icon "user" 14 "2.2" %} Tasks · Assigned to me</span>
       <h1>Assigned to me</h1>
-      <p>{{ total }} open task{{ total|pluralize }} waiting on you.</p>
+      <p>Open tasks waiting on you. Accept new work, record progress and mark your part done.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'tasks:list' %}" class="btn btn-subtle">{% icon "list" 16 "2.2" %} All tasks</a>
+        <a href="{% url 'tasks:review_queue' %}" class="btn btn-subtle">{% icon "clock" 16 "2.2" %} Review queue</a>
+      </div>
     </div>
-    <div class="tsk-page-head-actions">
-      {% capacity_for request.user as used_cap %}
-      <span class="tsk-capacity-pill {% if used_cap.2 == 0 %}is-full{% endif %}">
-        <span class="tsk-capacity-pill-dot"></span>
-        Capacity {{ used_cap.0 }} / {{ used_cap.1 }}
-      </span>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong>{{ total|default:0 }}</strong><span>Open task{{ total|pluralize }}</span></div>
+      <div class="qa-stat {% if used_cap.2 == 0 %}qa-stat--danger{% else %}qa-stat--success{% endif %}"><strong>{{ used_cap.0 }}<small>/{{ used_cap.1 }}</small></strong><span>Capacity</span></div>
     </div>
   </header>
 

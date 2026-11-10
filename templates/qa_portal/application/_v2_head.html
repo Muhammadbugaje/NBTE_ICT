@@ -1,0 +1,25 @@
+{% load qa_tags %}{# v2.3: the onboarding journey (header() steps) as a connected stepper #}
+{% if not lj %}<section class="pp-journey" aria-labelledby="pp-journey-h">
+  <header class="pp-journey__head">
+    <h2 id="pp-journey-h">Your onboarding journey</h2>
+    <span>{% if head.current %}You are at step {{ state.step }} of {{ state.steps }}: <strong>{{ head.current.label }}</strong>{% else %}All steps complete{% endif %}</span>
+  </header>
+  <ol class="pp-steps" role="list">{% for s in head.steps %}
+    <li class="is-{{ s.state }}"{% if s.state == "current" %} aria-current="step"{% endif %}>
+      <span class="pp-steps__dot" aria-hidden="true">{% if s.state == "done" %}✓{% else %}{{ forloop.counter }}{% endif %}</span>
+      <strong>{{ s.label }}</strong>{% if s.note %}<small>{{ s.note }}</small>{% endif %}
+      {% if s.state == "current" %}<span class="pp-here">You are here</span>{% endif %}
+    </li>{% endfor %}
+  </ol>
+</section>{% endif %}
+{% if not v3 %}{% if app.status == "draft" or app.status == "fee_due" or app.status == "payment_pending_confirmation" or app.status == "fee_confirmed" %}
+<div class="pp-note pp-note--gold" role="note" style="margin-bottom:24px">{% icon "card" 18 %}
+  <span><strong>Pay to submit — your application submits automatically once payment is confirmed.</strong>
+    Remita and Paystack confirm in seconds. Bank transfers are confirmed by NBTE Finance. There is no separate Submit button.</span>
+</div>
+{% elif app.status == "document_review" %}
+<div class="pp-note" role="status" style="margin-bottom:24px">{% icon "check" 18 "2.6" %}
+  <span><strong>Submitted automatically{% if app.submitted_at %} on {{ app.submitted_at|date:"j M Y" }}{% endif %}.</strong>
+    NBTE departments are reviewing your documents. If one needs a change, only that document comes back — you never resubmit the application.</span>
+</div>
+{% endif %}{% endif %}

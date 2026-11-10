@@ -1,46 +1,34 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}{{ chain.name }} · Workflow management{% endblock %}
 {% block page_title %}{{ chain.name }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="wf-page">
-  {% include "manage/workflow/_tabs.html" %}
-
-  <a href="{% url 'workflow_manage:chain_list' %}" class="wf-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    All chains
-  </a>
-
-  <header class="wf-hero wf-hero-split">
-    <div class="wf-hero-inner">
-      <div class="wf-hero-icon wf-hero-icon-green">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      </div>
-      <div>
-        <h1>{{ chain.name }}</h1>
-        <p>
-          <span class="wf-mono">{{ chain.code }}</span>
-          · {{ steps|length }} step{{ steps|length|pluralize }}
-          {% if not chain.is_active %} · <span class="wf-pill wf-pill-warn">Inactive</span>{% endif %}
-        </p>
-        {% if chain.description %}<p class="wf-muted">{{ chain.description }}</p>{% endif %}
+  <header class="qa-hero nbte-hero">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'workflow_manage:chain_list' %}">{% icon "back" 14 "2.4" %} All chains</a>
+      <span class="qa-eyebrow">{% icon "link" 14 "2.2" %} Workflow management · Chains</span>
+      <h1>{{ chain.name }}</h1>
+      <p><span class="wf-mono">{{ chain.code }}</span>{% if not chain.is_active %} · <span class="wf-pill wf-pill-warn">Inactive</span>{% endif %}{% if chain.description %} · {{ chain.description }}{% endif %}</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'workflow_manage:step_create' chain.pk %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} Add step</a>
+        <a href="{% url 'workflow_manage:chain_update' chain.pk %}" class="btn btn-subtle">{% icon "edit" 16 "2.2" %} Edit</a>
+        <a href="{% url 'workflow_manage:chain_delete' chain.pk %}" class="btn btn-ghost btn-danger">{% icon "trash" 16 "2.2" %} Delete</a>
       </div>
     </div>
-    <div class="wf-hero-actions">
-      <a href="{% url 'workflow_manage:step_create' chain.pk %}" class="btn btn-primary">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add step
-      </a>
-      <a href="{% url 'workflow_manage:chain_update' chain.pk %}" class="btn btn-ghost">Edit</a>
-      <a href="{% url 'workflow_manage:chain_delete' chain.pk %}" class="btn btn-ghost btn-danger">Delete</a>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ steps|length }}</strong><span>Step{{ steps|length|pluralize }}</span></div>
+      <div class="qa-stat"><strong>{{ using|length }}</strong><span>Used by type{{ using|length|pluralize }}</span></div>
     </div>
   </header>
+
+  {% include "manage/workflow/_tabs.html" %}
 
   <div class="wf-chain-layout">
 

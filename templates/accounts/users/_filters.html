@@ -1,0 +1,110 @@
+{% comment %}
+  Shared filter bar (C14/C16): search + the facets of ONE segment.
+    NBTE staff:        department, office, rank (designation), role, status
+    Institution users: institution, state, account (CE / Head of ICT), role, status
+    Other portal:      type, professional body, role, status
+  The segment itself is fixed by the URL (or a hidden "segment" input on Act as),
+  so a filter can never pull rows from another segment.
+  Context: action (URL), target (CSS selector), form_id, f (current values),
+  segment, departments/offices/ranks | institutions/states/kinds | user_types/bodies, roles.
+{% endcomment %}
+<form method="get" action="{{ action }}" id="{{ form_id }}" class="hr-toolbar" role="search" aria-label="Filter users"
+      hx-get="{{ action }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true"
+      hx-trigger="change, keyup changed delay:350ms from:input[type=search], submit">
+  {% if keep_segment %}<input type="hidden" name="segment" value="{{ segment }}">{% endif %}
+  <div class="hr-toolbar__search">
+    <label for="{{ form_id }}-q" class="sr-only">Search</label>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="search" id="{{ form_id }}-q" name="q" value="{{ f.q }}" class="input" placeholder="Name or e-mail" autocomplete="off">
+  </div>
+  {% if segment == 'institution' %}
+  <div class="hr-facet">
+    <label for="{{ form_id }}-inst">Institution</label>
+    <select id="{{ form_id }}-inst" name="institution" class="input">
+      <option value="">All institutions</option>
+      {% for i in institutions %}<option value="{{ i.pk }}"{% if f.institution == i.pk|stringformat:"d" %} selected{% endif %}>{{ i.name }} ({{ i.code }})</option>{% endfor %}
+    </select>
+  </div>
+  <div class="hr-facet">
+    <label for="{{ form_id }}-state">State</label>
+    <select id="{{ form_id }}-state" name="state" class="input">
+      <option value="">All states</option>
+      {% for s in states %}<option value="{{ s.pk }}"{% if f.state == s.pk|stringformat:"d" %} selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="hr-facet">
+    <label for="{{ form_id }}-kind">Account</label>
+    <select id="{{ form_id }}-kind" name="kind" class="input">
+      <option value="">Any account</option>
+      {% for code, label in kinds %}<option value="{{ code }}"{% if f.kind == code %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  {% elif segment == 'external' %}
+  <div class="hr-facet">
+    <label for="{{ form_id }}-type">Type</label>
+    <select id="{{ form_id }}-type" name="type" class="input">
+      <option value="">Any type</option>
+      {% for code, label in user_types %}<option value="{{ code }}"{% if f.type == code %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  {% if bodies %}
+  <div class="hr-facet">
+    <label for="{{ form_id }}-body">Professional body</label>
+    <select id="{{ form_id }}-body" name="body" class="input">
+      <option value="">Any body</option>
+      {% for b in bodies %}<option value="{{ b.pk }}"{% if f.body == b.pk|stringformat:"d" %} selected{% endif %}>{{ b.name }}</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="hr-facet">
+    <label for="{{ form_id }}-dept">Department</label>
+    <select id="{{ form_id }}-dept" name="department" class="input">
+      <option value="">All departments</option>
+      {% for d in departments %}<option value="{{ d.pk }}"{% if f.department == d.pk|stringformat:"d" %} selected{% endif %}>{{ d.name }}</option>{% endfor %}
+      <option value="none"{% if f.department == "none" %} selected{% endif %}>No department</option>
+    </select>
+  </div>
+  {% if offices %}
+  <div class="hr-facet">
+    <label for="{{ form_id }}-office">Office</label>
+    <select id="{{ form_id }}-office" name="office" class="input">
+      <option value="">All offices</option>
+      {% for o in offices %}<option value="{{ o.pk }}"{% if f.office == o.pk|stringformat:"d" %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  {% if ranks %}
+  <div class="hr-facet">
+    <label for="{{ form_id }}-rank">Rank</label>
+    <select id="{{ form_id }}-rank" name="rank" class="input">
+      <option value="">Any rank</option>
+      {% for r in ranks %}<option value="{{ r.pk }}"{% if f.rank == r.pk|stringformat:"d" %} selected{% endif %}>{{ r.name }}</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  {% endif %}
+  <div class="hr-facet">
+    <label for="{{ form_id }}-role">Role</label>
+    <select id="{{ form_id }}-role" name="role" class="input">
+      <option value="">Any role</option>
+      {% for r in roles %}<option value="{{ r.pk }}"{% if f.role == r.pk|stringformat:"d" %} selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      <option value="none"{% if f.role == "none" %} selected{% endif %}>No role</option>
+    </select>
+  </div>
+  {% if not hide_status %}
+  <div class="hr-facet">
+    <label for="{{ form_id }}-active">Status</label>
+    <select id="{{ form_id }}-active" name="active" class="input">
+      <option value="">Active and inactive</option>
+      <option value="1"{% if f.active == "1" %} selected{% endif %}>Active only</option>
+      <option value="0"{% if f.active == "0" %} selected{% endif %}>Inactive only</option>
+    </select>
+  </div>
+  {% endif %}
+  <div class="btn-group">
+    <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
+    {% if f.any %}<a href="{{ clear_url|default:action }}" class="btn btn-ghost" hx-get="{{ clear_url|default:action }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true"
+       onclick="var fm=document.getElementById('{{ form_id }}'); if (fm) fm.reset();">Clear</a>{% endif %}
+  </div>
+</form>

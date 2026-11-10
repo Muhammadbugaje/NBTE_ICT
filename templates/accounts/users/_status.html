@@ -1,0 +1,14 @@
+{% comment %}User detail: role + status + the HTMX activate/deactivate button (C18).{% endcomment %}
+<div id="user-status" class="hr-status">
+  <span class="hr-chip hr-chip--role">{{ u.role.name|default:"No role" }}</span>
+  {% if u.is_active %}<span class="hr-chip hr-chip--ok">Active</span>{% else %}<span class="hr-chip hr-chip--danger">Inactive</span>{% endif %}
+  <form method="post" action="{% url 'accounts:user_toggle_active' u.pk %}" class="inline"
+        hx-post="{% url 'accounts:user_toggle_active' u.pk %}" hx-target="#user-status" hx-swap="outerHTML">
+    {% csrf_token %}
+    {% if u.is_active %}
+      <button type="submit" class="btn btn-ghost btn-danger btn-sm">Deactivate</button>
+    {% else %}
+      <button type="submit" class="btn btn-primary btn-sm">Activate</button>
+    {% endif %}
+  </form>
+</div>

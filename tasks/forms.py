@@ -23,13 +23,14 @@ def _eligible_users_queryset(category=None, department=None, exclude=None):
       - a single pk (int / str)
       - an iterable of User instances and/or pks (mixed is fine)
     """
-    from accounts.models import User
+    from accounts.selectors import staff_users
 
-    qs = User.objects.filter(is_active=True)
+    qs = staff_users()  # Phase 0 (H22): never institution users / RPs
     if department is not None:
         qs = qs.filter(department=department)
     if category and category.allowed_role_codes:
-        qs = qs.filter(role__code__in=category.allowed_role_codes)
+        import org
+        qs = qs.filter(org.role_q(*category.allowed_role_codes))
 
     if exclude is not None:
         pks = []
@@ -141,7 +142,12 @@ class TaskCreateForm(forms.Form):
             pk__in=[c.pk for c in cats]
         ).order_by("sort_order", "name")
 
-        self.fields["reviewer"].queryset = _eligible_users_queryset()
+        if user is not None:
+            from .services import reviewer_choices
+            keep = [instance.reviewer_id] if instance is not None and instance.reviewer_id else None
+            self.fields["reviewer"].queryset = reviewer_choices(user, include_ids=keep)
+        else:
+            self.fields["reviewer"].queryset = _eligible_users_queryset()
 
         if locked_category is not None:
             self.fields["category"].initial = locked_category
@@ -289,14 +295,37 @@ class SubtaskSpecForm(forms.Form):
         required=False,
         widget=forms.Select(attrs={"class": "input"}),
     )
+    # H11: work for another department becomes a request there.
+    department = forms.ModelChoiceField(
+        queryset=None, required=False, empty_label="My department",
+        widget=forms.Select(attrs={"class": "input"}),
+        help_text="Another department receives it as a request in its own workflow.",
+    )
 
-    def __init__(self, *args, parent_task=None, **kwargs):
+    def __init__(self, *args, parent_task=None, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        from staff.models import Department
+
         category = getattr(parent_task, "category", None)
         department = getattr(parent_task, "owner_department", None)
-        self.fields["assignee"].queryset = _eligible_users_queryset(
-            category=category, department=department,
-        )
+        if user is not None:
+            # H8 / H10: whoever splits picks from people below *their* rank in
+            # their own department.
+            from .services import assignable_users_for
+            self.fields["assignee"].queryset = assignable_users_for(
+                user, department=department, category=category)
+        else:
+            self.fields["assignee"].queryset = _eligible_users_queryset(
+                category=category, department=department,
+            )
+        own = getattr(user, "department_id", None) or getattr(department, "pk", None)
+        self.fields["department"].queryset = Department.objects.exclude(pk=own).order_by("name")
+
+    def clean(self):
+        data = super().clean()
+        if data.get("department") is not None and data.get("assignee") is not None:
+            self.add_error("assignee", "Leave the person empty: the other department assigns its own staff.")
+        return data
 
 
 # IMPORTANT: define the BaseFormSet subclass BEFORE formset_factory uses it.
@@ -305,19 +334,31 @@ class BaseSubtaskFormSet(BaseFormSet):
     SubtaskSpecForm can restrict its assignee choices to that task's
     department / category context."""
 
-    def __init__(self, *args, parent_task=None, **kwargs):
+    def __init__(self, *args, parent_task=None, user=None, **kwargs):
         self.parent_task = parent_task
+        self.user = user
         super().__init__(*args, **kwargs)
 
     def _construct_form(self, i, **kwargs):
         kwargs["parent_task"] = self.parent_task
+        kwargs["user"] = self.user
         return super()._construct_form(i, **kwargs)
 
+    @property
+    def empty_form(self):
+        form = self.form(auto_id=self.auto_id, prefix=self.add_prefix("__prefix__"),
+                         empty_permitted=True, use_required_attribute=False,
+                         parent_task=self.parent_task, user=self.user)
+        self.add_fields(form, None)
+        return form
 
+
+# H9: exactly ONE subtask form; "Add another subtask" clones the
+# <template> copy of empty_form.
 SubtaskFormSet = formset_factory(
     SubtaskSpecForm,
     formset=BaseSubtaskFormSet,
-    extra=1,
+    extra=0,
     min_num=1,
     validate_min=True,
 )

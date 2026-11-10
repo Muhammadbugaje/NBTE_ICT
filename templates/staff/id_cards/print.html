@@ -1,0 +1,48 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Staff ID cards · {{ style.name }}</title>
+<link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+<link rel="stylesheet" href="{% static 'css/staff-id.css' %}">
+<style>
+  /* From staff/staff_id_styles.py — {{ style.key }}: {{ style.size_label }}. Print at 100%. */
+  @page { size: {{ style.page_size_css }}; margin: 0; }
+  .sid-sheet { width: {% if style.is_sheet %}210mm{% else %}{{ style.width_mm }}mm{% endif %}; height: {% if style.is_sheet %}297mm{% else %}{{ style.height_mm }}mm{% endif %}; }
+  .sid-sheet--single .idc { font-size: 4mm; }
+  .sid-sheet--single .badge-card { font-size: 3.857mm; border-radius: 0; box-shadow: none; }
+  .sid-sheet--grid { grid-template-columns: repeat({{ style.columns }}, {{ style.width_mm }}mm); gap: {{ style.gap_mm }}mm;
+    padding: {{ style.margin_top_mm }}mm {{ style.margin_left_mm }}mm; box-sizing: border-box; }
+  .sid-sheet--grid .idc { font-size: 4mm; }
+  .sid-sheet--grid.is-back { direction: rtl; }  /* mirrored for long-edge duplex */
+  .sid-sheet--grid.is-back > * { direction: ltr; }
+</style>
+</head>
+<body class="sid-print-body">
+  <div class="sid-print-toolbar">
+    <strong>{{ cards|length }} card{{ cards|length|pluralize }} · {{ style.name }} ({{ style.size_label }})</strong>
+    <span>Print at 100% / “Actual size”, no margins{% if style.is_sheet %}, double-sided (flip on long edge){% endif %}.</span>
+    <button type="button" onclick="window.print()">Print</button>
+  </div>
+  {% if style.is_sheet %}
+    {% for page in pages %}
+      <section class="sid-sheet sid-sheet--grid" aria-label="Sheet {{ forloop.counter }}, fronts">
+        {% for card in page %}{% include "staff/id_cards/_front.html" %}{% endfor %}
+      </section>
+      <section class="sid-sheet sid-sheet--grid is-back" aria-label="Sheet {{ forloop.counter }}, backs">
+        {% for card in page %}{% include "staff/id_cards/_back.html" %}{% endfor %}
+      </section>
+    {% endfor %}
+  {% elif style.key == "badge" %}
+    {% for card in cards %}
+      <section class="sid-sheet sid-sheet--single">{% include "staff/id_cards/_badge.html" %}</section>
+    {% endfor %}
+  {% else %}
+    {% for card in cards %}
+      <section class="sid-sheet sid-sheet--single">{% include "staff/id_cards/_front.html" %}</section>
+      <section class="sid-sheet sid-sheet--single">{% include "staff/id_cards/_back.html" %}</section>
+    {% endfor %}
+  {% endif %}
+</body>
+</html>

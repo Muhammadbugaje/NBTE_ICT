@@ -1,7 +1,18 @@
 {% extends base_template %}
-{% load qa_tags %}
-{% block title %}Verify {{ v.title }} · {{ portal_name }}{% endblock %}
+{% load qa_tags portal_journey_tags %}
+{% block title %}{% if limited %}Too many checks{% else %}Verify {{ v.title }}{% endif %} · {{ portal_name }}{% endblock %}
+{% block extra_css %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
+{% if limited %}
+<section class="qa-verify" aria-labelledby="v-h">
+  <span class="qa-verify__seal qa-verify__seal--warn">{% icon "alert" 30 %}</span>
+  <div>
+    <span class="qa-eyebrow">NBTE document verification</span>
+    <h1 id="v-h">Too many checks from this connection</h1>
+    <p class="qa-small qa-muted">For security, each connection can verify a limited number of documents per hour. Please try again in an hour, or ask the institution for the payment reference and contact NBTE Finance.</p>
+  </div>
+</section>
+{% else %}
 <section class="qa-verify" aria-labelledby="v-h">
   <span class="qa-verify__seal{% if v.kind == 'slip' and not v.current %} qa-verify__seal--warn{% endif %}">{% if v.kind == "slip" and not v.current %}{% icon "alert" 30 %}{% else %}{% icon "shield" 30 %}{% endif %}</span>
   <div>
@@ -13,11 +24,12 @@
     <div><dt>Reference</dt><dd class="qa-mono">{{ v.reference }}</dd></div>
     {% if v.payment_reference %}<div><dt>Payment reference</dt><dd class="qa-mono">{{ v.payment_reference }}</dd></div>{% endif %}
     <div><dt>Institution</dt><dd>{{ v.institution }} ({{ v.code }})</dd></div>
-    <div><dt>For</dt><dd>{{ v.description }}</dd></div>
+    <div><dt>For</dt><dd>{{ v.description|plain }}</dd></div>
     <div><dt>Amount</dt><dd><strong>{{ v.amount }}</strong></dd></div>
     <div><dt>Issued</dt><dd>{{ v.issued|date:"j M Y" }}</dd></div>
     {% if v.version %}<div><dt>Slip version</dt><dd>{{ v.version }}</dd></div>{% endif %}
     <div><dt>Status</dt><dd><span class="qa-chip {% if v.paid %}qa-tone-success{% else %}qa-tone-pending{% endif %}">{{ v.status }}</span></dd></div>
   </dl>
 </section>
+{% endif %}
 {% endblock %}

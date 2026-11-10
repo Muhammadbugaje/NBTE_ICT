@@ -1,4 +1,4 @@
-{% load static %}<!DOCTYPE html>
+{% load static nbte_assets %}{% load brand %}<!DOCTYPE html>
 {% comment %}
   Portal sign-in layout (Master Plan §16 "Portal-branded login"). Reuses the
   internal auth.css split layout so both doors feel like one NBTE, with portal
@@ -9,14 +9,12 @@
   {% include "partials/head.html" %}
   <meta name="description" content="Sign in to the NBTE Quality Assurance Portal.">
   <title>{% block title %}Sign in · {{ portal_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'css/auth.css' %}?v=2">
-  <link rel="stylesheet" href="{% static 'css/qa.css' %}?v=2">
-  <link rel="stylesheet" href="{% static 'css/qa-portal.css' %}?v=1">
-  <link rel="stylesheet" href="{% static 'css/qa-p2.css' %}?v=3">
-  <link rel="stylesheet" href="{% static 'css/apple.css' %}?v=1">
-  <link rel="stylesheet" href="{% static 'css/polish.css' %}?v=2">
+  {% css_bundle "portal-auth" %}
+  {% css_bundle "finish-public" %}
+  <link rel="stylesheet" href="{% static 'css/qa-portal-ui.css' %}?v=17">
 </head>
-<body class="public-body qa-auth" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' data-qa-timeout="{{ qa_timeout_ms|default:15000 }}">
+<body class="public-body qa-auth{% block body_class %}{% endblock %}" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' data-qa-timeout="{{ qa_timeout_ms|default:15000 }}">
+  {% include "partials/page_loader.html" %}{# NBTE crest loader #}
   {% if maintenance_message %}
     <div class="qa-maint" role="status">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -25,15 +23,16 @@
   {% endif %}
 
   <div class="auth-shell qa-auth-shell">
+    {% block hero %}
     <aside class="auth-hero qa-auth-hero" aria-hidden="true">
-      <div class="auth-hero-logo-backdrop"><img src="{% static 'img/NBTE_logo.png' %}" alt=""></div>
+      <div class="auth-hero-logo-backdrop"><img loading="lazy" decoding="async" src="{% static 'img/brand/nbte-logo-mono-white.svg' %}" alt=""></div>
       <div class="auth-hero-blobs">
         <span class="auth-hero-blob auth-hero-blob-1"></span>
         <span class="auth-hero-blob auth-hero-blob-2"></span>
       </div>
       <div class="auth-hero-content">
         <div class="auth-hero-brand">
-          <img src="{% static 'img/NBTE_logo.png' %}" alt="">
+          <img loading="lazy" decoding="async" src="{% brand_logo_url 'primary' %}" alt="">
           <span>
             <strong>{{ site_info.portal_short_name }}</strong>
             <em>National Board for Technical Education</em>
@@ -61,6 +60,7 @@
         <div class="auth-hero-footer">© {% now "Y" %} National Board for Technical Education</div>
       </div>
     </aside>
+    {% endblock %}
 
     <main class="auth-form-panel" id="qa-main">
       <div class="qa-auth-tools">
@@ -70,11 +70,13 @@
         </button>
       </div>
       <div class="auth-form-inner">
+        {% block form_brand %}
         <div class="auth-form-brand">
-          <img src="{% static 'img/NBTE_logo.png' %}" alt="National Board for Technical Education">
+          <img loading="lazy" decoding="async" src="{% brand_logo_url 'primary' %}" alt="National Board for Technical Education">
           <h1>{% block heading %}Sign in{% endblock %}</h1>
           <p>{% block subheading %}{{ site_info.portal_name }}{% endblock %}</p>
         </div>
+        {% endblock %}
         {% block form %}{% endblock %}
         <p class="auth-form-foot">
           {% block foot %}
@@ -94,10 +96,13 @@
     {% endfor %}
   {% endif %}
   <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
-  <script src="{% static 'js/app.js' %}?v=21" defer></script>
-  <script src="{% static 'js/ui.js' %}?v=4" defer></script>
-  <script src="{% static 'js/dialog.js' %}?v=1" defer></script>
-  <script src="{% static 'js/qa.js' %}?v=3" defer></script>
-  <script src="{% static 'js/polish.js' %}?v=1" defer></script>
+  <script src="{% static 'js/app.js' %}" defer></script>
+  <script src="{% static 'js/motion.js' %}" defer></script>{# v2.1 A9 motion kit #}
+  <script src="{% static 'js/ui.js' %}" defer></script>
+  <script src="{% static 'js/dialog.js' %}" defer></script>
+  <script src="{% static 'js/qa.js' %}" defer></script>
+  <script src="{% static 'js/network-guard.js' %}" defer></script>
+  <script src="{% static 'js/qa-portal-ui.js' %}?v=4" defer></script>
+  <script src="{% static 'js/polish.js' %}" defer></script>
 </body>
 </html>

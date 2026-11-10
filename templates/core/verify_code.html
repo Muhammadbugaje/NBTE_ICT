@@ -1,0 +1,20 @@
+{% extends "base_public.html" %}
+{% load static %}
+{% block title %}Sign-in code · {{ SITE_NAME }}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/auth.css' %}"><link rel="stylesheet" href="{% static 'css/v21-platform.css' %}">{% endblock %}
+{% block body %}
+<main class="pf-code-page">
+  <form method="post" class="pf-card pf-code-card">
+    {% csrf_token %}
+    <h1>Enter your sign-in code</h1>
+    <p class="muted">We e-mailed a 6-digit code to your NBTE address. It is valid for 10 minutes.</p>
+    {% if error %}<div class="pf-alert pf-alert--danger" role="alert">{{ error }}</div>{% endif %}
+    <label for="otp-code">Code</label>
+    <input class="input pf-code-input" id="otp-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+    <div class="btn-group">
+      <button class="btn btn-primary" type="submit">Continue</button>
+    </div>
+  </form>
+  <form method="post" action="{% url 'accounts:logout' %}" class="pf-code-out">{% csrf_token %}<button class="btn btn-subtle btn-sm" type="submit">Sign out</button></form>
+</main>
+{% endblock %}

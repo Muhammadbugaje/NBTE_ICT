@@ -4,20 +4,18 @@
 {% block title %}{% if mode == "create" %}New tenure{% else %}Edit tenure{% endif %} · {{ SITE_NAME }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="lead-page lead-page-narrow">
 
-  <a href="{% url 'staff:leadership_panel' %}" class="lead-back">← Leadership panel</a>
-
-  <header class="lead-hero">
-    <div>
-      <h1>{% if mode == "create" %}Record a tenure{% else %}Edit tenure{% endif %}</h1>
-      <p>Who held what position, when, and for how long.</p>
-    </div>
-  </header>
+  {% url 'staff:leadership_panel' as back_url %}
+  {% if mode == "create" %}
+    {% include "partials/hero.html" with icon="flag" eyebrow="User management · Leadership" title="Record a tenure" lede="Who held what position, when, and for how long." back_url=back_url back_label="Leadership panel" %}
+  {% else %}
+    {% include "partials/hero.html" with icon="flag" eyebrow="User management · Leadership" title="Edit tenure" lede="Who held what position, when, and for how long." back_url=back_url back_label="Leadership panel" %}
+  {% endif %}
 
   <form method="post" enctype="multipart/form-data" class="lead-form" novalidate>
     {% csrf_token %}
@@ -43,9 +41,22 @@
         {% endif %}
         </div>
         <div class="lead-field">
-          <label for="{{ form.staff.id_for_label }}">Staff member</label>
+          <label for="{{ form.staff.id_for_label }}">Staff member <span class="lead-field-hint">(optional for past leaders)</span></label>
           {{ form.staff }}{{ form.staff.errors }}
         </div>
+      </div>
+      <div class="lead-field-row">
+        <div class="lead-field">
+          <label for="{{ form.display_name.id_for_label }}">Name shown publicly</label>
+          {{ form.display_name }}{{ form.display_name.errors }}
+        </div>
+        <div class="lead-field">
+          <label for="{{ form.title.id_for_label }}">Title</label>
+          {{ form.title }}{{ form.title.errors }}
+        </div>
+      </div>
+      <div class="lead-field-row">
+        <label class="lead-field lead-field-check">{{ form.is_placeholder }} Name or dates still to be confirmed by NBTE (shows a "to confirm" tag)</label>
       </div>
     </section>
 

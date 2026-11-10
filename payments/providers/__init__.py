@@ -10,7 +10,8 @@ provider's report is *evidence*: nothing here changes an obligation's state —
 ``payments.services`` does that, and it can never confirm a payment.
 """
 from .bank_transfer import BankTransferProvider
-from .base import PaymentProvider, ProviderError, VerificationResult
+from .base import (PaymentProvider, ProviderConfigError, ProviderError, ProviderUnreachable,  # noqa: F401
+                   VerificationResult, public_message)
 from .offline import OfflineProvider
 from .paystack import PaystackProvider
 from .remita import RemitaProvider

@@ -1,0 +1,46 @@
+{% load qa_tags %}
+{% if journey.variant == "full" and journey.privacy_mode == "assignment" or journey.variant == "full" and journey.is_supervisor %}
+  <section class="qa-ntk qa-ntk--full" aria-labelledby="ntk-h">
+    {% icon "eye" 20 %}
+    <div>
+      <strong id="ntk-h">{% if journey.is_supervisor %}Full view: you supervise this institution{% else %}Full view: the whole journey{% endif %}</strong>
+      <p>You see every department's part. Directors and officers see only their own part; this view is logged.</p>
+      {% if journey.dept_rows %}
+        <ul class="qa-ntk-depts qa-mt-sm" role="list" aria-label="All departments">
+          {% for c in journey.dept_rows %}<li><span class="qa-chip {{ c.status|tone }}">{{ c.department.name }}: {{ c.get_status_display|lower }}</span></li>{% endfor %}
+        </ul>
+      {% endif %}
+      {% if journey.open_work %}
+        <p class="qa-small">Open work: {% for wa in journey.open_work %}{{ wa.get_kind_display }} — {{ wa.assignee|who }}{% if wa.department %} ({{ wa.department.name }}){% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}</p>
+      {% endif %}
+    </div>
+  </section>
+{% elif journey.variant == "department" %}
+  <section class="qa-ntk qa-ntk--department" aria-labelledby="ntk-h">
+    {% icon "users" 20 %}
+    <div>
+      <strong id="ntk-h">{{ journey.department.name }} only — your department's part of this institution</strong>
+      <p>Its documents, steps and staff work. Other departments are not shown.</p>
+      {% if journey.dept_rows or journey.open_work %}
+        <ul class="qa-ntk-depts qa-mt-sm" role="list">
+          {% for c in journey.dept_rows %}<li><span class="qa-chip {{ c.status|tone }}">Clearance: {{ c.get_status_display|lower }}</span></li>{% endfor %}
+          {% for wa in journey.open_work %}<li><span class="qa-chip qa-tone-info">{{ wa.get_kind_display }} · {{ wa.assignee|who }}</span></li>{% endfor %}
+        </ul>
+      {% endif %}
+      <div class="qa-ntk-hidden">{% icon "lock" 16 %}<span>Other departments' items, people and progress are not shown.</span></div>
+    </div>
+  </section>
+{% elif journey.variant == "mine" %}
+  <section class="qa-ntk qa-ntk--mine" aria-labelledby="ntk-h">
+    {% icon "clock" 20 %}
+    <div>
+      <strong id="ntk-h">My work on this institution</strong>
+      <p>You see this institution because of the work below; access ends when it is done.</p>
+      <ul class="qa-ntk-depts qa-mt-sm" role="list">
+        {% for wa in journey.my_work %}<li><span class="qa-chip {{ wa.status|tone }}">{{ wa.get_kind_display }}{% if wa.subject_label and wa.subject_label != inst.name %}: {{ wa.subject_label }}{% endif %} · {{ wa.get_status_display|lower }}{% if wa.due_at %} · due {{ wa.due_at|date:"j M" }}{% endif %}</span></li>{% endfor %}
+        {% for g in journey.my_grants %}<li><span class="qa-chip qa-tone-warn">Temporary access: {{ g.get_scope_display|lower }}</span></li>{% endfor %}
+      </ul>
+      <div class="btn-group qa-mt-sm"><a class="btn btn-sm btn-subtle" href="{% url 'assignments:my_work' %}">{% icon "check" 14 %} My work</a></div>
+    </div>
+  </section>
+{% endif %}

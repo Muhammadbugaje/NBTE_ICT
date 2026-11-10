@@ -1,0 +1,120 @@
+/* Official letters pipeline (queue, letter page, institution "Issued documents" tab).
+   Builds on scan.css (sv-*) and the register (dr-*). Theme tokens only, so
+   light and dark both follow the app palette. */
+
+.ol-page { gap: 20px; }
+
+/* ---- queue rows ---- */
+.ol-check { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: .88rem; cursor: pointer; }
+.ol-check input { accent-color: var(--primary, currentColor); width: 16px; height: 16px; }
+.ol-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ol-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 8px 16px; align-items: center;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface);
+  transition: border-color .15s ease, box-shadow .15s ease; }
+.ol-row:hover { border-color: var(--border-strong, var(--border)); box-shadow: var(--shadow-sm); }
+.ol-row.is-overdue { border-inline-start: 4px solid var(--danger, #c0392b); }
+.ol-row__ico { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; }
+.ol-tone-warn { background: var(--warning-subtle); color: var(--warning-fg); }
+.ol-tone-info { background: var(--info-subtle); color: var(--info-fg, var(--text)); }
+.ol-tone-ok { background: var(--success-subtle); color: var(--success-fg); }
+.ol-tone-plain { background: var(--surface-sunken); color: var(--text-muted); }
+.ol-row__main { display: grid; gap: 4px; min-width: 0; }
+.ol-row__title { font-weight: 650; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ol-row__title:hover { text-decoration: underline; }
+.ol-row__meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text-muted); font-size: .82rem; }
+.ol-row__state { display: grid; justify-items: end; gap: 6px; }
+.ol-days { font-size: .8rem; color: var(--text-muted); white-space: nowrap; }
+.ol-days b { font-variant-numeric: tabular-nums; color: var(--text); font-size: .95rem; }
+.ol-days.is-overdue, .ol-days.is-overdue b { color: var(--danger-fg, var(--danger)); }
+.ol-row__actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.ol-row__actions .btn { border-radius: 999px; white-space: nowrap; }
+
+/* ---- letter page ---- */
+.ol-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.ol-main, .ol-side { display: grid; gap: 18px; min-width: 0; }
+.ol-action h2, .ol-callout h2 { display: flex; align-items: center; gap: 8px; }
+.ol-action { border-color: var(--border-strong, var(--border)); }
+.ol-label { font-size: .84rem; font-weight: 600; color: var(--text); margin-bottom: -4px; }
+.ol-label small { font-weight: 400; color: var(--text-muted); }
+.ol-action select, .ol-action input[type="date"], .ol-action input[type="text"] { width: 100%; min-height: 42px; border-radius: 12px;
+  border: 1px solid var(--border-strong, var(--border)); background: var(--surface); color: var(--text); padding: 0 12px; font: inherit; }
+.ol-file-input { display: grid; gap: 6px; padding: 14px; border: 1.5px dashed var(--border-strong, var(--border)); border-radius: 14px;
+  background: var(--surface-sunken); font-size: .84rem; font-weight: 600; }
+.ol-file-input input { font: inherit; font-weight: 400; color: var(--text-muted); max-width: 100%; }
+.ol-callout p { margin: 0; color: var(--text-muted); }
+.ol-callout--ok { background: var(--success-subtle); border-color: transparent; }
+.ol-callout--ok h2 { color: var(--success-fg); }
+.ol-callout--warn { background: var(--warning-subtle); border-color: transparent; }
+.ol-callout--warn h2 { color: var(--warning-fg); }
+.ol-callout--warn p { color: var(--text); }
+
+.ol-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.ol-step { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; }
+.ol-step:not(:last-child)::after { content: ""; position: absolute; left: 11px; top: 34px; bottom: -10px; width: 2px; background: var(--border); }
+.ol-step.is-done:not(:last-child)::after { background: var(--success, var(--success-fg)); }
+.ol-step__dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border-strong, var(--border)); background: var(--surface);
+  display: grid; place-items: center; color: #fff; position: relative; z-index: 1; }
+.ol-step.is-done .ol-step__dot { background: var(--success, var(--success-fg)); border-color: transparent; }
+.ol-step.is-optional .ol-step__label { color: var(--text-muted); }
+.ol-step__label small { color: var(--text-muted); }
+.ol-step__when { font-size: .8rem; color: var(--text-muted); white-space: nowrap; }
+
+.ol-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ol-file { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px;
+  border: 1px solid var(--border); border-radius: 14px; }
+.ol-file.is-latest { border-color: var(--success-fg); background: color-mix(in srgb, var(--success-subtle) 45%, var(--surface)); }
+.ol-file__ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-sunken); color: var(--text-muted); }
+.ol-file__main { display: grid; gap: 3px; min-width: 0; }
+.ol-file__main b { overflow-wrap: anywhere; }
+.ol-file__main small { color: var(--text-muted); font-size: .8rem; }
+.ol-file__note { margin: 4px 0 0; padding: 8px 12px; border-radius: 10px; background: var(--surface-sunken); font-size: .86rem; color: var(--text); }
+.ol-sendback > summary { list-style: none; display: inline-flex; cursor: pointer; }
+.ol-sendback > summary::-webkit-details-marker { display: none; }
+.ol-sendback[open] > summary { margin-bottom: 10px; }
+
+.ol-history { list-style: none; margin: 0; padding: 0; display: grid; }
+.ol-history li { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); font-size: .88rem; }
+.ol-history li:first-child { border-top: 0; }
+.ol-history__when { color: var(--text-muted); font-size: .8rem; }
+.ol-history small { display: block; color: var(--text-muted); margin-top: 2px; }
+.ol-kv { grid-template-columns: 110px minmax(0, 1fr); }
+
+/* ---- institution page: Issued documents tab ---- */
+.ol-tab-stats { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 var(--space-4, 16px) 4px; }
+.ol-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; background: var(--surface-sunken);
+  font-size: .82rem; color: var(--text-muted); }
+.ol-pill b { color: var(--text); font-variant-numeric: tabular-nums; }
+.ol-pill--warn { background: var(--warning-subtle); color: var(--warning-fg); }
+.ol-pill--warn b { color: inherit; }
+.ol-doc-sub { display: block; font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
+.ol-doc-sub.is-overdue { color: var(--danger-fg, var(--danger)); }
+.ol-doc-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+
+@media (max-width: 980px) {
+  .ol-layout { grid-template-columns: minmax(0, 1fr); }
+  .ol-side { order: -1; }
+}
+@media (max-width: 720px) {
+  .ol-row { grid-template-columns: 40px minmax(0, 1fr); padding: 14px; }
+  .ol-row__ico { width: 40px; height: 40px; }
+  .ol-row__state { grid-column: 2; justify-items: start; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ol-row__actions { grid-column: 1 / -1; justify-content: stretch; }
+  .ol-row__actions .btn { flex: 1 1 140px; justify-content: center; }
+  .ol-row__title { white-space: normal; }
+  .ol-history li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .ol-step { grid-template-columns: 24px minmax(0, 1fr); }
+  .ol-step__when { grid-column: 2; }
+  .ol-doc-actions { justify-content: flex-start; }
+}
+
+/* ---- QA home card ---- */
+.ol-home { margin-block: 4px 18px; }
+.ol-home .ux-card__head h2 { display: flex; align-items: center; gap: 8px; }
+.ol-home__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ol-home__list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px;
+  border-radius: 12px; background: var(--surface-sunken); }
+.ol-home__list li.is-overdue { box-shadow: inset 3px 0 0 var(--danger, #c0392b); }
+.ol-home__list a { display: grid; gap: 2px; color: var(--text); text-decoration: none; min-width: 0; }
+.ol-home__list a:hover b { text-decoration: underline; }
+.ol-home__list small { color: var(--text-muted); font-size: .8rem; }

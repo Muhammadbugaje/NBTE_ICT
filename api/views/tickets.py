@@ -242,3 +242,86 @@ class TicketAttachmentView(APIView):
 
         ticket = _ticket(request, pk)
         return download(request, get_object_or_404(TicketAttachment, pk=attachment_id, ticket=ticket))
+
+
+# ---------------------------------------------------------------------------
+# v2.1 Phase C: routing (I2), division decision (H23), funds (I8), rating (I4), report (I13)
+# ---------------------------------------------------------------------------
+class TicketRouteView(APIView):
+    @extend_schema(operation_id="tickets_route", request=s.TicketRouteSerializer,
+                   responses={200: s.TicketDetailSerializer, **OBJ_ERRORS})
+    def post(self, request, pk):
+        """Director (or a lead) of the handling department routes the ticket to a division."""
+        from org.models import Division
+        from tickets.routing import route_to_division
+
+        ticket = _ticket(request, pk)
+        body = s.TicketRouteSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        division = Division.objects.filter(pk=body.validated_data["division"]).first()
+        run(route_to_division, ticket, request.user, division, body.validated_data.get("note") or "")
+        ticket.refresh_from_db()
+        return _detail(request, ticket)
+
+
+class TicketDivisionDecisionView(APIView):
+    @extend_schema(operation_id="tickets_division_decide", request=s.ReasonSerializer,
+                   responses={200: s.TicketDetailSerializer, **OBJ_ERRORS})
+    def post(self, request, pk, decision):
+        """The division head accepts (``accept``) or declines (``decline``, reason required)."""
+        from tickets.routing import accept_division, decline_division
+
+        ticket = _ticket(request, pk)
+        if decision == "accept":
+            run(accept_division, ticket, request.user)
+        else:
+            body = s.ReasonSerializer(data=request.data)
+            body.is_valid(raise_exception=True)
+            run(decline_division, ticket, request.user, body.validated_data.get("reason") or "")
+        ticket.refresh_from_db()
+        return _detail(request, ticket)
+
+
+class TicketRequestFundsView(APIView):
+    @extend_schema(operation_id="tickets_request_funds", request=s.TicketFundsRequestSerializer,
+                   responses={200: s.TicketDetailSerializer, **OBJ_ERRORS})
+    def post(self, request, pk):
+        """Raise a Funds request (Finance + ES approve) carrying the ticket's trail."""
+        from tickets.bridge import request_funds
+
+        ticket = _ticket(request, pk)
+        body = s.TicketFundsRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        run(request_funds, ticket, request.user, body.validated_data["amount"], body.validated_data["purpose"])
+        ticket.refresh_from_db()
+        return _detail(request, ticket)
+
+
+class TicketRateView(APIView):
+    @extend_schema(operation_id="tickets_rate", request=s.TicketRateSerializer,
+                   responses={200: s.TicketDetailSerializer, **OBJ_ERRORS})
+    def post(self, request, pk):
+        """The opener rates a resolved ticket (1-5)."""
+        from tickets.rating import rate_ticket
+
+        ticket = _ticket(request, pk)
+        body = s.TicketRateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        run(rate_ticket, ticket, request.user, body.validated_data["rating"], body.validated_data.get("comment") or "")
+        ticket.refresh_from_db()
+        return _detail(request, ticket)
+
+
+class TicketReportPdfView(APIView):
+    @extend_schema(operation_id="tickets_report_pdf",
+                   responses={(200, "application/pdf"): OpenApiResponse(OpenApiTypes.BINARY), **OBJ_ERRORS})
+    def get(self, request, pk):
+        """The ticket record PDF (internal notes left out)."""
+        from django.http import HttpResponse
+
+        from tickets.pdf import render_ticket_pdf
+
+        ticket = _ticket(request, pk)
+        resp = HttpResponse(render_ticket_pdf(ticket), content_type="application/pdf")
+        resp["Content-Disposition"] = f'inline; filename="{ticket.reference}.pdf"'
+        return resp

@@ -87,6 +87,8 @@ class QASummaryCountsSerializer(serializers.Serializer):
     applications_to_clear = opt(I)
     ssq_waiting = opt(I)
     inspections_upcoming = opt(I)
+    my_work = opt(I)  # v2.1 N1: open WorkAssignments (qa_core.home.my_work_counts)
+    my_work_overdue = opt(I)
 
 
 class QASummarySerializer(serializers.Serializer):
@@ -312,6 +314,12 @@ class QAActionRefSerializer(serializers.Serializer):
     label = S()
 
 
+class QAConfirmationTrailSerializer(serializers.Serializer):
+    at = opt(S)
+    by = QAPersonSerializer(allow_null=True)
+    what = S()
+
+
 class QAConfirmationRowSerializer(serializers.Serializer):
     id = I()
     reference = S()
@@ -329,6 +337,12 @@ class QAConfirmationRowSerializer(serializers.Serializer):
     decided_at = opt(S)
     can_decide = B()
     decide_reason = S(allow_blank=True)
+    # X47: the layer it waits for ("confirm" / "approve") and the trail
+    stage = S()
+    layers = I()
+    confirmed_by = QAPersonSerializer(allow_null=True)
+    confirmed_at = opt(S)
+    trail = QAConfirmationTrailSerializer(many=True)
 
 
 class QAConfirmationCountsSerializer(serializers.Serializer):
@@ -459,6 +473,11 @@ class QAFinanceRightsSerializer(serializers.Serializer):
     can_final = B()
     is_director = B()
     did_first_pass = B()
+    first_locked = B()
+    can_change_first = B()
+    can_remind = B()
+    is_ict = B()
+    gateway = B()
 
 
 class QAAdviceSerializer(QAFileSerializer):
@@ -479,6 +498,12 @@ class QAFinanceDetailSerializer(serializers.Serializer):
     second_check = QAPassSerializer(allow_null=True)
     final = QAPassSerializer()
     needs_second_check = B()
+    verified_via = S()
+    auto_first_pass = B()
+    provider_amount = S(allow_null=True)
+    amount_matches = serializers.BooleanField(allow_null=True)
+    approvals_required = I()
+    approvals_have = I()
     dual_verify_threshold_display = S()
     ready_for_final = B()
     ready_why = S(allow_blank=True)
@@ -837,6 +862,13 @@ class QASSQDetailSerializer(QASSQRowSerializer):
     history = QAFlowEventSerializer(many=True)
 
 
+class QASSQAssignSerializer(serializers.Serializer):
+    """v2.1 Part 2.2: the director (or ES) assigns the SSQ to one officer."""
+    officer = serializers.IntegerField(required=False, allow_null=True)
+    accept_suggestion = serializers.BooleanField(required=False, default=False)
+    reason = S(required=False, allow_blank=True, max_length=255, default="")
+
+
 class QASSQDecideSerializer(serializers.Serializer):
     decision = serializers.ChoiceField(choices=["accept", "return"])
     remark = S(required=False, allow_blank=True, max_length=4000, default="")
@@ -892,6 +924,7 @@ class QAComplaintRowSerializer(serializers.Serializer):
     raiser_type = S()
     current_department = QADeptRefSerializer(allow_null=True)
     current_assignee = QAPersonSerializer(allow_null=True)
+    assigned_officer = QAPersonSerializer(allow_null=True)
     sla = QASLASerializer()
     created_at = S()
 
@@ -950,6 +983,7 @@ class QAComplaintActionSerializer(serializers.Serializer):
     label = S()
     requires_remark = B()
     needs_referral_target = B()
+    needs_officer = B(help_text="assign: send `officer` (one of rights.officers).")
 
 
 class QAComplaintRightsSerializer(serializers.Serializer):
@@ -959,6 +993,11 @@ class QAComplaintRightsSerializer(serializers.Serializer):
     act_why = S(allow_blank=True)
     actions = QAComplaintActionSerializer(many=True)
     can_escalate = B()
+    read_only = B(help_text="v2.1 X9: a watcher (overseeing director, ICT supervisor) who can read only.")
+    watch_reason = S(allow_blank=True)
+    is_director = B()
+    is_officer = B()
+    officers = QAPersonSerializer(many=True, help_text="Staff the director may assign (assign only).")
 
 
 class QAComplaintDetailSerializer(QAComplaintRowSerializer):
@@ -993,6 +1032,8 @@ class QAComplaintActSerializer(serializers.Serializer):
     remark = S(required=False, allow_blank=True, max_length=4000, default="")
     refer_department = I(required=False, allow_null=True, help_text="Department id (refer only).")
     refer_user = I(required=False, allow_null=True, help_text="Staff user id (refer only).")
+    officer = I(required=False, allow_null=True,
+                help_text="Staff user id (assign only); must be staff of the handling department.")
 
 
 class QAComplaintEscalateSerializer(serializers.Serializer):
@@ -1062,3 +1103,31 @@ class QAInspectionDetailSerializer(QAInspectionRowSerializer):
     team = QATeamMemberSerializer(many=True)
     attendance = QAAttendanceSerializer(many=True)
     reports = QAReportRowSerializer(many=True)
+
+
+# Phase 0 (Q2): onboarding programme clearance
+class QAProgrammeReviewSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    programme = serializers.CharField()
+    level = serializers.CharField(allow_blank=True)
+    streams = serializers.IntegerField()
+    status = serializers.CharField()
+    remark = serializers.CharField(allow_blank=True)
+
+
+class QAProgrammeAppSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+    status = serializers.CharField()
+    institution = serializers.CharField()
+    institution_code = serializers.CharField()
+
+
+class QAProgrammeClearanceSerializer(serializers.Serializer):
+    application = QAProgrammeAppSerializer()
+    department = serializers.CharField(allow_blank=True)
+    round = serializers.IntegerField()
+    waiting_days = serializers.IntegerField()
+    can_clear = serializers.BooleanField()
+    reason = serializers.CharField(allow_blank=True)
+    programmes = QAProgrammeReviewSerializer(many=True)

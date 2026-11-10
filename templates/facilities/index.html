@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% load qa_tags %}
+{% block title %}Facilities & equipment · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Facilities &amp; equipment{% endblock %}
+{% block content %}
+<div class="fe">
+  <header class="fe-hero">
+    <div>
+      <span class="fe-eyebrow">Curriculum · minimum resources</span>
+      <h1>Facilities &amp; equipment register</h1>
+      <p>The minimum physical facilities and equipment every ND / HND programme needs, from the NBTE curricula. Search it, analyse it, keep it up to date in Excel, and publish a programme's list to the SSQ catalogue so institutions' shortfalls are scored against it.</p>
+    </div>
+    <div class="fe-hero__actions">
+      <a class="btn btn-ghost" href="{% url 'facilities:export_all' %}">⬇ Export all (.xlsx)</a>
+      {% if can_manage %}
+      <a class="btn btn-ghost" href="{% url 'facilities:smart_export' %}">⬇ Export workbook</a>
+      <a class="btn btn-ghost" href="{% url 'facilities:smart_import' %}">⬆ Smart Excel import</a>
+      <a class="btn btn-ghost" href="{% url 'core:import_upload' spec.name %}">⬆ Import Excel (row diff)</a>
+      <a class="btn btn-primary" href="{% url 'facilities:import_word' %}">⬆ Import Word files</a>
+      {% endif %}
+    </div>
+  </header>
+  {% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags }}">{{ m }}</div>{% endfor %}{% endif %}
+
+  <section class="fe-kpis" aria-label="Summary">
+    <div class="fe-kpi"><span>Programmes</span><strong>{{ programme_count }}</strong></div>
+    <div class="fe-kpi"><span>Facilities</span><strong>{{ section_count }}</strong></div>
+    <div class="fe-kpi"><span>Items</span><strong>{{ item_count }}</strong></div>
+    <div class="fe-kpi {% if unquantified %}is-warn{% endif %}"><span>Items without a number</span><strong>{{ unquantified }}</strong></div>
+    <div class="fe-kpi {% if empty %}is-warn{% endif %}"><span>Programmes with no list</span><strong>{{ empty|length }}</strong></div>
+    <div class="fe-kpi {% if unlinked %}is-warn{% endif %}"><span>Not linked to master list</span><strong>{{ unlinked|length }}</strong></div>
+  </section>
+
+  {% if not programme_count %}
+  <section class="card fe-empty"><h2>The register is empty</h2><p>Import the NBTE ND/HND facilities and equipment Word files (the .zip you have), or an Excel file in the template layout. You will see every item before anything is saved.</p>{% if can_manage %}<a class="btn btn-primary" href="{% url 'facilities:import_word' %}">Import Word files</a>{% endif %}</section>
+  {% endif %}
+
+  <div class="fe-cols">
+    <section class="card fe-card">
+      <header class="fe-card__head"><h2>Find an item across all programmes</h2></header>
+      <form method="get" class="fe-search"><input class="input" type="search" name="q" value="{{ q }}" placeholder="e.g. oscilloscope, fume cupboard, theodolite"><button class="btn btn-primary" type="submit">Search</button></form>
+      {% if q %}
+        {% if hits %}<div class="table-wrap"><table class="table"><thead><tr><th>Item</th><th>Programme</th><th>Facility</th><th class="num">ND</th><th class="num">HND</th></tr></thead><tbody>
+        {% for i in hits %}<tr><td>{{ i.name }}</td><td><a href="{% url 'facilities:programme' i.programme.slug %}">{{ i.programme.name }}</a></td><td>{{ i.section.name }}</td><td class="num">{{ i.nd_qty|default:"–" }}</td><td class="num">{{ i.hnd_qty|default:"–" }}</td></tr>{% endfor %}
+        </tbody></table></div>{% else %}<p class="muted">No item matches “{{ q }}”.</p>{% endif %}
+      {% endif %}
+    </section>
+    <section class="card fe-card">
+      <header class="fe-card__head"><h2>Most common items</h2><p class="muted">How many programmes list each item.</p></header>
+      <ul class="fe-bars">{% for c in common %}<li><span>{{ c.name }}</span><b>{{ c.programmes }}</b></li>{% empty %}<li class="muted">—</li>{% endfor %}</ul>
+    </section>
+    <section class="card fe-card">
+      <header class="fe-card__head"><h2>Largest lists</h2></header>
+      <ul class="fe-bars fe-bars--meter">{% for p in biggest %}<li><a href="{% url 'facilities:programme' p.slug %}">{{ p.name }}</a><span class="fe-meter"><i style="width:{{ p.pct }}%"></i></span><b>{{ p.n_items }}</b></li>{% endfor %}</ul>
+    </section>
+  </div>
+
+  <section class="card fe-card" aria-labelledby="fe-progs">
+    <header class="fe-card__head fe-card__head--row">
+      <h2 id="fe-progs">Programmes</h2>
+      <form method="get" class="fe-filter">
+        <input class="input" type="search" name="p" value="{{ pq }}" placeholder="Filter programmes">
+        <select class="input" name="level" onchange="this.form.submit()"><option value="">All levels</option><option value="ND" {% if level == 'ND' %}selected{% endif %}>Has ND</option><option value="HND" {% if level == 'HND' %}selected{% endif %}>Has HND</option></select>
+      </form>
+    </header>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Programme</th><th>Levels</th><th class="num">Facilities</th><th class="num">Items</th><th>Maintained by</th><th>SSQ catalogue</th></tr></thead>
+      <tbody>{% for p in rows %}<tr>
+        <td><a href="{% url 'facilities:programme' p.slug %}"><strong>{{ p.name }}</strong></a>{% if not p.programme_master %} <span class="badge badge-warn" title="Not linked to the national programme master list">Not linked</span>{% endif %}</td>
+        <td>{{ p.levels|default:"—" }}</td><td class="num">{{ p.n_sections }}</td><td class="num">{% if p.n_items %}{{ p.n_items }}{% else %}<span class="badge badge-warn">No list</span>{% endif %}</td>
+        <td>{{ p.assigned_to.get_full_name|default:"—" }}</td>
+        <td>{% if p.last_synced_to_catalogue %}<span class="badge badge-success">Published {{ p.last_synced_to_catalogue|date:"j M Y" }}</span>{% else %}<span class="muted">Not yet</span>{% endif %}</td>
+      </tr>{% empty %}<tr><td colspan="6" class="muted">No programmes.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+
+  <section class="card fe-card" id="handlers" aria-labelledby="fe-h">
+    <header class="fe-card__head"><h2 id="fe-h">Who handles this register</h2><p class="muted">People here can import, edit and publish lists. The ES, super admins and the Curriculum director assign them.</p></header>
+    <ul class="fe-people">{% for h in handlers %}<li><span>{{ h.get_full_name|default:h.email }}</span>{% if can_assign %}<form method="post" action="{% url 'facilities:handlers' %}">{% csrf_token %}<input type="hidden" name="user" value="{{ h.pk }}"><input type="hidden" name="verb" value="remove"><button class="btn btn-ghost btn-sm" type="submit">Remove</button></form>{% endif %}</li>{% empty %}<li class="muted">Nobody yet.</li>{% endfor %}</ul>
+    {% if can_assign %}
+    <form method="post" action="{% url 'facilities:handlers' %}" class="fe-addperson">{% csrf_token %}
+      <input class="input" type="search" name="q" placeholder="Type a staff name…" hx-get="{% url 'facilities:staff_search' %}" hx-trigger="input changed delay:300ms" hx-target="#fe-pick" autocomplete="off">
+      <div id="fe-pick"></div>
+    </form>
+    {% endif %}
+  </section>
+</div>
+{% include "facilities/_styles.html" %}
+{% endblock %}

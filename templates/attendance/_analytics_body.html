@@ -1,0 +1,64 @@
+<section class="hrd-kpis" aria-label="Period totals {{ first|date:'j M' }} to {{ last|date:'j M Y' }}">
+  <div class="hrd-kpi {% if totals.attendance_pct >= 90 %}is-good{% elif totals.attendance_pct < 75 %}is-bad{% else %}is-warn{% endif %}"><strong>{{ totals.attendance_pct }}%</strong><span>Attendance</span></div>
+  <div class="hrd-kpi"><strong>{% if totals.punctuality_pct is not None %}{{ totals.punctuality_pct }}%{% else %}—{% endif %}</strong><span>Punctuality (on time of days attended)</span></div>
+  <div class="hrd-kpi"><strong>{{ totals.avg_arrival_label }}</strong><span>Average arrival</span></div>
+  <div class="hrd-kpi is-good"><strong>{{ totals.early|default:0 }}</strong><span>Early arrivals</span></div>
+  <div class="hrd-kpi {% if totals.late %}is-warn{% endif %}"><strong>{{ totals.late|default:0 }}</strong><span>Late days</span></div>
+  <div class="hrd-kpi {% if totals.absent %}is-bad{% endif %}"><strong>{{ totals.absent|default:0 }}</strong><span>Absent days</span></div>
+  <div class="hrd-kpi"><strong>{{ totals.on_leave|default:0 }} · {{ totals.on_duty|default:0 }} · {{ totals.holiday|default:0 }}</strong><span>Leave · official duty · holiday</span></div>
+  <div class="hrd-kpi {% if totals.missing_checkout %}is-warn{% endif %}"><strong>{{ totals.missing_checkout|default:0 }}</strong><span>Missing check-outs</span></div>
+</section>
+
+<div class="hrd-split hrd-split--even">
+  <section class="hrd-card">
+    <h2>Week by week</h2>
+    <p class="hrd-sub">{{ first|date:"j M" }} – {{ last|date:"j M Y" }} · working days with a record</p>
+    <div class="hrd-chart"><canvas id="an-trend" role="img" aria-label="Present, late and absent days per week"></canvas></div>
+    {{ chart|json_script:"an-chart-data" }}
+  </section>
+  {% if dept_rows %}
+    <section class="hrd-card">
+      <h2>Departments</h2>
+      <p class="hrd-sub">Attendance and punctuality per department.</p>
+      <div class="hrd-tablewrap"><table class="hrd-table">
+        <thead><tr><th>Department</th><th class="num">Staff</th><th class="num">Attendance</th><th class="num">Punctuality</th><th class="num">Late</th><th class="num">Absent</th></tr></thead>
+        <tbody>{% for r in dept_rows %}<tr>
+          <td><a href="?{% if request.GET.from %}from={{ request.GET.from }}&amp;{% endif %}{% if request.GET.to %}to={{ request.GET.to }}&amp;{% endif %}department={{ r.department.pk }}">{{ r.department.name|default:"No department" }}</a></td>
+          <td class="num">{{ r.people }}</td><td class="num">{{ r.attendance_pct }}%</td>
+          <td class="num">{% if r.punctuality_pct is not None %}{{ r.punctuality_pct }}%{% else %}—{% endif %}</td>
+          <td class="num">{{ r.late }}</td><td class="num">{{ r.absent }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </section>
+  {% else %}
+    <section class="hrd-card">
+      <h2>Missing check-outs</h2>
+      <p class="hrd-sub">Checked in but never checked out. The day still counts.</p>
+      {% include "attendance/_analytics_rank.html" with rows=boards.missing_checkout metric="missing" empty="Everyone checked out." %}
+    </section>
+  {% endif %}
+</div>
+
+<div class="hrd-board">
+  <section class="hrd-card"><h2>Earliest arrivals</h2><p class="hrd-sub">Average check-in time</p>
+    {% include "attendance/_analytics_rank.html" with rows=boards.earliest metric="arrival" empty="No check-ins in this period." %}</section>
+  <section class="hrd-card"><h2>Most often late</h2><p class="hrd-sub">Late days in the period</p>
+    {% include "attendance/_analytics_rank.html" with rows=boards.late metric="late" empty="Nobody was late." %}</section>
+  <section class="hrd-card"><h2>Most often absent</h2><p class="hrd-sub">Absent days (leave, holidays and visits excluded)</p>
+    {% include "attendance/_analytics_rank.html" with rows=boards.absent metric="absent" empty="Nobody was absent." %}</section>
+</div>
+
+<section class="hrd-card">
+  <div class="btn-group btn-group--between"><div><h2>Everyone</h2><p class="hrd-sub">{{ people|length }} {{ people|length|pluralize:"person,people" }}. Open a name for the day-by-day record.</p></div></div>
+  <div class="hrd-tablewrap"><table class="hrd-table">
+    <thead><tr><th>Name</th>{% if scope == "all" %}<th>Department</th>{% endif %}<th class="num">Days</th><th class="num">On time</th><th class="num">Late</th><th class="num">Absent</th><th class="num">Leave</th><th class="num">Duty</th><th class="num">Holiday</th><th class="num">No check-out</th><th class="num">Avg in</th><th class="num">Avg out</th><th class="num">Attendance</th></tr></thead>
+    <tbody>
+    {% for p in people %}<tr>
+      <td><a href="{% url 'attendance:analytics_person' p.user.pk %}?from={{ first|date:'Y-m-d' }}&amp;to={{ last|date:'Y-m-d' }}" data-person>{{ p.name }}</a></td>
+      {% if scope == "all" %}<td>{{ p.department.name|default:"—" }}</td>{% endif %}
+      <td class="num">{{ p.counted }}</td><td class="num">{{ p.present }}</td><td class="num">{{ p.late }}</td><td class="num">{{ p.absent }}</td>
+      <td class="num">{{ p.on_leave }}</td><td class="num">{{ p.on_duty }}</td><td class="num">{{ p.holiday }}</td><td class="num">{{ p.missing_checkout }}</td>
+      <td class="num">{{ p.avg_arrival_label }}</td><td class="num">{{ p.avg_departure_label }}</td><td class="num">{% if p.counted %}{{ p.attendance_pct }}%{% else %}—{% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="13">Nobody matches these filters.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>

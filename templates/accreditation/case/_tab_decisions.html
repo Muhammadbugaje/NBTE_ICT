@@ -1,22 +1,175 @@
 {% load qa_tags %}
-<section class="qa-card" aria-labelledby="dec-h">
-  <header class="qa-card__head"><div><h2 id="dec-h">Decisions</h2><p>Stage 14: the CQAC recommends. Stage 15: the CQAC Chairman decides{% if batch_enabled %} (here, or in a batch on the <a href="{% url 'qa_case:batch' %}">batch decisions</a> page){% endif %}. Stage 16: the Executive Secretary gives the final decision. Stage 17 then updates the programme record and issues the letters. The expiry date is always worked out from the approval type — it is never typed.</p></div></header>
+<section class="qa-card c3-decision-page" aria-labelledby="dec-h">
+  <header class="qa-card__head c3-decision-page__head">
+    <div class="c3-decision-page__intro">
+      <span class="qa-eyebrow">Official decision workflow · SOP-03</span>
+      <h2 id="dec-h">Decisions</h2>
+      <p>Review the case record before each decision. The CQAC recommends at Stage 14, the Chairman decides at Stage 15{% if batch_enabled %} (here or on the <a href="{% url 'qa_case:batch' %}">batch decisions</a> page){% endif %}, and the Executive Secretary gives final approval at Stage 16. Stage 17 records the outcome and issues letters; expiry is calculated from the approval type.</p>
+    </div>
+    <ol class="c3-decision-route" aria-label="Decision workflow">
+      <li{% if decision_stage == "cqac_recommendation" %} class="is-current" aria-current="step"{% endif %}><span class="c3-decision-route__number" aria-hidden="true">14</span><span><strong>CQAC</strong><small>Recommendation</small></span></li>
+      <li{% if decision_stage == "cqac_chair_approval" %} class="is-current" aria-current="step"{% endif %}><span class="c3-decision-route__number" aria-hidden="true">15</span><span><strong>Chairman</strong><small>Decision</small></span></li>
+      <li{% if decision_stage == "es_final_approval" %} class="is-current" aria-current="step"{% endif %}><span class="c3-decision-route__number" aria-hidden="true">16</span><span><strong>Executive Secretary</strong><small>Final approval</small></span></li>
+      <li><span class="c3-decision-route__number" aria-hidden="true">17</span><span><strong>Programme record</strong><small>Outcome and letters</small></span></li>
+    </ol>
+  </header>
   {% if decision_stage %}
   <div class="qa-card__body qa-stack">
-    <p><strong>Now: {{ decision_stage_label }}.</strong> {% if not can_decide %}<span class="qa-muted">{{ decide_why }}</span>{% endif %}</p>
+    <div class="c3-decision-status{% if can_decide %} is-actionable{% endif %}" role="status">
+      <span class="c3-decision-status__mark" aria-hidden="true">{% if can_decide %}{% icon "check" 17 "2.4" %}{% else %}{% icon "lock" 17 "2.4" %}{% endif %}</span>
+      <span class="c3-decision-status__text"><span class="qa-eyebrow">Current stage</span><strong>{{ decision_stage_label }}</strong>
+        {% if can_decide %}<span>You are authorised to record this decision.</span>{% else %}<span>{{ decide_why }}</span>{% endif %}
+      </span>
+      {% if can_decide %}<span class="qa-chip qa-tone-success">Action available</span>{% else %}<span class="qa-chip">Read only</span>{% endif %}
+    </div>
+    {% if decision_review_only %}
+    <aside class="c3-decision-oversight" role="note">
+      <span class="c3-decision-oversight__mark" aria-hidden="true">{% icon "eye" 18 "2.4" %}</span>
+      <div><strong>Full case-file access · decision authority remains restricted</strong><p>As the handling-department Director, you can inspect and download the same supporting records as the decision panel. Only the assigned CQAC role can submit or approve this decision.</p></div>
+    </aside>
+    {% endif %}
     {% if decision_problems %}<ul class="qa-problems">{% for p in decision_problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
-    <form class="qa-stack" method="post" action="{% url 'qa_case:decisions_save' case.pk %}" hx-post="{% url 'qa_case:decisions_save' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="stage" value="{{ decision_stage }}"><input type="hidden" name="tab" value="decisions">
-    {% for d in decision_rows %}
-      <fieldset class="qa-decision"{% if not can_decide %} disabled{% endif %}>
-        <legend><strong>{{ d.programme }}</strong> <span class="qa-small qa-muted">{{ d.row.requested_streams }} stream{{ d.row.requested_streams|pluralize }} asked for</span>{% if d.decision %} <span class="qa-chip {{ d.decision.outcome|tone }}">Saved: {{ d.decision.get_outcome_display }}</span>{% else %} <span class="qa-chip qa-tone-warn">Not decided yet</span>{% endif %}</legend>
-        <div class="qa-decision__context">
-          {% if d.report %}<span>Directorate (stage 13): <strong>{{ d.report.get_recommendation_display|default:"—" }}</strong>{% if d.report.recommendation_note %} — {{ d.report.recommendation_note }}{% endif %}</span>{% endif %}
-          {% if d.capacity %}<span>Capacity: <span class="qa-chip {% if d.capacity.adequate %}qa-tone-success{% else %}qa-tone-danger{% endif %}">{% if d.capacity.adequate %}adequate{% else %}short — {{ d.capacity.short|join:", " }}{% endif %}</span> {{ d.capacity.supportable_streams }} stream{{ d.capacity.supportable_streams|pluralize }} supportable ({{ d.capacity.assessed }}/{{ d.capacity.of }} assessed)</span>{% else %}<span class="qa-muted">Capacity not assessed (Capacity tab).</span>{% endif %}
-          {% for h in d.history %}<span>{{ h.get_stage_display }}: <span class="qa-chip {{ h.outcome|tone }}">{{ h.get_outcome_display }}</span>{% if h.approval_type %} {{ h.approval_type.name }}, {{ h.approved_streams }} stream{{ h.approved_streams|pluralize }}{% endif %} — {{ h.decided_by|who }}{% if h.batch_key %} (batch){% endif %}</span>{% endfor %}
+    {% if decision_stage == "cqac_recommendation" %}
+    <section class="c3-panel-mode c3-panel-mode--{{ cqac_recommendation_mode }}" aria-labelledby="cqac-panel-heading">
+      <div class="c3-panel-mode__mark" aria-hidden="true">{% icon "users" 20 "2.2" %}</div>
+      <div class="c3-panel-mode__body">
+        <span class="qa-eyebrow">Stage 14 · CQAC review panel</span>
+        <h3 id="cqac-panel-heading">{% if cqac_recommendation_mode == "individual" %}Individual panel votes{% else %}Shared panel recommendation{% endif %}</h3>
+        {% if cqac_recommendation_mode == "individual" %}
+          <p>Every assigned panelist votes on each programme. The outcome is decided by the full panel; approval type, stream count, and commencement date are each decided by majority among members who voted “Approve.” If any detail has no majority, it is returned for review. The stage cannot advance until all active assigned panel members have voted.</p>
+        {% else %}
+          <p>The CQAC acts as one panel. Any assigned panel member may record the shared recommendation for each programme; the Chairman reviews it at the next stage.</p>
+        {% endif %}
+        <div class="c3-panel-mode__members" aria-label="Assigned CQAC panelists">
+          {% for member in cqac_panel_members %}<span class="c3-panel-member">{% icon "user" 13 %} {{ member|who }}</span>
+          {% empty %}<span class="qa-chip qa-tone-warn">No CQAC members are currently assigned</span>{% endfor %}
         </div>
+      </div>
+    </section>
+    {% endif %}
+    {% if decision_evidence %}
+    <section class="qa-card qa-stack c3-decision-evidence" aria-labelledby="decision-evidence-heading">
+      <header class="qa-card__head"><div><span class="qa-eyebrow">Decision briefing · {{ decision_stage_label }}</span>
+        <h3 id="decision-evidence-heading">Review the complete case record</h3>
+        <p>Preview or download the reports here, or open each full record to inspect every response and supporting document.</p></div></header>
+      <div class="c3-decision-evidence__library" aria-label="Case-level evidence">
+        {% if case.qa_request_id %}
+        <article class="c3-evidence-card">
+          <div class="c3-evidence-card__identity"><span class="c3-evidence-card__icon" aria-hidden="true">{% icon "file" 18 %}</span><div><span class="qa-eyebrow">Application</span><h4>Original QA request</h4><p>Submitted application and fee payment record.</p></div></div>
+          <div class="c3-evidence-card__actions"><a class="btn btn-xs btn-subtle" href="{% url 'qa_req:detail' case.qa_request_id %}">{% icon "arrow" 13 %} Open original QA request and fee payments</a></div>
+        </article>
+        {% endif %}
+        <article class="c3-evidence-card">
+          <div class="c3-evidence-card__identity"><span class="c3-evidence-card__icon" aria-hidden="true">{% icon "file" 18 %}</span><div><span class="qa-eyebrow">Finance</span><h4>Visit fund release</h4><p>Case visit funding and release details.</p></div></div>
+          <div class="c3-evidence-card__actions"><a class="btn btn-xs btn-subtle" href="{% url 'qa_case:detail' case.pk %}?tab=funds">{% icon "arrow" 13 %} Open visit fund release</a></div>
+        </article>
+        <article class="c3-evidence-card">
+          <div class="c3-evidence-card__identity"><span class="c3-evidence-card__icon" aria-hidden="true">{% icon "layers" 18 %}</span><div><span class="qa-eyebrow">Case file</span><h4>All reports</h4><p>Browse reports and supporting case documents.</p></div></div>
+          <div class="c3-evidence-card__actions"><a class="btn btn-xs btn-subtle" href="{% url 'qa_case:detail' case.pk %}?tab=reports">{% icon "arrow" 13 %} Open all reports</a></div>
+        </article>
+        <article class="c3-evidence-card">
+          <div class="c3-evidence-card__identity"><span class="c3-evidence-card__icon" aria-hidden="true">{% icon "check" 18 %}</span><div><span class="qa-eyebrow">Resource capacity</span><h4>Capacity assessments and Director confirmation</h4><p>Full classroom, laboratory, library, teaching-staff and support-staff results for every programme, including the recorded Stage 13 review.</p></div></div>
+          <div class="c3-evidence-card__actions"><a class="btn btn-xs btn-subtle" href="{% url 'qa_case:detail' case.pk %}?tab=capacity">{% icon "arrow" 13 %} Open full capacity record</a></div>
+        </article>
+        <article class="c3-evidence-card">
+          <div class="c3-evidence-card__identity"><span class="c3-evidence-card__icon" aria-hidden="true">{% icon "file" 18 %}</span><div><span class="qa-eyebrow">Case summary</span><h4>Compiled case summary</h4><p>PDF overview of the case for decision review.</p></div></div>
+          <div class="c3-evidence-card__actions">
+            <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:summary_pdf' case.pk %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview PDF</a>
+            <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:summary_pdf' case.pk %}?download=1">{% icon "download" 13 %} Download</a>
+          </div>
+        </article>
+        {% if decision_ict_report_id and decision_ict_available %}
+        <article class="c3-evidence-card">
+          <div class="c3-evidence-card__identity"><span class="c3-evidence-card__icon" aria-hidden="true">{% icon "file" 18 %}</span><div><span class="qa-eyebrow">Institutional readiness</span><h4>ICT verification</h4><p>ICT evidence and verification responses.</p></div></div>
+          <div class="c3-evidence-card__actions">
+            <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form' case.pk decision_ict_report_id 'ict_verification' %}">{% icon "arrow" 13 %} Open full record</a>
+            <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form_pdf' case.pk decision_ict_report_id 'ict_verification' %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview PDF</a>
+            <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form_pdf' case.pk decision_ict_report_id 'ict_verification' %}?download=1">{% icon "download" 13 %} Download</a>
+          </div>
+        </article>
+        {% endif %}
+      </div>
+      <div class="c3-decision-evidence__programmes" aria-label="Programme evidence">
+        {% for d in decision_rows %}
+        <article class="c3-decision-evidence__programme">
+          <header class="c3-decision-evidence__programme-head"><span class="qa-eyebrow">Programme evidence</span><h4>{{ d.programme }}</h4><p>Institution SSQ and attachments · programme evaluation · Team Lead compilation · attendee/member reports</p></header>
+          <div class="c3-decision-evidence__documents">
+            {% if d.source_ssq %}
+            <section class="c3-evidence-document" aria-label="Institution SSQ">
+              <div><h5>Institution SSQ</h5><p>Submission snapshot and supporting attachments.</p></div>
+              <div class="c3-evidence-document__actions">
+                <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq' case.pk d.source_ssq.pk %}">{% icon "arrow" 13 %} Open full record</a>
+                <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk d.source_ssq.pk %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview PDF</a>
+                <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk d.source_ssq.pk %}?download=1">{% icon "download" 13 %} Download</a>
+              </div>
+            </section>
+            {% endif %}
+            {% if d.report %}
+            <section class="c3-evidence-document" aria-label="Team report">
+              <div><h5>Team report</h5><p>Compiled findings, attendee reports, and member contributions.</p></div>
+              <div class="c3-evidence-document__actions">
+                <a class="btn btn-xs btn-subtle" href="{% url 'qa_insp:report' d.report.pk %}">{% icon "arrow" 13 %} Open full record</a>
+            {% if d.can_preview_compiled_pdf %}
+                <a class="btn btn-xs btn-subtle" href="{% url 'qa_insp:report_pdf' d.report.pk %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview PDF</a>
+                <a class="btn btn-xs btn-subtle" href="{% url 'qa_insp:report_pdf' d.report.pk %}?download=1">{% icon "download" 13 %} Download</a>
+            {% endif %}
+              </div>
+            </section>
+            {% if decision_evaluation_available %}
+            <section class="c3-evidence-document" aria-label="Programme evaluation">
+              <div><h5>Programme evaluation</h5><p>Evaluation form and submitted responses.</p></div>
+              <div class="c3-evidence-document__actions">
+                <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form' case.pk d.report.pk 'programme_evaluation' %}">{% icon "arrow" 13 %} Open full record</a>
+                <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form_pdf' case.pk d.report.pk 'programme_evaluation' %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview PDF</a>
+                <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form_pdf' case.pk d.report.pk 'programme_evaluation' %}?download=1">{% icon "download" 13 %} Download</a>
+              </div>
+            </section>
+            {% endif %}
+            {% endif %}
+            <section class="c3-evidence-document" aria-label="Programme capacity assessment">
+              <div><h5>Capacity assessment and review</h5>
+                {% if d.capacity_review_current %}<p>Current assessments confirmed by {{ d.capacity_review.reviewed_by|who:"the Director" }} on {{ d.capacity_review.reviewed_at|date:"j M Y" }}.</p>
+                {% elif d.capacity_review %}<p>Assessment data changed after the recorded Director confirmation. Review is required.</p>
+                {% else %}<p>Director confirmation is not recorded.</p>{% endif %}
+              </div>
+              <div class="c3-evidence-document__actions"><a class="btn btn-xs btn-subtle" href="{% url 'qa_case:detail' case.pk %}?tab=capacity">{% icon "arrow" 13 %} Open capacity details</a></div>
+            </section>
+            {% if not d.source_ssq and not d.report %}<p class="c3-decision-evidence__empty">No programme documents are currently available.</p>{% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    <form class="qa-stack c3-decision-form" aria-label="Programme decision entries" method="post" action="{% url 'qa_case:decisions_save' case.pk %}" hx-post="{% url 'qa_case:decisions_save' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="stage" value="{{ decision_stage }}"><input type="hidden" name="tab" value="decisions">
+    <div class="c3-decision-form__head"><span class="qa-eyebrow">Decision record</span><h3>Programme decisions</h3><p>Confirm the outcome and any approval details for each programme. Internal notes stay with the case; listed weaknesses appear on the letter.</p></div>
+    {% for d in decision_rows %}
+      <fieldset class="qa-decision c3-decision-entry"{% if not can_decide %} disabled{% endif %}>
+        <legend class="sr-only">{% if d.programme %}Decision for {{ d.programme }}{% else %}Programme decision{% endif %}</legend>
+        <div class="c3-decision-entry__header"><div class="c3-decision-entry__title"><strong>{{ d.programme }}</strong><span class="c3-decision-entry__asked">{{ d.row.requested_streams }} stream{{ d.row.requested_streams|pluralize }} asked for</span></div></div>
+        <div class="c3-decision-entry__status">{% if d.recommendation_mode == "individual" %}{% if d.decision %}<span class="qa-chip {{ d.decision.outcome|tone }}">Panel majority: {{ d.decision.get_outcome_display }}</span>{% endif %}{% if d.vote %}<span class="qa-chip qa-tone-info">Your vote: {{ d.vote.get_outcome_display }}</span>{% else %}<span class="qa-chip qa-tone-warn">Your vote not submitted</span>{% endif %}{% elif d.decision %}<span class="qa-chip {{ d.decision.outcome|tone }}">Saved: {{ d.decision.get_outcome_display }}</span>{% else %}<span class="qa-chip qa-tone-warn">Not decided yet</span>{% endif %}</div>
+        {% if d.recommendation_mode == "individual" %}
+        <div class="c3-vote-progress" role="group" aria-label="Panel vote progress: {{ d.votes_received }} of {{ d.votes_required }} received">
+          <div><strong>{{ d.votes_received }} / {{ d.votes_required }}</strong><span>panel votes received</span></div>
+          <div><span class="c3-vote-progress__label">Submitted</span><span>{% for vote in d.panel_votes %}{{ vote.user|who }}{% if not forloop.last %}, {% endif %}{% empty %}None yet{% endfor %}</span></div>
+          <div><span class="c3-vote-progress__label">Still to vote</span><span>{% for member in d.panel_pending %}{{ member|who }}{% if not forloop.last %}, {% endif %}{% empty %}All panelists have voted{% endfor %}</span></div>
+        </div>
+        {% endif %}
+        <div class="c3-decision-entry__summary" aria-label="Assessment and previous recommendations">
+          <section class="c3-decision-summary">
+            <h4><span class="c3-decision-summary__icon">{% icon "check" 14 "2.4" %}</span>Assessment briefing</h4>
+            {% if d.report %}<p><span>Directorate recommendation · Stage 13</span><strong>{{ d.report.get_recommendation_display|default:"—" }}</strong>{% if d.report.recommendation_note %}<span class="c3-decision-summary__note">{{ d.report.recommendation_note }}</span>{% endif %}</p>{% else %}<p><span>Directorate recommendation · Stage 13</span><strong class="qa-muted">Not recorded</strong></p>{% endif %}
+            {% if d.capacity %}<p><span>Resource capacity</span><strong><span class="qa-chip {% if d.capacity.adequate %}qa-tone-success{% else %}qa-tone-danger{% endif %}">{% if d.capacity.adequate %}Adequate{% else %}Short — {{ d.capacity.short|join:", " }}{% endif %}</span><span>{{ d.capacity.supportable_streams }} stream{{ d.capacity.supportable_streams|pluralize }} supportable</span></strong><small>{{ d.capacity.assessed }}/{{ d.capacity.of }} resource areas assessed{% if d.capacity_review_current %} · Director-confirmed{% else %} · Director review required{% endif %}</small><a href="{% url 'qa_case:detail' case.pk %}?tab=capacity">View capacity record <span aria-hidden="true">→</span></a></p>{% else %}<p><span>Resource capacity</span><strong class="qa-muted">Not assessed</strong><small>Assessment is required before CQAC review.</small><a href="{% url 'qa_case:detail' case.pk %}?tab=capacity">Open Capacity tab <span aria-hidden="true">→</span></a></p>{% endif %}
+          </section>
+          <section class="c3-decision-summary c3-decision-summary--history">
+            <h4><span class="c3-decision-summary__icon">{% icon "layers" 14 "2.4" %}</span>Previous recommendations</h4>
+            {% for h in d.history %}<p><span>{{ h.get_stage_display }}{% if h.batch_key %} · Batch{% endif %}</span><strong><span class="qa-chip {{ h.outcome|tone }}">{{ h.get_outcome_display }}</span>{% if h.approval_type %}<span>{{ h.approval_type.name }} · {{ h.approved_streams }} stream{{ h.approved_streams|pluralize }}</span>{% endif %}</strong><small>Recorded by {{ h.decided_by|who }}</small></p>{% empty %}<p class="c3-decision-summary__empty">No earlier decision recorded for this programme.</p>{% endfor %}
+          </section>
+        </div>
+        <div class="c3-decision-controls-head"><span class="qa-eyebrow">Record decision</span><span>Complete the required fields for this programme.</span></div>
         <div class="qa-decision__grid">
-          <div class="qa-field"><label for="d{{ d.row.pk }}-outcome">Outcome</label>
-            <select class="input" id="d{{ d.row.pk }}-outcome" name="d{{ d.row.pk }}-outcome"><option value="approve"{% if d.start.outcome == "approve" %} selected{% endif %}>Approve</option><option value="deny"{% if d.start.outcome == "deny" %} selected{% endif %}>Deny</option><option value="return"{% if d.start.outcome == "return" %} selected{% endif %}>Return for more work</option></select></div>
+          <div class="qa-field"><label for="d{{ d.row.pk }}-outcome">Decision outcome</label>
+            <select class="input" id="d{{ d.row.pk }}-outcome" name="d{{ d.row.pk }}-outcome" aria-describedby="d{{ d.row.pk }}-outcome-help"><option value="approve"{% if d.start.outcome == "approve" %} selected{% endif %}>Approve</option><option value="deny"{% if d.start.outcome == "deny" %} selected{% endif %}>Deny</option><option value="return"{% if d.start.outcome == "return" %} selected{% endif %}>Return for more work</option></select><small id="d{{ d.row.pk }}-outcome-help" class="qa-small qa-muted">Choose the recommendation for this programme.</small></div>
           <div class="qa-field"><label for="d{{ d.row.pk }}-approval_type">Approval type</label>
             <select class="input" id="d{{ d.row.pk }}-approval_type" name="d{{ d.row.pk }}-approval_type"><option value="">—</option>{% for t in approval_types %}<option value="{{ t.pk }}"{% if d.start.approval_type and d.start.approval_type.pk == t.pk %} selected{% endif %}>{{ t.name }} ({{ t.duration_months }} months)</option>{% endfor %}</select></div>
           <div class="qa-field"><label for="d{{ d.row.pk }}-approved_streams">Approved streams</label>
@@ -24,14 +177,16 @@
           <div class="qa-field"><label for="d{{ d.row.pk }}-commencement_date">Commencement date</label>
             <input class="input" type="date" id="d{{ d.row.pk }}-commencement_date" name="d{{ d.row.pk }}-commencement_date" value="{{ d.start.commencement_date|date:'Y-m-d' }}"></div>
         </div>
-        {% if d.decision and d.decision.expiry_date %}<p class="qa-small">Expires <strong>{{ d.decision.expiry_date|date:"j M Y" }}</strong> (worked out from the approval type).</p>{% endif %}
-        <div class="qa-field"><label for="d{{ d.row.pk }}-weaknesses">Weaknesses <span class="qa-muted">(one per line; printed on the letter)</span></label>
-          <textarea class="input" id="d{{ d.row.pk }}-weaknesses" name="d{{ d.row.pk }}-weaknesses" rows="3">{{ d.weaknesses_text }}</textarea></div>
-        <div class="qa-field"><label for="d{{ d.row.pk }}-note">Note <span class="qa-muted">(internal, optional)</span></label>
-          <input class="input" id="d{{ d.row.pk }}-note" name="d{{ d.row.pk }}-note" value="{{ d.start.note }}" maxlength="2000"></div>
+        {% if d.decision and d.decision.expiry_date %}<p class="qa-small c3-decision-entry__expiry">Expires <strong>{{ d.decision.expiry_date|date:"j M Y" }}</strong> (worked out from the approval type).</p>{% endif %}
+        <div class="c3-decision-entry__notes">
+          <div class="qa-field"><label for="d{{ d.row.pk }}-weaknesses">Weaknesses <span class="qa-muted">(one per line; printed on the letter)</span></label>
+            <textarea class="input" id="d{{ d.row.pk }}-weaknesses" name="d{{ d.row.pk }}-weaknesses" rows="3">{{ d.weaknesses_text }}</textarea></div>
+          <div class="qa-field"><label for="d{{ d.row.pk }}-note">Note <span class="qa-muted">(internal, optional)</span></label>
+            <input class="input" id="d{{ d.row.pk }}-note" name="d{{ d.row.pk }}-note" value="{{ d.start.note }}" maxlength="2000"></div>
+        </div>
       </fieldset>
     {% endfor %}
-    {% if can_decide %}<div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "check" 16 %} Save decisions</button><span class="qa-small qa-muted">Then approve the stage above.</span></div>{% endif %}
+    {% if can_decide %}<div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "check" 16 %}{% if decision_stage == "cqac_recommendation" and cqac_recommendation_mode == "individual" %} Submit or update my votes{% elif decision_stage == "cqac_recommendation" %} Save shared panel recommendation{% else %} Save decisions{% endif %}</button><span class="qa-small qa-muted">{% if decision_stage == "cqac_recommendation" and cqac_recommendation_mode == "individual" %}Your votes are private to you until the panel vote is finalized.{% else %}Then approve the stage below.{% endif %}</span></div>{% endif %}
     </form>
   </div>
   {% endif %}

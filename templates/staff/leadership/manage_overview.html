@@ -1,38 +1,34 @@
 {% extends "base.html" %}
-{% load static staff_tags %}
+{% load static staff_tags qa_tags %}
 
 {% block title %}Leadership panel · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Leadership panel{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="lead-page">
 
-  <header class="lead-hero lead-hero-manage">
+  <header class="qa-hero nbte-hero">
     <div>
+      <span class="qa-eyebrow">{% icon "flag" 14 "2.2" %} User management · Leadership</span>
       <h1>Leadership panel</h1>
-      <p>Manage executive positions and tenure records — no Django admin needed.</p>
+      <p>Manage executive positions and the record of who held them.</p>
+      <div class="qa-hero__actions">
+        {% if can_manage_tenures %}
+          <a href="{% url 'staff:tenure_create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} Record tenure</a>
+        {% endif %}
+        {% if can_manage_positions %}
+          <a href="{% url 'staff:position_create' %}" class="btn btn-subtle">{% icon "plus" 16 "2.2" %} New position</a>
+        {% endif %}
+        <a href="{% url 'staff:public_leadership' %}" class="btn btn-subtle" target="_blank" rel="noopener">{% icon "external" 16 "2.2" %} View public page</a>
+      </div>
     </div>
-    <div class="lead-hero-actions">
-      <a href="{% url 'staff:public_leadership' %}" class="btn btn-ghost" target="_blank" rel="noopener">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        View public page
-      </a>
-      {% if can_manage_tenures %}
-        <a href="{% url 'staff:tenure_create' %}" class="btn btn-primary">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Record tenure
-        </a>
-      {% endif %}
-      {% if can_manage_positions %}
-        <a href="{% url 'staff:position_create' %}" class="btn btn-ghost">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New position
-        </a>
-      {% endif %}
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ positions|length }}</strong><span>Positions</span></div>
+      <div class="qa-stat qa-stat--success"><strong>{{ current|length }}</strong><span>Current holders</span></div>
     </div>
   </header>
 
@@ -68,12 +64,12 @@
               <div class="lead-manage-cell-staff">
                 <div class="lead-manage-avatar">
                   {% if t.staff.photo %}
-                    <img src="{{ t.staff.photo_thumb_url }}" alt="">
+                    <img loading="lazy" decoding="async" src="{{ t.staff.photo_thumb_url }}" alt="">
                   {% else %}
-                    {% staff_avatar_fallback t.staff %}
+                    {% if t.staff %}{% staff_avatar_fallback t.staff %}{% else %}<span class="lead-avatar-initials">{{ t.person_initials }}</span>{% endif %}
                   {% endif %}
                 </div>
-                <span>{{ t.staff.full_name }}</span>
+                <span>{{ t.person_name }}</span>
               </div>
               <div class="lead-manage-cell-date">
                 {{ t.started_on|date:"M Y" }}
@@ -148,7 +144,7 @@
             <li>
               <div class="lead-manage-list-item">
                 <div>
-                  <strong>{{ t.staff.full_name }}</strong>
+                  <strong>{{ t.person_name }}</strong>
                   <span class="muted">· {{ t.position.name }}</span>
                 </div>
                 <span class="muted">{{ t.ended_on|date:"M Y" }}</span>

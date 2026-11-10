@@ -1,0 +1,196 @@
+{% comment %}v2.1 Phase E (L3, L4, L6): group info sheet - identity, pinned, settings, members, invite link,
+leave. Rendered into the chat's info sheet (fetch) and on /messages/<id>/info/ without JS.{% endcomment %}
+{% load chat_tags %}
+<div class="msg-ginfo" data-ginfo data-thread-id="{{ thread.pk }}">
+  <section class="msg-ginfo-id">
+    {% if photo_url %}
+      <img loading="lazy" decoding="async" class="msg-ginfo-photo" src="{{ photo_url }}" alt="Group photo" width="88" height="88">
+    {% else %}
+      <span class="msg-avatar msg-ginfo-avatar msg-avatar-{{ thread_color }}" aria-hidden="true">{% if is_group %}{{ thread.display_title|slice:":2"|upper }}{% else %}{{ thread.display_title|slice:":1"|upper }}{% endif %}</span>
+    {% endif %}
+    <h3 class="msg-ginfo-title">{{ thread.display_title }}</h3>
+    {% if is_group %}
+      <p class="msg-ginfo-sub">Group · {{ counts.members }} member{{ counts.members|pluralize }}, {{ counts.admins }} admin{{ counts.admins|pluralize }}</p>
+    {% else %}
+      <p class="msg-ginfo-sub">Direct chat</p>
+    {% endif %}
+    {% if permissions.auto_managed or permissions.read_only %}
+      <p class="msg-ginfo-badges">
+        {% if permissions.auto_managed %}<span class="msg-badge" title="Members follow the team this group belongs to.">Team group · members follow the team</span>{% endif %}
+        {% if permissions.read_only %}<span class="msg-badge is-muted">Archived · read-only</span>{% endif %}
+      </p>
+    {% endif %}
+    {% if thread.description %}<p class="msg-ginfo-desc">{{ thread.description|linebreaksbr }}</p>{% endif %}
+
+    {% if permissions.can_edit_info %}
+      <details class="msg-ginfo-edit">
+        <summary class="btn btn-ghost btn-sm">Edit name, photo and description</summary>
+        <form method="post" action="{% url 'messaging:group_edit' thread.pk %}" enctype="multipart/form-data" data-ginfo-form class="msg-ginfo-form">
+          {% csrf_token %}
+          <label class="msg-field-label" for="g-title-{{ thread.pk }}">Group name</label>
+          <input id="g-title-{{ thread.pk }}" class="msg-input" name="title" maxlength="120" required value="{{ thread.subject|default:thread.display_title }}">
+          <label class="msg-field-label" for="g-desc-{{ thread.pk }}">Description</label>
+          <textarea id="g-desc-{{ thread.pk }}" class="msg-input" name="description" rows="3" maxlength="500" placeholder="What is this group for?">{{ thread.description }}</textarea>
+          <label class="msg-field-label" for="g-photo-{{ thread.pk }}">Photo (JPEG, PNG or WebP, up to 2 MB)</label>
+          <input id="g-photo-{{ thread.pk }}" class="msg-input" type="file" name="photo" accept="image/jpeg,image/png,image/webp">
+          {% if photo_url %}<label class="msg-switch"><input type="checkbox" name="remove_photo" value="1"><span>Remove the current photo</span></label>{% endif %}
+          <div class="btn-group btn-group--end"><button type="submit" class="btn btn-primary btn-sm">Save</button></div>
+        </form>
+      </details>
+    {% endif %}
+  </section>
+
+  <section class="msg-ginfo-sec" aria-labelledby="g-pins-{{ thread.pk }}">
+    <h4 id="g-pins-{{ thread.pk }}">Pinned messages <small class="muted">{{ pinned|length }} of {{ pins_limit }}</small></h4>
+    {% if pinned %}
+      <ul class="msg-ginfo-list">
+        {% for p in pinned %}
+          <li class="msg-ginfo-row">
+            <span class="msg-ginfo-row-main">
+              <a href="#m{{ p.pk }}" data-jump-pinned="{{ p.pk }}" class="msg-ginfo-pin-text">{{ p.body|default:"Attachment"|truncatechars:110 }}</a>
+              <small class="muted">{{ p.sender.get_full_name|default:"System" }} · pinned {{ p.pinned_at|chat_time }}</small>
+            </span>
+            {% if permissions.can_pin %}
+              <form method="post" action="{% url 'messaging:pin_message' thread.pk p.pk %}" data-ginfo-action data-pin-action>
+                {% csrf_token %}<input type="hidden" name="pinned" value="0">
+                <button type="submit" class="btn btn-ghost btn-sm">Unpin</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted msg-ginfo-empty">{% if permissions.can_pin %}Pin a message from its menu (⋯ → Pin). Up to {{ pins_limit }} show under the chat header.{% else %}Nothing is pinned. {% if is_group %}Group admins can pin up to {{ pins_limit }} messages.{% endif %}{% endif %}</p>
+    {% endif %}
+  </section>
+
+  {% if is_group %}
+  <section class="msg-ginfo-sec" aria-labelledby="g-settings-{{ thread.pk }}">
+    <h4 id="g-settings-{{ thread.pk }}">Group settings</h4>
+    {% if permissions.can_change_settings %}
+      <form method="post" action="{% url 'messaging:group_settings' thread.pk %}" data-ginfo-form class="msg-ginfo-settings">
+        {% csrf_token %}
+        <fieldset class="msg-seg-field">
+          <legend>Send messages</legend>
+          <div class="msg-seg">
+            <label><input type="radio" name="send_policy" value="all"{% if thread.send_policy == "all" %} checked{% endif %}><span>All members</span></label>
+            <label><input type="radio" name="send_policy" value="admins"{% if thread.send_policy == "admins" %} checked{% endif %}><span>Only admins</span></label>
+          </div>
+        </fieldset>
+        <fieldset class="msg-seg-field">
+          <legend>Edit group info</legend>
+          <div class="msg-seg">
+            <label><input type="radio" name="edit_info_policy" value="all"{% if thread.edit_info_policy == "all" %} checked{% endif %}><span>All members</span></label>
+            <label><input type="radio" name="edit_info_policy" value="admins"{% if thread.edit_info_policy == "admins" %} checked{% endif %}><span>Only admins</span></label>
+          </div>
+        </fieldset>
+        <fieldset class="msg-seg-field">
+          <legend>Add members and share links</legend>
+          <div class="msg-seg">
+            <label><input type="radio" name="add_members_policy" value="all"{% if thread.add_members_policy == "all" %} checked{% endif %}><span>All members</span></label>
+            <label><input type="radio" name="add_members_policy" value="admins"{% if thread.add_members_policy == "admins" %} checked{% endif %}><span>Only admins</span></label>
+          </div>
+        </fieldset>
+        <div class="btn-group btn-group--end"><button type="submit" class="btn btn-primary btn-sm">Save settings</button></div>
+      </form>
+    {% else %}
+      <dl class="msg-ginfo-kv">
+        <div><dt>Send messages</dt><dd>{{ thread.get_send_policy_display }}</dd></div>
+        <div><dt>Edit group info</dt><dd>{{ thread.get_edit_info_policy_display }}</dd></div>
+        <div><dt>Add members</dt><dd>{{ thread.get_add_members_policy_display }}</dd></div>
+      </dl>
+      <p class="muted msg-ginfo-empty">Only group admins can change these.</p>
+    {% endif %}
+  </section>
+
+  <section class="msg-ginfo-sec" aria-labelledby="g-members-{{ thread.pk }}">
+    <h4 id="g-members-{{ thread.pk }}">Members <small class="muted">{{ counts.members }}</small></h4>
+    {% if permissions.can_add_members %}
+      <form method="post" action="{% url 'messaging:members_add' thread.pk %}" data-ginfo-form data-member-add
+            data-candidates-url="{% url 'messaging:member_candidates' thread.pk %}" class="msg-ginfo-add">
+        {% csrf_token %}
+        <label class="msg-sheet-search">
+          <span class="msg-visually-hidden">Find staff to add</span>
+          <input type="search" placeholder="Add people: search by name or department…" autocomplete="off" data-member-search>
+        </label>
+        <div class="msg-sheet-list msg-ginfo-candidates" data-member-results aria-live="polite"></div>
+        <div class="btn-group btn-group--end"><button type="submit" class="btn btn-primary btn-sm" data-member-add-submit disabled>Add to group</button></div>
+      </form>
+    {% endif %}
+    <ul class="msg-ginfo-list msg-ginfo-members">
+      {% for p in members %}
+        <li class="msg-ginfo-row msg-member-row" data-member-row data-user-id="{{ p.user_id }}">
+          <span class="msg-avatar msg-avatar-sm msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}" aria-hidden="true">{{ p.user.first_name|slice:":1"|upper }}{{ p.user.last_name|slice:":1"|upper }}</span>
+          <span class="msg-ginfo-row-main">
+            <strong>{{ p.user.get_full_name|default:p.user.email }}{% if p.user_id == me.user_id %} <small class="muted">(you)</small>{% endif %}</strong>
+            {% if p.user.department %}<small class="muted">{{ p.user.department.name }}</small>{% endif %}
+          </span>
+          {% if p.role == "owner" %}<span class="msg-role-badge is-owner">Owner</span>{% elif p.role == "admin" %}<span class="msg-role-badge">Admin</span>{% endif %}
+          {% if permissions.can_manage_members and p.role != "owner" and p.user_id != me.user_id %}
+            <details class="msg-row-menu msg-member-menu">
+              <summary class="msg-icon-btn" aria-label="Manage {{ p.user.get_full_name|default:'member' }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+              </summary>
+              <div class="msg-chat-menu-panel" role="menu">
+                <form method="post" action="{% url 'messaging:member_role' thread.pk p.user_id %}" data-ginfo-action>
+                  {% csrf_token %}
+                  {% if p.role == "admin" %}
+                    <input type="hidden" name="role" value="member"><button type="submit" role="menuitem">Dismiss as admin</button>
+                  {% else %}
+                    <input type="hidden" name="role" value="admin"><button type="submit" role="menuitem">Make group admin</button>
+                  {% endif %}
+                </form>
+                <form method="post" action="{% url 'messaging:member_remove' thread.pk p.user_id %}" data-ginfo-action
+                      data-gconfirm="{{ p.user.get_full_name|default:'This person' }} will no longer see new messages in this group." data-gconfirm-title="Remove from the group?" data-gconfirm-action="Remove">
+                  {% csrf_token %}
+                  <button type="submit" role="menuitem" class="is-danger">Remove from group</button>
+                </form>
+              </div>
+            </details>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if permissions.can_invite %}
+  <section class="msg-ginfo-sec" aria-labelledby="g-invite-{{ thread.pk }}">
+    <h4 id="g-invite-{{ thread.pk }}">Invite link</h4>
+    <p class="muted msg-ginfo-empty">NBTE staff with the link can join until it expires. Institution accounts can't use it.</p>
+    {% for invite, url in invite_links %}
+      <div class="msg-invite" data-invite>
+        <input class="msg-input msg-invite-url" value="{{ url }}" readonly aria-label="Invite link" data-invite-url>
+        <small class="muted">Expires {{ invite.expires_at|date:"D j M, H:i" }}{% if invite.max_uses %} · {{ invite.use_count }} of {{ invite.max_uses }} used{% else %} · used {{ invite.use_count }} time{{ invite.use_count|pluralize }}{% endif %}</small>
+        <div class="btn-group">
+          <button type="button" class="btn btn-ghost btn-sm" data-invite-copy>Copy link</button>
+          <form method="post" action="{% url 'messaging:invite_revoke' thread.pk invite.pk %}" data-ginfo-action
+                data-gconfirm="The link stops working at once. People who already joined stay." data-gconfirm-title="Revoke this invite link?" data-gconfirm-action="Revoke link">
+            {% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm is-danger">Revoke</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+    <form method="post" action="{% url 'messaging:invite_create' thread.pk %}" data-ginfo-form class="msg-invite-new">
+      {% csrf_token %}
+      <label class="msg-field-label" for="g-days-{{ thread.pk }}">Link works for</label>
+      <select id="g-days-{{ thread.pk }}" name="days" class="msg-input">
+        {% for d in invite_day_choices %}<option value="{{ d }}"{% if d == invite_days_default %} selected{% endif %}>{{ d }} day{{ d|pluralize }}</option>{% endfor %}
+      </select>
+      <label class="msg-field-label" for="g-uses-{{ thread.pk }}">How many people can use it</label>
+      <input id="g-uses-{{ thread.pk }}" name="max_uses" type="number" min="1" max="500" class="msg-input" placeholder="No limit">
+      <div class="btn-group btn-group--end"><button type="submit" class="btn btn-primary btn-sm">{% if invite_links %}Create another link{% else %}Create invite link{% endif %}</button></div>
+    </form>
+  </section>
+  {% endif %}
+
+  {% if permissions.can_leave %}
+  <section class="msg-ginfo-sec msg-ginfo-danger">
+    <form method="post" action="{% url 'messaging:leave' thread.pk %}" data-ginfo-action data-leave
+          data-gconfirm="You will stop receiving messages from this group.{% if me.role == 'owner' %} Ownership passes to the longest-serving admin.{% endif %}" data-gconfirm-title="Leave {{ thread.display_title }}?" data-gconfirm-action="Leave group">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-ghost is-danger">Leave group</button>
+    </form>
+  </section>
+  {% endif %}
+  {% endif %}
+</div>

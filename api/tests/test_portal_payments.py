@@ -57,10 +57,8 @@ def test_online_payment_and_verify(portal_api, bill, inst_user, settings):
     assert r.status_code == 200
     res = r.json()
     assert res["matched"] is True and res["attempt"]["status"] == "provider_reported_paid"
-    assert res["bill"]["awaiting_confirmation"] is True and res["bill"]["receipt_needed"] is True
-    r = api.post(BASE + f"payments/{bill.pk}/receipt/", {"file": pdf_upload("rcpt.pdf")}, format="multipart")
-    assert r.status_code == 201, r.json()
-    assert r.json()["receipt_needed"] is False and r.json()["proofs"][0]["kind"] == "provider_receipt"
+    # v2.1 X21: a provider-verified payment needs no receipt upload; it goes straight to the DoF.
+    assert res["bill"]["awaiting_confirmation"] is True and res["bill"]["receipt_needed"] is False
 
 
 def test_proof_upload(portal_api, bill, inst_user):

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ prog.name }} · Facilities & equipment · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Facilities &amp; equipment{% endblock %}
+{% block content %}
+<div class="fe">
+  <a href="{% url 'facilities:index' %}">← All programmes</a>
+  <header class="fe-hero">
+    <div>
+      <span class="fe-eyebrow">{{ prog.levels|default:"ND" }} · {{ sections|length }} facilities · {{ n_items }} items</span>
+      <h1>{{ prog.name }}</h1>
+      <p>{% if prog.source %}Source curricula: {{ prog.source }}{% else %}Minimum physical facilities and equipment.{% endif %}</p>
+      <div class="fe-toc">{% for s in sections %}<a href="#sec-{{ s.pk }}" onclick="var d=document.querySelector('#sec-{{ s.pk }} details');if(d)d.open=true;">{{ s.code }}. {{ s.name|truncatechars:34 }}</a>{% endfor %}</div>
+    </div>
+    <div class="fe-hero__actions">
+      <a class="btn btn-ghost" href="{% url 'facilities:export' prog.slug %}">⬇ Export to Excel</a>
+      <a class="btn btn-ghost" href="?inactive={% if show_all %}0{% else %}1{% endif %}">{% if show_all %}Hide retired items{% else %}Show retired items{% endif %}</a>
+    </div>
+  </header>
+  {% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags }}">{{ m }}</div>{% endfor %}{% endif %}
+
+  <div class="fe-cols">
+    <section class="card fe-card">
+      <header class="fe-card__head"><h2>Maintained by</h2></header>
+      <p>{{ prog.assigned_to.get_full_name|default:"Nobody assigned yet." }}</p>
+      {% if can_manage %}<form method="post" action="{% url 'facilities:programme_update' prog.slug %}" class="fe-search">{% csrf_token %}<input type="hidden" name="verb" value="assign">
+        <select class="input" name="user"><option value="">— Nobody —</option>{% for u in staff %}<option value="{{ u.pk }}" {% if prog.assigned_to_id == u.pk %}selected{% endif %}>{{ u.get_full_name|default:u.email }}</option>{% endfor %}</select>
+        <button class="btn btn-primary btn-sm" type="submit">Save</button></form>{% endif %}
+    </section>
+    <section class="card fe-card">
+      <header class="fe-card__head"><h2>SSQ curriculum catalogue</h2><p class="muted">Publishing makes this list the yardstick for institutions' SSQ shortfall score for this programme.</p></header>
+      {% if prog.programme_master %}<p>Linked to <strong>{{ prog.programme_master.name }}</strong>{% if prog.programme_master.code %} ({{ prog.programme_master.code }}){% endif %}.</p>
+        <p class="muted">{% if prog.last_synced_to_catalogue %}Last published {{ prog.last_synced_to_catalogue|date:"j M Y, H:i" }}.{% else %}Not published yet.{% endif %}</p>
+        {% if can_manage %}<form method="post" action="{% url 'facilities:programme_update' prog.slug %}" class="fe-search">{% csrf_token %}<input type="hidden" name="verb" value="sync">
+          <select class="input" name="level"><option value="ND">Use ND quantities</option><option value="HND">Use HND quantities</option></select>
+          <button class="btn btn-primary btn-sm" type="submit">Publish to catalogue</button></form>{% endif %}
+      {% else %}
+        <p class="badge badge-warn">Not linked to the programme master list</p>
+        {% if can_manage %}<form method="post" action="{% url 'facilities:programme_update' prog.slug %}" class="fe-search">{% csrf_token %}<input type="hidden" name="verb" value="master">
+          <select class="input" name="master" required><option value="">Choose the master programme…</option>{% for m in masters %}<option value="{{ m.pk }}">{{ m.name }}{% if m.level %} ({{ m.level }}){% endif %}</option>{% endfor %}</select>
+          <button class="btn btn-primary btn-sm" type="submit">Link</button></form>{% endif %}
+      {% endif %}
+    </section>
+    <section class="card fe-card">
+      <header class="fe-card__head"><h2>Notes</h2></header>
+      {% if can_manage %}<form method="post" action="{% url 'facilities:programme_update' prog.slug %}">{% csrf_token %}<input type="hidden" name="verb" value="notes"><textarea class="input" name="notes" rows="4">{{ prog.notes }}</textarea><button class="btn btn-ghost btn-sm" type="submit" style="margin-top:.5rem">Save notes</button></form>{% else %}<p>{{ prog.notes|linebreaksbr|default:"—" }}</p>{% endif %}
+    </section>
+  </div>
+
+  {% for s in sections %}
+  <section class="card fe-card fe-sec" id="sec-{{ s.pk }}"><details {% if forloop.counter <= 2 %}open{% endif %}>
+    <summary><h3><span class="fe-code">{{ s.code }}</span> {{ s.name }} <small class="muted">{{ s.rows|length }} items</small></h3></summary>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Item</th><th class="num">ND qty</th><th class="num">HND qty</th>{% if can_manage %}<th class="num">Critical</th><th class="num">In use</th>{% endif %}</tr></thead>
+      <tbody>{% regroup s.rows by group as groups %}{% for g in groups %}{% if g.grouper %}<tr class="fe-group"><td colspan="{% if can_manage %}5{% else %}3{% endif %}">{{ g.grouper }}</td></tr>{% endif %}{% for i in g.list %}{% include "facilities/_item_row.html" %}{% endfor %}{% endfor %}</tbody>
+    </table></div>
+  </details></section>
+  {% empty %}
+  <section class="card fe-card"><p class="muted">The curriculum has no facilities list for this programme yet. Import one from Word or Excel.</p></section>
+  {% endfor %}
+  {% if can_manage %}<p class="muted">Changes save as you type (press Tab or click away). Bigger changes: export to Excel, edit, and import — you will see every change before it is saved.</p>{% endif %}
+</div>
+{% include "facilities/_styles.html" %}
+{% endblock %}

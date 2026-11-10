@@ -1,7 +1,7 @@
 """Request validation and response shapes for attendance/ (staff door)."""
 from rest_framework import serializers
 
-STATUSES = ["present", "late", "absent", "excused", "holiday", "on_leave"]
+STATUSES = ["present", "late", "absent", "excused", "holiday", "on_leave", "on_duty"]
 
 
 class LocationSerializer(serializers.Serializer):
@@ -24,6 +24,10 @@ class RecordSerializer(serializers.Serializer):
     source = serializers.CharField()
     source_display = serializers.CharField()
     detail = serializers.CharField(allow_blank=True, help_text="Why a non-present day is credited (leave, excused).")
+    status_label = serializers.CharField(help_text="Status with the leave type, e.g. 'On maternity leave' (F6).")
+    check_out_at = serializers.DateTimeField(allow_null=True)
+    check_out_source = serializers.CharField(allow_blank=True, help_text="gps | code | qr | manual | excel")
+    missing_checkout = serializers.BooleanField(help_text="Checked in, never checked out (the day still counts).")
 
 
 class TodaySerializer(serializers.Serializer):
@@ -41,6 +45,23 @@ class TodaySerializer(serializers.Serializer):
     office_code_reason = serializers.CharField(
         allow_blank=True, help_text="Why a code check-in is not possible today (empty when it is).")
     check_out_supported = serializers.BooleanField()
+    can_check_out = serializers.BooleanField(help_text="Checked in today and not yet checked out.")
+    check_out_reason = serializers.CharField(allow_blank=True)
+
+
+class CheckOutRequestSerializer(serializers.Serializer):
+    method = serializers.ChoiceField(choices=["gps", "code", "qr"])
+    latitude = serializers.FloatField(required=False)
+    longitude = serializers.FloatField(required=False)
+    accuracy = serializers.FloatField(required=False)
+    code = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    token = serializers.CharField(required=False, allow_blank=True, max_length=600,
+                                  help_text="The scanned office QR (its URL or the token part).")
+
+
+class CheckOutResultSerializer(serializers.Serializer):
+    message = serializers.CharField()
+    record = RecordSerializer()
 
 
 class CheckInRequestSerializer(serializers.Serializer):

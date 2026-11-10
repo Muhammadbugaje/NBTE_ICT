@@ -1,0 +1,22 @@
+{% load qa_tags %}
+{% include "institutions/pb/_subnav.html" %}
+<header class="qa-hero"><div>
+  <h1 data-qa-focus>Programmes not in the master list</h1>
+  <p>Institutions typed these by hand and chose a professional body. Map each one to a master-list programme, or add it to the list.</p>
+</div></header>
+<section class="qa-card" aria-label="Unmapped programmes">
+{% if rows %}
+<div class="qa-table-wrap"><table class="qa-table">
+  <thead><tr><th scope="col">Programme</th><th scope="col">Institution</th><th scope="col">Body chosen</th><th scope="col">Map to</th></tr></thead>
+  <tbody>{% for p in rows %}<tr>
+    <td><strong>{{ p }}</strong>{% if p.category %}<br><span class="qa-small qa-muted">{{ p.category.name }}</span>{% endif %}</td>
+    <td>{{ p.institution.name }}</td>
+    <td>{{ p.professional_body.acronym|default:p.professional_body.name|default:"—" }}</td>
+    <td>{% if can_manage_master %}<form class="qa-row qa-gap-sm qa-wrap" method="post" action="{% url 'qa_pb:master_map' p.pk %}" hx-post="{% url 'qa_pb:master_map' p.pk %}" hx-target="#qa-panel">{% csrf_token %}
+      <label class="sr-only" for="mm-{{ p.pk }}">Master-list programme for {{ p }}</label>
+      <select class="input qa-select" id="mm-{{ p.pk }}" name="master"><option value="new">Add “{{ p }}” to the master list</option>{% for m in masters %}<option value="{{ m.pk }}">{{ m }}</option>{% endfor %}</select>
+      <button class="btn btn-sm btn-primary" type="submit">Map</button></form>{% else %}<span class="qa-small qa-muted">NTIRD maps it</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">Every programme is on the master list</h3></div>{% endif %}
+</section>

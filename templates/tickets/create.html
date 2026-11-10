@@ -1,32 +1,28 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 
 {% block title %}{{ category.name }} · New ticket · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}New ticket — {{ category.name }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}">
 {% endblock %}
 {% block extra_js %}
-  <script src="{% static 'js/tickets.js' %}?v=3" defer></script>
+  <script src="{% static 'js/tickets.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
-<div class="tk-page">
-  <header class="tk-page-head">
+<div class="tk-page wk-page wk-page--narrow" data-qa-area="tickets">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tickets">
     <div>
-      <a href="{% url 'tickets:create' %}" class="tk-btn tk-btn-ghost mb-3">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        Back to categories
-      </a>
+      <a class="nbte-hero__back" href="{% url 'tickets:create' %}">{% icon "back" 14 "2.4" %} Ticket categories</a>
+      <span class="qa-eyebrow">{% icon "plus" 14 "2.4" %} Tickets · New ticket</span>
       <h1>{{ category.name }}</h1>
-      <p>
-        {{ category.description|default:"Fill in the details below." }}
-        &nbsp;·&nbsp; Routes to <strong>{{ category.handling_department.name }}</strong>
-        {% if category.requires_director_signoff %}
-          &nbsp;·&nbsp; <span class="tk-chip tk-chip-sla-warn tk-fs-2xs">Director sign-off required</span>
-        {% endif %}
-      </p>
+      <p>{{ category.description|default:"Fill in the details below." }}</p>
+      <div class="wk-hero-meta">
+        {% if category.handling_department %}<span class="wk-chip">{% icon "building" 13 "2.2" %} Routes to <strong>{{ category.handling_department.name }}</strong></span>{% endif %}
+        {% if category.requires_director_signoff %}<span class="wk-chip wk-chip--warn">Director sign-off required</span>{% endif %}
+      </div>
     </div>
   </header>
 

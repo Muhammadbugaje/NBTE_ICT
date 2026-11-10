@@ -16,3 +16,18 @@ class QaCoreConfig(AppConfig):
         register_value_validator("formula", validate_formula_setting)
 
         from . import signals  # noqa: F401  (side-effect import)
+
+        # v2.4 speed pass: the flow-instance per-request memos (qa_core/flow.py)
+        # live for one web request on one thread; refreshed the same moment a
+        # FlowInstance row is written.
+        from django.core.signals import request_finished, request_started
+        from django.db.models.signals import post_delete, post_save
+
+        from . import flow
+
+        from .models import FlowInstance
+
+        request_started.connect(flow.flow_memo_started, dispatch_uid="qa_flow_memo_start")
+        request_finished.connect(flow.flow_memo_finished, dispatch_uid="qa_flow_memo_finish")
+        post_save.connect(flow.flow_memo_bump, sender=FlowInstance, dispatch_uid="qa_flow_memo_instance-s")
+        post_delete.connect(flow.flow_memo_bump, sender=FlowInstance, dispatch_uid="qa_flow_memo_instance-d")

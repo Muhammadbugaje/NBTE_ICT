@@ -1,0 +1,23 @@
+{% load qa_tags %}
+{% if cancellation %}
+<section class="qa-card rf-status" aria-labelledby="rf-st-h">
+  <header class="qa-card__head"><div><h2 id="rf-st-h">{% icon "rotate" 18 %} {% if cancellation.by_nbte %}Withdrawn by NBTE{% else %}Cancelled{% endif %}</h2><p>{{ cancellation.created_at|date:"j M Y" }} · “{{ cancellation.reason }}”</p></div></header>
+  <div class="qa-card__body">
+    {% if refund %}
+      <div class="qa-bill-line"><span>Refund ({{ refund.percent|floatformat:0 }}% of {{ refund.paid_amount|naira }})</span><strong class="qa-num">{{ refund.refund_amount|naira }}</strong></div>
+      <p><span class="qa-chip {{ refund.tone }}">{% if refund.status == "awaiting_approval" %}Awaiting approval{% else %}{{ refund.get_status_display }}{% endif %}</span></p>
+      <a class="btn btn-sm {% if refund.status == 'awaiting_details' %}btn-primary{% else %}btn-subtle{% endif %}" href="{% url 'qa_portal:refunds' %}" hx-get="{% url 'qa_portal:refunds' %}" hx-target="#qa-main" hx-push-url="true">{% if refund.status == "awaiting_details" %}{% icon "bank" 14 %} Add bank details{% else %}Follow the refund{% endif %}</a>
+    {% else %}<p class="qa-small qa-muted">{% if cancellation.quote.paid and cancellation.quote.paid != "0.00" %}No refund is due under the policy at the stage it was cancelled.{% else %}Nothing had been paid, so there is nothing to refund.{% endif %}{% if cancellation.voided_obligations %} Unpaid bills were cancelled.{% endif %}</p>{% endif %}
+  </div>
+</section>
+{% elif can_cancel %}
+<details class="qa-card qa-danger-zone rf-cancel-card"><summary class="qa-card__head" style="cursor:pointer"><div><h2>Cancel {{ noun }}</h2><p>Refund now: <strong>{{ quote.percent }}%</strong>{% if quote.paid %} · {{ quote.refund_amount|naira }} of {{ quote.paid|naira }}{% endif %}</p></div></summary>
+  <div class="qa-card__body qa-stack">
+    <p class="qa-small">The work stops and unpaid bills are cancelled. {% if quote.paid %}You would get {{ quote.refund_amount|naira }} back ({{ quote.percent }}%).{% else %}Nothing has been paid, so nothing is refunded.{% endif %}</p>
+    <a class="btn btn-subtle qa-btn-reject" href="{{ cancel_url }}" hx-get="{{ cancel_url }}" hx-target="#qa-main" hx-push-url="true">{% icon "ban" 16 %} Cancel {{ noun }}…</a>
+    <a class="qa-small" href="{% url 'qa_portal:refund_policy' %}" hx-get="{% url 'qa_portal:refund_policy' %}" hx-target="#qa-main" hx-push-url="true">Refund policy</a>
+  </div>
+</details>
+{% elif ce_only %}
+<p class="qa-small qa-muted rf-ce-only">{% icon "lock" 14 %} Only the Chief Executive can cancel and request a refund.</p>
+{% endif %}

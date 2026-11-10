@@ -1,862 +1,558 @@
 {% extends "base.html" %}
 {% load ux_tags %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load tasks_tags %}
 
 {% block title %}{{ task.reference }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{{ task.reference }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=7">
+  <link rel="stylesheet" href="{% static 'css/tasks.css' %}">
 {% endblock %}
 {% block extra_js %}
-  <script src="{% static 'js/tasks.js' %}?v=8" defer></script>
+  <script src="{% static 'js/tasks.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
-<div class="tsk-detail">
+<div class="tsk-detail tsk-v21 wk-page wk-page--detail" data-qa-area="tasks">
 
-  {# ---------- Page head ---------- #}
-  <header class="tsk-page-head">
-    <div>
-      <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost mb-3">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        All tasks
-      </a>
-    </div>
-    <div class="tsk-page-head-actions">
-      {% if can_edit and not task.is_closed %}
-        <a href="{% url 'tasks:edit' task.pk %}" class="tsk-btn tsk-btn-ghost">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Edit
-        </a>
-      {% endif %}
-      {% if can_edit and not task.is_closed %}
-        <form hidden method="post" id="clone-task-form" action="{% url 'tasks:clone' task.pk %}">{% csrf_token %}</form>
-        <button type="button" class="tsk-btn tsk-btn-ghost"
-                data-tsk-confirm
-                data-form-id="clone-task-form"
-                data-modal-title="Clone this task?"
-                data-modal-message="A new draft copy will be created with the same content and assignees.">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          Clone
-        </button>
-      {% endif %}
-    </div>
-  </header>
-
-  {# ---------- Hero ---------- #}
-  <header class="tsk-hero" data-state="{{ task.state }}">
-    <div class="tsk-hero-top">
-      <span class="tsk-ref">{{ task.reference }}</span>
-      <span class="tsk-chip {{ task.state|state_chip_class }}"><span class="tsk-chip-dot"></span>{{ task.get_state_display }}</span>
-      <span class="tsk-chip {{ task.priority|priority_chip_class }}">{{ task.get_priority_display }}</span>
-      {% if task.category %}<span class="tsk-chip tsk-chip-cat">{{ task.category.name }}</span>{% endif %}
-      {% if task.is_overdue %}<span class="tsk-chip tsk-chip-overdue">Overdue</span>{% endif %}
-      {% if task.is_recurring %}<span class="tsk-chip tsk-chip-cat">Recurring · {{ task.get_recurrence_type_display }}</span>{% endif %}
-      {% if task.cloned_from %}<span class="tsk-chip tsk-chip-cat">From {{ task.cloned_from.reference }}</span>{% endif %}
-      {% if task.is_closed %}<span class="tsk-chip tsk-chip-locked">Locked</span>{% endif %}
-    </div>
-
+  {# ================= Header: status, timer, my main action (design 10) ================= #}
+  <header class="qa-hero nbte-hero wk-hero wk-hero--detail wk-hero--task" data-state="{{ task.state }}" data-qa-area="tasks">
+   <div>
+    <nav class="wk-crumbs" aria-label="Breadcrumb">
+      <a class="nbte-hero__back" href="{% url 'tasks:list' %}">{% icon "back" 14 "2.4" %} Tasks</a>
+      {% if task.parent %}<a class="nbte-hero__back" href="{% url 'tasks:detail' task.parent.pk %}">Parent: {{ task.parent.reference }}</a>{% endif %}
+    </nav>
+    <span class="qa-eyebrow">{% icon "check" 14 "2.4" %} Tasks · <span class="wk-ref">{{ task.reference }}</span></span>
     <h1>{{ task.title }}</h1>
-
-    <div class="tsk-hero-meta">
-      <span class="tsk-hero-meta-item">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <strong>{{ task.created_by.get_full_name|default:task.created_by.email }}</strong>
-      </span>
-      <span class="tsk-hero-meta-item">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        {{ task.created_at|date:"M j, Y · H:i" }}
-      </span>
-      {% if task.due_date %}
-        <span class="tsk-hero-meta-item{% if task.is_overdue %} tsk-text-danger{% endif %}">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          Due <strong>{{ task.due_date|date:"M j, Y" }}</strong>
-        </span>
-      {% endif %}
-      {% if task.estimated_hours %}
-        <span class="tsk-hero-meta-item">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          {{ task.estimated_hours }}h estimate
-        </span>
-      {% endif %}
-      {% if task.logged_hours %}
-        <span class="tsk-hero-meta-item">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          {{ task.logged_hours }}h logged
-        </span>
-      {% endif %}
-      {% if task.parent %}
-        <a href="{% url 'tasks:detail' task.parent.pk %}" class="tsk-hero-meta-item tsk-accent-text">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-          Part of {{ task.parent.reference }}
-        </a>
-      {% endif %}
-      {% if task.owner_department %}
-        <span class="tsk-hero-meta-item">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg>
-          {{ task.owner_department.name }}
-        </span>
-      {% endif %}
-    </div>
-  </header>
-
-  <div class="tsk-detail-grid">
-    {# ===================== MAIN ===================== #}
-    <div class="tsk-detail-main">
-
-      {# --- Description --- #}
-      <section class="tsk-block">
-        <h2 class="tsk-block-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          Description
-        </h2>
-        {% if task.description %}
-          <div class="tsk-body">{{ task.description|linebreaks }}</div>
-        {% else %}
-          <p class="tsk-empty-note fst-italic">No description.</p>
-        {% endif %}
-      </section>
-
-      {# --- Subtasks --- #}
-      {% if subtasks %}
-        <section class="tsk-block">
-          <h2 class="tsk-block-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-            Subtasks ({{ subtasks|length }})
-            <span class="tsk-head-aside tsk-accent-text">{{ task.progress_percent }}% complete</span>
-          </h2>
-          <ul class="tsk-subtree">
-            {% for sub in subtasks %}
-              <li class="tsk-subtree-item">
-                <div class="tsk-subtree-head">
-                  <a href="{% url 'tasks:detail' sub.pk %}" class="tsk-subtree-title">{{ sub.title }}</a>
-                  <span class="tsk-chip {{ sub.state|state_chip_class }} tsk-chip-xs">
-                    <span class="tsk-chip-dot tsk-dot-sm"></span>{{ sub.get_state_display }}
-                  </span>
-                  <span class="tsk-chip {{ sub.priority|priority_chip_class }} tsk-chip-xs">{{ sub.get_priority_display }}</span>
-                </div>
-                <div class="tsk-subtree-meta">
-                  {% for row in sub.assignee_rows.all %}
-                    <span>{{ row.user.get_full_name|default:row.user.email }}</span>
-                  {% endfor %}
-                  {% if sub.due_date %}<span>Due {{ sub.due_date|date:"M j" }}</span>{% endif %}
-                  <span class="tsk-progress tsk-subtree-progress tsk-progress-sm">
-                    <span class="tsk-progress-fill" style="width:{{ sub.progress_percent }}%"></span>
-                  </span>
-                </div>
-              </li>
-            {% endfor %}
-          </ul>
-        </section>
-      {% endif %}
-
-      {# --- Dependencies --- #}
-      {% if dependencies %}
-        <section class="tsk-block">
-          <h2 class="tsk-block-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-            Depends on
-          </h2>
-          <div class="tsk-deps">
-            {% for dep in dependencies %}
-              <div class="tsk-dep {% if dep.depends_on.state == 'completed' %}is-done{% endif %}">
-                <span class="tsk-dep-status"></span>
-                <a href="{% url 'tasks:detail' dep.depends_on.pk %}" class="tsk-dep-link">
-                  {{ dep.depends_on.reference }} — {{ dep.depends_on.title }}
-                </a>
-                {% if can_edit and not task.is_closed %}
-                  <form hidden method="post" id="del-dep-{{ dep.pk }}" action="{% url 'tasks:remove_dependency' task.pk dep.pk %}">{% csrf_token %}</form>
-                  <button type="button" class="tsk-dep-remove"
-                          data-tsk-confirm
-                          data-form-id="del-dep-{{ dep.pk }}"
-                          data-modal-title="Remove dependency?"
-                          data-modal-message="The task will no longer wait on {{ dep.depends_on.reference }}.">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
-                {% endif %}
-              </div>
-            {% endfor %}
-          </div>
-        </section>
-      {% endif %}
-
-      {# --- Assignee roster --- #}
-      {% if assignee_rows %}
-        <section class="tsk-block">
-          <h2 class="tsk-block-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Assignees ({{ assignee_rows|length }})
-          </h2>
-          <div class="tsk-roster">
-            {% for row in assignee_rows %}
-              <div class="tsk-roster-row">
-                <div class="tsk-roster-avatar {% if row.state == 'declined' %}is-declined{% elif row.state == 'done' %}is-done{% elif row.state == 'blocked' %}is-blocked{% endif %}">
-                  {{ row.user.first_name|slice:":1"|upper }}{{ row.user.last_name|slice:":1"|upper }}
-                </div>
-                <div class="tsk-roster-body">
-                  <div class="tsk-roster-name">{{ row.user.get_full_name|default:row.user.email }}</div>
-                  <div class="tsk-roster-sub">
-                    {% if row.user.role %}{{ row.user.role.name }}{% endif %}
-                    {% if row.assigned_at %}· assigned {{ row.assigned_at|timesince }} ago{% endif %}
-                  </div>
-                </div>
-                <div class="tsk-row">
-                  <span class="tsk-roster-state {{ row.state|assignee_state_class }}">{{ row.get_state_display }}</span>
-                  {% if can_assign and not task.is_closed %}
-                    <div class="tsk-roster-row-actions">
-                      <form hidden method="post" id="del-assignee-{{ row.pk }}" action="{% url 'tasks:unassign' task.pk row.user.pk %}">{% csrf_token %}</form>
-                      <button type="button" class="tsk-icon-btn" title="Remove"
-                              data-tsk-confirm
-                              data-form-id="del-assignee-{{ row.pk }}"
-                              data-modal-title="Remove assignee?"
-                              data-modal-message="Remove {{ row.user.get_full_name|default:row.user.email }} from this task?">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                      </button>
-                    </div>
-                  {% endif %}
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        </section>
-      {% endif %}
-
-      {# --- Time tracking --- #}
-      {% if running_timer or time_entries %}
-        <section class="tsk-block">
-          <h2 class="tsk-block-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            Time tracking
-          </h2>
-
-          {% if running_timer %}
-            <div class="tsk-timer mb-3">
-              <span class="tsk-timer-dot"></span>
-              <span class="tsk-timer-time" data-timer-started="{{ running_timer.started_at|date:'c' }}">00:00</span>
-              <span class="tsk-note tsk-note-subtle">Running since {{ running_timer.started_at|date:"H:i" }}</span>
-              {% if can_stop_timer %}
-                <form class="ms-auto" method="post" action="{% url 'tasks:timer_stop' task.pk %}">
-                  {% csrf_token %}
-                  <button type="submit" class="tsk-btn tsk-btn-danger tsk-btn-sm">Stop</button>
-                </form>
-              {% endif %}
-            </div>
-          {% endif %}
-
-          {% if time_entries %}
-            <div class="tsk-time-entries">
-              {% for entry in time_entries %}
-                <div class="tsk-time-entry">
-                  <div>
-                    <strong>{{ entry.user.get_full_name|default:entry.user.email }}</strong>
-                    · {{ entry.started_at|date:"M j, H:i" }}
-                    {% if entry.note %}— {{ entry.note }}{% endif %}
-                  </div>
-                  <div class="tsk-time-entry-hours">
-                    {% if entry.is_running %}running{% else %}{{ entry.hours }}h{% endif %}
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          {% endif %}
-        </section>
-      {% endif %}
-
-      {# --- Timeline --- #}
-      <section class="tsk-block">
-        <h2 class="tsk-block-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          Activity
-        </h2>
-        <div id="tsk-timeline-container"
-             hx-get="{% url 'tasks:timeline_partial' task.pk %}"
-             hx-trigger="sse:activity from:body"
-             hx-swap="innerHTML">
-          {% include "tasks/_timeline.html" %}
-        </div>
-      </section>
-
-      {# --- Pinned comments --- #}
-      {% if pinned_comments %}
-        <section class="tsk-block">
-          <h2 class="tsk-block-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>
-            Pinned
-          </h2>
-          {% for c in pinned_comments %}
-            <div class="tsk-comment is-pinned">
-              <div class="tsk-avatar tsk-avatar-pinned">{{ c.author.first_name|slice:":1"|upper }}{{ c.author.last_name|slice:":1"|upper }}</div>
-              <div class="tsk-comment-body">
-                <div class="tsk-comment-head">
-                  <span class="tsk-comment-author">{{ c.author.get_full_name|default:c.author.email }}</span>
-                  <span class="tsk-comment-time">{{ c.created_at|date:"M j · H:i" }}</span>
-                  {% if can_edit and not task.is_closed %}
-                    <div class="tsk-comment-actions">
-                      <form hidden method="post" id="unpin-{{ c.pk }}" action="{% url 'tasks:unpin_comment' task.pk c.pk %}">{% csrf_token %}</form>
-                      <button type="button" class="tsk-icon-btn" title="Unpin"
-                              data-tsk-confirm
-                              data-form-id="unpin-{{ c.pk }}"
-                              data-modal-title="Unpin comment?"
-                              data-modal-message="It will return to the regular comment thread.">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>
-                      </button>
-                    </div>
-                  {% endif %}
-                </div>
-                <div class="tsk-comment-text">{{ c.body }}</div>
-              </div>
-            </div>
-          {% endfor %}
-        </section>
-      {% endif %}
-
-      {# --- Comments --- #}
-      <section class="tsk-block">
-        <h2 class="tsk-block-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          Comments
-          {% if task.is_closed %}<span class="tsk-chip tsk-chip-cat tsk-head-aside">Read-only</span>{% endif %}
-        </h2>
-        {% if comments %}
-          {% for c in comments %}
-            {% if not c.is_pinned %}
-              <div class="tsk-comment {% if c.is_internal %}is-internal{% endif %}">
-                <div class="tsk-avatar {% if c.is_internal %}tsk-avatar-internal{% endif %}">
-                  {{ c.author.first_name|slice:":1"|upper }}{{ c.author.last_name|slice:":1"|upper }}
-                </div>
-                <div class="tsk-comment-body">
-                  <div class="tsk-comment-head">
-                    <span class="tsk-comment-author">{{ c.author.get_full_name|default:c.author.email }}</span>
-                    {% if c.is_internal %}<span class="tsk-chip tsk-chip-prio-high tsk-chip-xs">Internal</span>{% endif %}
-                    <span class="tsk-comment-time">{{ c.created_at|date:"M j · H:i" }}</span>
-                    {% if not task.is_closed %}
-                      <div class="tsk-comment-actions">
-                        {% if can_edit %}
-                          <form hidden method="post" id="pin-{{ c.pk }}" action="{% url 'tasks:pin_comment' task.pk c.pk %}">{% csrf_token %}</form>
-                          <button type="button" class="tsk-icon-btn" title="Pin"
-                                  data-tsk-confirm
-                                  data-form-id="pin-{{ c.pk }}"
-                                  data-modal-title="Pin comment?"
-                                  data-modal-message="It will show at the top of the task.">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>
-                          </button>
-                        {% endif %}
-                        {% if request.user.pk == c.author.pk or request.user.is_superuser %}
-                          <form hidden method="post" id="del-c-{{ c.pk }}" action="{% url 'tasks:delete_comment' task.pk c.pk %}">{% csrf_token %}</form>
-                          <button type="button" class="tsk-icon-btn" title="Delete"
-                                  data-tsk-confirm data-modal-danger="1"
-                                  data-form-id="del-c-{{ c.pk }}"
-                                  data-modal-title="Delete comment?"
-                                  data-modal-message="This comment will be permanently removed.">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
-                          </button>
-                        {% endif %}
-                      </div>
-                    {% endif %}
-                  </div>
-                  <div class="tsk-comment-text">{{ c.body }}</div>
-                </div>
-              </div>
-            {% endif %}
-          {% endfor %}
-        {% else %}
-          <p class="tsk-empty-note">No comments yet.</p>
-        {% endif %}
-
-        {% if not task.is_closed %}
-          <form class="tsk-divided" method="post" action="{% url 'tasks:comment' task.pk %}">
-            {% csrf_token %}
-            <textarea class="tsk-composer-input" name="body" data-autoresize
-                     
-                      placeholder="Write a comment… (Ctrl+Enter to send)"></textarea>
-            <div class="tsk-composer-actions">
-              <label class="tsk-check tsk-bare">
-                <input type="checkbox" name="is_internal"> <span class="tsk-note">Internal note</span>
-              </label>
-              {% if can_edit %}
-                <label class="tsk-check tsk-bare">
-                  <input type="checkbox" name="pinned"> <span class="tsk-note">Pin</span>
-                </label>
-              {% endif %}
-              <button type="submit" class="tsk-btn tsk-btn-primary">Post comment</button>
-            </div>
-          </form>
-        {% else %}
-          <div class="tsk-info-strip mt-5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            This task is closed. Comments are read-only.
-          </div>
-        {% endif %}
-      </section>
-
-      {# --- Attachments --- #}
-      <section class="tsk-block">
-        <h2 class="tsk-block-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          Attachments
-          {% if task.is_closed %}<span class="tsk-chip tsk-chip-cat tsk-head-aside">Read-only</span>{% endif %}
-        </h2>
-        {% if attachments %}
-          <div class="tsk-attachments">
-            {% for a in attachments %}
-              <div class="tsk-attachment">
-                <div class="tsk-attachment-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                </div>
-                <div class="min-w-0">
-                  <a href="{{ a.download_url }}" target="_blank" rel="noopener" class="tsk-attachment-name">{{ a.original_name }}</a>
-                  {% preview_button a.download_url a.original_name compact=True %}
-                  <div class="tsk-attachment-meta">
-                    {{ a.uploaded_by.get_full_name|default:a.uploaded_by.email }} · {{ a.created_at|date:"M j · H:i" }}
-                    {% if a.description %} · {{ a.description }}{% endif %}
-                  </div>
-                </div>
-                {% if not task.is_closed and request.user.pk == a.uploaded_by.pk or not task.is_closed and request.user.is_superuser %}
-                  <div>
-                    <form hidden method="post" id="del-a-{{ a.pk }}" action="{% url 'tasks:delete_attachment' task.pk a.pk %}">{% csrf_token %}</form>
-                    <button type="button" class="tsk-icon-btn" title="Delete"
-                            data-tsk-confirm data-modal-danger="1"
-                            data-form-id="del-a-{{ a.pk }}"
-                            data-modal-title="Delete attachment?"
-                            data-modal-message="'{{ a.original_name }}' will be permanently removed.">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
-                    </button>
-                  </div>
-                {% endif %}
-              </div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <p class="tsk-empty-note">No attachments yet.</p>
-        {% endif %}
-
-        {% if not task.is_closed %}
-          <form class="tsk-dashed-panel" method="post" action="{% url 'tasks:attach' task.pk %}" enctype="multipart/form-data"
-               >
-            {% csrf_token %}
-            <div>
-              <input class="tsk-note" type="file" name="file" required>
-              <input class="tsk-mini-input" type="text" name="description" placeholder="Optional description"
-                    >
-            </div>
-            <button type="submit" class="tsk-btn tsk-btn-ghost">Upload</button>
-          </form>
-        {% else %}
-          <div class="tsk-info-strip mt-4">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            This task is closed. Attachments are read-only.
-          </div>
-        {% endif %}
-      </section>
+    <div class="tsk-tmeta">
+      <span class="tsk-chip {{ task.state|state_chip_class }}"><span class="tsk-chip-dot"></span>{{ task.get_state_display }}</span>
+      <span class="tsk-chip {{ task.priority|priority_chip_class }}">{{ task.get_priority_display }} priority</span>
+      {% if task.owner_department %}<span class="tsk-chip tsk-chip-outline">{{ task.owner_department.name }}</span>{% endif %}
+      {% if task.division %}<span class="tsk-chip tsk-chip-group">Group task · {{ task.division.name }}{% if task.division_state == "pending" %} (waiting for the head){% endif %}</span>{% endif %}
+      {% if task.due_date %}<span class="tsk-chip {% if task.is_overdue %}tsk-chip-overdue{% else %}tsk-chip-due{% endif %}">Due {{ task.due_date|date:"D j M" }}</span>{% load nbte_calendar %}{% add_to_calendar "task" task %}{% endif %}
+      {% if task.category %}<span class="tsk-chip tsk-chip-cat">{{ task.category.name }}</span>{% endif %}
+      {% if task.is_recurring %}<span class="tsk-chip tsk-chip-cat">Recurring · {{ task.get_recurrence_type_display }}</span>{% endif %}
+      {% if task.linked_request %}<span class="tsk-chip tsk-chip-info">Handled as request {{ task.linked_request.reference }}</span>{% endif %}
+      {% if task.is_closed %}<span class="tsk-chip tsk-chip-locked">Read-only</span>{% endif %}
     </div>
 
-    {# ===================== SIDEBAR ===================== #}
-    <aside class="tsk-side">
-
-      {# --- Phase 4: managed by the QA system --- #}
-      {% if qa_link_url %}
-        <div class="tsk-side-card tsk-qa-panel">
-          <h3 class="tsk-side-card-title">QA workflow task</h3>
-          <p>{% if qa_link_open %}This task is one stage of a QA case. Do the work and approve or return the stage in QA — the task closes by itself. It cannot be marked done or cancelled here.{% else %}This QA stage is finished; the task was closed by the QA workflow.{% endif %}</p>
-          <a class="tsk-btn tsk-btn-primary tsk-btn-full" href="{{ qa_link_url }}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            Open in QA
-          </a>
-        </div>
-      {% endif %}
-
-      {# --- Status --- #}
-      <div class="tsk-side-card">
-        <h3 class="tsk-side-card-title">Status</h3>
-        <dl class="tsk-status-grid">
-          <dt>State</dt>
-          <dd><span class="tsk-chip {{ task.state|state_chip_class }}"><span class="tsk-chip-dot"></span>{{ task.get_state_display }}</span></dd>
-          <dt>Priority</dt>
-          <dd><span class="tsk-chip {{ task.priority|priority_chip_class }}">{{ task.get_priority_display }}</span></dd>
-          {% if task.category %}<dt>Category</dt><dd>{{ task.category.name }}</dd>{% endif %}
-          {% if task.owner_department %}<dt>Department</dt><dd>{{ task.owner_department.name }}</dd>{% endif %}
-          <dt>Created</dt><dd>{{ task.created_at|date:"M j, Y" }}</dd>
-          {% if task.due_date %}<dt>Due</dt><dd{% if task.is_overdue %} class="tsk-text-danger fw-semibold"{% endif %}>{{ task.due_date|date:"M j, Y" }}</dd>{% endif %}
-          {% if task.reviewer %}<dt>Reviewer</dt><dd>{{ task.reviewer.get_full_name|default:task.reviewer.email }}</dd>{% endif %}
-          {% if my_row %}<dt>My status</dt><dd><span class="tsk-roster-state {{ my_row.state|assignee_state_class }}">{{ my_row.get_state_display }}</span></dd>{% endif %}
-        </dl>
-        {% if task.progress_percent > 0 %}
-            <div class="tsk-progress mt-4">
-            <div class="tsk-progress-fill"
-                data-level="{% if task.progress_percent == 100 %}done{% else %}active{% endif %}"
-                style="width:{{ task.progress_percent }}%"></div>
-            </div>
-            <div class="tsk-counter">
-            {{ task.progress_percent }}% complete
-            </div>
-        {% endif %}
-      </div>
-
-      {# --- Live timer --- #}
+    <div class="tsk-tbar">
       {% if running_timer %}
-        <div class="tsk-side-card tsk-side-card-teal">
-          <h3 class="tsk-side-card-title">Your timer</h3>
-          <div class="tsk-timer tsk-bare">
-            <span class="tsk-timer-dot"></span>
-            <span class="tsk-timer-time" data-timer-started="{{ running_timer.started_at|date:'c' }}">00:00</span>
-          </div>
-          <p class="tsk-para tsk-para-subtle mt-2">
-            Started at {{ running_timer.started_at|date:"H:i" }}.
-          </p>
+        <div class="tsk-timer-pill" role="timer" aria-live="off">
+          <span class="tsk-live-dot" aria-hidden="true"></span>
+          <span class="tsk-timer-pill-label">Your timer</span>
+          <b class="tsk-timer-time" data-timer-started="{{ running_timer.started_at|date:'c' }}">00:00</b>
           {% if can_stop_timer %}
-            <form method="post" action="{% url 'tasks:timer_stop' task.pk %}">
-              {% csrf_token %}
-              <button type="submit" class="tsk-btn tsk-btn-danger tsk-btn-full">Stop timer</button>
+            <form method="post" action="{% url 'tasks:timer_stop' task.pk %}">{% csrf_token %}
+              <button type="submit" class="tsk-timer-pill-btn" aria-label="Pause timer" title="Pause timer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+              </button>
             </form>
           {% endif %}
         </div>
       {% endif %}
-
-      {# --- Review panel --- #}
-      {% if can_review %}
-        <div class="tsk-side-card tsk-side-card-highlight">
-          <h3 class="tsk-side-card-title">Review needed</h3>
-          <p class="tsk-para">
-            The assignees have marked this complete. Approve to close, or send it back with notes.
-          </p>
-          <form method="post" action="{% url 'tasks:review' task.pk %}">
-            {% csrf_token %}
-            <label class="tsk-check tsk-check-pad">
-              <input type="checkbox" name="approve" checked> <span class="text-sm">Approve</span>
-            </label>
-            <textarea class="tsk-textarea mt-2" name="notes" rows="3" placeholder="Notes for the assignees (required if rejecting)."
-                     ></textarea>
-            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">Submit review</button>
-          </form>
-        </div>
-      {% endif %}
-
-      {# --- Reopen panel (only when COMPLETED and you're allowed) --- #}
-      {% if can_reopen %}
-        <div class="tsk-side-card tsk-side-card-highlight">
-          <h3 class="tsk-side-card-title">Reopen task</h3>
-          <p class="tsk-para">
-            This task is complete and locked. Reopen it if further work is
-            needed or if something looks wrong. Everyone assigned will be
-            notified.
-          </p>
-          <form method="post" action="{% url 'tasks:reopen' task.pk %}">
-            {% csrf_token %}
-            <textarea class="tsk-textarea" name="reason" rows="3" required
-                      placeholder="Why does this need to be reopened?"
-                     ></textarea>
-            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-3">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-              Reopen task
+      <div class="btn-group">
+        {% if flags.can_accept_start %}
+          <form method="post" action="{% url 'tasks:accept_start' task.pk %}">{% csrf_token %}
+            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-lg">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+              Accept and start
             </button>
           </form>
-        </div>
-      {% endif %}
-
-      {# --- Actions (assignee-focused, state-aware) --- #}
-      {% if can_accept or can_start or can_start_timer or can_stop_timer or can_mark_done or can_ask or can_resume or can_return or can_resend or can_cancel %}
-        <div class="tsk-side-card">
-          <h3 class="tsk-side-card-title">Actions</h3>
-
-          {% if can_accept %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Accept task</span>
-              <form method="post" action="{% url 'tasks:accept' task.pk %}">
-                {% csrf_token %}
-                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full">Accept</button>
-              </form>
-            </div>
-          {% endif %}
-
-          {% if can_start %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Start work</span>
-              <form method="post" action="{% url 'tasks:start' task.pk %}">
-                {% csrf_token %}
-                <input class="tsk-textarea" type="text" name="note" placeholder="Optional — what are you starting with?"
-                      >
-                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  Start work
-                </button>
-              </form>
-            </div>
-          {% endif %}
-
-          {% if can_start_timer %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Time tracking</span>
-              <form method="post" action="{% url 'tasks:timer_start' task.pk %}">
-                {% csrf_token %}
-                <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  Start timer
-                </button>
-              </form>
-            </div>
-          {% endif %}
-
-          {% if can_stop_timer %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Timer running</span>
-              <form method="post" action="{% url 'tasks:timer_stop' task.pk %}">
-                {% csrf_token %}
-                <button type="submit" class="tsk-btn tsk-btn-danger tsk-btn-full">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-                  Stop timer
-                </button>
-              </form>
-            </div>
-          {% endif %}
-
-          {% if can_mark_done %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Mark my part done</span>
-              <form method="post" action="{% url 'tasks:mark_done' task.pk %}">
-                {% csrf_token %}
-                <textarea class="tsk-textarea" name="note" rows="2" placeholder="Optional — what did you do?"
-                         ></textarea>
-                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  Mark done
-                </button>
-                <span class="tsk-field-hint mt-1">Any running timer stops automatically.</span>
-              </form>
-            </div>
-          {% endif %}
-
-          {% if can_ask %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Ask a question</span>
-              <form method="post" action="{% url 'tasks:ask' task.pk %}">
-                {% csrf_token %}
-                <textarea class="tsk-textarea" name="note" rows="2" placeholder="What do you need clarified?"
-                         ></textarea>
-                <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full mt-2">Ask</button>
-              </form>
-            </div>
-          {% endif %}
-
-          {% if can_resume %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Resume work</span>
-              <form method="post" action="{% url 'tasks:resume' task.pk %}">
-                {% csrf_token %}
-                <input class="tsk-textarea" type="text" name="note" placeholder="Optional note"
-                      >
-                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">Resume</button>
-              </form>
-            </div>
-          {% endif %}
-
-          {% if can_return %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Return to creator</span>
-              <form method="post" action="{% url 'tasks:return' task.pk %}">
-                {% csrf_token %}
-                <textarea class="tsk-textarea" name="reason" rows="2" placeholder="Why are you returning this?"
-                         ></textarea>
-                <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full mt-2">Return</button>
-              </form>
-            </div>
-          {% endif %}
-
-          {% if can_resend %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Resend task</span>
-              <form method="post" action="{% url 'tasks:resend' task.pk %}">
-                {% csrf_token %}
-                <input class="tsk-textarea" type="text" name="note" placeholder="Optional note"
-                      >
-                <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">Resend</button>
-              </form>
-            </div>
-          {% endif %}
-
-          {% if can_cancel %}
-            <div class="tsk-action-section">
-              <span class="tsk-action-label">Cancel</span>
-              <form method="post" id="cancel-task-form" action="{% url 'tasks:cancel' task.pk %}">
-                {% csrf_token %}
-                <textarea class="tsk-textarea" name="reason" rows="2" placeholder="Optional — why are you cancelling?"
-                         ></textarea>
-              </form>
-              <button type="button" class="tsk-btn tsk-btn-danger tsk-btn-full mt-2"
-                      data-tsk-confirm data-modal-danger="1"
-                      data-form-id="cancel-task-form"
-                      data-modal-title="Cancel this task?"
-                      data-modal-message="The task will be marked cancelled. Everyone will be notified.">
-                Cancel task
-              </button>
-            </div>
-          {% endif %}
-        </div>
-      {% endif %}
-
-      {# --- Assignees picker (hidden when closed) --- #}
-      {% if can_assign and not task.is_closed %}
-        <div class="tsk-side-card">
-          <h3 class="tsk-side-card-title">Add assignees</h3>
-          <form method="post" action="{% url 'tasks:assign' task.pk %}">
-            {% csrf_token %}
-            {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_task=task %}
-            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-3">Add selected</button>
+        {% endif %}
+        {% if can_start_timer %}
+          <form method="post" action="{% url 'tasks:timer_start' task.pk %}">{% csrf_token %}
+            <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-lg">Resume timer</button>
           </form>
-          <form class="mt-3" method="post" action="{% url 'tasks:assign_to_role' task.pk %}">
-            {% csrf_token %}
-            <input class="tsk-textarea" type="text" name="role_code" placeholder="Or type a role code (auto-pick)"
-                  >
-            <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full mt-2">Auto-assign by role</button>
+        {% endif %}
+        {% if can_mark_done %}
+          <form method="post" action="{% url 'tasks:mark_done' task.pk %}">{% csrf_token %}
+            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-lg">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              Mark my part done
+            </button>
           </form>
-        </div>
+        {% endif %}
+        {% if flags.can_confirm_all %}
+          <form method="post" action="{% url 'tasks:confirm_all' task.pk %}">{% csrf_token %}
+            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-lg">Confirm everyone's work</button>
+          </form>
+        {% endif %}
+        {% if flags.can_download_report %}
+          <a class="tsk-btn tsk-btn-primary tsk-btn-lg" href="{% url 'tasks:report_pdf' task.pk %}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download report (PDF)
+          </a>
+        {% endif %}
+        {% if can_edit and not task.is_closed %}
+          <a href="{% url 'tasks:edit' task.pk %}" class="tsk-btn tsk-btn-ghost tsk-btn-lg">Edit</a>
+        {% endif %}
+        {% if can_edit and task.state == "draft" %}
+          <form method="post" action="{% url 'tasks:open' task.pk %}">{% csrf_token %}
+            <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-lg">Open and notify</button>
+          </form>
+        {% endif %}
+      </div>
+      <span class="tsk-spacer"></span>
+      {% if task.is_closed %}
+        <span class="tsk-owner-note">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          This item is closed. Download the report (PDF).
+        </span>
+      {% elif not is_creator %}
+        <span class="tsk-owner-note">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Only {{ task.created_by.get_full_name|default:task.created_by.email }} (creator) can change people, edit or cancel{% if can_edit %} — you have the override{% endif %}
+        </span>
       {% endif %}
+    </div>
+   </div>
+  </header>
 
-      {# --- Split into subtasks (hidden when closed) --- #}
-      {% if can_split and not task.is_closed %}
-        <div class="tsk-side-card">
-          <h3 class="tsk-side-card-title">Split into subtasks</h3>
-          <p class="tsk-para">
-            Break this task into smaller pieces. Each row becomes a subtask with its own assignee and due date.
-          </p>
+  {% if qa_link_url %}
+    <div class="tsk-info-strip tsk-qa-panel">
+      {% if task.qa_link.stage_code == "capacity_assessment" %}
+        {% if qa_link_open %}Complete the capacity assessments in QA. This task closes when every programme has all five current assessments; the Director confirms them separately at Stage 13.{% else %}The capacity assessments are complete or the assignment was superseded.{% endif %}
+      {% else %}
+        {% if qa_link_open %}This task is one stage of a QA case. Do the work and approve or return the stage in QA — the task closes by itself.{% else %}This QA stage is finished; the task was closed by the QA workflow.{% endif %}
+      {% endif %}
+      <a class="tsk-btn tsk-btn-primary tsk-btn-sm" href="{{ qa_link_url }}">Open in QA</a>
+    </div>
+  {% endif %}
 
-          <form method="post" action="{% url 'tasks:split' task.pk %}" data-subtask-formset>
+  <div class="tsk-tcols">
+    {# ===================== MAIN ===================== #}
+    <div class="tsk-col">
+
+      <section class="tsk-panel">
+        <div class="tsk-panel-head">
+          <span class="tsk-tile tsk-tile-blue" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+          <div><h2 class="tsk-panel-title">What needs doing</h2>
+          <div class="tsk-panel-sub">By {{ task.created_by.get_full_name|default:task.created_by.email }}, {{ task.created_at|date:"j M Y" }}{% if task.reviewer %} · reviewer {{ task.reviewer.get_full_name|default:task.reviewer.email }}{% endif %}{% if task.logged_hours %} · {{ task.logged_hours }} h logged{% endif %}</div></div>
+        </div>
+        {% if task.description %}<div class="tsk-desc">{{ task.description|linebreaks }}</div>{% else %}<p class="tsk-empty-note">No description.</p>{% endif %}
+        {% if attachments %}
+          <div class="tsk-att">
+            {% for a in attachments %}
+              <span class="tsk-att-item">
+                <a href="{{ a.download_url }}" target="_blank" rel="noopener">{{ a.original_name }}</a>
+                {% preview_button a.download_url a.original_name compact=True %}
+                {% if not task.is_closed %}{% if request.user.pk == a.uploaded_by_id or request.user.is_superuser %}
+                  <form hidden method="post" id="del-a-{{ a.pk }}" action="{% url 'tasks:delete_attachment' task.pk a.pk %}">{% csrf_token %}</form>
+                  <button type="button" class="tsk-icon-btn" title="Delete" aria-label="Delete {{ a.original_name }}"
+                          data-tsk-confirm data-modal-danger="1" data-form-id="del-a-{{ a.pk }}"
+                          data-modal-title="Delete attachment?" data-modal-message="'{{ a.original_name }}' will be permanently removed.">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                {% endif %}{% endif %}
+              </span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% if can_attach %}
+          <form class="tsk-attach-form" method="post" action="{% url 'tasks:attach' task.pk %}" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input class="tsk-file" type="file" name="file" required aria-label="File">
+            <input class="input tsk-attach-desc" type="text" name="description" placeholder="Optional description" aria-label="Description">
+            <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-sm">Upload</button>
+          </form>
+        {% endif %}
+      </section>
+
+      {# --- Subtasks: list + ONE new-subtask form until "Add another" (H8, H9, H11) --- #}
+      {% if subtasks or can_split %}
+      <section class="tsk-panel" id="subtasks">
+        <div class="tsk-panel-head">
+          <span class="tsk-tile tsk-tile-violet" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v3a6 6 0 0 0 6 6h3"/></svg></span>
+          <div><h2 class="tsk-panel-title">Subtasks</h2>
+          <div class="tsk-panel-sub">{% if subtasks %}{{ subtasks_done }} of {{ subtasks|length }} done{% else %}None yet{% endif %}</div></div>
+        </div>
+        {% for sub in subtasks %}
+          <div class="tsk-sub{% if sub.state == 'completed' %} is-done{% endif %}">
+            <span class="tsk-sub-check" aria-hidden="true">{% if sub.state == 'completed' %}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>{% endif %}</span>
+            <div class="tsk-min0">
+              <a class="tsk-sub-title" href="{% url 'tasks:detail' sub.pk %}">{{ sub.title }}</a>
+              <div class="tsk-sub-meta">
+                {% if sub.linked_request %}Request {{ sub.linked_request.reference }} · {{ sub.linked_request.receiving_department.name }}{% else %}{% for row in sub.assignee_rows.all %}{{ row.user.get_full_name|default:row.user.email }}{% if not forloop.last %}, {% endif %}{% empty %}Unassigned{% endfor %}{% endif %}{% if sub.due_date %} · due {{ sub.due_date|date:"D j M" }}{% endif %}
+              </div>
+            </div>
+            <span class="tsk-chip tsk-chip-xs {{ sub.state|state_chip_class }}">{{ sub.get_state_display }}</span>
+          </div>
+        {% endfor %}
+
+        {% if can_split %}
+          <form class="tsk-subform" method="post" action="{% url 'tasks:split' task.pk %}" data-subtask-formset>
             {% csrf_token %}
             {{ subtask_formset.management_form }}
-
+            <div class="tsk-subform-head">
+              <span class="tsk-tile tsk-tile-sm tsk-tile-brand" aria-hidden="true">+</span>
+              <b>New subtask</b>
+              <span class="tsk-spacer"></span>
+              <span class="tsk-faint">Only people below your rank in this department; pick another department to send it there as a request</span>
+            </div>
             {% for sub_form in subtask_formset %}
-              <div class="tsk-formset-row">
-                {{ sub_form.id }}
-
-                <div class="tsk-formset-field">
-                  <label>Title <span class="tsk-text-danger">*</span></label>
-                  {{ sub_form.title }}
-                  {% if sub_form.title.errors %}<span class="tsk-field-error">{{ sub_form.title.errors|join:" " }}</span>{% endif %}
-                </div>
-
-                <div class="tsk-formset-field">
-                  <label>Description</label>
-                  {{ sub_form.description }}
-                </div>
-
-                <div class="tsk-formset-pair">
-                  <div class="tsk-formset-field">
-                    <label>Assignee</label>
-                    {{ sub_form.assignee }}
-                  </div>
-                  <div class="tsk-formset-field">
-                    <label>Priority</label>
-                    {{ sub_form.priority }}
-                  </div>
-                </div>
-
-                <div class="tsk-formset-field">
-                  <label>Due date</label>
-                  {{ sub_form.due_date }}
-                </div>
-
-                <button type="button" class="tsk-formset-remove" data-remove-row title="Remove subtask" aria-label="Remove subtask">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-              </div>
+              {% include "tasks/_subtask_row.html" with f=sub_form %}
             {% endfor %}
+            <template data-empty-form>{% include "tasks/_subtask_row.html" with f=subtask_formset.empty_form removable=True %}</template>
+            <div class="btn-group btn-group--end" data-subform-actions>
+              <button type="button" class="tsk-btn tsk-btn-ghost tsk-btn-sm" data-add-subtask>+ Add another subtask</button>
+              <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Save subtask</button>
+            </div>
+          </form>
+        {% endif %}
+      </section>
+      {% endif %}
 
-            <template data-empty-form>
-              <div class="tsk-formset-row">
-                <div class="tsk-formset-field">
-                  <label>Title <span class="tsk-text-danger">*</span></label>
-                  <input type="text" name="form-__prefix__-title" maxlength="255" placeholder="Subtask title">
-                </div>
-
-                <div class="tsk-formset-field">
-                  <label>Description</label>
-                  <textarea name="form-__prefix__-description" rows="2" placeholder="Optional details"></textarea>
-                </div>
-
-                <div class="tsk-formset-pair">
-                  <div class="tsk-formset-field">
-                    <label>Assignee</label>
-                    <select name="form-__prefix__-assignee">
-                      <option value="">— unassigned —</option>
-                    </select>
-                  </div>
-                  <div class="tsk-formset-field">
-                    <label>Priority</label>
-                    <select name="form-__prefix__-priority">
-                      <option value="">Inherit</option>
-                      <option value="urgent">Urgent</option>
-                      <option value="high">High</option>
-                      <option value="normal">Normal</option>
-                      <option value="low">Low</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div class="tsk-formset-field">
-                  <label>Due date</label>
-                  <input type="date" name="form-__prefix__-due_date">
-                </div>
-
-                <button type="button" class="tsk-formset-remove" data-remove-row title="Remove subtask" aria-label="Remove subtask">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
+      {% if dependencies or can_edit and not task.is_closed %}
+        <section class="tsk-panel">
+          <div class="tsk-panel-head"><div><h2 class="tsk-panel-title">Depends on</h2></div></div>
+          <div class="tsk-deps">
+            {% for dep in dependencies %}
+              <div class="tsk-dep {% if dep.depends_on.state == 'completed' %}is-done{% endif %}">
+                <span class="tsk-dep-status"></span>
+                <a href="{% url 'tasks:detail' dep.depends_on.pk %}" class="tsk-dep-link">{{ dep.depends_on.reference }} — {{ dep.depends_on.title }}</a>
+                {% if can_edit and not task.is_closed %}
+                  <form hidden method="post" id="del-dep-{{ dep.pk }}" action="{% url 'tasks:remove_dependency' task.pk dep.pk %}">{% csrf_token %}</form>
+                  <button type="button" class="tsk-dep-remove" aria-label="Remove dependency" data-tsk-confirm data-form-id="del-dep-{{ dep.pk }}"
+                          data-modal-title="Remove dependency?" data-modal-message="The task will no longer wait on {{ dep.depends_on.reference }}.">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                {% endif %}
               </div>
-            </template>
-
-            <button type="button" class="tsk-btn tsk-btn-ghost tsk-btn-full" data-add-subtask>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Add another subtask
-            </button>
-            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-full mt-2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-              Create subtasks
-            </button>
-          </form>
-        </div>
+            {% empty %}<p class="tsk-empty-note">No dependencies.</p>{% endfor %}
+          </div>
+          {% if can_edit and not task.is_closed %}
+            <form class="tsk-inline-form" method="post" action="{% url 'tasks:add_dependency' task.pk %}">
+              {% csrf_token %}
+              {{ dependency_form.depends_on }}
+              <input class="input" type="text" name="note" placeholder="Optional note" aria-label="Note">
+              <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-sm">Add dependency</button>
+            </form>
+          {% endif %}
+        </section>
       {% endif %}
 
-      {# --- Add dependency (hidden when closed) --- #}
-      {% if can_edit and not task.is_closed %}
-        <div class="tsk-side-card">
-          <h3 class="tsk-side-card-title">Add dependency</h3>
-          <form method="post" action="{% url 'tasks:add_dependency' task.pk %}">
-            {% csrf_token %}
-            {{ dependency_form.depends_on }}
-            <input class="tsk-textarea mt-2" type="text" name="note" placeholder="Optional note"
-                  >
-            <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-full mt-2">Add dependency</button>
-          </form>
+      {# --- Updates (activity) --- #}
+      <section class="tsk-panel">
+        <div class="tsk-panel-head">
+          <span class="tsk-tile tsk-tile-mint" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <div><h2 class="tsk-panel-title">Updates</h2><div class="tsk-panel-sub">Visible to everyone on the task</div></div>
         </div>
+        <div id="tsk-timeline-container" hx-get="{% url 'tasks:timeline_partial' task.pk %}" hx-trigger="sse:activity from:body" hx-swap="innerHTML">
+          {% include "tasks/_timeline.html" %}
+        </div>
+      </section>
+
+      {# --- Comments (internal notes have their own card) --- #}
+      <section class="tsk-panel">
+        <div class="tsk-panel-head"><div><h2 class="tsk-panel-title">Comments</h2>
+          <div class="tsk-panel-sub">{% if task.is_closed %}Read-only: this task is closed{% else %}Everyone who can open the task reads these{% endif %}</div></div></div>
+        {% for c in public_comments %}
+          <div class="tsk-comment{% if c.is_pinned %} is-pinned{% endif %}">
+            <div class="tsk-avatar">{{ c.author.first_name|slice:":1"|upper }}{{ c.author.last_name|slice:":1"|upper }}</div>
+            <div class="tsk-comment-body">
+              <div class="tsk-comment-head">
+                <span class="tsk-comment-author">{{ c.author.get_full_name|default:c.author.email }}</span>
+                {% if c.is_pinned %}<span class="tsk-chip tsk-chip-xs tsk-chip-cat">Pinned</span>{% endif %}
+                <span class="tsk-comment-time">{{ c.created_at|date:"j M · H:i" }}</span>
+                {% if not task.is_closed %}
+                  <div class="tsk-comment-actions">
+                    {% if can_edit %}
+                      <form hidden method="post" id="pin-{{ c.pk }}" action="{% if c.is_pinned %}{% url 'tasks:unpin_comment' task.pk c.pk %}{% else %}{% url 'tasks:pin_comment' task.pk c.pk %}{% endif %}">{% csrf_token %}</form>
+                      <button type="button" class="tsk-icon-btn" title="{% if c.is_pinned %}Unpin{% else %}Pin{% endif %}" data-tsk-confirm data-form-id="pin-{{ c.pk }}"
+                              data-modal-title="{% if c.is_pinned %}Unpin{% else %}Pin{% endif %} comment?" data-modal-message="Pinned comments show first.">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>
+                      </button>
+                    {% endif %}
+                    {% if request.user.pk == c.author_id or request.user.is_superuser %}
+                      <form hidden method="post" id="del-c-{{ c.pk }}" action="{% url 'tasks:delete_comment' task.pk c.pk %}">{% csrf_token %}</form>
+                      <button type="button" class="tsk-icon-btn" title="Delete" data-tsk-confirm data-modal-danger="1" data-form-id="del-c-{{ c.pk }}"
+                              data-modal-title="Delete comment?" data-modal-message="This comment will be permanently removed.">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+                      </button>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              </div>
+              <div class="tsk-comment-text">{{ c.body }}</div>
+            </div>
+          </div>
+        {% empty %}
+          <p class="tsk-empty-note">No comments yet.</p>
+        {% endfor %}
+        {% if can_comment %}
+          <form class="tsk-compose" method="post" action="{% url 'tasks:comment' task.pk %}">
+            {% csrf_token %}
+            <textarea class="input tsk-compose-input" name="body" rows="1" data-autoresize placeholder="Write a comment" aria-label="Comment"></textarea>
+            {% if can_edit %}<label class="tsk-check tsk-bare"><input type="checkbox" name="pinned"> <span class="tsk-note">Pin</span></label>{% endif %}
+            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Post</button>
+          </form>
+        {% endif %}
+      </section>
+    </div>
+
+    {# ===================== SIDE ===================== #}
+    <div class="tsk-col">
+
+      {# --- People: load badges and creator-only Confirm / Return (H5, H14, H15) --- #}
+      <section class="tsk-panel" id="people">
+        <div class="tsk-panel-head">
+          <span class="tsk-tile tsk-tile-sky" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <div><h2 class="tsk-panel-title">People</h2><div class="tsk-panel-sub">Open-task load shown for each</div></div>
+        </div>
+        {% for p in people %}
+          {% with row=p.row load=p.load %}
+          <div class="tsk-who">
+            <span class="tsk-av{% if row.state == 'done' %} is-done{% endif %}">{{ row.user.first_name|slice:":1"|upper }}{{ row.user.last_name|slice:":1"|upper }}</span>
+            <div class="tsk-min0">
+              <b>{{ row.user.get_full_name|default:row.user.email }}</b>
+              <small>{% if row.user.role %}{{ row.user.role.name }}, {% endif %}{% if row.state == 'done' %}{% if row.review_state == 'confirmed' %}confirmed{% else %}marked done{% endif %}{% elif row.state == 'in_progress' %}{% if row.review_state == 'returned' %}returned, working again{% else %}working{% endif %}{% else %}{{ row.get_state_display|lower }}{% endif %}</small>
+              {% if row.review_state == 'returned' and row.review_note %}<small class="tsk-returned-note">Returned: {{ row.review_note }}</small>{% endif %}
+            </div>
+            {% if load %}<span class="tsk-load {% if load.full %}tsk-load-full{% elif load.remaining <= 2 %}tsk-load-mid{% else %}tsk-load-ok{% endif %}">{{ load.label }}</span>{% endif %}
+            {% if flags.can_confirm_parts and row.state == 'done' and row.review_state != 'confirmed' %}
+              <div class="tsk-who-acts btn-group">
+                <form method="post" action="{% url 'tasks:confirm_part' task.pk row.user_id %}">{% csrf_token %}
+                  <button type="submit" class="tsk-btn tsk-btn-soft tsk-btn-sm">Confirm</button>
+                </form>
+                <details class="tsk-return-pop">
+                  <summary class="tsk-btn tsk-btn-ghost tsk-btn-sm">Return</summary>
+                  <form method="post" action="{% url 'tasks:return_part' task.pk row.user_id %}" class="tsk-return-form">{% csrf_token %}
+                    <textarea class="input" name="reason" rows="2" required minlength="5" placeholder="What needs doing again?" aria-label="Reason"></textarea>
+                    <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Return this part</button>
+                  </form>
+                </details>
+                <span class="tsk-faint">Creator only</span>
+              </div>
+            {% elif can_assign and not task.is_closed and row.state != 'done' %}
+              <div class="tsk-who-acts btn-group">
+                <form hidden method="post" id="del-assignee-{{ row.pk }}" action="{% url 'tasks:unassign' task.pk row.user_id %}">{% csrf_token %}</form>
+                <button type="button" class="tsk-btn tsk-btn-ghost tsk-btn-sm" data-tsk-confirm data-form-id="del-assignee-{{ row.pk }}"
+                        data-modal-title="Remove from task?" data-modal-message="Remove {{ row.user.get_full_name|default:row.user.email }} from this task?">Remove</button>
+              </div>
+            {% endif %}
+          </div>
+          {% endwith %}
+        {% empty %}
+          <p class="tsk-empty-note">{% if task.division and task.division_state == 'pending' %}The division head adds the team on accepting.{% else %}Nobody assigned yet.{% endif %}</p>
+        {% endfor %}
+
+        {% if can_assign and not task.is_closed %}
+          <div class="tsk-divider"></div>
+          <form method="post" action="{% url 'tasks:assign' task.pk %}">
+            {% csrf_token %}
+            <span class="tsk-field-label">Add people</span>
+            {% include "tasks/_assignee_picker.html" with picker_name="assignees" picker_task=task %}
+            <div class="btn-group mt-2"><button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Add selected</button></div>
+          </form>
+        {% endif %}
+
+        <div class="tsk-divider"></div>
+        <div class="tsk-field">
+          <span class="tsk-field-label">Reviewer</span>
+          {% if can_edit and not task.is_closed %}
+            <form method="post" action="{% url 'tasks:set_reviewer' task.pk %}" data-autosubmit-picker>
+              {% csrf_token %}
+              {% include "tasks/_assignee_picker.html" with picker_name="reviewer" picker_single=True picker_mode="reviewer" picker_initial_ids=task.reviewer_id|default_if_none:"" picker_initial_name=reviewer_name picker_placeholder="Review it yourself" %}
+              <div class="btn-group mt-2"><button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-sm">Save reviewer</button></div>
+            </form>
+          {% else %}
+            <div class="tsk-who tsk-who-flat">
+              <span class="tsk-av">{% if task.reviewer %}{{ task.reviewer.first_name|slice:":1"|upper }}{{ task.reviewer.last_name|slice:":1"|upper }}{% else %}{{ task.created_by.first_name|slice:":1"|upper }}{{ task.created_by.last_name|slice:":1"|upper }}{% endif %}</span>
+              <div class="tsk-min0"><b>{% if task.reviewer %}{{ task.reviewer.get_full_name|default:task.reviewer.email }}{% else %}{{ task.created_by.get_full_name|default:task.created_by.email }} (creator){% endif %}</b></div>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+
+      {# --- Division (H23, H24) --- #}
+      {% if flags.can_route_division or flags.can_division_accept or flags.can_division_complete or task.division %}
+        <section class="tsk-panel" id="division">
+          <div class="tsk-panel-head">
+            <span class="tsk-tile tsk-tile-brand" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+            <div><h2 class="tsk-panel-title">Division</h2>
+            <div class="tsk-panel-sub">{% if task.division %}{{ task.division.name }} · {{ task.get_division_state_display }}{% else %}Give the whole task to a division{% endif %}</div></div>
+          </div>
+          {% if flags.can_route_division %}
+            <form method="post" action="{% url 'tasks:route_division' task.pk %}" class="tsk-stack">
+              {% csrf_token %}
+              <div class="tsk-radio-list" role="radiogroup" aria-label="Division">
+                {% for div, used, cap, ok in routing %}
+                  <label class="tsk-radio{% if not ok or not div.head %} is-disabled{% endif %}">
+                    <input type="radio" name="division" value="{{ div.pk }}" {% if not ok or not div.head %}disabled{% endif %} required>
+                    <span class="tsk-min0"><b>{{ div.name }}</b><small>Head: {% if div.head %}{{ div.head.get_full_name|default:div.head.email }}{% else %}none yet{% endif %}</small></span>
+                    <span class="tsk-load {% if not ok %}tsk-load-full{% elif cap and used|add:2 >= cap %}tsk-load-mid{% else %}tsk-load-ok{% endif %}">{% if not ok %}Full {{ used }}/{{ cap }}{% else %}{{ used }}/{{ cap }} open{% endif %}</span>
+                  </label>
+                {% empty %}<p class="tsk-empty-note">This department has no divisions yet.</p>{% endfor %}
+              </div>
+              {% if routing %}
+                <input class="input" type="text" name="note" placeholder="Optional note for the head" aria-label="Note">
+                <div class="btn-group"><button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Route to division</button></div>
+                <span class="tsk-faint">The head accepts first; everyone in the division is then added unless you add people yourself.</span>
+              {% endif %}
+            </form>
+          {% endif %}
+          {% if flags.can_division_accept %}
+            <form method="post" action="{% url 'tasks:division_accept' task.pk %}" class="tsk-stack">
+              {% csrf_token %}
+              <span class="tsk-field-label">Who works on it? (leave all unticked to add everyone)</span>
+              <div class="tsk-check-list">
+                {% for m in division_members %}
+                  <label class="tsk-check"><input type="checkbox" name="members" value="{{ m.pk }}"> <span>{{ m.get_full_name|default:m.email }}{% if m.role %} · {{ m.role.name }}{% endif %}</span></label>
+                {% endfor %}
+              </div>
+              <div class="btn-group"><button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Accept for the division</button></div>
+            </form>
+            <details class="tsk-return-pop">
+              <summary class="tsk-btn tsk-btn-ghost tsk-btn-sm">Decline</summary>
+              <form method="post" action="{% url 'tasks:division_decline' task.pk %}" class="tsk-return-form">{% csrf_token %}
+                <textarea class="input" name="reason" rows="2" required minlength="5" placeholder="Why can't the division take it?" aria-label="Reason"></textarea>
+                <button type="submit" class="tsk-btn tsk-btn-danger tsk-btn-sm">Decline</button>
+              </form>
+            </details>
+          {% endif %}
+          {% if flags.can_division_complete %}
+            <form method="post" action="{% url 'tasks:division_complete' task.pk %}" class="tsk-stack">
+              {% csrf_token %}
+              <input class="input" type="text" name="note" placeholder="Optional closing note" aria-label="Closing note">
+              <div class="btn-group"><button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Mark group task complete</button></div>
+            </form>
+          {% endif %}
+        </section>
       {% endif %}
 
-      {# --- Danger zone --- #}
-      {% if can_delete and not task.is_closed %}
-        <details class="tsk-side-card tsk-side-card-danger">
-          <summary class="tsk-danger-summary">
-            Danger zone
-          </summary>
-          <p class="tsk-para mt-3">
-            Deleting a task removes it and its history. The action is logged.
-          </p>
-          <form method="post" id="delete-task-form" action="{% url 'tasks:delete' task.pk %}">
+      {# --- Internal notes: only the people involved (H18) --- #}
+      {% if can_internal_notes %}
+        <section class="tsk-panel tsk-notes" id="internal-notes">
+          <div class="tsk-panel-head">
+            <span class="tsk-tile tsk-tile-amber" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+            <div><h2 class="tsk-panel-title">Internal notes</h2><div class="tsk-panel-sub">Not shown to anyone else</div></div>
+          </div>
+          <div class="tsk-lockbar">
+            <span class="tsk-av-stack">{% for u in involved|slice:":5" %}<span class="tsk-av tsk-av-sm">{{ u.first_name|slice:":1"|upper }}{{ u.last_name|slice:":1"|upper }}</span>{% endfor %}</span>
+            <span>Only the {{ involved|length }} {{ involved|length|pluralize:"person,people" }} on this task (and senior staff of the department) can read these</span>
+          </div>
+          {% for c in internal_comments %}
+            <div class="tsk-note-item"><div class="tsk-note-h"><b>{{ c.author.get_full_name|default:c.author.email }}</b>{{ c.created_at|timesince }} ago</div>{{ c.body }}</div>
+          {% empty %}<p class="tsk-empty-note">No internal notes.</p>{% endfor %}
+          {% if can_comment %}
+            <form class="tsk-compose" method="post" action="{% url 'tasks:comment' task.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="is_internal" value="on">
+              <input class="input" type="text" name="body" placeholder="Write a note" aria-label="Internal note" required>
+              <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-icon" aria-label="Send note">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </form>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {# --- Review / reopen --- #}
+      {% if can_review %}
+        <section class="tsk-panel tsk-panel-highlight">
+          <h2 class="tsk-panel-title">Review the work</h2>
+          <p class="tsk-para">Confirm each person above, or decide for everyone here.</p>
+          <form method="post" action="{% url 'tasks:review' task.pk %}" class="tsk-stack">
             {% csrf_token %}
-            <textarea class="tsk-textarea" name="reason" rows="2" required placeholder="Required — why is this being deleted?"
-                     ></textarea>
+            <textarea class="input" name="notes" rows="2" placeholder="Notes (required when sending back)" aria-label="Review notes"></textarea>
+            <div class="btn-group">
+              <button type="submit" name="approve" value="on" class="tsk-btn tsk-btn-primary tsk-btn-sm">Approve all</button>
+              <button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-sm">Send all back</button>
+            </div>
           </form>
-          <button type="button" class="tsk-btn tsk-btn-danger tsk-btn-full mt-2"
-                  data-tsk-confirm data-modal-danger="1"
-                  data-form-id="delete-task-form"
-                  data-modal-title="Delete this task?"
-                  data-modal-message="This action cannot be undone.">
-            Delete task
-          </button>
+        </section>
+      {% endif %}
+      {% if can_reopen %}
+        <details class="tsk-panel">
+          <summary class="tsk-panel-title tsk-summary">Reopen task</summary>
+          <form method="post" action="{% url 'tasks:reopen' task.pk %}" class="tsk-stack mt-2">
+            {% csrf_token %}
+            <textarea class="input" name="reason" rows="2" required placeholder="Why does this need to be reopened?" aria-label="Reason"></textarea>
+            <div class="btn-group"><button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Reopen</button></div>
+          </form>
         </details>
       {% endif %}
-    </aside>
+
+      {# --- More actions --- #}
+      {% if can_ask or can_resume or can_return or can_resend or can_cancel or can_delete and not task.is_closed %}
+        <details class="tsk-panel" id="more-actions">
+          <summary class="tsk-panel-title tsk-summary">More actions</summary>
+          {% if can_ask %}
+            <form method="post" action="{% url 'tasks:ask' task.pk %}" class="tsk-stack mt-3">{% csrf_token %}
+              <span class="tsk-field-label">Ask the creator a question</span>
+              <textarea class="input" name="note" rows="2" placeholder="What do you need clarified?" aria-label="Question"></textarea>
+              <div class="btn-group"><button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-sm">Ask</button></div>
+            </form>
+          {% endif %}
+          {% if can_resume %}
+            <form method="post" action="{% url 'tasks:resume' task.pk %}" class="tsk-stack mt-3">{% csrf_token %}
+              <span class="tsk-field-label">Resume work</span>
+              <input class="input" type="text" name="note" placeholder="Optional note" aria-label="Note">
+              <div class="btn-group"><button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Resume</button></div>
+            </form>
+          {% endif %}
+          {% if can_return %}
+            <form method="post" action="{% url 'tasks:return' task.pk %}" class="tsk-stack mt-3">{% csrf_token %}
+              <span class="tsk-field-label">Give the task back to the creator</span>
+              <textarea class="input" name="reason" rows="2" placeholder="Why are you returning it?" aria-label="Reason"></textarea>
+              <div class="btn-group"><button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-sm">Return</button></div>
+            </form>
+          {% endif %}
+          {% if can_resend %}
+            <form method="post" action="{% url 'tasks:resend' task.pk %}" class="tsk-stack mt-3">{% csrf_token %}
+              <span class="tsk-field-label">Resend the task</span>
+              <input class="input" type="text" name="note" placeholder="Optional note" aria-label="Note">
+              <div class="btn-group"><button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Resend</button></div>
+            </form>
+          {% endif %}
+          {% if can_edit and not task.is_closed %}
+            <form hidden method="post" id="clone-task-form" action="{% url 'tasks:clone' task.pk %}">{% csrf_token %}</form>
+            <div class="btn-group mt-3">
+              <button type="button" class="tsk-btn tsk-btn-ghost tsk-btn-sm" data-tsk-confirm data-form-id="clone-task-form"
+                      data-modal-title="Clone this task?" data-modal-message="A new draft copy will be created.">Clone</button>
+            </div>
+          {% endif %}
+          {% if can_cancel and not task.is_closed %}
+            <form method="post" id="cancel-task-form" action="{% url 'tasks:cancel' task.pk %}" class="tsk-stack mt-3">{% csrf_token %}
+              <span class="tsk-field-label">Cancel (creator only)</span>
+              <textarea class="input" name="reason" rows="2" placeholder="Optional — why?" aria-label="Reason"></textarea>
+            </form>
+            <div class="btn-group mt-2">
+              <button type="button" class="tsk-btn tsk-btn-danger tsk-btn-sm" data-tsk-confirm data-modal-danger="1" data-form-id="cancel-task-form"
+                      data-modal-title="Cancel this task?" data-modal-message="Everyone will be notified.">Cancel task</button>
+            </div>
+          {% endif %}
+          {% if can_delete and not task.is_closed %}
+            <form method="post" id="delete-task-form" action="{% url 'tasks:delete' task.pk %}" class="tsk-stack mt-3">{% csrf_token %}
+              <span class="tsk-field-label">Delete (logged)</span>
+              <textarea class="input" name="reason" rows="2" required placeholder="Required — why is this being deleted?" aria-label="Reason"></textarea>
+            </form>
+            <div class="btn-group mt-2">
+              <button type="button" class="tsk-btn tsk-btn-danger tsk-btn-sm" data-tsk-confirm data-modal-danger="1" data-form-id="delete-task-form"
+                      data-modal-title="Delete this task?" data-modal-message="This action cannot be undone.">Delete task</button>
+            </div>
+          {% endif %}
+        </details>
+      {% endif %}
+
+      {% if time_entries %}
+        <details class="tsk-panel">
+          <summary class="tsk-panel-title tsk-summary">Time log ({{ task.logged_hours }} h)</summary>
+          <div class="tsk-time-entries mt-2">
+            {% for entry in time_entries %}
+              <div class="tsk-time-entry">
+                <div><strong>{{ entry.user.get_full_name|default:entry.user.email }}</strong> · {{ entry.started_at|date:"j M, H:i" }}{% if entry.note %} — {{ entry.note }}{% endif %}</div>
+                <div class="tsk-time-entry-hours">{% if entry.is_running %}running{% else %}{{ entry.hours }} h{% endif %}</div>
+              </div>
+            {% endfor %}
+          </div>
+        </details>
+      {% endif %}
+    </div>
   </div>
 </div>
 
-{# SSE stream #}
 <div hidden data-sse-stream="{% url 'tasks:stream' task.pk %}?since={{ timeline_last_pk|default:0 }}"></div>
 {% endblock %}

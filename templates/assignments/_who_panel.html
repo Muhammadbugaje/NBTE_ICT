@@ -1,0 +1,52 @@
+{% load qa_tags %}
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'assignments:who_index' %}" hx-get="{% url 'assignments:who_index' %}" hx-target="#qa-panel" hx-push-url="true">Who can see</a>
+  <span aria-hidden="true">/</span><span aria-current="page">{{ inst.code }}</span>
+</nav>
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "eye" 14 "2.2" %} Settings · Access</span>
+    <h1 data-qa-focus>Who can see {{ inst.name }}</h1>
+    <p>Everyone who can open this institution in the QA system{% if mode != current_mode %} if the privacy mode were <strong>{{ mode }}</strong>{% endif %}, and why. This view is logged.</p>
+    <div class="qa-hero__actions btn-group">
+      <a class="btn btn-subtle{% if mode == 'assignment' %} is-active{% endif %}" href="?mode=assignment" hx-get="{% url 'assignments:who' inst.code %}?mode=assignment" hx-target="#qa-panel" hx-push-url="true">Need-to-know (assignment)</a>
+      <a class="btn btn-subtle{% if mode == 'department' %} is-active{% endif %}" href="?mode=department" hx-get="{% url 'assignments:who' inst.code %}?mode=department" hx-target="#qa-panel" hx-push-url="true">Department (old rule)</a>
+      <a class="btn btn-subtle" href="{% url 'qa_inst:detail' inst.code %}">{% icon "building" 16 %} Open institution</a>
+    </div>
+  </div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <span class="qa-stat qa-stat--success"><strong>{{ counts.full }}</strong><span>Whole journey</span></span>
+    <span class="qa-stat qa-stat--info"><strong>{{ counts.department }}</strong><span>Department part</span></span>
+    <span class="qa-stat qa-stat--warn"><strong>{{ counts.own }}</strong><span>Assigned items</span></span>
+    <span class="qa-stat"><strong>{{ counts.institution }}</strong><span>Portal accounts</span></span>
+  </div>
+</header>
+<div class="qa-cols">
+  <section class="qa-card" aria-labelledby="who-h">
+    <header class="qa-card__head"><h2 id="who-h">People and reasons</h2></header>
+    <div class="qa-card__body">
+      <ul class="qa-ntkwho" role="list">
+        {% for r in rows %}
+          <li>
+            <span class="qa-ntkwho__name">{{ r.user|who }}{% if r.user.department %} <span class="qa-muted qa-small">· {{ r.user.department.name }}</span>{% endif %}</span>
+            <span class="qa-chip {% if r.level == 'full' %}qa-tone-success{% elif r.level == 'department' %}qa-tone-info{% elif r.level == 'own' %}qa-tone-warn{% else %}qa-tone-neutral{% endif %}">{% if r.level == "full" %}Whole journey{% elif r.level == "department" %}Department part{% elif r.level == "own" %}Assigned items{% elif r.level == "institution" %}Portal{% else %}Summary{% endif %}</span>
+            <span class="qa-ntkwho__why">{% for x in r.reasons %}{{ x.reason }}{% if x.detail %} ({{ x.detail }}){% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}</span>
+          </li>
+        {% empty %}<li><span class="qa-muted">Nobody.</span></li>{% endfor %}
+      </ul>
+    </div>
+  </section>
+  <aside class="qa-stack">
+    <section class="qa-card" aria-labelledby="who-wa">
+      <header class="qa-card__head"><h2 id="who-wa">Work on this institution</h2></header>
+      <div class="qa-card__body">
+        <ul class="qa-ntkwho" role="list">
+          {% for wa in assignments %}
+            <li><span class="qa-ntkwho__name">{{ wa.get_kind_display }}</span><span class="qa-chip {{ wa.status|tone }}">{{ wa.get_status_display }}</span>
+              <span class="qa-ntkwho__why">{{ wa.assignee|who }}{% if wa.department %} · {{ wa.department.name }}{% endif %} · {{ wa.assigned_at|date:"j M Y" }}</span></li>
+          {% empty %}<li><span class="qa-muted qa-small">No assignments.</span></li>{% endfor %}
+        </ul>
+      </div>
+    </section>
+  </aside>
+</div>

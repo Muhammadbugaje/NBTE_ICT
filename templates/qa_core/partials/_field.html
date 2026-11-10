@@ -1,16 +1,16 @@
 {% load qa_tags %}{% with ft=field|field_type %}
 {% if ft == "checkboxinput" %}
-  <div class="qa-field qa-field--check{% if field.errors %} has-error{% endif %}{% if wide %} is-wide{% endif %}">
+  <div class="qa-field qa-field--check{% if field.errors %} has-error{% endif %}{% if wide %} is-wide{% endif %}" data-field-wrap>
     {{ field }}
     <div>
-      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      <label for="{{ field.id_for_label }}">{{ field.label }}{% if field|field_is_required %} <span class="qa-muted" aria-hidden="true">*</span>{% endif %}</label>
       {% if field.help_text %}<div class="qa-field__help">{{ field.help_text }}</div>{% endif %}
       {% for e in field.errors %}<div class="qa-field__error" role="alert">{{ e }}</div>{% endfor %}
     </div>
   </div>
 {% elif ft == "checkboxselectmultiple" or ft == "radioselect" %}
-  <fieldset class="qa-field{% if field.errors %} has-error{% endif %} is-wide">
-    <legend class="qa-field__label">{{ field.label }}</legend>
+  <fieldset class="qa-field{% if field.errors %} has-error{% endif %} is-wide" data-field-wrap>
+    <legend class="qa-field__label">{{ field.label }}{% if field|field_is_required %} <span class="qa-muted" aria-hidden="true">*</span>{% endif %}</legend>
     <ul class="qa-checks" role="list">
       {% for opt in field %}<li><label>{{ opt.tag }} <span>{{ opt.choice_label }}</span></label></li>{% empty %}<li class="qa-muted qa-small">Nothing to choose.</li>{% endfor %}
     </ul>
@@ -18,8 +18,8 @@
     {% for e in field.errors %}<div class="qa-field__error" role="alert">{{ e }}</div>{% endfor %}
   </fieldset>
 {% else %}
-  <div class="qa-field{% if field.errors %} has-error{% endif %}{% if wide or ft == 'textarea' %} is-wide{% endif %}">
-    <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="qa-muted" aria-hidden="true">*</span>{% endif %}</label>
+  <div class="qa-field{% if field.errors %} has-error{% endif %}{% if wide or ft == 'textarea' %} is-wide{% endif %}" data-field-wrap>
+    <label for="{{ field.id_for_label }}">{{ field.label }}{% if field|field_is_required %} <span class="qa-muted" aria-hidden="true">*</span>{% endif %}</label>
     {{ field }}
     {% if field.help_text %}<div class="qa-field__help" id="{{ field.id_for_label }}-help">{{ field.help_text }}</div>{% endif %}
     {% for e in field.errors %}<div class="qa-field__error" role="alert">{{ e }}</div>{% endfor %}

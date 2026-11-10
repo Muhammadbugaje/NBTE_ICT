@@ -96,6 +96,17 @@ LAYERS = [
     ("others", "Others", "Anything else.", ALL, "low", []),
 ]
 
+# v2.1 X9: each category's handling department (department code). Layers not
+# listed go to the institution's handling department (blank on the layer +
+# an ``institution_handling_department`` routing rule). Set on creation only.
+HANDLING_DEPARTMENTS = {
+    "payment-issues": "finance",
+    "portal-access": "ict",
+    "workflow-delays": "ict",
+    "system-bugs": "ict",
+    "permission-role": "ict",
+}
+
 # layer, stage ("" = every task stage), condition, target kind, department code, role code, order, note
 ROUTING = [
     ("payment-issues", "", "", "department", "finance", "", 10, "Payments go to Finance."),
@@ -196,6 +207,25 @@ TEMPLATES = [
     ("complaint.escalated", "email", "Escalated to you (level {{ level }}): NBTE complaint {{ reference }}",
      "{{ reference }} ({{ subject }}, {{ priority }}) breached '{{ stage }}'. {{ reason }} You are now watching it; "
      "open it in the QA system.", "To the escalation target."),
+    # v2.1 X9–X11 (Master Plan §13.21 notifications): the handling director,
+    # never the whole department; read-only watchers get a summary.
+    ("complaint.routed", "in_app", "New complaint for your department: {{ reference }}",
+     "{{ reference }} ({{ subject }}, {{ layer }}, {{ priority }}) was routed to your department. "
+     "Acknowledge it and assign one of your staff.", "To the handling department's director."),
+    ("complaint.watch", "in_app", "Complaint {{ reference }} raised by an institution you oversee",
+     "{{ reference }} ({{ subject }}, {{ layer }}) is with {{ department }}. You can follow it read-only.",
+     "To the overseeing director and the institution's ICT supervisor."),
+    ("complaint.assigned", "in_app", "Complaint {{ reference }} assigned to you",
+     "{{ reference }} ({{ subject }}) is yours to work. Submit it for review when it is ready.",
+     "To the officer the director assigned."),
+    ("complaint.review_ready", "in_app", "Ready for your review: complaint {{ reference }}",
+     "{{ who }} submitted {{ reference }} ({{ subject }}) for review: {{ summary }}",
+     "To the handling director, when the officer submits for review."),
+    ("complaint.returned", "in_app", "Complaint {{ reference }} returned to you",
+     "The director returned {{ reference }} ({{ subject }}): {{ remark }}", "To the officer."),
+    ("complaint.closed_out", "in_app", "Complaint {{ reference }}: {{ status }}",
+     "{{ reference }} ({{ subject }}) is now: {{ status }}. {{ remark }}",
+     "To the officer and watchers when a complaint is resolved, and to the director and officer when reopened."),
 ]
 RULES = [
     ("complaint.received", "role", "complaint.received", "in_app"),
@@ -207,19 +237,29 @@ RULES = [
     ("complaint.breached", "role", "complaint.breached", "in_app"),
     ("complaint.escalated", "role", "complaint.escalated", "in_app"),
     ("complaint.escalated", "role", "complaint.escalated", "email"),
+    ("complaint.routed", "role", "complaint.routed", "in_app"),
+    ("complaint.watch", "role", "complaint.watch", "in_app"),
+    ("complaint.assigned", "role", "complaint.assigned", "in_app"),
+    ("complaint.review_ready", "role", "complaint.review_ready", "in_app"),
+    ("complaint.returned", "role", "complaint.returned", "in_app"),
+    ("complaint.closed_out", "role", "complaint.closed_out", "in_app"),
 ]
 
 _HANDLE = ["complaints.view_complaint_queue", "complaints.handle_complaint", "complaints.view_internal_messages"]
 _LEAD = _HANDLE + ["complaints.escalate_complaint", "complaints.assign_complaint", "complaints.view_complaint_reports"]
 ROLE_PERMISSIONS = {
+    # v2.1 X11: close_complaint carries the director steps (assign, resolve,
+    # return, refer, close); complaints.services adds the director seat check.
     "executive-secretary": ["complaints.view_complaint_reports", "complaints.view_internal_messages",
-                            "complaints.escalate_complaint"],
-    "director": _LEAD,
+                            "complaints.escalate_complaint", "complaints.close_complaint",
+                            "complaints.handle_complaint"],
+    "super-admin": ["complaints.close_complaint", "complaints.handle_complaint"],
+    "director": _LEAD + ["complaints.close_complaint"],
     "deputy-director": _LEAD,
     "division-head": _HANDLE + ["complaints.escalate_complaint", "complaints.assign_complaint"],
     "officer": _HANDLE,
     "qa-finance-officer": _HANDLE,
-    "qa-finance-director": _LEAD,
+    "seat:finance": _LEAD,
     "ict-qa-monitor": ["complaints.view_complaint_reports", "complaints.view_internal_messages"],
     "qa-settings-admin": ["complaints.manage_knowledge_base"],
 }

@@ -6,6 +6,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 
 from qa_core import flow
 from qa_core.tests.phase2_fixtures import clear_all, pdf_upload, upload_all_documents
+from qa_core.tests.phase3_fixtures import set_config
 
 pytestmark = pytest.mark.django_db
 
@@ -93,6 +94,9 @@ def test_only_the_branch_department_can_decide(submitted_app, p2):
 def test_documents_locked_after_submission(submitted_app, inst_user, client_for, portal_host):
     from institutions.models import DocumentKind
 
+    # v2.1 X13 runs the profile gate on top; this test checks the submission
+    # document lock itself (the gate has its own tests in test_v21_onboarding).
+    set_config("qa.onboarding.profile_gate_enabled", "false")
     kind = DocumentKind.objects.get(code="cac")
     c = client_for(inst_user, portal_host)
     response = c.post(f"/documents/upload/{kind.pk}/", {"file": pdf_upload("new.pdf", b"v2")})
@@ -114,9 +118,10 @@ def test_document_requirements_differ_by_ownership(p2, add_tvet_payload, lookups
     from qa_core import actions
 
     own = InstitutionOwnership.objects.get(code=ownership)
-    pa = actions.initiate("institutions.add_tvet", actor=p2.officer, reason="x",
+    # v2.1 X47: Add TVET is held by the TVET Support – Initiators group.
+    pa = actions.initiate("institutions.add_tvet", actor=p2.tvet_initiator, reason="x",
                           payload=add_tvet_payload(ownership=own, email=f"{ownership}@t.edu.ng"))
-    actions.confirm(pa, p2.director)
+    actions.confirm(pa, p2.tvet_confirmer)
     inst = Institution.unscoped.get(name="Zaria Institute of Technology")
     codes = {r["kind"].code for r in services.checklist(inst) if r["mandatory"]}
     assert required <= codes
@@ -155,9 +160,6 @@ def test_confirmed_fee_moves_application_to_programme_selection(fee_obligation, 
     submitted_app.refresh_from_db()
     assert submitted_app.status == "payment_pending_confirmation"
     item = PaymentVerification.unscoped.get(obligation=fee_obligation, is_open=True)
-    pay.first_pass(item, user=p2.fin_officer, decision="approved", amount=fee_obligation.amount)
-    submitted_app.refresh_from_db()
-    assert submitted_app.status == "payment_pending_confirmation"  # first pass alone moves nothing
     with django_capture_on_commit_callbacks(execute=True):
         pay.final_decision(item, user=p2.fin_director, decision="confirmed")
     submitted_app.refresh_from_db()

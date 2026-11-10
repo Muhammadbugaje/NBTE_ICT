@@ -106,7 +106,23 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
     )
 
     def save_model(self, request, obj, form, change):
+        # Phase B (B.7): a role change goes through org.assign_role, so the
+        # grade, "only what you hold" and department rules apply here too.
+        # A superuser's change is recorded as an audited override.
+        role_changed = "role" in getattr(form, "changed_data", ())
+        wanted_role = obj.role if role_changed else None
+        if role_changed:
+            obj.role = User.objects.get(pk=obj.pk).role if change else None
         super().save_model(request, obj, form, change)
+        if role_changed:
+            import org
+            target = User.objects.get(pk=obj.pk)
+            try:
+                org.assign_role(request.user, target, wanted_role, "Changed in Django admin",
+                                override=request.user.is_superuser, source="admin")
+            except org.OrgRuleError as exc:
+                messages.error(request, f"Role not changed: {exc}")
+            obj.role = User.objects.get(pk=obj.pk).role
         pw = getattr(obj, "_temporary_password", None)
         if not change and pw:
             # Capture pk + email in the closure so the callback doesn't hold a

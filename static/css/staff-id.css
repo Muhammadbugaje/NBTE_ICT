@@ -1,0 +1,135 @@
+/* ==========================================================================
+   Staff ID card (B.11, design 12). Everything is in em, so one font-size
+   scales a card: on screen any size; in print 1em = 4mm makes the CR80 card
+   exactly 85.6 x 54 mm (21.4em x 13.5em) and 1em = 3.857mm the 54 x 86 mm
+   badge (14em x 22.3em). The card is a printed object with the Board's
+   colours, kept in card-scoped custom properties.
+   ========================================================================== */
+.idc, .badge-card {
+  --idc-g1: #0f4a2a; --idc-g2: #1f6b3e; --idc-g3: #2f8f57;
+  --idc-gold: #c9961a; --idc-gold-2: #f0c75e;
+  --idc-ink: #10221a; --idc-ink-2: #445349; --idc-ink-3: #6b7a70; --idc-paper: #fff;
+  position: relative; overflow: hidden; flex: none;
+  background: var(--idc-paper); color: var(--idc-ink);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.idc { width: 21.4em; height: 13.5em; border-radius: .9em;
+  box-shadow: 0 1.2em 2.4em -1em rgba(6, 40, 26, .45), 0 0 0 1px rgba(16, 34, 26, .08); }
+.idc__band { position: absolute; inset: 0 0 auto 0; height: 3.6em;
+  background: radial-gradient(120% 160% at 100% 0%, rgba(240, 199, 94, .55), transparent 55%),
+              linear-gradient(120deg, var(--idc-g1), var(--idc-g2) 60%, var(--idc-g3)); }
+.idc__band::after { content: ""; position: absolute; inset: 0;
+  background-image: linear-gradient(rgba(255,255,255,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.07) 1px, transparent 1px);
+  background-size: .9em .9em; }
+.idc__hd { position: absolute; left: .8em; top: .55em; right: .8em; display: flex; align-items: center; gap: .55em; color: #fff; z-index: 1; }
+.idc__crest { width: 2.4em; height: 2.4em; flex: none; border-radius: 50%; background: #fff; display: grid; place-items: center; overflow: hidden; }
+.idc__crest img { width: 86%; height: 86%; object-fit: contain; }
+.idc__hd b { font-family: var(--font-display, inherit); font-size: .78em; font-weight: 800; line-height: 1.1; display: block; }
+.idc__hd span { font-size: .52em; opacity: .85; font-weight: 600; }
+.idc__kind { margin-left: auto; font-size: .5em !important; font-weight: 800 !important; opacity: 1 !important; padding: .35em .8em; border-radius: 1em;
+  background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3); white-space: nowrap; }
+.idc__wm { position: absolute; right: -2em; bottom: -2.4em; width: 9.5em; opacity: .07; filter: grayscale(1); }
+.idc__wm img { width: 100%; }
+.idc__ph { position: absolute; left: .8em; top: 4.3em; width: 5.4em; height: 6.8em; border-radius: .55em; overflow: hidden;
+  box-shadow: 0 0 0 .14em #fff, 0 0 0 .2em rgba(201, 150, 26, .8); background: #e9efe9; }
+.idc__ph img, .idc__ph svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.idc__ph .tag { position: absolute; left: 0; right: 0; bottom: 0; font-size: .42em; font-weight: 800; text-align: center;
+  background: rgba(16, 34, 26, .7); color: #fff; padding: .35em 0; }
+.idc__info { position: absolute; left: 7.1em; right: .8em; top: 4.2em; }
+.idc__n { font-family: var(--font-display, inherit); font-size: 1.12em; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; overflow-wrap: anywhere; }
+.idc__r { font-size: .6em; font-weight: 700; color: var(--idc-g2); margin-top: .25em; }
+.idc__kv { display: grid; grid-template-columns: auto 1fr; gap: .18em .6em; margin-top: .55em; font-size: .52em; }
+.idc__kv span:nth-child(odd) { color: var(--idc-ink-3); font-weight: 600; }
+.idc__kv span:nth-child(even) { font-weight: 750; }
+.idc__foot { position: absolute; left: 0; right: 0; bottom: 0; height: .5em; background: linear-gradient(90deg, var(--idc-gold), var(--idc-gold-2), var(--idc-gold)); }
+.idc__no { position: absolute; right: .8em; bottom: .85em; font-family: var(--font-mono, monospace); font-size: .5em; font-weight: 700; color: var(--idc-ink-2); }
+/* back */
+.idc--back .idc__band { height: 1.2em; }
+.idc__qr { position: absolute; left: .9em; top: 2em; width: 6.2em; height: 6.2em; padding: .3em; border-radius: .5em; background: #fff; box-shadow: 0 0 0 1px rgba(16,34,26,.12); }
+.idc__qr svg { width: 100%; height: 100%; display: block; }
+.idc__qr.is-stale { opacity: .35; }
+.idc__back { position: absolute; left: 7.9em; right: .9em; top: 2em; color: var(--idc-ink-2); }
+.idc__back > div { font-size: .52em; line-height: 1.45; }
+.idc__back b { color: var(--idc-ink); font-size: 1.12em; display: block; margin-bottom: .3em; }
+.idc__sig { position: absolute; left: 7.9em; right: .9em; bottom: 1.3em; border-top: 1px solid #b5bac1; padding-top: .15em; color: var(--idc-ink-3); font-weight: 650; }
+.idc__sig span { font-size: .46em; }
+.idc__valid { position: absolute; left: .9em; bottom: 1.1em; font-weight: 750; color: var(--idc-g2); }
+.idc__valid span { font-size: .48em; }
+/* placeholder portrait */
+.idc-ph__bg { fill: #dfe9e1; }
+.idc-ph__skin { fill: #7a4b2e; }
+.idc-ph__hair { fill: #2a1a10; }
+.idc-ph__wrap { fill: #8a3f8f; }
+.idc-ph__cloth { fill: #3f7d5a; }
+.idc-ph--male .idc-ph__bg { fill: #dde6ee; }
+.idc-ph--male .idc-ph__cloth { fill: #2f5f7a; }
+.idc-ph--neutral .idc-ph__skin, .idc-ph--neutral .idc-ph__cloth { fill: #9aa7a0; }
+/* portrait badge */
+.badge-card { width: 14em; height: 22.3em; border-radius: 1em; box-shadow: 0 1.2em 2.4em -1em rgba(6,40,26,.45), 0 0 0 1px rgba(16,34,26,.08); }
+.badge-card .idc__band { height: 7.2em; }
+.badge-card__slot { position: absolute; left: 50%; top: .7em; width: 3.2em; height: .62em; margin-left: -1.6em; border-radius: .4em; background: #eef2ef; box-shadow: inset 0 1px 2px rgba(0,0,0,.35); z-index: 2; }
+.badge-card__hd { position: absolute; top: 1.8em; left: .6em; right: .6em; text-align: center; color: #fff; z-index: 1; }
+.badge-card__hd b { font-family: var(--font-display, inherit); font-weight: 800; font-size: .7em; display: block; }
+.badge-card__hd span { font-size: .48em; font-weight: 650; opacity: .85; }
+.badge-card__ph { position: absolute; left: 50%; top: 4.4em; width: 6.4em; height: 6.4em; margin-left: -3.2em; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 .22em #fff, 0 0 0 .32em var(--idc-gold); background: #e9efe9; }
+.badge-card__ph img, .badge-card__ph svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.badge-card__b { position: absolute; left: .8em; right: .8em; top: 11.6em; text-align: center; }
+.badge-card__b .idc__n { font-size: 1.1em; }
+.badge-card__dept { margin-top: .7em; display: inline-block; font-size: .5em; font-weight: 800; padding: .5em 1em; border-radius: 1em; background: #e2f1e7; color: #134326; }
+.badge-card__qr { position: absolute; left: 50%; bottom: 1.3em; width: 4.4em; height: 4.4em; margin-left: -2.2em; }
+.badge-card__qr svg { width: 100%; height: 100%; }
+
+/* ==========================================================================
+   The Staff ID page (design 12)
+   ========================================================================== */
+.sid-page { max-width: 1180px; margin: 0 auto; padding-bottom: 40px; min-width: 0; }
+.sid-stage { display: grid; grid-template-columns: auto auto; justify-content: center; gap: 26px; align-items: start;
+  padding: 30px; border-radius: var(--radius-2xl, 24px); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-xs); position: relative; overflow: hidden; }
+.sid-stage::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(60% 80% at 30% 50%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 70%); }
+.sid-stage > * { position: relative; min-width: 0; }
+.sid-stage .idc { font-size: 20px; }
+.sid-cap { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-muted); margin-top: 12px; text-align: center; }
+.sid-note { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; color: var(--text-muted); font-size: var(--fs-sm); }
+.sid-formats-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin: 26px 0 0; }
+.sid-formats-head h2 { margin: 0; font-size: var(--fs-xl); }
+.sid-formats { display: grid; grid-template-columns: 1fr 1.25fr .9fr; gap: 18px; margin-top: 18px; }
+.sid-fmt { display: grid; grid-template-rows: auto 1fr auto; gap: 14px; padding: 18px; border-radius: var(--radius-xl, 20px); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-xs); min-width: 0; }
+.sid-fmt__title { font-weight: var(--fw-bold); }
+.sid-fmt__sub { font-size: var(--fs-sm); color: var(--text-muted); }
+.sid-fmt__view { display: grid; place-items: center; border-radius: var(--radius-lg); background: var(--surface-2); border: 1px solid var(--border); padding: 22px 12px 40px; min-height: 300px; position: relative; overflow: hidden; }
+.sid-fmt__dims { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; font-family: var(--font-mono, monospace); font-size: var(--fs-xs); color: var(--text-muted); }
+.sid-fmt .btn { width: 100%; justify-content: center; }
+.sid-a4 { width: 200px; aspect-ratio: 210 / 297; background: #fff; border-radius: 4px; box-shadow: 0 10px 30px -10px rgba(0,0,0,.35);
+  padding: 13px 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; align-content: start; }
+.sid-a4 .idc { font-size: 3.9px; border-radius: 3px; box-shadow: 0 0 0 .5px rgba(0,0,0,.15); }
+.sid-a4 .idc .idc__ph { box-shadow: none; }
+@media (max-width: 980px) {
+  .sid-stage { grid-template-columns: minmax(0, 1fr); justify-items: center; padding: 20px 10px; }
+  .sid-stage .idc { font-size: min(15.4px, calc((100vw - 64px) / 21.4)); }
+  .sid-formats { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ==========================================================================
+   Print page (staff:id_print): @page size comes from the style registry.
+   ========================================================================== */
+.sid-print-body { margin: 0; background: #e5e7e5; }
+.sid-print-toolbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 16px;
+  background: #fff; border-bottom: 1px solid #d0d5d1; font: 14px/1.4 system-ui, sans-serif; color: #10221a; }
+.sid-print-toolbar button { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid #1f6b3e; background: #1f6b3e; color: #fff; cursor: pointer; }
+.sid-sheet { background: #fff; margin: 16px auto; box-shadow: 0 4px 18px rgba(0,0,0,.18); position: relative; overflow: hidden; }
+.sid-sheet--single .idc, .sid-sheet--single .badge-card { border-radius: 0; box-shadow: none; }
+.sid-sheet--grid { display: grid; align-content: start; }
+.sid-sheet--grid .idc { box-shadow: none; border-radius: 3mm; outline: .2mm dashed #c9d0cb; }
+@media print {
+  .sid-print-body { background: #fff; }
+  .sid-print-toolbar { display: none; }
+  .sid-sheet { margin: 0; box-shadow: none; break-after: page; page-break-after: always; }
+  .sid-sheet:last-child { break-after: auto; page-break-after: auto; }
+}
+.sid-thumb--cr80 .idc { font-size: 11px; }
+.sid-thumb--badge .badge-card { font-size: 12px; }
+@media (max-width: 640px) {
+  .sid-thumb--cr80 .idc { font-size: min(11px, calc((100vw - 90px) / 21.4)); }
+}

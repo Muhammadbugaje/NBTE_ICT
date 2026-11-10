@@ -5,24 +5,16 @@
 
 {% block mm_page_class %}mm-page-narrow{% endblock %}
 
+{% block mm_hero %}
+{% url 'messaging_manage:rule_list' as back_url %}
+{% if mode == "create" %}
+  {% include "partials/hero.html" with icon="flag" eyebrow="Memo routing · Rules" title="New routing rule" lede="Decide when a route applies to a memo." back_url=back_url back_label="All rules" %}
+{% else %}
+  {% include "partials/hero.html" with icon="flag" eyebrow="Memo routing · Rules" title=rule.name lede="Edit when this rule applies and which route it uses." back_url=back_url back_label="All rules" %}
+{% endif %}
+{% endblock %}
+
 {% block mm_content %}
-
-<a href="{% url 'messaging_manage:rule_list' %}" class="mm-back">
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-  All rules
-</a>
-
-<header class="mm-hero">
-  <div class="mm-hero-inner">
-    <div class="mm-hero-icon">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>
-    </div>
-    <div>
-      <h1>{% if mode == "create" %}New routing rule{% else %}Edit rule{% endif %}</h1>
-      <p>Decide when a route applies.</p>
-    </div>
-  </div>
-</header>
 
 <section class="mm-card">
   <div class="mm-card-body">

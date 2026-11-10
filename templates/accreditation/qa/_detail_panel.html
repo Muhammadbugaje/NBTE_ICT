@@ -1,4 +1,4 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load refund_tags %}
 <nav class="qa-crumbs" aria-label="Breadcrumb">
   <a href="{% url 'qa_req:list' %}" hx-get="{% url 'qa_req:list' %}" hx-target="#qa-panel" hx-push-url="true">QA requests</a>
   <span aria-hidden="true">/</span><span aria-current="page">{{ req.reference }}</span>
@@ -86,13 +86,14 @@
       <div><dt>Cycle</dt><dd>{{ req.cycle.name|default:"—" }}</dd></div>
       <div><dt>Started by</dt><dd>{{ req.created_by|who }}</dd></div>
       <div><dt>Submitted</dt><dd>{{ req.submitted_at|date:"j M Y"|default:"Not yet" }}</dd></div>
-      <div><dt>Can be cancelled</dt><dd>{% if is_cancellable %}Yes (R-25){% else %}No — past the fee stage{% endif %}</dd></div>
+      <div><dt>Programmes can change</dt><dd>{% if is_cancellable %}Yes (R-25){% else %}No — past the fee stage{% endif %}</dd></div>
     </dl></div></section>
     {% if obligations %}
     <section class="qa-card" aria-labelledby="req-fee"><header class="qa-card__head"><h2 id="req-fee">QA fee</h2></header>
       <ul class="qa-rowlist" role="list">{% for ob in obligations %}<li><a class="qa-rowlink" href="{% url 'qa_fin:obligation' ob.pk %}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ ob.amount|naira }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ ob.reference }}</span></span></span><span class="qa-rowlink__side"><span class="qa-chip {{ ob.status|tone }}">{{ ob.stage }}</span></span></a></li>{% endfor %}</ul>
     </section>
     {% endif %}
+    {% nbte_withdraw_card req %}{# v2.5 #}
     <section class="qa-card" aria-labelledby="req-hist"><header class="qa-card__head"><h2 id="req-hist">History</h2></header>
       <div class="qa-card__body"><ol class="qa-tl">{% for e in history %}<li><span class="qa-tl__text"><strong>{{ e.action_code|humanize_code }}</strong> → {{ e.to_stage|humanize_code }}{% if e.remark %} — “{{ e.remark }}”{% endif %}</span><small>{{ e.actor|who:"System" }} · <time datetime="{{ e.at|date:'c' }}">{{ e.at|date:"j M Y, H:i" }}</time></small></li>{% empty %}<li class="qa-muted">No events.</li>{% endfor %}</ol></div>
     </section>

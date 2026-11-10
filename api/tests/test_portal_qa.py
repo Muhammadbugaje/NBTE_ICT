@@ -41,11 +41,17 @@ def test_create_list_detail_submit(portal_api, p3):
                  format="json")
     assert r.status_code == 201, r.json()
     req = r.json()
-    assert req["status"] == "draft" and req["can_submit"] is True and len(req["programmes"]) == 2
+    # v2.1 X12: the administrator (Head of ICT) prepares; only the Chief Executive submits.
+    assert req["status"] == "draft" and req["can_submit"] is False and len(req["programmes"]) == 2
     assert req["estimate"]["total"] is not None and req["next_step"]
     listing = api.get(BASE + "qa-requests/").json()
     assert listing["count"] == 1 and listing["results"][0]["reference"] == req["reference"]
     assert api.get(BASE + "qa-requests/?show=closed").json()["count"] == 0
+    assert api.post(BASE + f"qa-requests/{req['id']}/submit/", {"declaration": True},
+                    format="json").status_code == 403
+    from rest_framework.test import APIClient
+
+    api = bearer(APIClient(HTTP_HOST=portal_api.defaults["HTTP_HOST"]), p3.ceo)
     r = api.post(BASE + f"qa-requests/{req['id']}/submit/", {}, format="json")
     assert r.status_code == 400
     r = api.post(BASE + f"qa-requests/{req['id']}/submit/", {"declaration": True}, format="json")
@@ -109,7 +115,8 @@ def test_ssq_read_partial_save_and_submit(portal_api, portal_host, p3, paid_requ
     assert body["status"] == "draft" and body["sections"] and body["problems"]
     keys = {f["key"]: f for s in body["sections"] for f in s["fields"]}
     assert "enrolment" in keys and keys["enrolment"]["type"] == "table" and keys["enrolment"]["columns"]
-    assert body["can_submit"] is True and body["can_send_department"] is True
+    # v2.1 X12: the administrator edits; only the Chief Executive submits.
+    assert body["can_submit"] is False and body["can_send_department"] is True
     # partial save: one good value, one bad, an unknown key ignored
     r = api.patch(url, {"answers": {"head_of_department": "Dr. A. Musa", "running_streams": "abc",
                                     "no_such_field": "x"}}, format="json")
@@ -120,7 +127,8 @@ def test_ssq_read_partial_save_and_submit(portal_api, portal_host, p3, paid_requ
     assert ssq.data["head_of_department"] == "Dr. A. Musa"
     r = api.patch(url, {"answers": "nope"}, format="json")
     assert r.status_code == 400 and "answers" in err(r)["fields"]
-    # submit needs every required answer, then the declaration
+    # submit needs every required answer, then the declaration (Chief Executive)
+    api = bearer(APIClient(HTTP_HOST=portal_host), p3.ceo)
     r = api.post(url + "submit/", {"declaration": True}, format="json")
     assert r.status_code == 400
     complete_ssq(ssq, p3.admin)

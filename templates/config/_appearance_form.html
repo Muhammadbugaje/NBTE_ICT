@@ -1,0 +1,186 @@
+{# v2.1 A9: Settings → Appearance form. Swapped in place by HTMX after a save. #}
+<form id="apx-form" class="apx-form" method="post" action="{% url 'config:appearance' %}"
+      hx-post="{% url 'config:appearance' %}" hx-target="#apx-form" hx-swap="outerHTML" data-apx-form novalidate>
+  {% csrf_token %}
+
+  {% if saved or pending %}
+    <div class="apx-saved m-popin" role="status">
+      <svg class="m-check" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" pathLength="1"/><path d="M20 33l8 8 16-17" pathLength="1"/></svg>
+      <div>
+        <strong>{% if saved %}Appearance saved.{% endif %}{% if pending %} {{ pending|length }} change{{ pending|length|pluralize }} wait for a second officer.{% endif %}</strong>
+        <span>Both portals use it on the next page load. Reload this page to see it here.</span>
+      </div>
+    </div>
+  {% endif %}
+  {% if errors %}
+    <div class="apx-errors" role="alert">
+      <strong>Not saved.</strong>
+      <ul>{% for k, v in errors.items %}<li>{{ v }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  {# ---------------- Colour palette ---------------- #}
+  <section class="apx-card" aria-labelledby="apx-palette-title">
+    <header class="apx-card__head">
+      <span class="apx-icon apx-icon--pink" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.56-2.5 5.56-5.55C21.97 6.01 17.46 2 12 2z"/></svg></span>
+      <div>
+        <h2 id="apx-palette-title">Colour palette</h2>
+        <p>Buttons, highlights, rings, charts and the crest watermark. Module tiles in the sidebar keep their own colours.</p>
+      </div>
+    </header>
+    <div class="apx-swatches" role="radiogroup" aria-labelledby="apx-palette-title">
+      {% for code, name, note, c1, c2 in palettes %}
+        <label class="apx-swatch">
+          <input type="radio" name="palette" value="{{ code }}"{% if site.palette == code %} checked{% endif %}>
+          <span class="apx-swatch__chip" style="--sw-a: {{ c1 }}; --sw-b: {{ c2 }};" aria-hidden="true"><i></i></span>
+          <span class="apx-swatch__name">{{ name }}</span>
+          <span class="apx-swatch__note">{{ note }}</span>
+        </label>
+      {% endfor %}
+      <div class="apx-swatch apx-swatch--custom{% if errors.custom_primary or errors.custom_accent %} has-error{% endif %}">
+        <label class="apx-swatch__pick">
+          <input type="radio" name="palette" value="custom"{% if site.palette == "custom" %} checked{% endif %}>
+          <span class="apx-swatch__chip" style="--sw-a: {{ site.custom_primary }}; --sw-b: {{ site.custom_accent }};" aria-hidden="true" data-apx-custom-chip><i></i></span>
+          <span class="apx-swatch__name">Custom pair</span>
+          <span class="apx-swatch__note">Checked for contrast before saving</span>
+        </label>
+        <div class="apx-pair">
+          <label class="apx-colour">
+            <span class="sr-only">Primary colour</span>
+            <input type="color" value="{{ site.custom_primary }}" data-apx-colour-for="custom_primary" aria-label="Pick the primary colour">
+            <input class="input" type="text" name="custom_primary" value="{{ site.custom_primary }}" maxlength="7" spellcheck="false"
+                   autocomplete="off" aria-describedby="apx-contrast" inputmode="text" data-apx-hex>
+          </label>
+          <label class="apx-colour">
+            <span class="sr-only">Accent colour</span>
+            <input type="color" value="{{ site.custom_accent }}" data-apx-colour-for="custom_accent" aria-label="Pick the accent colour">
+            <input class="input" type="text" name="custom_accent" value="{{ site.custom_accent }}" maxlength="7" spellcheck="false"
+                   autocomplete="off" data-apx-hex>
+          </label>
+        </div>
+        <p class="apx-contrast" id="apx-contrast" data-apx-contrast data-min="{{ min_contrast }}">
+          {% if contrast %}White text on the primary: <strong>{{ contrast }}:1</strong> {% if contrast >= min_contrast %}(passes){% else %}(needs {{ min_contrast }}:1){% endif %}{% endif %}
+        </p>
+        {% if errors.custom_primary %}<p class="apx-field-error">{{ errors.custom_primary }}</p>{% endif %}
+        {% if errors.custom_accent %}<p class="apx-field-error">{{ errors.custom_accent }}</p>{% endif %}
+      </div>
+    </div>
+  </section>
+
+  {# ---------------- Light or dark ---------------- #}
+  <section class="apx-card" aria-labelledby="apx-theme-title">
+    <header class="apx-card__head">
+      <span class="apx-icon apx-icon--indigo" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
+      <div>
+        <h2 id="apx-theme-title">Light or dark</h2>
+        <p>The starting point for people who have not chosen. Each person can still switch with the sun and moon button.</p>
+      </div>
+    </header>
+    <div class="apx-seg" role="radiogroup" aria-labelledby="apx-theme-title">
+      {% for code, name in themes %}
+        <label class="apx-seg__opt">
+          <input type="radio" name="theme" value="{{ code }}"{% if site.theme == code %} checked{% endif %}>
+          <span>
+            {% if code == "light" %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            {% elif code == "dark" %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            {% else %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>{% endif %}
+            {{ name }}
+          </span>
+        </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---------------- Hero scene ---------------- #}
+  <section class="apx-card" aria-labelledby="apx-scene-title">
+    <header class="apx-card__head">
+      <span class="apx-icon apx-icon--teal" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
+      <div>
+        <h2 id="apx-scene-title">Hero scene</h2>
+        <p>Behind the homepage headline and the dashboard greeting. Light CSS, no 3D, fine on any phone.</p>
+      </div>
+    </header>
+    <div class="apx-scenes" role="radiogroup" aria-labelledby="apx-scene-title">
+      {% for code, name, note in scenes %}
+        <label class="apx-scene">
+          <input type="radio" name="scene" value="{{ code }}"{% if site.scene == code %} checked{% endif %}>
+          <span class="apx-scene__view" aria-hidden="true">{% if code != "none" %}<span class="scene scene--{{ code }}"><i></i><i></i><i></i><i></i></span>{% else %}<span class="apx-scene__plain"></span>{% endif %}</span>
+          <span class="apx-scene__name">{{ name }}</span>
+          <span class="apx-scene__note">{{ note }}</span>
+        </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---------------- Motion ---------------- #}
+  <section class="apx-card" aria-labelledby="apx-motion-title">
+    <header class="apx-card__head">
+      <span class="apx-icon apx-icon--orange" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+      <div>
+        <h2 id="apx-motion-title">Motion</h2>
+        <p>Devices set to reduce motion always get the still version. Staff can ask for less motion on their profile, never more.</p>
+      </div>
+    </header>
+    <div class="apx-options" role="radiogroup" aria-labelledby="apx-motion-title">
+      {% for code, name, note in motion_levels %}
+        <label class="apx-option">
+          <input type="radio" name="motion" value="{{ code }}"{% if site.motion == code %} checked{% endif %}>
+          <span class="apx-option__name">
+            {% if code == "full" %}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            {% elif code == "reduced" %}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            {% else %}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"/></svg>{% endif %}
+            {{ name }}
+          </span>
+          <span class="apx-option__note">{{ note }}</span>
+        </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---------------- Density and who can choose ---------------- #}
+  <section class="apx-card" aria-labelledby="apx-more-title">
+    <header class="apx-card__head">
+      <span class="apx-icon apx-icon--slate" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+      <div><h2 id="apx-more-title">Density and who can choose</h2></div>
+    </header>
+    <div class="apx-rows">
+      <label class="apx-row">
+        <span class="apx-row__text"><strong>Compact layout</strong><span>Tighter rows and cards for big tables</span></span>
+        <input type="hidden" name="density" value="comfortable">
+        <input class="apx-switch" type="checkbox" name="density" value="compact" role="switch"{% if site.density == "compact" %} checked{% endif %}>
+      </label>
+      <label class="apx-row">
+        <span class="apx-row__text"><strong>Space between buttons</strong><span>Pixels between buttons that sit side by side (6–24). Buttons never touch.</span></span>
+        <span class="apx-gap"><input class="input" type="number" name="button_gap" min="6" max="24" step="1" value="{{ site.button_gap }}" inputmode="numeric"> px</span>
+      </label>
+      {% if errors.button_gap %}<p class="apx-field-error">{{ errors.button_gap }}</p>{% endif %}
+      <label class="apx-row">
+        <span class="apx-row__text"><strong>Let staff pick their own palette</strong><span>Saved to their profile, follows them to any device</span></span>
+        <input class="apx-switch" type="checkbox" name="allow_user_palette" value="true" role="switch"{% if site.allow_user_palette %} checked{% endif %}>
+      </label>
+      <label class="apx-row">
+        <span class="apx-row__text"><strong>Use the same palette on the institution portal</strong><span>Off keeps institutions on NBTE Green</span></span>
+        <input class="apx-switch" type="checkbox" name="portal_follows_site" value="true" role="switch"{% if site.portal_follows_site %} checked{% endif %}>
+      </label>
+      <label class="apx-row">
+        <span class="apx-row__text"><strong>Load the old stylesheets</strong><span>Fallback for one release if a page looks wrong after the stylesheet consolidation</span></span>
+        <input class="apx-switch" type="checkbox" name="legacy_css" value="true" role="switch"{% if site.legacy_css %} checked{% endif %}>
+      </label>
+    </div>
+  </section>
+
+  {# ---------------- Save bar ---------------- #}
+  <div class="apx-savebar">
+    <p class="apx-savebar__note">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+      Every change is logged in the audit trail.
+    </p>
+    <div class="btn-group btn-group--end">
+      <button type="reset" class="btn btn-ghost" data-apx-reset>Reset</button>
+      <button type="submit" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+        Save appearance
+      </button>
+    </div>
+  </div>
+</form>

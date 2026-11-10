@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Designations{% endblock %}
+{% block page_title %}Settings · Designations{% endblock %}
+{% block extra_css %}{% include "org/_head.html" %}{% endblock %}
+{% block content %}
+<div class="org-page">
+  <a class="org-back" href="{% url 'org:grade_levels' %}">← Grade levels</a>
+  <header class="org-hero">
+    <span class="org-eyebrow">Settings · HR</span>
+    <h1>Designations</h1>
+    <p>Map each post title to the role suggested on appointment or promotion, and to the grade range it covers.</p>
+  </header>
+  <form class="org-toolbar" hx-get="{% url 'org:designations' %}" hx-target="#org-desig" hx-push-url="true" hx-trigger="submit, input changed delay:400ms from:input[name=q], change from:select" method="get">
+    <label class="org-field">Search<input class="org-input" type="search" name="q" value="{{ q }}" placeholder="Name or spelling"></label>
+    <label class="org-field">Role mapped<select class="org-input" name="mapped"><option value="">All</option><option value="no" {% if mapped == "no" %}selected{% endif %}>Not yet</option><option value="yes" {% if mapped == "yes" %}selected{% endif %}>Yes</option></select></label>
+    <div class="btn-group"><button class="btn btn-subtle" type="submit">Filter</button></div>
+  </form>
+  <div id="org-desig">{% include "org/_designations_table.html" %}</div>
+</div>
+{% endblock %}

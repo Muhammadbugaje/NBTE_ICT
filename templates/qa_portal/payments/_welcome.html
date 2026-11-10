@@ -1,0 +1,13 @@
+{% load qa_tags static portal_journey_tags %}{% if payment_welcome %}{% with w=payment_welcome %}
+<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
+<section class="qa-pay-welcome" aria-labelledby="qa-pay-welcome-h" role="status">
+  <span class="qa-pay-welcome__icon" aria-hidden="true">{% icon "check" 24 "2.8" %}</span>
+  <div><h2 id="qa-pay-welcome-h">Payment confirmed — welcome back{% if request.user.first_name %}, {{ request.user.first_name }}{% endif %}</h2>
+    <p>NBTE Finance confirmed {{ w.ob.amount_paid|naira }} for {{ w.ob.description|plain }} ({{ w.ob.reference }}). Your receipt is ready.</p></div>
+  <div class="qa-pay-welcome__next"><b>{{ w.next.title }}</b><span>{{ w.next.text }}</span></div>
+  <div class="btn-group">
+    <a class="btn btn-primary" href="{{ w.next.url }}" hx-get="{{ w.next.url }}" hx-target="#qa-main" hx-push-url="true">{{ w.next.label }}</a>
+    <a class="btn btn-subtle" href="{% url 'qa_portal:payment' w.ob.pk %}" hx-get="{% url 'qa_portal:payment' w.ob.pk %}" hx-target="#qa-main" hx-push-url="true">{% icon "file" 16 %} View receipt</a>
+  </div>
+</section>
+{% endwith %}{% endif %}

@@ -1,6 +1,6 @@
 """Staff directory (doc 30 §5.2 / §19.6 / Appendix E)."""
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -44,6 +44,48 @@ class Department(Lookup):
         on_delete=models.SET_NULL, related_name="headed_departments",
         help_text="Receives the weekly attendance summary. Defaults to the department's Director.",
     )
+    # Phase B (B1): the single source of truth for "the director". One person
+    # directs at most one department (one-to-one) and a department has at most
+    # one director. Change it only through org.assign_director / vacate_director.
+    director = models.OneToOneField(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="directs",
+        help_text="The department's one director. Use Assign / Vacate seat on the department page.",
+    )
+    # Phase B (B2): permissions that come with the seat, not with a "director
+    # of X" role — e.g. the Director of Finance's payment approvals. Whoever
+    # sits in `director` inherits these groups; nobody else does.
+    director_groups = models.ManyToManyField(
+        "auth.Group", blank=True, related_name="director_of_departments",
+        help_text="Permission groups the director of this department inherits (e.g. Finance approvals).",
+    )
+    # v2.2: Departments and Offices are one list. A unit's `kind` says what it
+    # is; `parent` places units (e.g. a zonal office) under a department.
+    KIND_DEPARTMENT = "department"
+    KIND_UNIT = "unit"
+    KIND_OFFICE = "office"
+    KIND_ZONAL = "zonal_office"
+    KIND_LIAISON = "liaison_office"
+    KIND_CHOICES = [
+        (KIND_DEPARTMENT, "Department"),
+        (KIND_UNIT, "Unit"),
+        (KIND_OFFICE, "Office"),
+        (KIND_ZONAL, "Zonal office"),
+        (KIND_LIAISON, "Liaison office"),
+    ]
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default=KIND_DEPARTMENT, db_index=True,
+                            help_text="What this unit is. Every kind works the same way for routing and access.")
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="children",
+                               help_text="Optional: the department this unit sits under (e.g. a zonal office).")
+    description = models.CharField(max_length=255, blank=True)
+    member_groups = models.ManyToManyField(
+        "auth.Group", blank=True, related_name="member_of_departments",
+        help_text="Permission groups every member of this unit inherits (was: office groups).",
+    )
+
+    @property
+    def kind_label(self):
+        return dict(self.KIND_CHOICES).get(self.kind, "Department")
 
     def save(self, *args, **kwargs):
         if not self.code:
@@ -67,6 +109,19 @@ class Office(Lookup):
         "Staff", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="+",
     )
+    # Phase B (B9): everyone posted to the office inherits these groups'
+    # permissions through the permission backend, and loses them on transfer.
+    groups = models.ManyToManyField(
+        "auth.Group", blank=True, related_name="offices",
+        help_text="Permission groups every member of this office inherits.",
+    )
+    description = models.CharField(max_length=255, blank=True)
+    # v2.2: retired. Every office was merged into the Department list; this
+    # pointer records where it went so old references can be followed.
+    merged_into = models.ForeignKey(
+        Department, null=True, blank=True, on_delete=models.SET_NULL, related_name="merged_offices",
+        help_text="The department/unit this office was merged into (v2.2).",
+    )
 
 
 class StaffCategory(Lookup):
@@ -88,8 +143,15 @@ class StateOfOrigin(Lookup):
         ("NC", "North Central"), ("NE", "North East"), ("NW", "North West"),
         ("SE", "South East"), ("SS", "South South"), ("SW", "South West"),
     ]
+    TRAVEL_CHOICES = [("road", "Road"), ("air", "Air")]
+
     code = models.SlugField(max_length=8, unique=True, blank=True, null=True)
     zone = models.CharField(max_length=20, blank=True, choices=ZONE_CHOICES)
+    # v2.1 X38: visit costing. Seeded starting values; NBTE edits them.
+    travel_mode = models.CharField(max_length=8, choices=TRAVEL_CHOICES, default="road",
+                                   help_text="How a visit panel normally travels to this state.")
+    distance_from_hq_km = models.PositiveIntegerField(
+        default=0, help_text="Road distance from NBTE HQ, Abuja (km).")
 
     class Meta(Lookup.Meta):
         verbose_name = "state of origin"
@@ -115,6 +177,17 @@ class Designation(TimeStampedModel):
         max_length=20, blank=True,
         help_text="Lowest CONTEDISS/CONHESS level for this designation, e.g. '7'.")
     contediss_max = models.CharField(max_length=20, blank=True, help_text="Highest level, e.g. '9'.")
+    # Phase B (C8): the role suggested for holders, and the grade range as
+    # GradeLevel rows (contediss_min/max are kept, read-only legacy text).
+    default_role = models.ForeignKey(
+        "accounts.Role", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+        help_text="Role suggested on appointment or promotion into this designation.")
+    grade_min = models.ForeignKey(
+        "org.GradeLevel", null=True, blank=True, on_delete=models.PROTECT, related_name="+",
+        help_text="Lowest grade level for this designation.")
+    grade_max = models.ForeignKey(
+        "org.GradeLevel", null=True, blank=True, on_delete=models.PROTECT, related_name="+",
+        help_text="Highest grade level for this designation.")
     next_designation = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="predecessors",
@@ -188,6 +261,13 @@ class Staff(SoftDeleteModel):
     )
     grade_level = models.CharField(max_length=20, blank=True,
                                    help_text="CONTEDISS / CONHESS level, e.g. '8'.")
+    # Phase B (C7): the grade as a GradeLevel row. Kept in step with the
+    # free-text grade_level (imports still write the text; save() maps it).
+    grade = models.ForeignKey(
+        "org.GradeLevel", null=True, blank=True, on_delete=models.PROTECT, related_name="staff")
+    # Phase B (B6): the division of the department the person works in.
+    division = models.ForeignKey(
+        "org.Division", null=True, blank=True, on_delete=models.SET_NULL, related_name="members")
     office_location = models.CharField(max_length=150, blank=True)
     category = models.ForeignKey(
         StaffCategory, null=True, blank=True,
@@ -251,6 +331,10 @@ class Staff(SoftDeleteModel):
             ("view_own_office_staff", "Can view staff in own office"),
             ("manage_shared_queries", "Can save staff queries shared with everyone"),
             ("transfer_staff", "Can transfer staff to another department or office"),
+            # Phase B (v2.1): D2 / D3 / E4
+            ("override_promotion_step", "Can promote past the next step (ES override, with a reason)"),
+            ("rollback_promotion", "Can roll back a promotion (ES only, audited)"),
+            ("print_staff_id", "Can print staff ID cards for other staff"),
         ]
         indexes = [models.Index(fields=["last_name", "first_name"])]
 
@@ -271,17 +355,43 @@ class Staff(SoftDeleteModel):
             inst._orig_state = None
         inst._orig_place = ((inst.department_id, inst.office_id)
                             if {"department_id", "office_id"} <= loaded else None)
+        inst._orig_email = inst.email if "email" in loaded else None
         return inst
 
     def _state_snapshot(self):
         return (self.state_id, self.state_start, self.state_end)
 
+    def _sync_grade(self):
+        """Keep `grade` (FK) and `grade_level` (text) in step (C7)."""
+        try:
+            from org.services import grade_for_text
+        except Exception:  # app registry not ready (migrations)
+            return
+        if self.grade_level:
+            mapped = grade_for_text(self.grade_level)
+            if mapped is not None and mapped.pk != self.grade_id:
+                self.grade = mapped
+        elif self.grade_id:
+            self.grade_level = str(self.grade.number)
+
+    @transaction.atomic
     def save(self, *args, **kwargs):
         capture_original_filename(self, "photo", "photo_original_name")
+        self._sync_grade()
         new_photo = bool(self.photo) and not self.photo._committed
         creating = self._state.adding
         orig = getattr(self, "_orig_state", None)
         user = self.user if self.user_id else None
+        update_fields = kwargs.get("update_fields")
+        if update_fields is None:
+            persisted_email = None if creating else type(self).objects.filter(pk=self.pk).values_list(
+                "email", flat=True).first()
+            email_touched = creating or self.email != getattr(self, "_orig_email", persisted_email)
+            if not email_touched and persisted_email is not None:
+                self.email = persisted_email
+        else:
+            email_touched = "email" in update_fields
+        self.email = (self.email or "").strip().lower()
         if user is not None and not self.department_id and user.department_id:
             self.department_id = user.department_id  # blank never overrides; fill from the account
         super().save(*args, **kwargs)
@@ -295,25 +405,26 @@ class Staff(SoftDeleteModel):
         if (creating and self.state_id) or (not creating and orig is not None and orig != snap):
             self._write_state_history(previous_state_id=None if creating else orig[0])
         self._orig_state = snap
+        self._orig_email = self.email
         self._record_transfer(creating)
-        self._sync_placeholder_login(user)
+        if email_touched:
+            self._sync_user_email(user)
         if new_photo:
             schedule_thumbnails(self, "photo")
 
-    def _sync_placeholder_login(self, user):
-        """An account made from the nominal roll for someone with no email
-        signs in with a placeholder address. As soon as the record gets a real
-        email (edit form, admin or a later import), the account uses it — so
-        the person can sign in with it and reset a forgotten password."""
+    def _sync_user_email(self, user):
+        """Keep the linked account's sign-in address equal to the staff email."""
         if user is None or not self.email:
             return
-        from .account_provisioning import is_placeholder_email
-        if not is_placeholder_email(user.email) or self.email.lower() == user.email:
+        email = self.email.strip().lower()
+        if email == user.email:
             return
         from django.contrib.auth import get_user_model
-        if get_user_model().objects.filter(email__iexact=self.email).exclude(pk=user.pk).exists():
-            return
-        user.email = self.email.lower()
+        from django.core.exceptions import ValidationError
+
+        if get_user_model().objects.filter(email__iexact=email).exclude(pk=user.pk).exists():
+            raise ValidationError({"email": "Another account already uses this email address."})
+        user.email = email
         user.save(update_fields=["email"])
 
     def _record_transfer(self, creating):
@@ -511,9 +622,20 @@ class ExecutiveTenure(TimeStampedModel):
     position = models.ForeignKey(
         ExecutivePosition, on_delete=models.CASCADE, related_name="tenures",
     )
+    # v2.1 A4: past leaders need not be staff records, and deleting a staff
+    # record keeps the history (the display fields below carry the name).
     staff = models.ForeignKey(
-        Staff, on_delete=models.CASCADE, related_name="executive_tenures",
+        Staff, null=True, blank=True, on_delete=models.SET_NULL, related_name="executive_tenures",
+        help_text="Leave empty for a past leader who has no staff record; fill the name below.",
     )
+    display_name = models.CharField(
+        max_length=160, blank=True,
+        help_text="Name shown publicly (required when no staff record is linked; overrides it otherwise).")
+    title = models.CharField(
+        max_length=80, blank=True, help_text="Honorific shown before the name, e.g. Dr., Engr., Prof.")
+    is_placeholder = models.BooleanField(
+        default=False,
+        help_text="Name or dates still to be confirmed by NBTE: shown with a 'to confirm' tag.")
 
     started_on = models.DateField(db_index=True)
     ended_on   = models.DateField(null=True, blank=True, db_index=True)
@@ -559,7 +681,40 @@ class ExecutiveTenure(TimeStampedModel):
 
     def __str__(self):
         state = "current" if self.is_current else f"ended {self.ended_on}"
-        return f"{self.staff.full_name} — {self.position.name} ({state})"
+        return f"{self.person_name} — {self.position.name} ({state})"
+
+    # ---- Person (staff record or display fields; v2.1 A4) ------------------
+    @property
+    def person_name(self):
+        name = (self.display_name or "").strip()
+        if not name and self.staff_id:
+            name = self.staff.full_name
+        name = name or "[Name to confirm]"
+        title = (self.title or "").strip()
+        return f"{title} {name}" if title and not name.startswith(title) else name
+
+    @property
+    def person_initials(self):
+        base = (self.display_name or "").strip() or (self.staff.full_name if self.staff_id else "")
+        parts = [p for p in base.replace("[", "").replace("]", "").split() if p[:1].isalpha()]
+        return ("".join(p[0] for p in parts[:2]) or "?").upper()
+
+    @property
+    def person_photo_url(self):
+        if self.photo:
+            return self.photo_thumb_url
+        if self.staff_id and getattr(self.staff, "photo", None):
+            try:
+                return self.staff.photo_thumb_url
+            except Exception:
+                return ""
+        return ""
+
+    @property
+    def period_label(self):
+        start = self.started_on.year if self.started_on else "?"
+        end = self.ended_on.year if self.ended_on else "now"
+        return f"{start}–{end}"
 
     def save(self, *args, **kwargs):
         capture_original_filename(self, "photo", "photo_original_name")
@@ -590,6 +745,9 @@ class ExecutiveTenure(TimeStampedModel):
         if self.ended_on and self.started_on and self.ended_on < self.started_on:
             raise ValidationError({"ended_on":
                 "End date cannot be before start date."})
+        if not self.staff_id and not (self.display_name or "").strip():
+            raise ValidationError({"display_name":
+                "Choose a staff member or type the leader's name."})
 
 
 # ============================================================================
@@ -730,3 +888,7 @@ class StaffTransfer(TimeStampedModel):
 
     def __str__(self):
         return f"{self.staff.full_name}: {self.from_department or '—'} → {self.to_department or '—'}"
+
+
+# v2.1 X49 (pb-platform): LGA and ZonalOffice live in staff/geo_models.py.
+from .geo_models import LGA, ZonalOffice  # noqa: E402,F401

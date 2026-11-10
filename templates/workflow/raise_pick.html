@@ -1,20 +1,13 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 
 {% block title %}New request · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}New request{% endblock %}
 
 {% block content %}
-<div class="wf-page-head">
-  <div>
-    <a href="{% url 'workflow:my_requests' %}" class="btn btn-subtle btn-sm mb-3">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-      Back to my requests
-    </a>
-    <h1>What do you need?</h1>
-    <p>Pick the type of request below. Each type has its own fields and routing.</p>
-  </div>
-</div>
+<div class="wk-page wk-page--narrow" data-qa-area="requests">
+{% url 'workflow:my_requests' as back_url %}
+{% include "partials/hero.html" with area="requests" icon="plus" eyebrow="Requests · New request" title="What do you need?" lede="Pick the type of request below. Each type has its own form, approval chain and receiving office." back_url=back_url back_label="My requests" %}
 
 {% if categories %}
   {% for category in categories %}
@@ -49,4 +42,5 @@
     <p>Contact ICT support — an administrator needs to seed the request types first.</p>
   </div>
 {% endif %}
+</div>
 {% endblock %}

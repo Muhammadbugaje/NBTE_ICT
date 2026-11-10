@@ -1,0 +1,79 @@
+{% load qa_tags %}
+{% if vvt %}
+<section class="qa-card vvt rp-vvt" aria-labelledby="vvt-h">
+  <header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--teal">{% icon "file" 17 "2.2" %}</span><div><h2 id="vvt-h">Structured visit report · {{ vvt.form }}</h2>
+    <p>Sections A–B are filled from the record. Every panel member declares any conflict of interest first; then the panel records what it found against what the institution declared. Each falsified item adds {{ vvt.fine_rate|naira }} to the institution's bill.</p>
+    {% if source_ssq %}<a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq' case.pk source_ssq.pk %}?back={{ request.get_full_path|urlencode }}">{% icon "file" 13 %} Submitted SSQ · report reference</a>{% endif %}</div></div>
+    {% if report.fines_total %}<span class="qa-chip qa-tone-danger">Fine {{ report.fines_total|naira }}</span>{% endif %}</header>
+  <div class="qa-card__body qa-stack">
+    {% if not vvt.can_write %}<p class="c3-callout c3-callout--warn" role="status">{% icon "lock" 15 "2.2" %}<span>{{ vvt.write_why }}</span></p>{% endif %}
+    <details open><summary><span class="vvt-sec__no">A</span><strong>Institution and programme</strong></summary>
+      <dl class="qa-dl vvt-dl">{% with a=vvt.prefill.A %}<div><dt>Institution</dt><dd>{{ a.institution }} ({{ a.code }})</dd></div><div><dt>State</dt><dd>{{ a.state|default:"—" }}</dd></div><div><dt>Programme</dt><dd>{{ a.programme }} {{ a.level }}</dd></div><div><dt>Case / visit</dt><dd>{{ a.case }} · {{ a.visit_reference }}</dd></div>{% endwith %}</dl></details>
+
+    <details {% if vvt.missing or vvt.conflicts %}open{% endif %}><summary><span class="vvt-sec__no">B</span><strong>Panel and conflict-of-interest declarations</strong> {% if vvt.conflicts %}<span class="qa-chip qa-tone-danger">{{ vvt.conflicts }} conflict</span>{% elif vvt.missing %}<span class="qa-chip qa-tone-warning">{{ vvt.missing }} to declare</span>{% else %}<span class="qa-chip qa-tone-success">All declared</span>{% endif %}</summary>
+      <ul class="vvt-people">{% for row in vvt.people %}<li>
+        <span><strong>{{ row.p.person }}</strong> <small class="qa-muted">{{ row.p.role|default:"" }}</small></span>
+        {% if row.d %}{% if row.d.has_conflict %}<span class="qa-chip qa-tone-danger">Conflict: {{ row.d.details }}</span>{% else %}<span class="qa-chip qa-tone-success">No conflict</span>{% endif %}
+        {% else %}
+        {% if vvt.can_write %}<form class="qa-row qa-gap-sm" method="post" action="{% url 'qa_insp:report_vvt' report.pk %}" hx-post="{% url 'qa_insp:report_vvt' report.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="op" value="declare">
+          {% if row.p.staff %}<input type="hidden" name="staff" value="{{ row.p.staff.pk }}">{% endif %}{% if row.p.resource_person %}<input type="hidden" name="rp" value="{{ row.p.resource_person.pk }}">{% endif %}
+          <select class="input" name="has_conflict"><option value="no">No conflict</option><option value="yes">Has a conflict</option></select>
+          <input class="input" name="details" placeholder="Details if any">
+          <button class="btn btn-sm btn-subtle" type="submit">Declare</button></form>{% else %}<span class="qa-small qa-muted">Declarations unlock after the visit is recorded.</span>{% endif %}{% endif %}
+      </li>{% empty %}<li class="qa-muted">No panel recorded yet.</li>{% endfor %}</ul></details>
+
+    <details {% if not report.gps_at %}open{% endif %}><summary><span class="vvt-sec__no vvt-sec__no--icon">{% icon "pin" 15 "2.2" %}</span><strong>Location check</strong> {% if report.gps_at %}{% if report.gps_flag %}<span class="qa-chip qa-tone-warning">{{ report.gps_distance_km }} km from the site</span>{% else %}<span class="qa-chip qa-tone-success">Recorded{% if report.gps_distance_km != None %} · {{ report.gps_distance_km }} km{% endif %}</span>{% endif %}{% else %}<span class="qa-chip qa-tone-pending">Not recorded</span>{% endif %}</summary>
+      <p class="qa-small">The device records this automatically when the page opens (one field: latitude, longitude). You may also type or paste the pair, or ask the device again. It is compared with the institution's recorded GPS; the tolerance is {{ vvt.gps_offset_m }} m beyond the {{ vvt.gps_max_km }} km threshold.</p>
+      <form method="post" action="{% url 'qa_insp:report_vvt' report.pk %}" hx-post="{% url 'qa_insp:report_vvt' report.pk %}" hx-target="#qa-panel" data-vvt-gps data-auto="{% if vvt.gps_auto and vvt.can_write %}1{% else %}0{% endif %}" data-has="{{ report.gps_at|yesno:'1,0' }}" data-needs-network>{% csrf_token %}<input type="hidden" name="op" value="gps"><fieldset {% if not vvt.can_write %}disabled{% endif %}><input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="accuracy">
+        <div class="vvt-gps">
+          <input class="input" name="point" placeholder="latitude, longitude (e.g. 10.5105, 7.4165)" value="{% if report.gps_lat != None %}{{ report.gps_lat }}, {{ report.gps_lng }}{% endif %}" inputmode="decimal" aria-label="Latitude and longitude">
+          <button class="btn btn-sm btn-subtle" type="submit">Save this pair</button>
+          <button class="btn btn-sm btn-primary" type="button" data-gps-ask>{% icon "rotate" 14 %} Use this device</button>
+        </div>
+        <p class="qa-small qa-muted" data-gps-status>{% if report.gps_at %}Recorded {{ report.gps_at|date:"j M Y, H:i" }}{% if report.gps_accuracy_m %} · accurate to about {{ report.gps_accuracy_m }} m{% endif %}.{% elif vvt.gps_auto %}Asking the device for its location…{% else %}Automatic capture is off in Settings.{% endif %}</p></fieldset>
+      </form>
+      <script>
+        (function () {
+          var form = document.currentScript.previousElementSibling;
+          if (!form || !form.matches("[data-vvt-gps]")) return;
+          var status = form.querySelector("[data-gps-status]");
+          function grab(auto) {
+            if (!navigator.geolocation) { if (!auto && status) status.textContent = "This device cannot share its location; type the pair above."; return; }
+            if (status) status.textContent = "Locating…";
+            navigator.geolocation.getCurrentPosition(function (p) {
+              form.lat.value = p.coords.latitude; form.lng.value = p.coords.longitude;
+              form.accuracy.value = Math.round(p.coords.accuracy);
+              form.point.value = p.coords.latitude.toFixed(6) + ", " + p.coords.longitude.toFixed(6);
+              if (window.htmx) htmx.trigger(form, "submit"); else form.submit();
+            }, function () {
+              if (status) status.textContent = "The device did not share its location. Type the pair above, or try again.";
+            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+          }
+          form.querySelector("[data-gps-ask]").addEventListener("click", function () { grab(false); });
+          if (form.dataset.auto === "1" && form.dataset.has !== "1") { setTimeout(function () { grab(true); }, 400); }
+        })();
+      </script>
+    </details>
+
+    <details {% if vvt.rows %}open{% endif %}><summary><span class="vvt-sec__no">D</span><strong>Facilities and equipment — declared vs found</strong></summary>
+      {% if vvt.rows %}
+      {% if vvt.missing %}<p class="c3-callout c3-callout--warn" role="status">Findings are locked until all {{ vvt.missing }} panel member{{ vvt.missing|pluralize }} record a conflict-of-interest declaration above.</p>{% elif vvt.conflicts %}<p class="c3-callout c3-callout--warn" role="status">Findings are locked until the declared conflict is resolved and the panel member is replaced.</p>{% endif %}
+      <form method="post" action="{% url 'qa_insp:report_vvt' report.pk %}" hx-post="{% url 'qa_insp:report_vvt' report.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="op" value="findings"><fieldset {% if not vvt.can_write or vvt.missing or vvt.conflicts %}disabled{% endif %}>
+        <div class="qa-table-wrap" role="region" aria-label="Facilities and equipment findings table" tabindex="0"><table class="qa-table qa-table--scroll"><thead><tr><th>Item</th><th class="num">Required</th><th class="num">Declared</th><th class="num">Found</th><th>Falsified</th><th>Remark</th></tr></thead><tbody>
+        {% for r in vvt.rows %}<tr><td>{{ r.item.name }}<input type="hidden" name="name_{{ r.item.pk }}" value="{{ r.item.name }}"></td><td class="num">{{ r.item.required_quantity|floatformat:"-1" }}</td>
+          <td class="num"><input class="input vvt-n" name="declared_{{ r.item.pk }}" value="{% if r.declared != '' %}{{ r.declared|floatformat:'-1' }}{% elif r.finding %}{{ r.finding.declared_quantity|floatformat:'-1' }}{% endif %}" inputmode="decimal" readonly aria-label="Quantity declared on the institution's submitted SSQ"></td>
+          <td class="num"><input class="input vvt-n" name="found_{{ r.item.pk }}" value="{{ r.finding.found_quantity|floatformat:'-1'|default:'' }}" inputmode="decimal"></td>
+          <td><input type="checkbox" name="falsified_{{ r.item.pk }}" {% if r.finding.is_falsified %}checked{% endif %} aria-label="Falsified"></td>
+          <td><input class="input" name="remark_{{ r.item.pk }}" value="{{ r.finding.remark|default:'' }}"></td></tr>{% endfor %}
+        </tbody></table></div>
+        <p class="qa-small qa-muted">An item declared but not found at all is marked falsified automatically.</p>
+        <button class="btn btn-primary btn-sm" type="submit">Save findings</button></fieldset></form>
+      {% else %}<p class="qa-muted qa-small">No curriculum catalogue items for this programme yet. Publish its list from Facilities &amp; equipment → the programme → Publish to catalogue.</p>{% endif %}
+    </details>
+    {% if inspection.status == "closed" and vvt.can_fine and report.fines_total and not report.fine_obligation_id %}
+      <form method="post" action="{% url 'qa_insp:report_vvt' report.pk %}" hx-post="{% url 'qa_insp:report_vvt' report.pk %}" hx-target="#qa-panel" hx-confirm="Bill the institution {{ report.fines_total|naira }} for falsified items?">{% csrf_token %}<input type="hidden" name="op" value="fine"><button class="btn btn-subtle qa-btn-reject btn-sm" type="submit">Bill the falsification fine ({{ report.fines_total|naira }})</button></form>
+    {% elif report.fine_obligation_id %}<p class="qa-small">Fine billed: <a href="{% url 'qa_fin:obligation' report.fine_obligation_id %}">view the bill</a>.</p>{% endif %}
+  </div>
+</section>
+<style>.vvt summary{cursor:pointer;padding:.4rem 0}.vvt fieldset{border:0;padding:0;margin:0;min-width:0}.vvt-people{list-style:none;padding:0;display:grid;gap:.5rem}.vvt-people li{display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;align-items:center}.vvt-n{width:5rem}.vvt-dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.4rem 1rem}.vvt-gps{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.vvt-gps .input{flex:1 1 260px;min-width:0}</style>
+{% endif %}

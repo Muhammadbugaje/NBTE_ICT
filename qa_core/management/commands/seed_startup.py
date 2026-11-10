@@ -146,7 +146,11 @@ class Stats:
         return sum(self.created.values()) + self.grants_added
 
 
-class Command(BaseCommand):
+class LegacyStartupCommand(BaseCommand):
+    """The QA startup seed body. Since v2.1 (X51) it runs as the `qa_core.startup`
+    (and `demo`) data sets of `seed_nbte`; `seed_startup` is a thin wrapper
+    (see `Command` at the end of this module)."""
+
     help = "Seed the NBTE QA startup data (idempotent). See Master Plan §15."
 
     def add_arguments(self, parser):
@@ -176,44 +180,63 @@ class Command(BaseCommand):
         with transaction.atomic():
             if not opts["skip_base_seeders"]:
                 self._base_seeders(stats)
-            self._roles(stats)
-            self._groups(stats)
-            self._departments(stats)
-            self._settings(stats)
-            self._reference_formats(stats)
-            self._templates(stats)
-            self._policies(stats)
-            self._flows(stats)
-            self._patch_flows(stats)
-            self._lookups(stats)
-            self._documents(stats)
-            self._fees(stats)
-            self._phase3(stats)
-            self._phase4(stats)
-            self._phase7(stats)
-            self._backups(stats)
-            self._phase8(stats)
+            self._reference_sets(stats)
             if opts["with_demo"]:
-                self._demo(stats)
-                self._demo_phase2(stats)
-                self._demo_phase3(stats)
-                self._demo_phase6(stats)
-                self._demo_phase7(stats)
+                self._demo_sets(stats)
             if opts["dry_run"]:
                 transaction.set_rollback(True)
         self._print(stats, dry_run=opts["dry_run"], with_demo=opts["with_demo"])
+
+    def run_sets(self, *, with_demo=False, demo_only=False):
+        """Used by seed_nbte (core/seed_sets.py): run inside the caller's
+        transaction, return the Stats."""
+        stats = Stats()
+        if not demo_only:
+            self._reference_sets(stats)
+        if with_demo:
+            self._demo_sets(stats)
+        return stats
+
+    def _reference_sets(self, stats):
+        self._roles(stats)
+        self._groups(stats)
+        self._departments(stats)
+        from institutions import tvet_access  # v2.1 X47: after roles, groups and departments
+        tvet_access.enforce()
+        self._settings(stats)
+        self._reference_formats(stats)
+        self._templates(stats)
+        self._policies(stats)
+        self._flows(stats)
+        self._patch_flows(stats)
+        self._lookups(stats)
+        self._documents(stats)
+        self._fees(stats)
+        self._phase3(stats)
+        self._phase4(stats)
+        self._phase7(stats)
+        self._backups(stats)
+        self._phase8(stats)
+
+    def _demo_sets(self, stats):
+        self._demo(stats)
+        self._demo_phase2(stats)
+        self._demo_phase3(stats)
+        self._demo_phase6(stats)
+        self._demo_phase7(stats)
 
     # ------------------------------------------------------------------
     # Existing seeders (§15: "It calls the existing seeders first")
     # ------------------------------------------------------------------
     def _base_seeders(self, stats):
         for name, args in (("seed_roles", ["--sync"]), ("seed_config", []), ("seed_departments", []),
-                           ("seed_default_groups", []), ("seed_nbte", ["--with-lgas", "--quiet"])):
+                           ("seed_default_groups", []),
+                           ("seed_staff_reference", ["--with-lgas", "--quiet"])):
             buffer = io.StringIO()
             call_command(name, *args, stdout=buffer, stderr=io.StringIO())
             output = buffer.getvalue()
             lines = output.splitlines()
-            if name == "seed_nbte":
+            if name == "seed_staff_reference":
                 created = 0 if "no changes" in output else 1
             elif name == "seed_default_groups":
                 created = sum(1 for line in lines if re.search(r"\bcreated\b", line))
@@ -239,6 +262,27 @@ class Command(BaseCommand):
                              + list(p8.ROLE_PERMISSIONS.items())):
             merged.setdefault(code, [])
             merged[code] += [label for label in labels if label not in merged[code]]
+        # v2.1 X47: adding / editing / dropping TVET institutions and programmes
+        # stays with the ES, super admin and the QA desk groups (tvet_access).
+        from institutions import tvet_access
+        for code in merged:
+            if code not in tvet_access.KEEP_ROLES:
+                merged[code] = [label for label in merged[code] if not tvet_access.is_tvet_label(label)]
+        # Phase B (B2): "seat:finance" permissions belong to the Finance director
+        # seat, i.e. the "Finance – Approvals" group on Department.director_groups.
+        seat_labels = merged.pop("seat:finance", [])
+        from org import seed as org_seed
+        org_seed.seed_finance_seat_group()
+        seat_group = Group.objects.filter(name=org_seed.FINANCE_SEAT_GROUP[0]).first()
+        if seat_group is not None:
+            have = set(seat_group.permissions.values_list("pk", flat=True))
+            for label in seat_labels:
+                perm = _perm(label)
+                if perm is None:
+                    stats.deferred_perms.add(label)
+                elif perm.pk not in have:
+                    seat_group.permissions.add(perm)
+                    stats.grants_added += 1
         for code, labels in merged.items():
             role = Role.objects.filter(code=code).first()
             if role is None:
@@ -252,12 +296,17 @@ class Command(BaseCommand):
                 if perm.pk not in have:
                     role.permissions.add(perm)
                     stats.grants_added += 1
+        org_seed.seed_role_min_grades()  # Phase B (C9): proposals, empty fields only
+        from assignments.view_all import enforce as narrow_view_all  # v2.1 P.4 (assignment mode only)
+        narrow_view_all()
         stats.add("Roles", created, Role.objects.count())
 
     def _groups(self, stats):
         created = 0
+        from institutions import tvet_access  # Part 1b: TVET rights only through the TVET Support groups
         for name, description, labels, role_codes in seed_data.GROUPS:
             perms = []
+            labels = [lb for lb in labels if not tvet_access.is_tvet_label(lb)]
             for label in labels:
                 perm = _perm(label)
                 if perm is None:
@@ -292,13 +341,15 @@ class Command(BaseCommand):
             if group is None:
                 continue
             have = set(group.permissions.values_list("pk", flat=True))
-            for label in labels:
+            for label in [lb for lb in labels if not tvet_access.is_tvet_label(lb)]:
                 perm = _perm(label)
                 if perm is None:
                     stats.deferred_perms.add(label)
                 elif perm.pk not in have:
                     group.permissions.add(perm)
                     stats.grants_added += 1
+        from assignments.view_all import enforce as narrow_view_all  # v2.1 P.4 (assignment mode only)
+        narrow_view_all()
         stats.add("Groups", created, Group.objects.count())
 
     def _departments(self, stats):
@@ -311,6 +362,9 @@ class Command(BaseCommand):
                 Department.objects.create(code=code, name=name, sort_order=500)
                 created += 1
         stats.add("Departments", created, Department.objects.count())
+        # Phase B (B2): the Finance approvals group goes with the Finance director seat.
+        from org import seed as org_seed
+        org_seed.seed_finance_seat_group()
 
     def _settings(self, stats):
         created = 0
@@ -321,6 +375,8 @@ class Command(BaseCommand):
                 defaults={"value": value, "value_type": vtype, "group": group, "description": desc,
                           "editable_by": editable_by, "dual_control": dual},
             )
+            if key == "qa.cqac.recommendation_mode" and not was_created and _entry.description != desc:
+                ConfigEntry.objects.filter(pk=_entry.pk).update(description=desc)
             created += was_created
         stats.add("Settings", created, ConfigEntry.objects.filter(key__startswith="qa.").count())
 
@@ -511,6 +567,23 @@ class Command(BaseCommand):
                 FlowTransition.objects.create(flow=flow, from_stage=stage, to_stage=dst, action_code=action,
                                               label=label, sort_order=995, **extra)
                 added += 1
+        # Phase 5: allow the report service to skip a stage already covered
+        # by the Team Lead or a vacant Division Head / Deputy Director seat.
+        for flow in FlowDefinition.objects.filter(code="post_visit_report"):
+            stages = {stage.code: stage for stage in flow.stages.all()}
+            for src_code, dst_code, action, label, extra in p5.REPORT_FLOW["transitions"]:
+                if action in ("submit", "endorse", "return", "resubmit",
+                              "endorse_to_director", "submit_to_deputy", "submit_to_director",
+                              "resubmit_to_deputy", "resubmit_to_director"):
+                    src, dst = stages.get(src_code), stages.get(dst_code)
+                    if src is None or dst is None:
+                        continue
+                    if FlowTransition.objects.filter(from_stage=src, action_code=action).exists():
+                        continue
+                    FlowTransition.objects.create(
+                        flow=flow, from_stage=src, to_stage=dst, action_code=action,
+                        label=label, sort_order=1000 + added, **dict(extra))
+                    added += 1
         stats.add("Transitions", added)
 
     def _lookups(self, stats):
@@ -678,11 +751,17 @@ class Command(BaseCommand):
         created = 0
         layers = {}
         for order, (code, name, description, applies, priority, fields) in enumerate(p7.LAYERS):
+            handling = p7.HANDLING_DEPARTMENTS.get(code)  # v2.1 X9 (creation only: admins edit it)
             layers[code], was_created = ComplaintLayer.objects.get_or_create(code=code, defaults={
                 "name": name, "description": description, "applies_to_user_types": applies,
-                "default_priority": priority, "custom_fields": fields, "sort_order": (order + 1) * 10})
+                "default_priority": priority, "custom_fields": fields, "sort_order": (order + 1) * 10,
+                "handling_department": qa_department(handling) if handling else None})
             created += was_created
         stats.add("Complaint layers", created, ComplaintLayer.objects.count())
+        # v2.1 X11: flow `complaint` version 2 (once; open complaints stay on v1).
+        from complaints import flow_v2
+        flows_added, _stages, _transitions = flow_v2.seed()
+        stats.add("Complaint flow v2", flows_added, 1)
         routed = 0
         if not RoutingRule.objects.exists():  # seeded once; afterwards the table belongs to the admins
             for layer_code, stage, condition, kind, dept_code, role_code, order, note in p7.ROUTING:
@@ -879,6 +958,11 @@ class Command(BaseCommand):
                     label = f"{tag.content_type.app_label}.{tag.content_type.model}"
                     by_label.setdefault(label, []).append(tag.object_id)
                 self._collect_demo_dependents(by_label)
+                # Phase B: a demo account sitting in a director seat leaves the seat
+                # first (Department.director protects the account).
+                demo_user_ids = by_label.get("accounts.user", [])
+                if demo_user_ids:
+                    Department.objects.filter(director_id__in=demo_user_ids).update(director=None)
                 ordered = [l for l in RESET_ORDER if l in by_label] + \
                           [l for l in by_label if l not in RESET_ORDER]
                 for label in ordered:
@@ -1012,6 +1096,33 @@ class Command(BaseCommand):
         w(f"  Changes this run: {stats.changes}" + (" — already up to date." if not stats.changes else "."))
         w("Next steps:")
         w("  1. Point the QA portal subdomain (QA_PORTAL_HOST, e.g. qa.nbte.gov.ng) at this server.")
-        w("  2. Assign roles: Finance officers → qa-finance-officer; Director of Finance → qa-finance-director;")
+        w("  2. Assign roles: Finance officers → qa-finance-officer; Director of Finance → assign the Finance director seat (department page);")
         w("     QA settings admins → qa-settings-admin; ICT monitor → ict-qa-monitor.")
         w("  3. Review Settings → QA (fee formulas need a second officer to change).")
+
+
+class Command(LegacyStartupCommand):
+    """v2.1 X51: `seed_startup` is a thin wrapper around `seed_nbte`.
+
+    * no flags            -> seed_nbte --only base,geo,org,qa_core.startup
+    * --with-demo         -> ... plus the demo set
+    * --reset-demo        -> seed_nbte --reset-demo (tagged demo rows only)
+    * --dry-run           -> passed through
+    * --skip-base-seeders -> the old in-process QA seed only (fast; used by
+                             the test fixtures), unchanged output.
+    """
+
+    def handle(self, *args, **opts):
+        if opts.get("skip_base_seeders"):
+            return super().handle(*args, **opts)
+        argv = ["--only", "base,geo,org,qa_core.startup"]
+        if opts.get("with_demo"):
+            argv.append("--with-demo")
+        if opts.get("reset_demo"):
+            argv.append("--reset-demo")
+        if opts.get("i_understand_production"):
+            argv.append("--i-understand-production")
+        if opts.get("dry_run"):
+            argv.append("--dry-run")
+        self.stdout.write("seed_startup now runs: python manage.py seed_nbte " + " ".join(argv))
+        call_command("seed_nbte", *argv, stdout=self.stdout, stderr=self.stderr)

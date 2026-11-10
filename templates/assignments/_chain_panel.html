@@ -1,0 +1,28 @@
+{% load qa_tags %}
+<section class="rot-card" aria-label="Review steps" id="chain-panel-{{ p.chain.pk }}">
+  <div class="rot-card__head"><span class="rot-tile rot-tile--green">{% icon "shield" 20 "2.2" %}</span>
+    <div><h2>Verification</h2><p>{{ p.chain.policy.name }} · {{ p.rows|length }} steps</p></div>
+    <span class="rot-state rot-state--{{ p.chain.state }}">{{ p.chain.get_state_display }}</span></div>
+  {% if p.error %}<div class="rot-alert" role="alert">{{ p.error }}</div>{% endif %}
+  <ol class="rot-chain">
+    {% for r in p.rows %}
+    <li class="rot-step is-{{ r.state }}"><span class="rot-step__dot">{% if r.state == "done" %}✓{% else %}{{ forloop.counter }}{% endif %}</span>
+      <div><b>{{ r.label }}</b><small>{{ r.actor_kind }} · {{ r.who }}{% if r.when %} · only when {{ r.when }}{% endif %}</small>
+        {% if r.last %}<small>{{ r.last.get_action_display }} by {{ r.last.actor.get_full_name|default:r.last.actor.email }} · {{ r.last.at|date:"j M Y, H:i" }}</small>{% if r.last.remark %}<blockquote>{{ r.last.remark }}</blockquote>{% endif %}{% elif r.state == "current" %}<small>Waiting</small>{% endif %}
+      </div></li>
+    {% endfor %}
+  </ol>
+  {% if p.can_act %}
+  <form class="rot-chainform" hx-post="{% url 'chains:act' p.chain.pk %}" hx-target="#chain-panel" hx-swap="innerHTML">
+    {% csrf_token %}
+    <label class="rot-field">Remark{% if not p.is_first %} (needed to send back or reject){% endif %}<textarea name="remark" rows="2"></textarea></label>
+    {% if p.targets|length > 1 %}<label class="rot-field">Send back to<select name="to_step">{% for t in p.targets %}<option value="{{ t }}">{{ t|title }}</option>{% endfor %}</select></label>{% endif %}
+    <div class="btn-group">
+      {% if p.is_first %}<button class="btn btn-primary" name="action" value="submit" type="submit">{% icon "check" 16 "2.4" %} Submit for review</button>
+      {% else %}<button class="btn btn-primary" name="action" value="approve" type="submit">{% icon "check" 16 "2.4" %} Approve</button>
+      {% if p.targets %}<button class="btn btn-subtle" name="action" value="send_back" type="submit">{% icon "rewind" 16 "2.2" %} Send back</button>{% endif %}
+      <button class="btn btn-ghost" name="action" value="reject" type="submit">Reject</button>{% endif %}
+    </div>
+  </form>
+  {% elif p.chain.is_open and p.why %}<p class="rot-empty">{{ p.why }}</p>{% endif %}
+</section>

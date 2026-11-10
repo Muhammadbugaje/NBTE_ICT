@@ -1,23 +1,53 @@
 {% load qa_tags %}
 <section class="qa-card" aria-labelledby="qa-prog-h" id="qa-prog-card">
-  <header class="qa-card__head"><div><h2 id="qa-prog-h">Programmes you plan to offer</h2><p>List each programme and how many streams you plan to admit. NBTE opens programme clearance and the programme fee in the next stage.</p></div><span class="qa-chip">{{ programmes|length }}</span></header>
+  <header class="qa-card__head"><div><h2 id="qa-prog-h">Programmes you plan to offer</h2><p>{% if app.status == "programme_clearance" %}NBTE is clearing your programmes. You will be told after each decision.{% elif selecting %}List each programme and how many streams you plan to admit. Nothing goes to NBTE until the Chief Executive presses <strong>Submit programmes to NBTE</strong>.{% else %}The programmes on your application.{% endif %}</p></div><span class="ux-chip ux-chip--blue">{{ programmes|length }} listed</span></header>
   {% if stream_error %}<div class="qa-card__body">{% include "qa_core/partials/_callout.html" with kind="danger" title="Not saved" message=stream_error %}</div>{% endif %}
+  {% if app.status == "programme_clearance" and prog %}<div class="qa-card__body"><div class="qa-callout qa-callout--info" role="status">{% icon "clock" 18 %}<div><strong>Waiting for {% if show_departments %}{{ prog.department.name|default:"NBTE" }}{% else %}NBTE{% endif %} clearance</strong><p>Expected time: {{ prog.expected_time }}. {{ prog.pending|length }} of {{ prog.count }} programme{{ prog.count|pluralize }} still waiting. You will be told after each decision.</p></div></div></div>{% endif %}
+  {% if selecting and prog.returned %}<div class="qa-card__body">{% include "qa_core/partials/_callout.html" with kind="warn" title="Some programmes were returned" message="Fix or remove the returned programmes, then submit the list again. Cleared programmes stay cleared." %}</div>{% endif %}
   {% if programmes %}
-    <ul class="qa-rowlist" role="list">{% for p in programmes %}<li><div class="qa-rowlink"><span class="qa-rowlink__badge">{{ p.level.code|upper }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ p.name }}</span><span class="qa-rowlink__meta">{{ p.level.name }}{% if p.category %} · {{ p.category.name }}{% endif %} · {{ p.requested_streams }} stream{{ p.requested_streams|pluralize }}</span></span>
-      <span class="qa-rowlink__side"><span class="qa-chip {{ p.status|tone }}">{{ p.status|humanize_code }}</span>{% include "complaints/portal/_raise_link.html" with kind="programme" pk=p.pk short=True %}
-      {% if selecting and p.status == "proposed" %}
+    <ul class="qa-rowlist" role="list">{% for p in programmes %}{% with st=prog_states|get_item:p.pk %}<li><div class="qa-rowlink"><span class="qa-rowlink__badge">{{ p.level.code|upper }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ p.name }}</span><span class="qa-rowlink__meta">{{ p.level.name }}{% if p.category %} · {{ p.category.name }}{% endif %} · {{ p.requested_streams }} stream{{ p.requested_streams|pluralize }}{% if p.professional_body %} · {{ p.professional_body.acronym|default:p.professional_body.name }}{% endif %}{% if p.not_in_master %} · Under NBTE review{% endif %}</span>
+        {% if st.state == "returned" and st.review.remark %}<span class="qa-doc__remark"><strong>NBTE:</strong> {{ st.review.remark }}</span>{% endif %}</span>
+      <span class="qa-rowlink__side">{% if st.state == "pending" %}<span class="qa-chip qa-tone-info">With NBTE</span>{% elif st.state == "cleared" %}<span class="qa-chip qa-tone-success">Cleared</span>{% elif st.state == "returned" %}<span class="qa-chip qa-tone-danger">Returned</span>{% else %}<span class="qa-chip {{ p.status|tone }}">{{ p.status|humanize_code }}</span>{% endif %}{% include "complaints/portal/_raise_link.html" with kind="programme" pk=p.pk short=True %}
+      {% if selecting and p.status == "proposed" and not st.locked %}
         <form class="qa-streams" method="post" action="{% url 'qa_portal:programme_streams' p.pk %}" hx-post="{% url 'qa_portal:programme_streams' p.pk %}" hx-target="#qa-prog-card" hx-swap="outerHTML" hx-trigger="change">{% csrf_token %}<label for="ps-{{ p.pk }}">Streams</label><input class="input qa-streams__input" type="number" inputmode="numeric" id="ps-{{ p.pk }}" name="streams" value="{{ p.requested_streams }}" min="1" max="{{ form.fields.streams.max_value }}" step="1"><noscript><button class="btn btn-sm btn-subtle" type="submit">Save</button></noscript></form>
-        <form method="post" hx-post="{% url 'qa_portal:programme_remove' p.pk %}" hx-target="#qa-prog-card" hx-swap="outerHTML">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit" aria-label="Remove {{ p.name }}">Remove</button></form>{% endif %}</span></div></li>{% endfor %}</ul>
-  {% else %}<div class="qa-card__body"><p class="qa-small qa-muted">No programmes listed yet.</p></div>{% endif %}
+        <form method="post" hx-post="{% url 'qa_portal:programme_remove' p.pk %}" hx-target="#qa-prog-card" hx-swap="outerHTML" hx-confirm="{{ p.name }} is taken off your list. You can add it again while you are still choosing." data-confirm-title="Remove this programme?" data-confirm-label="Remove">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit" aria-label="Remove {{ p.name }}">Remove</button></form>{% endif %}</span></div></li>{% endwith %}{% endfor %}</ul>
+  {% else %}<div class="pp-empty" style="padding:28px 20px 8px"><span class="pp-empty__art" aria-hidden="true">{% icon "layers" 28 %}</span><strong>No programmes listed yet</strong><p>{% if selecting %}Search NBTE's list below and add the first programme you plan to offer.{% else %}Programmes you list appear here.{% endif %}</p></div>{% endif %}
   {% if selecting %}
-    <div class="qa-card__body qa-stack">
+    <div class="pp-add" role="group" aria-labelledby="pp-add-h">
+      <h3 class="pp-add__title" id="pp-add-h"><span aria-hidden="true">{% icon "plus" 16 "2.6" %}</span> Add a programme</h3>
       <form method="post" action="{% url 'qa_portal:programmes' %}" hx-post="{% url 'qa_portal:programmes' %}" hx-target="#qa-prog-card" hx-swap="outerHTML" novalidate>{% csrf_token %}
         {% include "qa_core/partials/_form_errors.html" %}
-        <div class="qa-fields">{% for n in "name level category streams"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div>
-        <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add programme</button></div>
+        <div class="qa-field qa-combo is-wide">
+          <label for="qa-prog-q">Programme</label>
+          <input class="input" id="qa-prog-q" name="q" type="search" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="qa-prog-list" aria-expanded="false" placeholder="Start typing, e.g. comp sci"
+                 hx-get="{% url 'qa_portal:programme_master_search' %}" hx-trigger="input changed delay:250ms, search" hx-target="#qa-prog-list" hx-swap="innerHTML" hx-include="this">
+          <div class="qa-field__help">Programmes come from NBTE's master list, so the professional body fills itself in.</div>
+          <div id="qa-prog-list" class="qa-combo__panel" aria-live="polite"></div>
+        </div>
+        <div id="qa-prog-pick">{% if picked %}{% include "qa_portal/application/_master_pick.html" %}{% endif %}</div>
+        <details class="qa-manual"{% if manual_open %} open{% endif %}><summary>Not in the list? Type it yourself and choose its body</summary>
+          <p class="qa-small qa-muted">You must choose a professional body, and it must cover the programme. NBTE then adds it to the master list.</p>
+          <div class="qa-fields">{% for n in "name level category body"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}</div>
+        </details>
+        <div class="qa-fields">{% include "qa_core/partials/_field.html" with field=form|bf:"streams" %}</div>
+        <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add programme</button><span class="qa-small qa-muted">Add as many as you need — nothing goes to NBTE yet.</span></div>
         <div id="qa-prog-estimate" class="qa-region" hx-target="this" hx-swap="innerHTML" hx-get="{% url 'qa_portal:programme_estimate' %}" hx-trigger="input delay:400ms from:closest form, change from:closest form" hx-include="closest form" hx-sync="this:replace">{% include "qa_portal/qa_requests/_fee_estimate.html" with qa_type=True %}</div>
       </form>
     </div>
+    {% if prog %}
+    <div class="qa-submitbar" id="qa-prog-submit" role="region" aria-labelledby="qa-prog-submit-h">
+      <span class="qa-submitbar__icon" aria-hidden="true">{% icon "arrow" 20 %}</span>
+      <div class="qa-submitbar__text">
+        <strong id="qa-prog-submit-h">{% if prog.count %}{{ prog.count }} programme{{ prog.count|pluralize }} · {{ prog.streams }} stream{{ prog.streams|pluralize }}{% else %}No programmes yet{% endif %}</strong>
+        <span>{% if not prog.is_ce %}Only the Chief Executive can submit the list to NBTE. Ask your Chief Executive to sign in and submit.{% elif prog.blockers %}{{ prog.blockers|join:" " }}{% else %}{% if show_departments %}{{ prog.department.name|default:"NBTE" }}{% else %}NBTE{% endif %} clears each programme (about {{ prog.expected_time }}); then the programme fee is issued. You cannot edit cleared programmes afterwards.{% endif %}</span>
+      </div>
+      <form method="post" action="{% url 'qa_portal:programmes_submit' %}" hx-post="{% url 'qa_portal:programmes_submit' %}" hx-target="#qa-main" hx-select="#qa-application" hx-swap="innerHTML" hx-trigger="qa:confirmed"
+            data-qa-confirm="{{ prog.count }} programme{{ prog.count|pluralize }} with {{ prog.streams }} stream{{ prog.streams|pluralize }} go to {% if show_departments %}{{ prog.department.name|default:'NBTE' }}{% else %}NBTE{% endif %} for clearance. You cannot change the list while NBTE reviews it. When every programme is cleared, the programme processing fee appears on Payments."
+            data-qa-confirm-title="Submit programmes to NBTE?" data-qa-confirm-label="Submit programmes">{% csrf_token %}
+        <button class="btn btn-primary qa-submitbar__btn" type="submit"{% if not prog.can_submit or request.is_impersonating %} disabled aria-describedby="qa-prog-submit-h"{% endif %}>{% icon "arrow" 16 %} Submit programmes to NBTE</button>
+      </form>
+    </div>
+    {% endif %}
   {% elif estimate and programmes %}
     <div class="qa-card__body">{% include "qa_portal/qa_requests/_fee_estimate.html" with qa_type=True %}</div>
   {% endif %}

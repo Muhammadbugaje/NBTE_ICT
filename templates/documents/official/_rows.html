@@ -1,0 +1,29 @@
+{% load qa_tags %}<div id="ol-panel" aria-live="polite">
+{% if rows %}
+<ul class="ol-rows" role="list">{% for r in rows %}
+  <li class="ol-row{% if r.overdue %} is-overdue{% endif %}" data-state="{{ r.state }}">
+    <span class="ol-row__ico ol-tone-{{ r.tone }}" aria-hidden="true">{% if r.state == "draft_ready" %}{% icon "check" 18 "2.4" %}{% elif r.state == "assigned" or r.state == "returned" %}{% icon "users" 18 "2.2" %}{% else %}{% icon "clock" 18 "2.2" %}{% endif %}</span>
+    <div class="ol-row__main">
+      <a class="ol-row__title" href="{{ r.url }}">{{ r.institution.name }}</a>
+      <span class="ol-row__meta"><span>{{ r.letter }}</span><span class="sv-mono">{{ r.doc.reference }}</span>{% if r.institution.handling_department %}<span>{{ r.institution.handling_department.name }}</span>{% endif %}<span>Provisional since {{ r.doc.issued_at|date:"j M Y" }}</span></span>
+    </div>
+    <div class="ol-row__state">
+      <span class="sv-chip sv-chip--{% if r.tone == 'ok' %}ok{% elif r.tone == 'warn' %}warn{% elif r.tone == 'info' %}info{% else %}plain{% endif %}">{{ r.state_label }}</span>
+      <span class="ol-days{% if r.overdue %} is-overdue{% endif %}" title="Target: {{ r.due_on|date:'j M Y' }}"><b>{{ r.days }}</b> day{{ r.days|pluralize }} waiting</span>
+    </div>
+    <div class="ol-row__actions">
+      {% if r.state == "draft_ready" %}<a class="btn btn-primary btn-sm" href="{{ r.url }}#ol-review">{% icon "eye" 14 "2.2" %} Review draft</a>
+      {% else %}<a class="btn btn-primary btn-sm" href="{{ r.url }}#ol-upload">{% icon "upload" 14 "2.2" %} Upload official copy</a>{% endif %}
+      {% if r.state == "waiting" %}<a class="btn btn-subtle btn-sm" href="{{ r.url }}#ol-assign">{% icon "users" 14 "2.2" %} Assign</a>{% else %}<a class="btn btn-subtle btn-sm" href="{{ r.url }}">Open</a>{% endif %}
+    </div>
+  </li>{% endfor %}
+</ul>
+{% else %}
+<div class="sv-empty dr-empty ol-empty">
+  <span class="sv-ico" aria-hidden="true">{% icon "check" 26 "2.2" %}</span>
+  <h2>{% if filtered %}No letters match{% else %}All official letters are uploaded{% endif %}</h2>
+  <p>{% if filtered %}Try another search, or clear the filters.{% else %}When NBTE issues a provisional approval or accreditation letter, it waits here until the signed official copy is uploaded.{% endif %}</p>
+  {% if filtered %}<a class="btn btn-subtle btn-sm" href="{% url 'documents_register:official_letters' %}">Clear filters</a>{% endif %}
+</div>
+{% endif %}
+</div>

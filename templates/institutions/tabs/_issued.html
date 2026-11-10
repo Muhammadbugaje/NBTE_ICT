@@ -1,0 +1,47 @@
+{% load static qa_tags %}<link rel="stylesheet" href="{% static 'css/official-letters.css' %}">
+<section class="qa-card" aria-labelledby="tab-issued" data-tab="issued">
+  <header class="qa-card__head"><div><h2 id="tab-issued" data-qa-focus-heading>Issued documents</h2><p>Every letter, approval, receipt and payment slip NBTE generated for {{ inst.name }}, with its verification code. Provisional letters stay flagged until the signed official copy is uploaded.</p></div>
+    {% if qa_nav.official_letters and issued_counts.pending %}<a class="btn btn-sm btn-primary" href="{% url 'documents_register:official_letters' %}?q={{ inst.code|urlencode }}">{% icon "upload" 14 %} Official letters to upload</a>{% endif %}</header>
+  {% if issued %}
+  <div class="ol-tab-stats" aria-label="Summary">
+    <span class="ol-pill"><b>{{ issued_counts.total }}</b> issued</span>
+    {% if issued_counts.pending %}<span class="ol-pill ol-pill--warn"><b>{{ issued_counts.pending }}</b> awaiting official copy</span>{% endif %}
+    {% if issued_counts.official %}<span class="ol-pill"><b>{{ issued_counts.official }}</b> official cop{{ issued_counts.official|pluralize:"y,ies" }} uploaded</span>{% endif %}
+    {% if issued_counts.revoked %}<span class="ol-pill"><b>{{ issued_counts.revoked }}</b> revoked</span>{% endif %}
+  </div>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th>Document</th><th>Type</th><th>Reference</th><th>Issued</th><th>Status</th><th class="qa-col-actions"><span class="sr-only">Files and links</span></th></tr></thead>
+    <tbody>{% for r in issued %}<tr>
+      <td data-label="Document"><b>{{ r.doc.title }}</b>{% if r.pending %}<span class="ol-doc-sub{% if r.overdue %} is-overdue{% endif %}">{% if r.job.state == "draft_ready" %}Draft ready for review · {% elif r.job.assignee and r.job.state in "assigned returned" %}Being prepared by {{ r.job.assignee.get_full_name|default:r.job.assignee.email }} · {% endif %}waiting {{ r.days }} day{{ r.days|pluralize }}{% if r.overdue %} (over the {{ issued_sla }}-day target){% endif %}</span>{% elif r.copy %}<span class="ol-doc-sub">Official copy {{ r.copy.uploaded_at|date:"j M Y" }}</span>{% endif %}</td>
+      <td data-label="Type">{{ r.doc.kind_label }}</td>
+      <td data-label="Reference"><span class="qa-mono">{{ r.doc.reference }}</span></td>
+      <td data-label="Issued">{{ r.doc.issued_at|date:"j M Y" }}</td>
+      <td data-label="Status"><span class="qa-chip qa-tone-{{ r.tone }}">{{ r.status }}</span></td>
+      <td class="qa-col-actions"><span class="ol-doc-actions">
+        {% if r.can_download %}<a class="btn btn-sm btn-subtle" href="{{ r.doc.download_url }}" title="Generated PDF">{% icon "download" 14 %} {% if r.doc.provisional %}Provisional{% else %}PDF{% endif %}</a>{% endif %}
+        {% if r.copy_ok %}<a class="btn btn-sm btn-subtle" href="{{ r.copy.download_url }}">{% icon "download" 14 %} Official copy</a>{% endif %}
+        <a class="btn btn-sm btn-ghost" href="{{ r.verify_url }}" target="_blank" rel="noopener" title="Open the verification page">{% icon "qr" 14 %} <span class="qa-mono">{{ r.doc.short_code }}</span></a>
+        {% if r.letter_url %}<a class="btn btn-sm btn-primary" href="{{ r.letter_url }}">{% icon "upload" 14 %} Official copy</a>{% endif %}
+        {% if r.register_url %}<a class="btn btn-sm btn-ghost" href="{{ r.register_url }}" aria-label="Open {{ r.doc.reference }} in the register">{% icon "arrow" 14 %}</a>{% endif %}
+      </span></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}
+  <div class="qa-card__body"><div class="sv-empty"><strong>No documents issued yet</strong><p class="qa-muted">Approval letters, receipts and payment slips appear here as soon as NBTE generates them{% if not qa_nav.documents_register %} (you see the ones you issued or signed, and payment documents with Finance access){% endif %}.</p></div></div>
+  {% endif %}
+</section>
+{% if outcome_letters %}
+<section class="qa-card" aria-labelledby="tab-outcome">
+  <header class="qa-card__head"><div><h2 id="tab-outcome">Programme decision letters</h2><p>Accreditation and approval outcome letters — the original and the watermarked duplicate.</p></div></header>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th>Programme</th><th>Reference</th><th>Generated</th><th>Status</th><th class="qa-col-actions"><span class="sr-only">Files</span></th></tr></thead>
+    <tbody>{% for l in outcome_letters %}<tr>
+      <td data-label="Programme">{{ l.programme }}</td>
+      <td data-label="Reference"><span class="qa-mono">{{ l.reference }}</span></td>
+      <td data-label="Generated">{{ l.generated_at|date:"j M Y" }}</td>
+      <td data-label="Status">{% if l.is_current %}<span class="qa-chip qa-tone-success">Current</span>{% else %}<span class="qa-chip">Replaced</span>{% endif %}</td>
+      <td class="qa-col-actions"><span class="ol-doc-actions">{% for c in l.visible_copies %}<a class="btn btn-sm btn-subtle" href="{{ c.download_url }}">{% icon "download" 14 %} {{ c.get_kind_display }}</a>{% empty %}<span class="qa-muted">—</span>{% endfor %}</span></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}

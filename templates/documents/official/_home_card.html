@@ -1,0 +1,12 @@
+{% load static qa_tags %}<link rel="stylesheet" href="{% static 'css/official-letters.css' %}">
+<section class="ux-card qh-card qh-tone-{{ w.tone }} ol-home" data-widget="official_letters" aria-labelledby="qh-ol-h">
+  <header class="ux-card__head">
+    <div><h2 id="qh-ol-h">{% icon "mail" 18 "2.2" %} {{ w.title }}</h2><p>{{ w.why }}</p></div>
+    <strong class="qh-count" data-count="{{ w.count }}" aria-label="{{ w.count }}">{{ w.count }}</strong>
+  </header>
+  {% if w.stats %}<dl class="qh-stats">{% for s in w.stats %}<div><dt>{{ s.0 }}</dt><dd>{{ s.1 }}</dd></div>{% endfor %}</dl>{% endif %}
+  <ul class="ol-home__list" role="list">{% for it in w.items %}
+    <li class="{% if it.overdue %}is-overdue{% endif %}"><a href="{{ it.url }}"><b>{{ it.label }}</b><small>{{ it.sub }}</small></a>{% if it.overdue %}<span class="ux-chip ux-chip--red">Overdue</span>{% endif %}</li>{% endfor %}
+  </ul>
+  <p class="qh-more"><a class="btn btn-sm btn-primary" href="{{ w.url }}">{{ w.url_label }} →</a></p>
+</section>

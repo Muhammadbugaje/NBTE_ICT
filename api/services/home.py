@@ -206,11 +206,15 @@ def application_summary(app):
         return None
     from accreditation import services
 
-    board = services.stage_board(app)
+    from qa_core import portal_journey
+
+    board = portal_journey.portal_board(app)  # v2.1 X6: milestones only
     stage = next((i + 1 for i, row in enumerate(board) if row["state"] == "current"), None)
     if stage is None:
         stage = sum(1 for row in board if row["state"] == "done") or 1
-    return {"stage": stage, "stages": len(board), "headline": str(services.public_status(app)),
+    headline = portal_journey.portal_status("onboarding", portal_journey.application_stage(app),
+                                            str(services.public_status(app)))
+    return {"stage": stage, "stages": len(board), "headline": headline,
             "route": "/application"}
 
 

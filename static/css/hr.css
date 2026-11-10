@@ -1,0 +1,219 @@
+/* ==========================================================================
+   HR lists and pages (Phase B v2.1: promotions, user management, act as
+   user, Access tab, staff ID). Semantic tokens only.
+   Shared list contract (C17): .hr-toolbar (search + facets) → .hr-region
+   (tabs, table in .hr-table-wrap, .qa-pagination with Show all).
+   ========================================================================== */
+
+/* Buttons in a group never touch (§5). Phase A owns the global rule; this
+   copy keeps HR pages right until it lands. */
+.btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.btn-group > .btn, .btn-group > form { margin: 0; }
+
+/* ---- tabs ---------------------------------------------------------------- */
+.hr-tabs {
+  display: flex; gap: 4px; padding: 4px; margin: 0 0 var(--space-4);
+  overflow-x: auto; scrollbar-width: none;
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface); box-shadow: var(--shadow-xs);
+  width: max-content; max-width: 100%;
+}
+.hr-tabs::-webkit-scrollbar { display: none; }
+.hr-tabs a {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
+  min-height: 38px; padding: 0 16px; border-radius: var(--radius-pill);
+  color: var(--text-muted); font-size: var(--fs-sm); font-weight: var(--fw-semibold);
+  text-decoration: none; white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+.hr-tabs a:hover { color: var(--text); background: var(--surface-2); }
+.hr-tabs a.is-active { color: var(--primary-fg); background: var(--primary); box-shadow: var(--shadow-sm); }
+.hr-tabs a:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.hr-tabs__n {
+  min-width: 22px; padding: 1px 7px; border-radius: var(--radius-pill); text-align: center;
+  font-size: var(--fs-xs); background: var(--surface-2); color: var(--text-muted);
+}
+.hr-tabs a.is-active .hr-tabs__n { background: color-mix(in srgb, var(--primary-fg) 22%, transparent); color: var(--primary-fg); }
+
+/* ---- toolbar: search + facets -------------------------------------------- */
+.hr-toolbar {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3);
+  padding: 14px 16px; margin-bottom: var(--space-4);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--shadow-xs);
+}
+.hr-toolbar__search { position: relative; flex: 2 1 240px; min-width: 0; display: flex; align-items: center; }
+.hr-toolbar__search svg { position: absolute; inset-inline-start: 12px; color: var(--text-subtle); pointer-events: none; }
+.hr-toolbar__search .input { width: 100%; padding-inline-start: 38px; }
+.hr-facet { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 0; }
+.hr-facet label { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-muted); }
+.hr-facet .input { width: 100%; min-width: 0; }
+.hr-toolbar .btn-group { flex: 0 0 auto; }
+
+.hr-hint { margin: calc(-1 * var(--space-2)) 0 var(--space-3); color: var(--text-muted); font-size: var(--fs-sm); max-width: 80ch; }
+.hr-muted { color: var(--text-muted); font-weight: var(--fw-regular); }
+.hr-spacer { flex: 1 1 auto; }
+
+/* ---- Excel ID filter ------------------------------------------------------ */
+.hr-upload { margin-bottom: var(--space-4); border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); background: var(--surface); }
+.hr-upload summary { display: flex; align-items: center; gap: 8px; padding: 12px 16px; cursor: pointer; font-weight: var(--fw-semibold); font-size: var(--fs-sm); color: var(--text); list-style: none; }
+.hr-upload summary::-webkit-details-marker { display: none; }
+.hr-upload__form { display: grid; gap: var(--space-3); padding: 0 16px 16px; }
+.hr-upload__form .input[type=file] { max-width: 100%; }
+.hr-idfilter {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3);
+  padding: 10px 14px; margin-bottom: var(--space-3); border-radius: var(--radius-md);
+  background: var(--info-subtle); color: var(--text); font-size: var(--fs-sm);
+}
+.hr-idfilter > span { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.hr-idfilter__miss { color: var(--text-muted); }
+
+/* ---- chips ---------------------------------------------------------------- */
+.hr-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--radius-pill);
+  background: var(--neutral-subtle); color: var(--neutral-fg);
+  font-size: var(--fs-xs); font-weight: var(--fw-semibold); white-space: nowrap;
+}
+.hr-chip--ok { background: var(--success-subtle); color: var(--success-fg); }
+.hr-chip--danger { background: var(--danger-subtle); color: var(--danger); }
+.hr-chip--warn { background: var(--warning-subtle); color: var(--warning-fg); }
+.hr-chip--muted { background: var(--surface-2); color: var(--text-subtle); }
+.hr-chip--role { background: var(--primary-subtle); color: var(--primary-subtle-fg); }
+
+/* ---- scrolling table with a sticky action column (C15) ------------------- */
+.hr-region { min-width: 0; }
+.hr-table-wrap {
+  position: relative; overflow-x: auto; overscroll-behavior-x: contain;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--shadow-xs);
+}
+.hr-table-wrap:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.hr-table { width: 100%; min-width: 860px; border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); }
+.hr-table th {
+  text-align: start; padding: 11px 14px; white-space: nowrap;
+  font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--text-muted);
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.hr-table td { padding: 12px 14px; vertical-align: middle; border-bottom: 1px solid var(--divider); color: var(--text); }
+.hr-table tbody tr:last-child td { border-bottom: 0; }
+.hr-table tbody tr:hover td { background: color-mix(in srgb, var(--surface-2) 70%, var(--surface)); }
+.hr-check-col { width: 44px; }
+.hr-sticky {
+  position: sticky; inset-inline-end: 0; z-index: 1; text-align: end; white-space: nowrap;
+  background: var(--surface);
+  box-shadow: -10px 0 12px -10px color-mix(in srgb, var(--text) 30%, transparent);
+}
+.hr-table th.hr-sticky { background: var(--surface-2); }
+.hr-table td .btn-group { justify-content: flex-end; flex-wrap: nowrap; }
+.hr-cell-user { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.hr-cell-user strong { display: block; white-space: nowrap; }
+.hr-cell-user small { display: block; color: var(--text-muted); font-size: var(--fs-xs); white-space: nowrap; }
+.hr-avatar {
+  flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--primary); color: var(--primary-fg); font-size: 12px; font-weight: var(--fw-bold);
+}
+.hr-avatar.is-off { background: var(--text-subtle); }
+
+/* ---- pagination (shared qa partial; qa.css is not on the staff side) ------ */
+.hr-region .qa-pagination {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: 14px 4px; color: var(--text-muted); font-size: var(--fs-sm);
+}
+.hr-region .qa-pagination__pages { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.hr-region .qa-pagination__pages a, .hr-region .qa-pagination__pages span {
+  display: inline-grid; place-items: center; min-width: 34px; height: 34px; padding: 0 8px;
+  border-radius: var(--radius-sm); color: var(--text); text-decoration: none; font-weight: var(--fw-semibold);
+}
+.hr-region .qa-pagination__pages a:hover { background: var(--surface-2); }
+.hr-region .qa-pagination__pages .is-current { background: var(--primary); color: var(--primary-fg); }
+.hr-region .qa-pagination__pages .is-disabled { color: var(--text-subtle); }
+.hr-region .qa-showall { margin-inline-start: 8px; padding: 0 12px !important; border: 1px solid var(--border); border-radius: var(--radius-pill) !important; }
+.hr-region .qa-showall[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.hr-region .qa-pagination-note { margin: 0 0 var(--space-3); color: var(--text-muted); font-size: var(--fs-xs); }
+
+/* ---- promotions extras --------------------------------------------------- */
+.promo-selectbar .btn-group { flex: 0 0 auto; }
+.promo-mode { border: 0; padding: 0; margin: 0 0 var(--space-3); display: grid; gap: 6px; }
+.promo-override { display: grid; gap: var(--space-3); padding: 12px; margin-bottom: var(--space-3); border-radius: var(--radius-md); background: var(--warning-subtle); }
+.promo-override[hidden] { display: none; }
+.promo-next-card {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; margin-bottom: var(--space-3);
+  border-radius: var(--radius-md); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  background: var(--primary-subtle); color: var(--primary-subtle-fg);
+}
+.promo-next-card__label { flex-basis: 100%; font-size: var(--fs-xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .04em; }
+.promo-next-card__from { color: var(--text-muted); }
+.promo-next-card.is-empty { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+.promo-modal-foot { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+
+/* ---- phone: rows become cards; the action stays in the card --------------- */
+@media (max-width: 640px) {
+  .hr-tabs { width: 100%; border-radius: var(--radius-md); }
+  .hr-tabs a { min-height: 44px; }
+  .hr-toolbar { padding: 12px; }
+  .hr-facet { flex: 1 1 calc(50% - var(--space-3)); }
+  .hr-table-wrap { overflow: visible; border: 0; background: transparent; box-shadow: none; }
+  .hr-table { min-width: 0; }
+  .hr-table thead { display: none; }
+  .hr-table, .hr-table tbody, .hr-table tr, .hr-table td { display: block; width: 100%; }
+  .hr-table tr {
+    position: relative; margin-bottom: 10px; padding: 6px 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface);
+  }
+  .hr-table td { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; text-align: end; border-bottom: 1px solid var(--divider); overflow-wrap: anywhere; }
+  .hr-table td::before { content: attr(data-label); flex: none; max-width: 45%; text-align: start; color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+  .hr-table td:last-child { border-bottom: 0; }
+  .hr-table td.hr-cell-primary { display: block; text-align: start; }
+  .hr-table td.hr-cell-primary::before, .hr-table td.hr-check-col::before, .hr-table td.hr-sticky::before { display: none; }
+  .hr-table td.hr-check-col { position: absolute; inset-block-start: 10px; inset-inline-end: 12px; width: auto; padding: 0; border: 0; }
+  .hr-table tbody tr:hover td { background: transparent; }
+  .hr-sticky { position: static; box-shadow: none; background: transparent; }
+  .hr-table td.hr-sticky { justify-content: stretch; padding-top: 10px; }
+  .hr-table td.hr-sticky .btn-group, .hr-table td.hr-sticky .btn { width: 100%; justify-content: center; }
+  .hr-cell-user strong, .hr-cell-user small { white-space: normal; overflow-wrap: anywhere; }
+}
+
+/* ---- user detail status (C18) --------------------------------------------- */
+.hr-status-row { margin: 0 0 var(--space-4); }
+.hr-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.hr-status form.inline { margin-inline-start: 4px; }
+
+.hr-page { max-width: 1180px; margin: 0 auto; padding-bottom: 40px; min-width: 0; }
+.hr-table td form.btn-group { justify-content: flex-end; flex-wrap: nowrap; }
+
+/* ---- staff profile: tabs + Access (B.8) ---------------------------------- */
+.hr-profile-tabs { margin-top: var(--space-4); }
+.hr-access__head { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; align-items: flex-start; }
+.hr-access__head p { margin: 4px 0 0; max-width: 70ch; }
+.hr-access__facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
+.hr-access__facts dt { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-muted); margin-bottom: 4px; }
+.hr-access__facts dd { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.hr-perms { display: grid; gap: 8px; }
+.hr-perms__app { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.hr-perms__app summary { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; cursor: pointer; font-weight: var(--fw-semibold); }
+.hr-perms__app ul { list-style: none; margin: 0; padding: 0 14px 10px; display: grid; gap: 6px; }
+.hr-perms__app li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: var(--fs-sm); padding-top: 6px; border-top: 1px solid var(--divider); }
+.hr-perms__app code { font-size: var(--fs-xs); color: var(--text-muted); overflow-wrap: anywhere; }
+.staff-detail-hero-top { flex-wrap: wrap; }
+
+/* ---- Staff Directory quick actions + Print IDs bar (C3, E4) ---------------- */
+.staff-card-wrap { display: flex; flex-direction: column; min-width: 0; border-radius: 12px; }
+.staff-card-wrap > .staff-card { flex: 1 1 auto; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.staff-card-actions { justify-content: space-between; padding: 8px 10px; border: 1px solid var(--border); border-top: 0;
+  border-radius: 0 0 12px 12px; background: var(--surface-2); }
+.staff-card-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.hr-printbar { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  margin-top: var(--space-4); padding: 10px 14px; border-radius: var(--radius-lg); background: var(--surface);
+  border: 1px solid var(--border); box-shadow: var(--shadow-md); }
+.hr-printbar[hidden] { display: none; }
+.hr-printbar .input { width: auto; max-width: 100%; }
+@media (max-width: 640px) {
+  .staff-grid > .staff-card-wrap > .staff-card { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: stretch; }
+  .staff-grid > .staff-card-wrap .staff-card-photo { aspect-ratio: auto; min-height: 72px; }
+  .hr-printbar .input, .hr-printbar .btn-group { flex: 1 1 100%; }
+}
+
+/* Facet filters: wide enough to read the option (role names, office names). */
+.hr-facet { min-width: min(100%, 15rem); }
+.hr-facet select { min-width: min(100%, 15rem); }
+

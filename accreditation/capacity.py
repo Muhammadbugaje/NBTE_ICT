@@ -38,6 +38,7 @@ setting later never changes it.
 # scoped-by-caller
 from __future__ import annotations
 
+import datetime
 import json
 import math
 from decimal import ROUND_FLOOR, Decimal
@@ -50,7 +51,7 @@ import config
 from qa_core import timeline
 from qa_core.formula import FormulaError, evaluate
 
-from .models import CapacityAssessment, QARequestProgramme
+from .models import CapacityAssessment, CapacityReview, QACase, QARequestProgramme
 
 KINDS = [k for k, _l in CapacityAssessment.KIND_CHOICES]
 KIND_LABELS = dict(CapacityAssessment.KIND_CHOICES)
@@ -316,10 +317,15 @@ def prefill(row):
 # ===========================================================================
 # Runs
 # ===========================================================================
-def current(row):
+def _current_assessments(row):
     """{kind: the current assessment or None}."""
     found = {a.kind: a for a in CapacityAssessment.unscoped.filter(qa_request_programme=row, is_current=True)}
     return {kind: found.get(kind) for kind in KINDS}
+
+
+def current(row):
+    """Public compatibility wrapper for the current assessments by kind."""
+    return _current_assessments(row)
 
 
 def older_versions(row, kind, limit=5):
@@ -327,16 +333,205 @@ def older_versions(row, kind, limit=5):
                 .order_by("-version")[:limit])
 
 
-def overall(row):
+def overall(row, current_map=None):
     """Summary across the kinds assessed so far: the smallest supportable
-    number of streams and whether everything assessed is adequate."""
-    done = [a for a in current(row).values() if a is not None]
+    number of streams and whether everything assessed is adequate.
+    v2.4: pass ``current_map`` (a loaded {kind: assessment} map) to reuse rows
+    already fetched by ``current_many`` instead of re-querying."""
+    if current_map is None:
+        current_map = _current_assessments(row)
+    done = [a for a in current_map.values() if a is not None]
     if not done:
         return None
     supportable = min(a.result.get("supportable_streams", 0) for a in done)
     return {"supportable_streams": supportable, "adequate": all(a.result.get("adequate") for a in done),
             "assessed": len(done), "of": len(KINDS),
             "short": [KIND_LABELS[a.kind] for a in done if not a.result.get("adequate")]}
+
+
+def missing_assessments(rows, current_by_row=None):
+    """Return each active programme and the resource kinds without a current run."""
+    rows = list(rows)
+    if current_by_row is None:
+        current_by_row, _older = rows_state(rows)
+    return [
+        (row, [kind for kind in KINDS if current_by_row.get(row.pk, {}).get(kind) is None])
+        for row in rows
+        if any(current_by_row.get(row.pk, {}).get(kind) is None for kind in KINDS)
+    ]
+
+
+def review_states(case, rows, current_by_row=None):
+    """Map programme ids to their current Director review and freshness."""
+    rows = list(rows)
+    if current_by_row is None:
+        current_by_row, _older = rows_state(rows)
+    reviews = {
+        review.qa_request_programme_id: review
+        for review in CapacityReview.unscoped.filter(
+            case=case, qa_request_programme_id__in=[row.pk for row in rows], is_current=True
+        ).select_related("reviewed_by")
+    }
+    states = {}
+    for row in rows:
+        assessments = current_by_row.get(row.pk, {})
+        assessment_ids = {kind: assessments[kind].pk for kind in KINDS if assessments.get(kind) is not None}
+        review = reviews.get(row.pk)
+        states[row.pk] = {
+            "review": review,
+            "is_current": bool(review and len(assessment_ids) == len(KINDS)
+                               and review.assessment_ids == assessment_ids),
+        }
+    return states
+
+
+@transaction.atomic
+def ensure_assessment_task(case, actor=None):
+    """Keep the assigned desk officer's capacity work in My Stage Work."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from qa_core.models import QATaskLink
+    from qa_core.task_bridge import bridge_active, close_for_stage, system_user
+    import tasks.services as task_services
+    from tasks.models import Task, TaskAssignee, TaskCategory
+
+    from . import case_services as cs, decisions
+
+    case = QACase.unscoped.select_for_update().select_related(
+        "desk_officer", "owning_department",
+    ).get(pk=case.pk)
+    if not set(cs.current_stages(case)).intersection({"post_visit_report", "post_visit_recommendation"}):
+        return None
+
+    stage_code = "capacity_assessment"
+    links = QATaskLink.objects.filter(
+        content_type=ContentType.objects.get_for_model(QACase),
+        object_id=case.pk,
+        stage_code=stage_code,
+        closed_at__isnull=True,
+    ).select_related("task")
+    rows = decisions.rows(case)
+    if not missing_assessments(rows):
+        close_for_stage(case, stage_code, reason="assessed", actor=actor)
+        return None
+    if case.desk_officer_id is None:
+        return None
+
+    existing = links.first()
+    if existing is not None:
+        assignee_ids = set(existing.task.assignee_rows.values_list("user_id", flat=True))
+        if assignee_ids == {case.desk_officer_id}:
+            return existing
+        close_for_stage(case, stage_code, reason="reassigned", actor=actor)
+
+    instance = cs.instance_of(case)
+    if instance is None:
+        return None
+    system = system_user()
+    now = timezone.now()
+    due_at = now + datetime.timedelta(hours=72)
+    task = task_services.create_task(
+        created_by=system,
+        title=f"[QA] Capacity assessment — {case.reference}",
+        description=(
+            "Verify the classroom, laboratory, library, teaching-staff and support-staff capacity "
+            "for every programme against the visit evidence. Open the Capacity tab in QA to enter "
+            "the results. The owning department Director confirms the assessments at Stage 13."
+        ),
+        category=TaskCategory.objects.filter(code="qa-sop03").first(),
+        owner_department=case.owning_department,
+        priority=Task.HIGH,
+        due_date=timezone.localdate() + datetime.timedelta(days=3),
+        requires_review=False,
+    )
+    TaskAssignee.objects.create(
+        task=task,
+        user=case.desk_officer,
+        state=TaskAssignee.ASSIGNED,
+        assigned_by=system,
+    )
+    QATaskLink.objects.create(
+        task=task,
+        content_type=ContentType.objects.get_for_model(QACase),
+        object_id=case.pk,
+        flow_instance=instance,
+        stage_code=stage_code,
+        kind="assignment",
+        due_at=due_at,
+    )
+    with bridge_active():
+        task_services.open_task(task, system)
+    return QATaskLink.objects.select_related("task").get(task=task)
+
+
+@transaction.atomic
+def confirm_review(case, row, *, user):
+    """Director confirms a complete, current set of assessments for one programme."""
+    from . import case_services as cs
+
+    case = type(case).unscoped.select_for_update().get(pk=case.pk)
+    if row.qa_request_id != case.qa_request_id or row.status != QARequestProgramme.ACTIVE:
+        raise ValidationError("That programme is not active on this case.")
+    allowed, reason = cs.can_act(case, user, "post_visit_recommendation")
+    if not allowed:
+        raise ValidationError(reason)
+    current = _current_assessments(row)
+    missing = [KIND_LABELS[kind] for kind in KINDS if current[kind] is None]
+    if missing:
+        raise ValidationError("Complete all five capacity assessments before confirming this programme. "
+                              f"Missing: {', '.join(missing)}.")
+    user_id = getattr(user, "pk", None)
+    if user_id is None:
+        raise ValidationError("A signed-in Director must confirm the capacity assessment.")
+    assessment_ids = {}
+    for kind in KINDS:
+        assessment = current[kind]
+        if assessment is None:
+            raise ValidationError(f"Complete the {KIND_LABELS[kind]} assessment before confirming this programme.")
+        if assessment.computed_by_id == user_id:
+            raise ValidationError("A different officer must review capacity assessments they did not prepare.")
+        assessment_ids[kind] = assessment.pk
+    existing = CapacityReview.unscoped.filter(
+        case=case, qa_request_programme=row, is_current=True
+    ).first()
+    if existing is not None and existing.assessment_ids == assessment_ids:
+        return existing
+    latest = CapacityReview.unscoped.filter(case=case, qa_request_programme=row).order_by("-version").first()
+    CapacityReview.unscoped.filter(case=case, qa_request_programme=row, is_current=True).update(
+        is_current=False, updated_at=timezone.now())
+    review = CapacityReview.unscoped.create(
+        case=case, qa_request_programme=row, version=(latest.version + 1) if latest else 1,
+        is_current=True, assessment_ids=assessment_ids, reviewed_by=user,
+    )
+    timeline.record(case.institution, "capacity.reviewed", subject=review, actor=user, visibility="internal",
+                    internal_text=f"Capacity for {row.programme} reviewed and confirmed by "
+                                  f"{user.get_full_name() or user.email}.")
+    return review
+
+
+def rows_state(rows, *, limit=5):
+    """v2.4: ``current(row)`` and ``older_versions(row, kind)`` for every row in
+    TWO grouped queries instead of one-per-row and one-per-kind — used by the
+    capacity tab on the case screen. Returns
+    ``({row_pk: {kind: current or None}}, {row_pk: {kind: [older …]}})``.
+
+    Same rows, same order: currents overwrite later (the old dict build won with
+    the last row scanned, ascending pk) and older versions come in descending
+    ``version`` exactly like ``order_by("-version")[:limit]``."""
+    ids = [r.pk for r in rows]
+    if not ids:
+        return {}, {}
+    currents = {}
+    buckets = {}
+    for a in (CapacityAssessment.unscoped.filter(qa_request_programme_id__in=ids)
+              .order_by("qa_request_programme_id", "kind", "-version", "pk")):
+        if a.is_current:
+            currents.setdefault(a.qa_request_programme_id, {})[a.kind] = a
+        else:
+            buckets.setdefault((a.qa_request_programme_id, a.kind), []).append(a)
+    current_map = ({r.pk: {kind: currents.get(r.pk, {}).get(kind) for kind in KINDS} for r in rows})
+    older_map = ({r.pk: {kind: buckets.get((r.pk, kind), [])[:limit] for kind in KINDS} for r in rows})
+    return current_map, older_map
 
 
 @transaction.atomic
@@ -362,6 +557,9 @@ def run(row, kind, inputs, *, user=None):
                     internal_text=f"Capacity ({KIND_LABELS[kind]}) for {row.programme}: "
                                   f"{result['supportable_streams']} stream(s) supportable, "
                                   f"{result['requested_streams']} asked for — {result['adequacy']}.")
+    case = QACase.unscoped.filter(qa_request_id=row.qa_request_id).first()
+    if case is not None:
+        ensure_assessment_task(case, actor=user)
     return assessment
 
 

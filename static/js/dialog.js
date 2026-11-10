@@ -34,6 +34,21 @@
       panel.setAttribute("role", "document");
       panel.tabIndex = -1;
 
+      var brand = document.createElement("div");
+      brand.className = "nbte-confirm__brand";
+      var crest = document.querySelector("link[rel='icon'][type='image/svg+xml']");
+      if (crest) {
+        var img = document.createElement("img");
+        img.src = crest.href; img.alt = "";
+        brand.appendChild(img);
+      }
+      brand.appendChild(document.createTextNode("NBTE · Please confirm"));
+
+      var icon = document.createElement("div");
+      icon.className = "nbte-confirm__icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = options.icon || (tone === "danger" ? "!" : "✓");
+
       var title = document.createElement("h2");
       title.className = "nbte-confirm__title";
       title.id = "nbte-confirm-title-" + id;
@@ -56,7 +71,14 @@
       );
 
       actions.append(cancelButton, confirmButton);
-      panel.append(title, body, actions);
+      panel.append(brand, icon, title, body);
+      if (options.note) {
+        var note = document.createElement("p");
+        note.className = "nbte-confirm__note";
+        note.textContent = options.note;
+        panel.append(note);
+      }
+      panel.append(actions);
       root.append(backdrop, panel);
 
       var previousFocus = document.activeElement;
@@ -170,4 +192,27 @@
   }
 
   initFormConfirmations();
+
+  // v2.3: every hx-confirm uses the NBTE dialog instead of the browser's.
+  // Optional attributes on the element: data-confirm-title, data-confirm-label,
+  // data-confirm-tone (danger|default), data-confirm-note, data-confirm-icon.
+  document.addEventListener("htmx:confirm", function (event) {
+    var question = event.detail && event.detail.question;
+    if (!question) return;
+    event.preventDefault();
+    var el = event.detail.elt || event.target;
+    var ds = (el && el.dataset) || {};
+    var guess = /delete|remove|revoke|reject|decline|cancel|disable|stop/i.test(question) ? "danger" : "default";
+    open({
+      title: ds.confirmTitle || "Are you sure?",
+      body: question,
+      confirmLabel: ds.confirmLabel || (guess === "danger" ? "Yes, continue" : "Confirm"),
+      cancelLabel: ds.confirmCancel || "Cancel",
+      tone: ds.confirmTone || guess,
+      note: ds.confirmNote,
+      icon: ds.confirmIcon
+    }).then(function (ok) {
+      if (ok) event.detail.issueRequest(true);
+    });
+  });
 })();

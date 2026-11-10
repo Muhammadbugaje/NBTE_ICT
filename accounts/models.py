@@ -7,7 +7,7 @@
   `User.profile_completeness()`.
 """
 from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
-from django.db import models
+from django.db import models, transaction
 
 from core.models import TimeStampedModel
 
@@ -86,6 +86,12 @@ class Role(TimeStampedModel):
         ),
     )
 
+    # Phase B (C9): lowest grade-level number a holder must be on. Checked by
+    # org.assign_role while `hr.grade_rules_enabled` is on. Empty = no minimum.
+    min_grade = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Lowest grade level (number) a person must be on to hold this role. Empty = any.")
+
     class Meta:
         ordering = ["name"]
         permissions = [
@@ -103,6 +109,9 @@ class Role(TimeStampedModel):
             ("view_chairman_dashboard", "Can view the Chairman dashboard"),
             # Stage 3: assign groups/permissions to roles and users.
             ("assign_groups", "Can assign groups and direct permissions to roles and users"),
+            # Phase B (B10/T-SEC-3): explicit "see everyone" right, held by the
+            # ES and super admin (directors see their own department only).
+            ("view_all_users", "Can see user accounts of every department"),
         ]
 
     def __str__(self):
@@ -166,7 +175,7 @@ class User(AbstractUser):
     removed so createsuperuser and create_user never need a duplicate value."""
 
     AUDITED = True
-    AUDIT_EXCLUDE_FIELDS = ("password", "totp_secret")
+    AUDIT_EXCLUDE_FIELDS = ("password", "totp_secret", "preferences")
     AUDIT_IGNORE_FIELDS = ("last_login",)
 
     username = None
@@ -187,10 +196,12 @@ class User(AbstractUser):
     # on every request; `institution` makes scope_to_institution one indexed
     # filter that fails closed when NULL.
     STAFF, INSTITUTION, RESOURCE_PERSON = "staff", "institution", "resource_person"
+    PROFESSIONAL_BODY = "professional_body"  # v2.1 Phase R (X43)
     USER_TYPE_CHOICES = [
         (STAFF, "NBTE staff"),
         (INSTITUTION, "Institution user"),
         (RESOURCE_PERSON, "Resource person"),
+        (PROFESSIONAL_BODY, "Professional body"),
     ]
     user_type = models.CharField(
         max_length=20, choices=USER_TYPE_CHOICES, default=STAFF, db_index=True,
@@ -202,12 +213,19 @@ class User(AbstractUser):
         help_text="Required for institution users; optional for resource persons "
                   "(conflict-of-interest checks); always empty for staff.",
     )
+    professional_body = models.ForeignKey(
+        "institutions.ProfessionalBody", null=True, blank=True, on_delete=models.PROTECT, related_name="users",
+        help_text="Professional body accounts only (v2.1 X43).")
 
     must_change_password = models.BooleanField(default=True)
     # Phase 6: which sidebar a staff member works in (the workspace switcher).
     WORKSPACE_CHOICES = [("main", "Main system"), ("qa", "Quality Assurance")]
     workspace = models.CharField(max_length=10, choices=WORKSPACE_CHOICES, default="main",
                                  help_text="Sidebar shown by default: the main NBTE system or the QA workspace.")
+    # v2.1 Phase A (A10): personal appearance (theme, palette, motion,
+    # density, stamp). Validated by config.appearance.clean_preferences;
+    # written by POST /me/preferences/ and the profile Appearance card.
+    preferences = models.JSONField(default=dict, blank=True)
     # 2FA scaffold (enforced in Phase 5).
     two_factor_enabled = models.BooleanField(default=False)
     totp_secret = models.CharField(max_length=64, blank=True)
@@ -226,6 +244,8 @@ class User(AbstractUser):
                     models.Q(user_type="institution", institution__isnull=False)
                     | models.Q(user_type="staff", institution__isnull=True)
                     | models.Q(user_type="resource_person")
+                    | models.Q(user_type="professional_body", professional_body__isnull=False,
+                               institution__isnull=True, department__isnull=True)
                 ),
                 name="accounts_user_type_institution_consistent",
             ),
@@ -248,11 +268,16 @@ class User(AbstractUser):
     # ------------------------------------------------------------------
     # Save
     # ------------------------------------------------------------------
+    @transaction.atomic
     def save(self, *args, **kwargs):
         self.email = (self.email or "").lower()
         super().save(*args, **kwargs)
-        # Only sync when department might have changed (or on a full save).
         update_fields = kwargs.get("update_fields")
+        email_touched = update_fields is None or "email" in update_fields
+        if email_touched:
+            self._sync_email_to_staff()
+
+        # Only sync when department might have changed (or on a full save).
         department_touched = (
             update_fields is None
             or "department" in update_fields
@@ -260,6 +285,14 @@ class User(AbstractUser):
         )
         if department_touched:
             self._sync_department_to_staff()
+
+    def _sync_email_to_staff(self):
+        from staff.models import Staff
+
+        staff = Staff.objects.filter(user_id=self.pk).first()
+        if staff is not None and staff.email != self.email:
+            staff.email = self.email
+            staff.save(update_fields=["email"])
 
     # ------------------------------------------------------------------
     # Department-aware access
@@ -407,9 +440,24 @@ class UserPermissionOverride(TimeStampedModel):
         User, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="+",
     )
+    # Phase B (X31): time-limited, scoped grants made by a director through
+    # org.grant_permission. An expired or revoked row no longer counts.
+    SCOPE_DEPARTMENT, SCOPE_DIVISION = "department", "division"
+    SCOPE_CHOICES = [(SCOPE_DEPARTMENT, "Department"), (SCOPE_DIVISION, "Division")]
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    granted_scope = models.CharField(max_length=20, blank=True, choices=SCOPE_CHOICES)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+    )
 
     class Meta:
         unique_together = ("user", "permission")
+
+    @property
+    def is_current(self):
+        from django.utils import timezone
+        return self.revoked_at is None and (self.expires_at is None or self.expires_at > timezone.now())
 
     def __str__(self):
         return f"{self.effect} {self.permission.codename} -> {self.user_id}"

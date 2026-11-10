@@ -1,29 +1,28 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags audience_tags %}
 
 {% block title %}Groups · User management · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Groups{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="gp-page">
-  <header class="page-header">
+  <header class="qa-hero nbte-hero">
     <div>
-      <p class="gp-eyebrow">User management</p>
+      <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} User management · Groups</span>
       <h1>Groups</h1>
-      <p class="muted">A group is a named bundle of permissions. Give it to a role and everyone in the role gets it, or give it to one person.</p>
-    </div>
-    {% if can_add %}
-      <div class="header-actions">
-        <a href="{% url 'accounts:groups:create' %}" class="btn btn-primary">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New group
-        </a>
+      <p>A group is a named bundle of permissions. Give it to a role and everyone in the role gets it, or give it to one person. Groups carried by NBTE internal roles can never be given to institution or other portal accounts.</p>
+      <div class="qa-hero__actions">
+        {% if can_add %}<a href="{% url 'accounts:groups:create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New group</a>{% endif %}
+        <a href="{% url 'accounts:groups:matrix' %}" class="btn btn-subtle">{% icon "sheet" 16 "2.2" %} Permission matrix</a>
       </div>
-    {% endif %}
+    </div>
+    <div class="qa-hero__stats um-tiles" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ page.paginator.count }}</strong><span>Groups{% if q or app %} found{% endif %}</span></div>
+    </div>
   </header>
 
   {% include "accounts/groups/_subnav.html" with section="groups" %}
@@ -104,5 +103,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+  <script src="{% static 'js/groups.js' %}" defer></script>
 {% endblock %}

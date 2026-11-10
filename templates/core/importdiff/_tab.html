@@ -1,0 +1,76 @@
+{% url 'core:import_toggle' run.pk as toggle_url %}
+<section class="pf-card idiff-panel" id="idiff-tab" aria-live="polite">
+  {% if tab == "changed" %}
+    <header class="idiff-panel__head">
+      <div><h2>Changed ({{ total }})</h2><p class="muted">Old value → value in your file. Untick anything you do not want.</p></div>
+      {% if open and total %}<div class="btn-group">
+        <button type="button" class="btn btn-ghost btn-sm" hx-post="{{ toggle_url }}" hx-vals='{"all": "changed", "on": "1"}' hx-target="#idiff-tab" hx-swap="outerHTML">Tick all</button>
+        <button type="button" class="btn btn-subtle btn-sm" hx-post="{{ toggle_url }}" hx-vals='{"all": "changed", "on": "0"}' hx-target="#idiff-tab" hx-swap="outerHTML">Untick all</button>
+      </div>{% endif %}
+    </header>
+    {% for r in rows %}
+      <article class="idiff-row">
+        <header class="idiff-row__head">
+          <span class="idiff-avatar" aria-hidden="true">{{ r.label|slice:":1"|upper }}</span>
+          <div class="idiff-row__who"><strong>{{ r.label }}</strong><span class="muted">{{ r.sublabel }}</span></div>
+          <span class="pf-chip pf-chip--warn">{{ r.field_rows|length }} change{{ r.field_rows|length|pluralize }}</span>
+        </header>
+        {% for f in r.field_rows %}
+        <div class="idiff-field">
+          <label class="idiff-field__tick">
+            <input type="checkbox" name="on" value="1" {% if f.ticked %}checked{% endif %}{% if not open %} disabled{% endif %}
+                   hx-post="{{ toggle_url }}" hx-trigger="change" hx-vals='{"row": "{{ r.pk }}", "field": "{{ f.field }}"}' hx-target="#idiff-footer" hx-swap="outerHTML">
+            <span>{{ f.label }}</span>
+          </label>
+          <div class="idiff-field__change"><del class="idiff-old">{{ f.old|default:"(blank)" }}</del><span aria-hidden="true">→</span><ins class="idiff-new">{{ f.new }}</ins></div>
+          {% if f.warning %}<p class="idiff-field__warn">{{ f.warning }}</p>{% endif %}
+        </div>
+        {% endfor %}
+      </article>
+    {% empty %}<p class="pf-empty">No changed records.</p>{% endfor %}
+  {% elif tab == "new" %}
+    <header class="idiff-panel__head">
+      <div><h2>New ({{ total }})</h2><p class="muted">Not found by the key. Ticked rows are added.</p></div>
+      {% if open and total %}<div class="btn-group">
+        <button type="button" class="btn btn-ghost btn-sm" hx-post="{{ toggle_url }}" hx-vals='{"all": "new", "on": "1"}' hx-target="#idiff-tab" hx-swap="outerHTML">Tick all</button>
+        <button type="button" class="btn btn-subtle btn-sm" hx-post="{{ toggle_url }}" hx-vals='{"all": "new", "on": "0"}' hx-target="#idiff-tab" hx-swap="outerHTML">Untick all</button>
+      </div>{% endif %}
+    </header>
+    <ul class="idiff-list">
+    {% for r in rows %}
+      <li class="idiff-list__row">
+        <label class="idiff-field__tick">
+          <input type="checkbox" name="on" value="1" {% if r.accepted %}checked{% endif %}{% if not open %} disabled{% endif %}
+                 hx-post="{{ toggle_url }}" hx-trigger="change" hx-vals='{"row": "{{ r.pk }}"}' hx-target="#idiff-footer" hx-swap="outerHTML">
+          <span class="idiff-row__who"><strong>{{ r.label }}</strong><span class="muted">{{ r.sublabel }}</span></span>
+        </label>
+        <span class="pf-chip pf-chip--ok">{% if r.applied %}Added{% else %}Add{% endif %}</span>
+      </li>
+    {% empty %}<li class="pf-empty">No new records.</li>{% endfor %}
+    </ul>
+  {% elif tab == "missing" %}
+    <header class="idiff-panel__head"><div><h2>Missing from file ({{ total }})</h2><p class="muted">Here, but not in your sheet.</p></div></header>
+    <div class="pf-alert pf-alert--warn">Imports never delete anyone. If someone has left, record it on their profile; their history stays.</div>
+    <ul class="idiff-list">
+    {% for r in rows %}<li class="idiff-list__row"><span class="idiff-row__who"><strong>{{ r.label }}</strong><span class="muted">{{ r.sublabel }}</span></span><span class="pf-chip">Kept</span></li>
+    {% empty %}<li class="pf-empty">Every record is in the file.</li>{% endfor %}
+    </ul>
+  {% elif tab == "unchanged" %}
+    <header class="idiff-panel__head"><div><h2>Unchanged ({{ total }})</h2><p class="muted">Identical to what is here. Nothing happens.</p></div></header>
+    <ul class="idiff-list">
+    {% for r in rows %}<li class="idiff-list__row"><span class="idiff-row__who"><strong>{{ r.label }}</strong><span class="muted">{{ r.sublabel }}</span></span></li>
+    {% empty %}<li class="pf-empty">None.</li>{% endfor %}
+    </ul>
+  {% else %}
+    <header class="idiff-panel__head">
+      <div><h2>Errors ({{ total }})</h2><p class="muted">These rows are not imported. Fix them in the file and upload it again.</p></div>
+      {% if total %}<div class="btn-group"><a class="btn btn-ghost btn-sm" href="{% url 'core:import_errors' run.pk %}">Download rows to fix</a></div>{% endif %}
+    </header>
+    <ul class="idiff-list">
+    {% for r in rows %}<li class="idiff-list__row idiff-list__row--error"><span class="pf-chip pf-chip--danger">{% if r.row_number %}Row {{ r.row_number }}{% else %}Conflict{% endif %}</span><span>{{ r.error|default:r.apply_error }}</span></li>
+    {% empty %}<li class="pf-empty">No errors.</li>{% endfor %}
+    </ul>
+  {% endif %}
+  {% if has_next %}<div class="btn-group idiff-more"><a class="btn btn-ghost btn-sm" href="?tab={{ tab }}&page={{ page|add:1 }}">Next {{ 50 }}</a></div>{% endif %}
+</section>
+{% if fragment %}{% include "core/importdiff/_footer.html" with oob=True %}{% endif %}

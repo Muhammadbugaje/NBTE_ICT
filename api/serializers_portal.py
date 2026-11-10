@@ -326,6 +326,24 @@ class InstitutionRefSerializer(s.Serializer):
     status = s.CharField()
 
 
+class ProgrammeStateSerializer(s.Serializer):
+    id = s.IntegerField()
+    state = s.CharField(help_text="draft | pending | cleared | returned")
+    remark = s.CharField(allow_blank=True)
+
+
+class ProgrammeSubmissionSerializer(s.Serializer):
+    can_submit = s.BooleanField()
+    blockers = s.ListField(child=s.CharField())
+    chief_executive_only = s.BooleanField(help_text="True when this account may not submit (X12).")
+    count = s.IntegerField()
+    streams = s.IntegerField()
+    department = s.CharField()
+    expected_time = s.CharField()
+    round = s.IntegerField()
+    programmes = ProgrammeStateSerializer(many=True)
+
+
 class ApplicationSerializer(s.Serializer):
     institution = InstitutionRefSerializer()
     can_start = s.BooleanField()
@@ -335,6 +353,7 @@ class ApplicationSerializer(s.Serializer):
     gaps = s.ListField(child=s.CharField(), help_text="Profile items still missing.")
     blockers = s.ListField(child=s.CharField(), help_text="Why the draft cannot be submitted ([] = it can).")
     can_submit = s.BooleanField()
+    is_chief_executive = s.BooleanField(help_text="Only the Chief Executive submits to NBTE (X12).")
     documents = DocumentSummarySerializer()
     clearances = ClearanceSerializer(many=True)
     fees = FeeRowSerializer(many=True)
@@ -342,6 +361,7 @@ class ApplicationSerializer(s.Serializer):
     estimate = EstimateSerializer(allow_null=True)
     selecting_programmes = s.BooleanField()
     programme_options = ProgrammeOptionsSerializer(allow_null=True)
+    programme_submission = ProgrammeSubmissionSerializer(allow_null=True)
     handled_by = s.CharField()
 
 
@@ -351,6 +371,8 @@ class DeclarationSerializer(s.Serializer):
 
 
 class ProgrammeAddSerializer(s.Serializer):
+    master = s.IntegerField(required=False, allow_null=True, help_text="Programme master list id (X44).")
+    body = s.IntegerField(required=False, allow_null=True, help_text="Professional body id (manual entry).")
     name = s.CharField(required=False, allow_blank=True)
     level = s.IntegerField(required=False, allow_null=True)
     category = s.IntegerField(required=False, allow_null=True)
@@ -559,7 +581,6 @@ class CatalogueItemSerializer(s.Serializer):
     id = s.IntegerField()
     name = s.CharField()
     unit = s.CharField(allow_blank=True)
-    required_quantity = s.CharField(allow_blank=True)
     quantity = s.CharField(allow_blank=True)
 
 
@@ -950,7 +971,26 @@ class AttemptRowSerializer(s.Serializer):
     failure_reason = s.CharField(allow_blank=True)
 
 
+class BillLineSerializer(s.Serializer):
+    """v2.1 F.4 (P1): one line of the bill (institution fee, processing fee …)."""
+    code = s.CharField()
+    label = s.CharField()
+    description = s.CharField(allow_blank=True)
+    kind = s.CharField()
+    amount = s.CharField()
+    amount_display = s.CharField()
+
+
+class PayMethodSerializer(s.Serializer):
+    code = s.CharField()
+    label = s.CharField()
+
+
 class BillDetailSerializer(BillRowSerializer):
+    breakdown = BillLineSerializer(many=True)
+    chosen_method = s.CharField(allow_blank=True, help_text="v2.1 P9: once set, only this method is offered.")
+    methods = PayMethodSerializer(many=True, help_text="Methods the institution can choose now.")
+    gateway_verified = s.BooleanField(help_text="X21: the provider verified the payment; no upload is needed.")
     amount_in_words = s.CharField(allow_blank=True)
     amount_paid = s.CharField()
     amount_paid_display = s.CharField()
@@ -972,6 +1012,11 @@ class BillDetailSerializer(BillRowSerializer):
     advices = AdviceSerializer(many=True)
     proofs = ProofRowSerializer(many=True)
     attempts = AttemptRowSerializer(many=True)
+
+
+class PaymentMethodSerializer(s.Serializer):
+    method = s.ChoiceField(choices=["remita", "paystack", "bank_transfer", ""], allow_blank=True,
+                           help_text="Choose a method (the others are hidden); blank = Change method.")
 
 
 class OnlinePaymentSerializer(s.Serializer):

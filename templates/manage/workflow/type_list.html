@@ -5,28 +5,16 @@
 {% block page_title %}Request types{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="wf-page">
-  {% include "manage/workflow/_tabs.html" %}
+  {% url 'workflow_manage:type_create' as new_url %}
+  {% url 'workflow_manage:category_list' as cats_url %}
+  {% include "partials/hero.html" with icon="file" eyebrow="Workflow management · Request types" title="Request types" lede="Request types are what staff can ask for, and each one points to the chain that approves it." action_url=new_url action_label="New type" action_icon="plus" s1=types|length s1_label="Types" s2=categories|length s2_label="Categories" s2_url=cats_url %}
 
-  <header class="wf-hero wf-hero-split">
-    <div class="wf-hero-inner">
-      <div class="wf-hero-icon wf-hero-icon-blue">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      </div>
-      <div>
-        <h1>Request types</h1>
-        <p>{{ types|length }} type{{ types|length|pluralize }} defined.</p>
-      </div>
-    </div>
-    <a href="{% url 'workflow_manage:type_create' %}" class="btn btn-primary">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      New type
-    </a>
-  </header>
+  {% include "manage/workflow/_tabs.html" %}
 
   <form method="get" class="wf-filter">
     <div class="wf-filter-search">

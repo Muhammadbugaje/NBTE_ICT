@@ -1,6 +1,6 @@
 """Finance (QA) — the internal payment screens (Master Plan §10, §13).
 
-    Verification queue (first pass → second check → Director of Finance)
+    Verification queue (Director of Finance final decision)
     Bills · Statement import · Unmatched lines (manual match) · Waivers ·
     Refunds · Webhook log · Settings → Fees & bank accounts, Payment methods
 
@@ -12,17 +12,19 @@ decision needs (§10.4).
 from __future__ import annotations
 
 import datetime
+from decimal import Decimal
 
 from django import forms
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q, Sum
 from django.http import Http404, HttpResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from institutions.forms import QAForm
+from core import audit
 from qa_core import actions, flow
 from qa_core.models import PendingAction
 from qa_core.permissions import can_view_finance, can_view_qa_settings, require, require_or_404
@@ -45,6 +47,11 @@ from .models import (
 from .money import naira
 
 
+def can_view_queue(user):
+    """Finance staff, and ICT QA monitors (read-only + "Send reminder", P4)."""
+    return can_view_finance(user) or services.is_ict_monitor(user)
+
+
 def _impersonating(request):
     return bool(getattr(request, "is_impersonating", False))
 
@@ -55,8 +62,13 @@ def _hero(request):
     first = open_items.filter(decision="").count()
     ready = sum(1 for i in open_items.exclude(decision="").select_related("obligation") if services.ready_for_final(i)[0])
     overdue = PaymentObligation.objects.for_user(user).filter(status="finance_confirmation_overdue").count()
-    return {"first": first, "ready": ready, "overdue": overdue,
+    from . import bill_requests as br_svc
+    from .models import BillRequest
+
+    return {"first": first, "open": open_items.count(), "ready": ready, "overdue": overdue,
             "unmatched": BankStatementLine.objects.filter(match_status="unmatched").count(),
+            "bills_awaiting": BillRequest.unscoped.filter(status=BillRequest.AWAITING).count(),
+            "is_es": br_svc.is_approver(user), "can_prepare": br_svc.can_prepare(user),
             "role": "director" if services.is_final_approver(user) else
             ("officer" if user.has_perm("payments.verify_payment") else "viewer")}
 
@@ -64,8 +76,8 @@ def _hero(request):
 # ===========================================================================
 # Verification queue
 # ===========================================================================
-STAGES = [("", "Everything open"), ("first", "Needs first pass"), ("second", "Needs second check"),
-          ("final", "Ready for the Director"), ("info", "Needs information"), ("overdue", "Overdue")]
+STAGES = [("", "Everything open"), ("final", "Ready for the Director"),
+          ("info", "Needs information"), ("overdue", "Overdue")]
 AGES = {"24h": 1, "3d": 3, "7d": 7}
 
 
@@ -75,7 +87,7 @@ def _queue_rows(request):
                                 q=f.get("q", ""), stage=f.get("stage", ""))
 
 
-@require(can_view_finance)
+@require(can_view_queue)
 @require_GET
 def queue(request):
     q = (request.GET.get("q") or "").strip()
@@ -98,6 +110,16 @@ def _item_or_404(request, pk):
     if item is None:
         raise Http404
     return item
+
+
+def _finance_seat_holder():
+    """v2.2: who sits in the Director of Finance seat (shown to anyone in
+    Finance who expected to confirm, so a mis-assigned seat is obvious)."""
+    import org
+    from qa_core.departments import qa_department
+
+    dept = qa_department(services.finance_department_code())
+    return org.director_of(dept) if dept is not None else None
 
 
 class FirstPassForm(QAForm):
@@ -127,16 +149,22 @@ def _item_context(request, item, **extra):
         "history": history, "ready": ready, "ready_why": why,
         "needs_second": services.needs_second_check(item),
         "threshold": naira(services._decimal("qa.payment.dual_verify_threshold", "5000000")),
+        # v2.1 F.4 / F.18
+        "approvals_required": services.approvals_required(item), "approvals_have": len(services.approvals(item)),
+        "first_mode": services.first_pass_mode(), "next_reminder": services.next_reminder_at(item),
+        "extra_approvals": item.extra_approvals or [],
+        "first_changes": item.first_pass_changes or [],
         **rights,
         "first_form": extra.pop("first_form", None) or FirstPassForm(initial={"amount": ob.balance}),
         "advices": list(PaymentAdvice.objects.for_user(user).filter(obligation=ob)),
         "final_role": services.final_approver_role(),
+        "seat_holder": _finance_seat_holder(),
     }
     ctx.update(extra)
     return ctx
 
 
-@require_or_404(can_view_finance)
+@require_or_404(can_view_queue)
 @require_GET
 def item_detail(request, pk):
     item = _item_or_404(request, pk)
@@ -186,6 +214,39 @@ def item_second_pass(request, pk):
                  error)
 
 
+def _panel(request, item_pk, *, error="", ok_title="", ok_text=""):
+    item = _item_or_404(request, item_pk)
+    response = render(request, "payments/_item_panel.html", _item_context(request, item, error=error),
+                      status=422 if error else 200)
+    if error:
+        return toast(response, "error", "Not done", error)
+    return toast(response, "success", ok_title, ok_text)
+
+
+@require_or_404(can_view_finance)
+@require_POST
+def item_change_first(request, pk):
+    """P8: unlock (clear) a first pass — reason required, audited."""
+    item = _item_or_404(request, pk)
+    try:
+        services.change_first_pass(item, user=request.user, reason=request.POST.get("reason", ""))
+    except (ValidationError, PermissionDenied) as exc:
+        return _panel(request, pk, error=" ".join(getattr(exc, "messages", [str(exc)])))
+    return _panel(request, pk, ok_title="First pass reopened", ok_text="Record the first pass again.")
+
+
+@require_or_404(can_view_queue)
+@require_POST
+def item_remind(request, pk):
+    """P4: ICT sends the Director of Finance a reminder (once per window)."""
+    item = _item_or_404(request, pk)
+    try:
+        services.remind_director(item, user=request.user, note=request.POST.get("note", ""))
+    except (ValidationError, PermissionDenied) as exc:
+        return _panel(request, pk, error=" ".join(getattr(exc, "messages", [str(exc)])))
+    return _panel(request, pk, ok_title="Reminder sent", ok_text="The Director of Finance was notified.")
+
+
 @require_or_404(can_view_finance)
 @require_POST
 def item_final(request, pk):
@@ -195,7 +256,7 @@ def item_final(request, pk):
     error = ""
     try:
         services.final_decision(item, user=request.user, decision=decision, reason=request.POST.get("reason", ""),
-                                impersonating=_impersonating(request))
+                                impersonating=_impersonating(request), amount=request.POST.get("amount") or None)
     except (ValidationError, PermissionDenied) as exc:
         error = " ".join(getattr(exc, "messages", [str(exc)]))
     item = _item_or_404(request, pk)
@@ -230,8 +291,7 @@ def obligations(request):
         qs = qs.filter(Q(reference__icontains=q) | Q(institution__name__icontains=q) | Q(institution__code__iexact=q)
                        | Q(source_reference__icontains=q))
     page = paginate(request, qs.order_by("-created_at"))
-    for ob in page["rows"]:
-        ob.stage = services.stage_label(ob)
+    page["rows"] = services.stage_labels(page["rows"])   # v2.2: 3 queries for the page, not 2 per row
     totals = PaymentObligation.objects.for_user(request.user).filter(status__in=("confirmed", "overpaid")) \
         .aggregate(s=Sum("amount_paid"))
     ctx = {"page": page, "filters": f, "fees": FeeSchedule.objects.all(), "hero": _hero(request),
@@ -527,12 +587,11 @@ def refund_action(request, pk, verb):
             raise Http404
     except (ValidationError, PermissionDenied) as exc:
         error = " ".join(getattr(exc, "messages", [str(exc)]))
-    qs = Refund.objects.for_user(request.user).select_related("obligation", "obligation__institution")
-    page = paginate(request, qs.order_by("-created_at"))
-    response = render(request, "payments/_refunds_panel.html",
-                      {"page": page, "filters": {}, "hero": _hero(request), "error": error,
-                       "statuses": [("requested", "Requested"), ("approved", "Approved"), ("paid", "Paid"),
-                                    ("rejected", "Declined")]}, status=422 if error else 200)
+    # v2.5: the Refunds tab now lists cancellation refunds with these overpayment refunds below.
+    from . import refund_views
+
+    response = render(request, "payments/refunds/_list_panel.html",
+                      refund_views._list_ctx(request, legacy_error=error), status=422 if error else 200)
     return toast(response, "error" if error else "success", "Not done" if error else title, error)
 
 
@@ -718,7 +777,7 @@ def settings_methods(request):
             "qa.payment.offline.enabled", "qa.payment.method_order", "qa.payment.paystack.fee_bearer",
             "qa.payment.allow_partial", "qa.payment.dual_verify_threshold",
             "qa.payment.finance_confirmation_window_hours", "qa.payment.receipt_required_for_provider_payments",
-            "qa.payment.provider_confirmation_is_evidence_only", "qa.payment.final_approver_role"]
+            "qa.payment.provider_confirmation_is_evidence_only", "qa.payment.finance_department"]
     entries = {e.key: e for e in ConfigEntry.objects.filter(key__in=keys)}
     report = providers.status_report()
     offered = [p.code for p in providers.enabled_methods()]
@@ -782,83 +841,451 @@ def settings_fee_test(request):
 
 
 # ===========================================================================
-# Phase 8: issue a bill by hand (a Finance officer proposes, the Director confirms)
+# v2.4: Issue a bill — pick an institution, tick programmes / fees, the fee
+# rules price them, the Executive Secretary approves, then it is sent.
+# (payments.bill_requests holds the rules; IssueBillHandler stays for the API.)
 # ===========================================================================
-class IssueBillForm(QAForm):
-    institution = forms.CharField(max_length=20, label="Institution code")
-    fee = forms.ModelChoiceField(FeeSchedule.objects.filter(is_active=True), to_field_name="code",
-                                 label="Fee schedule")
-    programmes = forms.IntegerField(required=False, min_value=0, max_value=500,
-                                    help_text="Blank = every programme on the institution's record.")
-    streams = forms.IntegerField(required=False, min_value=0, max_value=5000,
-                                 help_text="Blank = the streams on the institution's record.")
-    description = forms.CharField(max_length=255, required=False, label="Text on the slip",
-                                  help_text="Blank = the fee schedule's own text.")
-    reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}), min_length=5)
+def _bill_hero(request, **extra):
+    hero = _hero(request)
+    hero.update(extra)
+    return hero
 
 
-def _bill_institution(request, code):
+def _bill_requests_qs(user):
+    from . import bill_requests as br_svc
+    from .models import BillRequest
+
+    if br_svc.is_approver(user):
+        base = BillRequest.unscoped.all()
+    else:
+        # Their scope, plus every bill request they prepared themselves (they may
+        # bill any institution — see _bill_institutions).
+        base = BillRequest.unscoped.filter(Q(pk__in=BillRequest.objects.for_user(user).values("pk"))
+                                           | Q(created_by_id=user.pk))
+    return base.select_related("institution", "created_by", "decided_by", "obligation")
+
+
+def _bill_institutions(user):
+    """Owner decision: whoever may issue bills picks from EVERY institution
+    (never-billed ones too), not only their scoped ones. Other finance pages
+    keep their scoping."""
     from institutions.models import Institution
 
-    return Institution.objects.for_user(request.user).filter(code__iexact=(code or "").strip()).first()
+    from . import bill_requests as br_svc
+
+    base = Institution.unscoped.all() if br_svc.can_prepare(user) else Institution.objects.for_user(user)
+    return base.exclude(status="delisted").order_by("name").only("code", "name")
 
 
-def _bill_variables(d):
+def _bill_ctx(request, inst=None, *, draft=None, picks=None, reason="", description="", **extra):
+    from . import bill_requests as br_svc
+
+    ctx = {"institutions": _bill_institutions(request.user), "inst": inst, "draft": draft,
+           "hero": _bill_hero(request), "reason": reason, "description": description,
+           "fin_tab": "bills"}
+    if inst is not None:
+        cat = br_svc.catalogue(inst)
+        items = picks if picks is not None else (draft.items if draft else [])
+        chosen = {i.get("key"): i for i in items if i.get("key")}
+        for row in cat["has"] + cat["can_offer"]:
+            pick = chosen.get(row["key"])
+            row["checked"] = pick is not None
+            if pick:
+                row["streams"] = pick.get("streams") or row["streams"]
+        chosen_fees = {i.get("fee_code") for i in items if i.get("kind") == br_svc.FEE}
+        ctx.update({"cat": cat, "other_fees": [{"schedule": s, "checked": s.code in chosen_fees}
+                                               for s in br_svc.other_fees()],
+                    "priced": br_svc.price(inst, items) if items else None,
+                    "recent": list(_bill_requests_qs(request.user).filter(institution=inst)[:6]),
+                    "existing_open": list(PaymentObligation.unscoped
+                                          .filter(institution=inst, status__in=PaymentObligation.OPEN_FOR_PAYMENT)
+                                          .order_by("-created_at")[:5])})
+    ctx.update(extra)
+    return ctx
+
+
+def br_can_view(user):
+    from . import bill_requests as br_svc
+
+    return br_svc.can_view(user)
+
+
+@require(br_can_view)
+@require_http_methods(["GET", "POST"])
+def issue_bill(request):
+    from . import bill_requests as br_svc
+    from .models import BillRequest
+
+    if not br_svc.can_prepare(request.user):
+        raise PermissionDenied("Issuing a bill needs payments.view_obligation (Finance).")
+    data = request.POST if request.method == "POST" else request.GET
+    draft = None
+    draft_pk = data.get("draft") or ""
+    if draft_pk.isdigit():
+        draft = _bill_requests_qs(request.user).filter(pk=int(draft_pk), status=BillRequest.DRAFT).first()
+    code = (data.get("institution") or (draft.institution.code if draft else "")).strip()
+    inst = _bill_institutions(request.user).filter(code__iexact=code).first() if code else None
+    if request.method == "GET":
+        error = "No institution with this code (or it is delisted)." if code and inst is None else ""
+        ctx = _bill_ctx(request, inst, draft=draft, reason=draft.reason if draft else "",
+                        description=draft.description if draft else "", error=error)
+        return render_qa(request, "payments/issue_bill.html", ctx, {"qa-panel": "payments/_issue_bill_panel.html"})
+    if inst is None:
+        ctx = _bill_ctx(request, None, error="Choose an institution first.")
+        return render_qa(request, "payments/issue_bill.html", ctx, {"qa-panel": "payments/_issue_bill_panel.html"},
+                         status=422)
+    items = br_svc.items_from_post(inst, request.POST)
+    reason, description = request.POST.get("reason", ""), request.POST.get("description", "")
+    op = request.POST.get("op", "price")
+    if op == "price":
+        ctx = _bill_ctx(request, inst, draft=draft, picks=items, reason=reason, description=description)
+        return render_qa(request, "payments/issue_bill.html", ctx, {"qa-panel": "payments/_issue_bill_panel.html",
+                                                                    "ib-summary": "payments/_bill_summary.html"})
+    try:
+        br = br_svc.save(inst, items, actor=request.user, reason=reason, description=description, request=draft,
+                         submit=(op == "send"))
+    except (ValidationError, PermissionDenied) as exc:
+        msg = " ".join(getattr(exc, "messages", [str(exc)]))
+        ctx = _bill_ctx(request, inst, draft=draft, picks=items, reason=reason, description=description, error=msg)
+        response = render_qa(request, "payments/issue_bill.html", ctx,
+                             {"qa-panel": "payments/_issue_bill_panel.html"}, status=422)
+        return toast(response, "error", "Not sent" if op == "send" else "Not saved", msg[:200])
+    if op == "send":
+        title, body = (f"{br.reference} sent to the Executive Secretary",
+                       f"{naira(br.total)} for {inst.name}. The institution sees it only after the ES approves.")
+    else:
+        title, body = f"Draft {br.reference} saved", "Send it to the Executive Secretary when it is ready."
+    ctx = _bill_request_ctx(request, br, flash={"kind": "success", "title": title, "message": body})
+    response = render_qa(request, "payments/bill_request.html", ctx, {"qa-panel": "payments/_bill_request_panel.html"})
+    if is_htmx(request):
+        response["HX-Push-Url"] = reverse("qa_fin:bill_request", args=[br.pk])
+    return toast(response, "success", title, body)
+
+
+BILL_REQUEST_TABS = [("awaiting_es", "Awaiting ES approval"), ("draft", "Drafts"), ("approved", "Approved & sent"),
+                     ("rejected", "Rejected"), ("all", "All")]
+
+
+@require(br_can_view)
+@require_GET
+def bill_requests(request):
+    from django.db.models import Count
+
+    from .models import BillRequest
+
+    qs = _bill_requests_qs(request.user)
+    status = request.GET.get("status") or "awaiting_es"
+    counts = dict(qs.values_list("status").annotate(n=Count("id")).values_list("status", "n"))
+    rows = qs if status == "all" else qs.filter(status=status)
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        rows = rows.filter(Q(reference__icontains=q) | Q(institution__name__icontains=q)
+                           | Q(institution__code__iexact=q))
+    page = paginate(request, rows.order_by("-submitted_at", "-created_at"))
+    awaiting_total = qs.filter(status=BillRequest.AWAITING).aggregate(s=Sum("total"))["s"] or 0
+    ctx = {"page": page, "status": status, "tabs": BILL_REQUEST_TABS, "counts": counts, "q": q,
+           "awaiting_total": awaiting_total, "hero": _bill_hero(request), "fin_tab": "approvals",
+           "can_prepare": br_can_prepare(request.user)}
+    return render_qa(request, "payments/bill_requests.html", ctx, {"qa-panel": "payments/_bill_requests_panel.html"})
+
+
+def br_can_prepare(user):
+    from . import bill_requests as br_svc
+
+    return br_svc.can_prepare(user)
+
+
+def _bill_request_ctx(request, br, **extra):
+    from . import bill_requests as br_svc
+
+    can_decide, why = br_svc.can_decide(br, request.user, impersonating=_impersonating(request))
+    steps = [("draft", "Draft", br.created_at), ("awaiting_es", "Awaiting ES approval", br.submitted_at),
+             ("rejected" if br.status == "rejected" else "approved",
+              "Rejected" if br.status == "rejected" else "Approved & sent", br.decided_at)]
+    order = {"draft": 0, "awaiting_es": 1, "approved": 2, "rejected": 2, "withdrawn": -1}
+    at = order.get(br.status, 0)
+    ctx = {"br": br, "lines": br.priced_lines, "hero": _bill_hero(request), "fin_tab": "approvals",
+           "steps": [{"code": c, "label": lbl, "when": w, "done": i < at or (i == at and i == 2),
+                      "now": i == at and i < 2} for i, (c, lbl, w) in enumerate(steps)],
+           "can_decide": can_decide, "decide_why": why, "is_es": br_svc.is_approver(request.user),
+           "is_mine": br.created_by_id == request.user.pk,
+           "groups": _group_lines(br.priced_lines)}
+    ctx.update(extra)
+    return ctx
+
+
+def _group_lines(lines):
+    from . import bill_requests as br_svc
+
+    titles = {br_svc.NEW: "New programme approval", br_svc.REACC: "Re-accreditation", br_svc.FEE: "Other fees"}
     out = {}
-    for key in ("programmes", "streams"):
-        if d.get(key) is not None:
-            out[key] = d[key]
-    if "programmes" in out and "streams" not in out:
-        out["streams"] = out["programmes"]
-    if "streams" in out:
-        out["max_streams"] = out["streams"]
-    return out
+    for line in lines:
+        g = out.setdefault(line.get("group") or "fee", {"title": titles.get(line.get("group"), "Fees"),
+                                                       "lines": [], "subtotal": Decimal("0")})
+        g["lines"].append(line)
+        g["subtotal"] += line["amount"]
+    return list(out.values())
+
+
+@require(br_can_view)
+@require_GET
+def bill_request_detail(request, pk):
+    br = get_object_or_404(_bill_requests_qs(request.user), pk=pk)
+    return render_qa(request, "payments/bill_request.html", _bill_request_ctx(request, br),
+                     {"qa-panel": "payments/_bill_request_panel.html"})
+
+
+@require(br_can_view)
+@require_POST
+def bill_request_action(request, pk, verb):
+    from . import bill_requests as br_svc
+
+    br = get_object_or_404(_bill_requests_qs(request.user), pk=pk)
+    remark = (request.POST.get("remark") or "").strip()
+    messages_ = {
+        "submit": ("Sent to the Executive Secretary", "The institution sees the bill only after the ES approves."),
+        "approve": ("Bill approved and sent", "The bill was issued and the institution has been notified."),
+        "reject": ("Bill rejected", "The officer who prepared it has been told why."),
+        "withdraw": ("Bill withdrawn", "Nothing was sent to the institution."),
+    }
+    if verb not in messages_:
+        raise Http404
+    try:
+        if verb == "submit":
+            if br.created_by_id != request.user.pk and not request.user.is_superuser:
+                raise PermissionDenied("Only the officer who prepared this draft can send it.")
+            br = br_svc.submit(br, actor=request.user)
+        elif verb == "approve":
+            br = br_svc.approve(br, actor=request.user, remark=remark, impersonating=_impersonating(request))
+        elif verb == "reject":
+            br = br_svc.reject(br, actor=request.user, remark=remark, impersonating=_impersonating(request))
+        else:
+            br = br_svc.withdraw(br, actor=request.user)
+    except (ValidationError, PermissionDenied) as exc:
+        msg = " ".join(getattr(exc, "messages", [str(exc)]))
+        br.refresh_from_db()
+        ctx = _bill_request_ctx(request, br, flash={"kind": "danger", "title": "Not done", "message": msg})
+        response = render_qa(request, "payments/bill_request.html", ctx,
+                             {"qa-panel": "payments/_bill_request_panel.html"},
+                             status=403 if isinstance(exc, PermissionDenied) else 422)
+        return toast(response, "error", "Not done", msg[:200])
+    title, body = messages_[verb]
+    if verb == "approve" and br.obligation_id:
+        body = f"Issued as {br.obligation.reference} ({naira(br.total)}). {br.institution.name} has been notified."
+    ctx = _bill_request_ctx(request, br, flash={"kind": "danger" if verb == "reject" else "success",
+                                                "title": title, "message": body})
+    response = render_qa(request, "payments/bill_request.html", ctx, {"qa-panel": "payments/_bill_request_panel.html"})
+    return toast(response, "success", title, body)
 
 
 @require(can_view_finance)
-@require_http_methods(["GET", "POST"])
-def issue_bill(request):
-    if not _can_propose_fee(request.user):
-        raise PermissionDenied("Issuing a bill needs payments.view_obligation (Finance).")
-    form = IssueBillForm(request.POST or None, initial={"institution": request.GET.get("institution", "")})
-    error, estimate = "", None
-    inst = None
-    if request.method == "POST":
-        if form.is_valid():
-            d = form.cleaned_data
-            inst = _bill_institution(request, d["institution"])
-            if inst is None:
-                form.add_error("institution", "No institution with this code in your scope.")
-            elif request.POST.get("op") == "preview":
-                estimate = _bill_estimate(inst, d)
-            else:
-                payload = {"fee_code": d["fee"].code, "variables": _bill_variables(d),
-                           "description": d.get("description", ""), "reason": d["reason"]}
-                try:
-                    pa = actions.initiate("payments.issue_bill", actor=request.user, target=inst, payload=payload,
-                                          reason=d["reason"], impersonating=_impersonating(request))
-                except (ValidationError, PermissionDenied) as exc:
-                    error = " ".join(getattr(exc, "messages", [str(exc)]))
-                else:
-                    response = render(request, "payments/_issue_bill_panel.html",
-                                      {"form": IssueBillForm(initial={"institution": inst.code}), "sent": pa,
-                                       "hero": _hero(request)})
-                    return toast(response, "success", f"{pa.reference} waiting for the Director of Finance",
-                                 "The bill is issued when a second officer confirms.")
-        if not form.is_valid() and not error:
-            error = "Check the form."
-    ctx = {"form": form, "error": error, "estimate": estimate, "inst": inst, "hero": _hero(request)}
-    return render_qa(request, "payments/issue_bill.html", ctx, {"qa-panel": "payments/_issue_bill_panel.html"},
-                     status=422 if error else 200)
+@require_GET
+def finance_settings(request):
+    context = {"fin_tab": "settings", "fin_title": "Decision policy",
+               "fin_lead": "Payment evidence goes directly to the Director of Finance for a final decision.",
+               "hero": _hero(request)}
+    return render_qa(request, "payments/settings.html", context,
+                     {"qa-panel": "payments/_settings_panel.html"})
 
 
-def _bill_estimate(inst, d):
-    from qa_core.formula import FormulaError, evaluate_setting
+# ===========================================================================
+# v2.2 — Settings → Fees by institution category
+# ===========================================================================
+TYPE_FEE_FIELDS = [
+    ("New institution (SOP-01)", [
+        ("registration_fee", "Registration fee", "Paid once when a new institution registers."),
+        ("registration_processing_fee", "Registration processing fee", "Added to the registration bill."),
+    ]),
+    ("Programmes added to NBTE", [
+        ("programme_fee", "Programme fee (per programme)", "Charged for each programme on the bill."),
+        ("programme_processing_fee", "Programme processing fee", "Once per bill, or per programme (switch below)."),
+        ("extra_stream_fee", "Extra stream fee", "Each stream asked for beyond one per programme."),
+    ]),
+    ("QA requests by existing institutions (SOP-02)", [
+        ("qa_request_base_fee", "QA request base fee", "Fixed part of an accreditation / re-accreditation bill."),
+        ("qa_request_fee_per_programme", "QA request fee (per programme)", "Charged for each programme in the request."),
+        ("qa_request_processing_fee", "QA request processing fee", "Added once to the QA request bill."),
+    ]),
+]
 
-    from .money import to_money
 
+def can_edit_type_fees(user):
+    if not getattr(user, "is_authenticated", False) or not user.is_active:
+        return False
+    import org
+    return bool(user.is_superuser or org.is_es(user) or org.is_super_admin(user)
+                or services.is_final_approver(user)
+                or user.has_perm("payments.change_institutiontypefee"))
+
+
+def _type_fees_ctx(request, **extra):
+    from qa_core.views import _settings_context
+    from institutions.models import InstitutionType
+    from .fee_table_seed import seed_type_fees
+    from .models import InstitutionTypeFee
+
+    seed_type_fees(InstitutionType, InstitutionTypeFee, activate=False)   # a new category gets an (off) row
+    rows = list(InstitutionTypeFee.objects.select_related("institution_type", "updated_by")
+                .order_by("institution_type__sort_order", "institution_type__name"))
+    for r in rows:
+        r.groups = [(title, [(f, label, help_, getattr(r, f)) for f, label, help_ in fields])
+                    for title, fields in TYPE_FEE_FIELDS]
+        r.example_registration = r.registration_fee + r.registration_processing_fee
+        times = 3 if r.programme_processing_per_programme else 1
+        r.example_programmes = r.programme_fee * 3 + r.programme_processing_fee * times
+    ctx = _settings_context(request, "type_fees", rows=rows, can_edit=can_edit_type_fees(request.user))
+    ctx.update(extra)
+    return ctx
+
+
+@require(_can_see_fee_settings)
+@require_GET
+def settings_type_fees(request):
+    return render_qa(request, "payments/settings/type_fees.html", _type_fees_ctx(request),
+                     {"qa-panel": "payments/settings/_type_fees_panel.html"})
+
+
+@require(_can_see_fee_settings)
+@require_POST
+def settings_type_fee_save(request, pk):
+    from decimal import Decimal, InvalidOperation
+    from .models import InstitutionTypeFee
+
+    if not can_edit_type_fees(request.user) or _impersonating(request):
+        raise PermissionDenied
+    row = get_object_or_404(InstitutionTypeFee, pk=pk)
+    errors, changes = [], {}
+    for _title, fields in TYPE_FEE_FIELDS:
+        for f, label, _h in fields:
+            raw = (request.POST.get(f) or "0").replace(",", "").replace("₦", "").strip() or "0"
+            try:
+                value = Decimal(raw).quantize(Decimal("0.01"))
+                if value < 0:
+                    raise InvalidOperation
+            except (InvalidOperation, ValueError):
+                errors.append(f"{label}: enter an amount in naira (numbers only).")
+                continue
+            if getattr(row, f) != value:
+                changes[f] = {"old": str(getattr(row, f)), "new": str(value)}
+                setattr(row, f, value)
+    for flag in ("programme_processing_per_programme", "is_confirmed", "is_active"):
+        value = request.POST.get(flag) == "on"
+        if getattr(row, flag) != value:
+            changes[flag] = {"old": getattr(row, flag), "new": value}
+            setattr(row, flag, value)
+    row.notes = (request.POST.get("notes") or "")[:255]
+    if errors:
+        response = render(request, "payments/settings/_type_fees_panel.html",
+                          _type_fees_ctx(request, error=" ".join(errors), open_pk=row.pk), status=422)
+        return toast(response, "error", "Not saved", errors[0])
+    if row.is_active and not any(getattr(row, f) > 0 for f in ("registration_fee", "programme_fee",
+                                                                  "qa_request_fee_per_programme",
+                                                                  "qa_request_base_fee")):
+        response = render(request, "payments/settings/_type_fees_panel.html",
+                          _type_fees_ctx(request, error="Enter at least one fee before switching this category on.",
+                                         open_pk=row.pk), status=422)
+        return toast(response, "error", "Not saved", "Enter at least one fee first.")
+    row.updated_by = request.user
+    row.save()
+    if changes:
+        audit.log("fee_table_change", row, actor=request.user, changes=changes,
+                  note=f"Fees for {row.institution_type.name}"[:255])
+    response = render(request, "payments/settings/_type_fees_panel.html",
+                      _type_fees_ctx(request, saved_pk=row.pk))
+    return toast(response, "success", f"{row.institution_type.name} fees saved",
+                 "New bills use these figures. Bills already issued keep their amounts.")
+
+
+# ===========================================================================
+# v2.2 — Ledger and reconciliation
+# ===========================================================================
+def _can_run_reconciliation(user):
+    import org
+    return bool(user.is_superuser or org.is_es(user) or org.is_super_admin(user) or services.is_final_approver(user))
+
+
+@require(can_view_finance)
+@require_GET
+def reconciliation(request, pk=None):
+    return _reconciliation_response(request, pk)
+
+
+def _reconciliation_response(request, pk=None):
+    from . import ledger
+    from .models import ReconciliationIssue, ReconciliationRun
+
+    runs = list(ReconciliationRun.objects.all()[:15])
+    run = (ReconciliationRun.objects.filter(pk=pk).first() if pk else (runs[0] if runs else None))
+    if pk and run is None:
+        raise Http404
+    issues = list(run.issues.select_related("obligation", "attempt", "resolved_by")) if run else []
+    open_issues = ReconciliationIssue.objects.filter(resolved_at__isnull=True).count()
+    trial = ledger.trial_balance()
+    ctx = {"runs": runs, "run": run, "issues": issues, "open_issues": open_issues, "hero": _hero(request),
+           "trial": trial, "tb": _trial_groups(trial), "can_run": _can_run_reconciliation(request.user),
+           "severity": {k: sum(1 for i in issues if i.severity == k and not (i.auto_fixed or i.resolved_at))
+                        for k in ("critical", "warning", "info")},
+           "fixed": sum(1 for i in issues if i.auto_fixed or i.resolved_at)}
+    balances = {acct.code: b for acct, _d, _c, b in trial}
+    ctx["cards"] = {"bank": balances.get(ledger.BANK, 0), "receivable": balances.get(ledger.RECEIVABLE, 0),
+                    "income": balances.get(ledger.INCOME, 0), "credits": balances.get(ledger.CREDITS, 0),
+                    "waived": balances.get(ledger.WAIVED, 0)}
+    return render_qa(request, "payments/reconciliation.html", ctx, {"qa-panel": "payments/_reconciliation_panel.html"})
+
+
+TB_GROUPS = [("asset", "Assets"), ("liability", "Liabilities"), ("income", "Income"), ("expense", "Expenses")]
+
+
+def _trial_groups(trial):
+    """Trial balance rows grouped by account kind, with subtotals and the
+    grand totals (debits must equal credits)."""
+    zero = Decimal("0.00")
+    groups = []
+    for kind, title in TB_GROUPS:
+        rows = [{"acct": a, "debit": d, "credit": c, "balance": b} for a, d, c, b in trial if a.kind == kind]
+        if rows:
+            groups.append({"kind": kind, "title": title, "rows": rows,
+                           "debit": sum((r["debit"] for r in rows), zero),
+                           "credit": sum((r["credit"] for r in rows), zero),
+                           "balance": sum((r["balance"] for r in rows), zero)})
+    debit = sum((d for _a, d, _c, _b in trial), zero)
+    credit = sum((c for _a, _d, c, _b in trial), zero)
+    return {"groups": groups, "debit": debit, "credit": credit, "difference": debit - credit,
+            "balanced": debit == credit, "accounts": len(trial)}
+
+
+@require(can_view_finance)
+@require_POST
+def reconciliation_run(request):
+    from . import reconcile
+
+    if not _can_run_reconciliation(request.user):
+        raise PermissionDenied
     try:
-        snap = evaluate_setting(d["fee"].formula, services.fee_variables(inst, **_bill_variables(d)))
-    except FormulaError as exc:
-        return {"error": str(exc)}
-    return {"amount": to_money(snap["result"]), "inputs": snap["inputs"], "expr": snap["expr"]}
+        run = reconcile.run(trigger="manual", actor=request.user)
+    except Exception as exc:  # report, never 500
+        response = _reconciliation_response(request)
+        return toast(response, "error", "Reconciliation did not finish", str(exc)[:200])
+    response = _reconciliation_response(request, run.pk)
+    return toast(response, "success", "Reconciliation finished",
+                 f"{run.issues_found} issue(s), {run.auto_fixed} corrected automatically.")
+
+
+@require(can_view_finance)
+@require_POST
+def reconciliation_resolve(request, issue_pk):
+    from .models import ReconciliationIssue
+
+    if not _can_run_reconciliation(request.user):
+        raise PermissionDenied
+    issue = get_object_or_404(ReconciliationIssue, pk=issue_pk)
+    note = (request.POST.get("resolution") or "").strip()
+    if len(note) < 5:
+        response = _reconciliation_response(request, issue.run_id)
+        return toast(response, "error", "Not resolved", "Write what was done (at least 5 characters).")
+    issue.resolved_at, issue.resolved_by, issue.resolution = timezone.now(), request.user, note[:2000]
+    issue.save(update_fields=["resolved_at", "resolved_by", "resolution"])
+    audit.log("other", issue.obligation or issue.run, actor=request.user,
+              note=f"Reconciliation issue resolved: {note[:200]}")
+    response = _reconciliation_response(request, issue.run_id)
+    return toast(response, "success", "Marked resolved", "")

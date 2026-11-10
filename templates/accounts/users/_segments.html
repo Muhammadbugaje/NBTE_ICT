@@ -1,0 +1,10 @@
+{% load qa_tags %}{% comment %}
+  Segment switcher: NBTE staff / Institution users / Resource persons & professional
+  bodies. Each segment is a separate, server-filtered list (never mixed).
+  Context: segment, segment_counts, nbte_url, inst_url, ext_url, label.
+{% endcomment %}
+<nav class="qa-tabs um-segments" aria-label="{{ label|default:'Account groups' }}">
+  <a href="{{ nbte_url }}" class="{% if segment == 'nbte' %}is-active{% endif %}"{% if segment == 'nbte' %} aria-current="page"{% endif %}>{% icon "users" 15 "2.2" %} NBTE staff <span class="qa-chip">{{ segment_counts.nbte|default:0 }}</span></a>
+  <a href="{{ inst_url }}" class="{% if segment == 'institution' %}is-active{% endif %}"{% if segment == 'institution' %} aria-current="page"{% endif %}>{% icon "building" 15 "2.2" %} Institution users <span class="qa-chip">{{ segment_counts.institution|default:0 }}</span></a>
+  {% if ext_url and segment_counts.external or segment == 'external' %}<a href="{{ ext_url }}" class="{% if segment == 'external' %}is-active{% endif %}"{% if segment == 'external' %} aria-current="page"{% endif %}>{% icon "user" 15 "2.2" %} Resource persons &amp; professional bodies <span class="qa-chip">{{ segment_counts.external|default:0 }}</span></a>{% endif %}
+</nav>

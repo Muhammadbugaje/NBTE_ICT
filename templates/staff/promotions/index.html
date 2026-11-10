@@ -1,130 +1,81 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Promotions · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Promotions{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}">
+  <link rel="stylesheet" href="{% static 'css/hr.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="nbr-page promo-page">
-  <header class="nbte-page-header nbr-header">
-    <div class="nbte-page-header__text">
-      <span class="nbte-page-header__eyebrow">People</span>
-      <h1 class="nbte-page-header__title">Promotions</h1>
-      <p class="nbte-page-header__description">Tick the staff to promote, choose the new designation and check the before-and-after list before anything is saved.</p>
-    </div>
-    <div class="nbte-page-header__actions">
-      <a href="{% url 'staff:promotion_history' %}" class="btn btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        History
-      </a>
+  <header class="qa-hero nbte-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "trend" 14 "2.2" %} User management · Promotions</span>
+      <h1>Promotions</h1>
+      <p>Tick the staff, preview the before-and-after list, then approve them all at once; each person moves one step up the ladder.</p>
     </div>
   </header>
 
-  <form method="get" class="nbr-toolbar" role="search" aria-label="Filter staff">
-    <div class="field">
+  <form method="get" id="promo-filters" class="hr-toolbar" role="search" aria-label="Filter staff"
+        hx-get="{% url 'staff:promotions' %}" hx-target="#promo-list" hx-swap="outerHTML" hx-push-url="true"
+        hx-trigger="change, keyup changed delay:350ms from:input[type=search], submit">
+    <input type="hidden" name="tab" value="{{ tab }}" data-promo-tab>
+    <div class="hr-toolbar__search">
+      <label for="promo-q" class="sr-only">Search</label>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" id="promo-q" name="q" value="{{ q }}" class="input" placeholder="Name or file no." autocomplete="off">
+    </div>
+    <div class="hr-facet">
       <label for="promo-dept">Department</label>
-      <select id="promo-dept" name="department" class="input" data-autosubmit>
+      <select id="promo-dept" name="department" class="input">
         <option value="">All departments</option>
         {% for d in departments %}<option value="{{ d.pk }}"{% if f_dept == d.pk|stringformat:"d" %} selected{% endif %}>{{ d.name }}</option>{% endfor %}
       </select>
     </div>
-    <div class="field">
+    <div class="hr-facet">
       <label for="promo-office">Office</label>
-      <select id="promo-office" name="office" class="input" data-autosubmit>
+      <select id="promo-office" name="office" class="input">
         <option value="">Any office</option>
         {% for o in offices %}<option value="{{ o.pk }}"{% if f_office == o.pk|stringformat:"d" %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
       </select>
     </div>
-    <div class="field">
-      <label for="promo-desig">Current designation</label>
-      <select id="promo-desig" name="designation" class="input" data-autosubmit>
+    <div class="hr-facet">
+      <label for="promo-desig">Designation</label>
+      <select id="promo-desig" name="designation" class="input">
         <option value="">Any designation</option>
         {% for d in designations %}<option value="{{ d.pk }}"{% if f_desig == d.pk|stringformat:"d" %} selected{% endif %}>{{ d.name }}</option>{% endfor %}
       </select>
     </div>
-    <div class="field nbr-toolbar-search">
-      <label for="promo-q">Search</label>
-      <input type="search" id="promo-q" name="q" value="{{ q }}" class="input" placeholder="Name or file no." autocomplete="off">
-    </div>
-    <div class="nbr-toolbar-actions">
-      <button type="submit" class="btn btn-ghost">Filter</button>
-      {% if filters_active %}<a href="{% url 'staff:promotions' %}" class="btn btn-ghost">Clear</a>{% endif %}
-    </div>
+    <noscript><button type="submit" class="btn btn-ghost">Filter</button></noscript>
   </form>
 
-  {% if page.object_list %}
-    <div class="promo-selectbar" data-promo-bar>
-      <label class="check promo-select-all">
-        <input type="checkbox" data-promo-all aria-label="Select every staff member on this page">
-        <span>Select page</span>
-      </label>
-      <span class="promo-selected" aria-live="polite"><strong data-promo-count>0</strong> selected</span>
-      <button type="button" class="btn btn-primary" data-modal-open="promo-modal" data-promo-open disabled>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
-        Promote selected…
-      </button>
-    </div>
+  <details class="hr-upload">
+    <summary>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Filter by an Excel list of employee IDs
+    </summary>
+    <form method="post" action="{% url 'staff:promotion_id_filter' %}" enctype="multipart/form-data" class="hr-upload__form">
+      {% csrf_token %}
+      <input type="hidden" name="tab" value="{{ tab }}" data-promo-tab>
+      <div class="field">
+        <label for="promo-ids">Workbook (.xlsx)</label>
+        <input type="file" id="promo-ids" name="file" accept=".xlsx,.xlsm" class="input" required>
+        <span class="hint">IDs in a column headed “Employee ID”, “Staff No” or “File No” (or column A). Nothing is changed — the list is only filtered, and IDs that match nobody are reported.</span>
+      </div>
+      <div class="btn-group"><button type="submit" class="btn btn-ghost">Apply ID list</button></div>
+    </form>
+  </details>
 
-    <div class="card nbr-card nbr-card-flush">
-      <table class="table table--stack promo-table" data-no-wrap>
-        <thead>
-          <tr>
-            <th scope="col" class="promo-check-col"><span class="nbr-sr">Select</span></th>
-            <th scope="col">File no.</th>
-            <th scope="col">Name</th>
-            <th scope="col">Department</th>
-            <th scope="col">Designation</th>
-            <th scope="col" class="nbr-num">Grade</th>
-            <th scope="col">Present appointment</th>
-            <th scope="col" class="nbr-num">Years in post</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in page.object_list %}
-            <tr data-promo-row>
-              <td class="promo-check-col">
-                <label class="check">
-                  <input type="checkbox" name="ids" value="{{ s.pk }}" form="promo-form" data-promo-pick
-                         data-rank="{{ s.designation.rank|default:0 }}" data-designation="{{ s.designation.name|default:'(no designation)' }}"
-                         data-name="{{ s.full_name }}" aria-label="Select {{ s.full_name }}">
-                </label>
-              </td>
-              <td data-label="File no." class="nbr-mono">{{ s.employee_no }}</td>
-              <td data-label="Name"><a href="{% url 'staff:detail' s.pk %}" class="promo-name">{{ s.last_name }} {{ s.first_name }}</a></td>
-              <td data-label="Department">{{ s.department.name|default:"—" }}</td>
-              <td data-label="Designation">{{ s.designation.name|default:"—" }}</td>
-              <td data-label="Grade" class="nbr-num">{{ s.grade_level|default:"—" }}</td>
-              <td data-label="Present appointment">{{ s.date_present_appointment|date:"j M Y"|default:"—" }}</td>
-              <td data-label="Years in post" class="nbr-num">{% if s.years_in_post is not None %}{{ s.years_in_post }}{% else %}—{% endif %}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+  {% include "staff/promotions/_list.html" %}
 
-    {% if page.paginator.num_pages > 1 %}
-      <nav class="pagination nbr-pagination" aria-label="Pages">
-        {% if page.has_previous %}<a href="{% querystring page=page.previous_page_number %}" rel="prev">Previous</a>{% endif %}
-        <span aria-current="page">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
-        {% if page.has_next %}<a href="{% querystring page=page.next_page_number %}" rel="next">Next</a>{% endif %}
-      </nav>
-    {% endif %}
-
-    {% url 'staff:promotions' as back_url %}
-    {% include "staff/promotions/_promote_modal.html" with targets=targets today=today next_url=request.get_full_path single=False %}
-  {% elif filters_active %}
-    {% url 'staff:promotions' as clear_url %}
-    {% include "partials/empty_state.html" with variant="filtered" title="No staff match" body="Try another department, designation or search." action_url=clear_url action_label="Clear filters" action_class="btn-ghost" only %}
-  {% else %}
-    {% include "partials/empty_state.html" with title="No staff yet" body="Import the nominal roll first — People → Nominal roll." only %}
-  {% endif %}
+  {% include "staff/promotions/_promote_modal.html" with targets=targets today=today next_url=request.get_full_path single=False can_override=can_override %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/promotions.js' %}?v=1" defer></script>
+  <script src="{% static 'js/hr.js' %}" defer></script>
+  <script src="{% static 'js/promotions.js' %}" defer></script>
 {% endblock %}

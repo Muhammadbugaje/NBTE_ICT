@@ -191,10 +191,14 @@ def acknowledge(request, pk):
     except ValidationError as exc:
         return HttpResponse(" ".join(exc.messages), status=400)
     if _is_htmx(request):
-        tpl = "announcements/_ack_block.html" if request.POST.get("view") == "detail" else "announcements/_card.html"
+        view = request.POST.get("view")
+        if view == "panel":  # v2.1 L10: the dashboard Announcements panel
+            return render(request, "announcements/_home_panel_row.html", {"a": _annotated(request, ann)})
+        tpl = "announcements/_ack_block.html" if view == "detail" else "announcements/_card.html"
         return render(request, tpl, {"a": _annotated(request, ann)})
     messages.success(request, "Thank you — your acknowledgement has been recorded.")
-    return redirect(request.POST.get("next") or ann.get_absolute_url())
+    from core.urlsafe import safe_next
+    return redirect(safe_next(request, request.POST.get("next"), ann.get_absolute_url()))
 
 
 @login_required
@@ -214,7 +218,8 @@ def vote(request, pk):
         return render(request, "announcements/_poll.html", {"a": a, "poll": a.poll, "poll_error": error})
     if error:
         messages.error(request, error)
-    return redirect(request.POST.get("next") or ann.get_absolute_url())
+    from core.urlsafe import safe_next
+    return redirect(safe_next(request, request.POST.get("next"), ann.get_absolute_url()))
 
 
 # ---------------------------------------------------------------------------

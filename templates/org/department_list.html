@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Departments{% endblock %}
+{% block page_title %}Departments{% endblock %}
+{% block extra_css %}{% include "org/_head.html" %}{% endblock %}
+{% block content %}
+<div class="org-page">
+  <header class="org-hero">
+    <span class="org-eyebrow">Organisation</span>
+    <h1>Departments</h1>
+    <p>Each department has exactly one director. Directors create divisions, appoint division heads and grant time-limited permissions to their own staff.</p>
+    {% if can_settings %}
+    <div class="org-hero__meta btn-group">
+      {% if perms.org.manage_offices or request.user.is_superuser %}<a class="btn btn-ghost" href="{% url 'org:offices' %}">Departments &amp; units</a>{% endif %}
+      <a class="btn btn-ghost" href="{% url 'org:grade_levels' %}">Grade levels</a>
+      <a class="btn btn-ghost" href="{% url 'org:designations' %}">Designations</a>
+    </div>
+    {% endif %}
+  </header>
+  <div class="org-dept-grid">
+    {% for d in departments %}
+      <a class="org-dept" href="{% url 'org:department' d.code %}">
+        <strong>{{ d.name }}</strong>
+        <small>{{ d.code }}{% if d.kind != "department" %} · <span class="org-chip">{{ d.kind_label }}</span>{% endif %}{% if d.parent %} · under {{ d.parent.name }}{% endif %}</small>
+        <span>{% if d.director %}<span class="org-chip is-ok">Director: {{ d.director.get_full_name|default:d.director.email }}</span>{% else %}<span class="org-chip is-warn">Director seat empty</span>{% endif %}</span>
+        <small>{{ d.n_staff }} staff · {{ d.n_divisions }} division{{ d.n_divisions|pluralize }}</small>
+      </a>
+    {% empty %}
+      <p class="org-muted">You are not attached to a department.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

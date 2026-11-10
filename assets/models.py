@@ -152,6 +152,21 @@ class Asset(SoftDeleteModel):
     # Optional hints for the UI
     notes = models.TextField(blank=True)
 
+    # v2.1 Phase C (K1, K2): how the asset is held.
+    MODE_INDIVIDUAL = "individual"
+    MODE_DEPARTMENT = "department"
+    MODE_SHARED = "shared"
+    ASSIGNMENT_MODE_CHOICES = [
+        (MODE_INDIVIDUAL, "Individual (one holder)"),
+        (MODE_DEPARTMENT, "Department (whole department)"),
+        (MODE_SHARED, "Shared (several named people)"),
+    ]
+    assignment_mode = models.CharField(
+        max_length=12, choices=ASSIGNMENT_MODE_CHOICES, default=MODE_INDIVIDUAL, db_index=True,
+        help_text="Individual: one custodian. Department: assigned to a whole department. "
+                  "Shared: several people hold it at once (kettles, printers, scanners).",
+    )
+
     class Meta:
         ordering = ["asset_tag"]
         indexes = [
@@ -188,6 +203,19 @@ class Asset(SoftDeleteModel):
 
     def open_assignment(self):
         return self.assignments.filter(returned_at__isnull=True).first()
+
+    def open_assignments(self):
+        """Every open hand-off (several when shared)."""
+        return self.assignments.filter(returned_at__isnull=True).select_related(
+            "assigned_to", "department").order_by("assigned_at", "pk")
+
+    @property
+    def is_shared(self):
+        return self.assignment_mode == self.MODE_SHARED
+
+    @property
+    def is_department_mode(self):
+        return self.assignment_mode == self.MODE_DEPARTMENT
 
     # ------------------------------------------------------------------
     # QR code
@@ -242,7 +270,14 @@ class AssetAssignment(TimeStampedModel):
 
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="assignments")
     assigned_to = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="asset_assignments",
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="asset_assignments",
+        help_text="The holder. Empty for a department assignment (K1).",
+    )
+    department = models.ForeignKey(
+        "staff.Department", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="asset_assignments",
+        help_text="Set when the asset is assigned to a whole department (K1).",
     )
     assigned_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+",
@@ -277,9 +312,24 @@ class AssetAssignment(TimeStampedModel):
         indexes = [
             models.Index(fields=["returned_at", "expected_return_at"]),
         ]
+        constraints = [
+            # K1: a hand-off goes to a person or to a whole department.
+            models.CheckConstraint(
+                condition=models.Q(assigned_to__isnull=False) | models.Q(department__isnull=False),
+                name="assets_assignment_has_holder"),
+        ]
 
     def __str__(self):
-        return f"{self.asset.asset_tag} → {self.assigned_to_id} ({'open' if self.is_open else 'closed'})"
+        who = self.assigned_to_id or f"dept:{self.department_id}"
+        return f"{self.asset.asset_tag} → {who} ({'open' if self.is_open else 'closed'})"
+
+    @property
+    def holder_label(self):
+        if self.assigned_to_id:
+            return self.assigned_to.get_full_name() or self.assigned_to.email
+        if self.department_id:
+            return f"{self.department.name} (whole department)"
+        return "—"
 
     @property
     def is_open(self):

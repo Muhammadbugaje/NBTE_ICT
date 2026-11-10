@@ -64,9 +64,10 @@ def test_my_staff_id_page(card_user):
     r = c.get(reverse("accounts:staff_id"))
     html = r.content.decode()
     assert r.status_code == 200
-    assert "NBTE_logo.png" in html and "NBTE-1413" in html and "Principal Programmer" in html
-    assert "<svg" in html and "window.print()" in html
-    assert "08011112222" not in html and card_user.email not in html.split("p9-idcard")[1]
+    assert "img/brand/" in html and "NBTE-1413" in html and "Principal Programmer" in html
+    # Phase B v2.1 (E1/E3): design 12 card; printing goes through the print-format page.
+    assert "<svg" in html and reverse("staff:id_print") in html
+    assert "08011112222" not in html and card_user.email not in html.split('class="sid-stage"')[1]
 
 
 def test_qr_endpoint_returns_fresh_svg(card_user):

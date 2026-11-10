@@ -2,7 +2,7 @@
 {% if page.rows %}
 <ul class="qa-rowlist" role="list">{% for m in page.rows %}
   <li class="qa-rowlink qa-rowlink--static qa-engagement qa-rowlink--nobadge">
-    <span class="qa-rowlink__main">
+    <div class="qa-rowlink__main">
       <span class="qa-rowlink__title">{{ m.qa_request_programme.programme }}</span>
       <span class="qa-rowlink__meta"><span>{{ m.case.institution.name }}</span><span>· {{ m.get_duty_display }}</span><span>· {{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</span></span>
       {% if m.can_write %}
@@ -15,7 +15,38 @@
       </form>
       {% elif m.findings %}<span class="qa-small"><strong>My findings:</strong> {{ m.findings|truncatechars:240 }}</span>
       {% else %}<span class="qa-small qa-muted">{{ m.write_why }}</span>{% endif %}
-    </span>
+      {% if m.visit_report %}
+      <section class="qa-card qa-mt-sm" aria-label="My individual visit report">
+        <div class="qa-card__head"><div><h3>My report for this programme</h3>
+          <p>Only you can edit your contribution. It goes to the Team Lead for review, then becomes part of the final programme compilation.</p></div>
+          {% if m.member_report %}<span class="qa-chip {{ m.member_report.status|tone }}">{{ m.member_report.get_status_display }}</span>
+          {% elif m.visit_attendance and not m.visit_attendance.attended %}<span class="qa-chip qa-tone-danger">Absent</span>
+          {% else %}<span class="qa-chip qa-tone-pending">Not assigned</span>{% endif %}
+        </div>
+        {% if m.can_write_member_report %}
+          <form class="qa-form" method="post" action="{% url 'qa_portal:rp_engagements' %}?{{ request.GET.urlencode }}" hx-post="{% url 'qa_portal:rp_engagements' %}?{{ request.GET.urlencode }}" hx-target="#qa-main" novalidate>
+            {% csrf_token %}<input type="hidden" name="action" value="member_report"><input type="hidden" name="mapping" value="{{ m.pk }}">
+            {% if report_error_for == m.pk %}{% include "qa_core/partials/_form_errors.html" with form=member_form %}{% endif %}
+            <div class="qa-fields">{% for field in m.member_form %}{% include "qa_core/partials/_field.html" with wide=True %}{% endfor %}</div>
+            <div class="qa-form-actions"><button class="btn btn-subtle btn-sm" type="submit" name="op" value="save">Save my draft</button>
+              <button class="btn btn-primary btn-sm" type="submit" name="op" value="submit">Submit to Team Lead</button></div>
+          </form>
+        {% elif m.visit_attendance and not m.visit_attendance.attended %}
+          <p class="qa-small qa-muted">You were recorded as absent for this visit. Only attendees may submit a visit report.</p>
+        {% elif m.member_report and m.member_report.review_note %}
+          <p class="qa-small qa-muted"><strong>Team Lead comment:</strong> {{ m.member_report.review_note }}</p>
+        {% elif m.member_report and m.member_report.status == "submitted" %}
+          <p class="qa-small qa-muted">Your report is waiting for the Team Lead to accept it or return it with a comment.</p>
+        {% elif m.member_report and m.member_report.status == "accepted" %}
+          <p class="qa-small qa-muted">Accepted for the Team Lead's final programme compilation.</p>
+        {% else %}
+          <p class="qa-small qa-muted">{{ m.member_report_why }}</p>
+        {% endif %}
+      </section>
+      {% elif m.duty == "physical_verification" or m.duty == "resource_inspection" %}
+        <p class="qa-small qa-muted qa-mt-sm">Your individual report will appear here after the visit is recorded and your attendance is confirmed.</p>
+      {% endif %}
+    </div>
     <span class="qa-rowlink__side"><span class="qa-chip {{ m.status|tone }}">{% if m.status == "released" %}Completed{% elif m.status == "proposed" %}Awaiting confirmation{% else %}{{ m.get_status_display }}{% endif %}</span></span>
   </li>
 {% endfor %}</ul>

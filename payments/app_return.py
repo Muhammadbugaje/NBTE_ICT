@@ -72,3 +72,14 @@ def status_of(obligation, attempt):
 def deep_link(obligation, attempt):
     return DEEP_LINK + "?" + urlencode({"bill": obligation.pk, "status": status_of(obligation, attempt),
                                         "reference": attempt.provider_reference if attempt is not None else ""})
+
+
+def obligation_for_token(pk):
+    """The bill behind a verified app-return token (the token is the permission)."""
+    from .models import PaymentObligation
+    return PaymentObligation.unscoped.filter(pk=pk).first()
+
+
+def latest_attempt(obligation):
+    from .models import PaymentAttempt
+    return PaymentAttempt.unscoped.filter(obligation=obligation).order_by("-created_at").first()

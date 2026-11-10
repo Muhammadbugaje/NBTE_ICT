@@ -3,3 +3,4 @@ from qa_core.tests.conftest import *  # noqa: F401,F403
 from qa_core.tests.phase2_fixtures import *  # noqa: F401,F403
 from qa_core.tests.phase3_fixtures import *  # noqa: F401,F403  (Phase 3)
 from qa_core.tests.phase4_fixtures import *  # noqa: F401,F403  (Phase 4)
+from qa_core.tests.phase5_fixtures import *  # noqa: F401,F403  (Phase 5: p5, p5_visit … )

@@ -1,42 +1,38 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}{{ u.get_full_name|default:u.email }} · User management{% endblock %}
 {% block page_title %}User details{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/home.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/home.css' %}">
+  <link rel="stylesheet" href="{% static 'css/hr.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="home-page">
 
-  <a href="{% url 'accounts:user_list' %}" class="home-back">← All users</a>
-
-  <header class="home-header">
+  {% url list_url_name as back_url %}
+  <header class="qa-hero nbte-hero">
     <div>
+      <a class="nbte-hero__back" href="{{ back_url }}">{% icon "back" 14 "2.4" %} {{ seg.label }}</a>
+      <span class="qa-eyebrow">{% icon seg.icon 14 "2.2" %} User management · {{ seg.label }}</span>
       <h1>{{ u.get_full_name|default:u.email }}</h1>
-      <p class="muted">{{ u.email }}</p>
+      <p>{{ u.email }} · {% if segment == 'institution' %}{{ u.institution.name|default:"No institution" }}{% if u.institution %} ({{ u.institution.code }}){% endif %}{% elif segment == 'external' %}{{ u.get_user_type_display }}{% if u.professional_body %} · {{ u.professional_body.name }}{% endif %}{% else %}{{ u.department.name|default:"No department" }}{% endif %}{% if u.role %} · {{ u.role.name }}{% endif %}</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'accounts:user_reset_password' u.pk %}" class="btn btn-primary">{% icon "lock" 16 "2.2" %} Reset password</a>
+        <a href="{% url 'accounts:user_edit_roles' u.pk %}" class="btn btn-subtle">{% icon "shield" 16 "2.2" %} Edit role</a>
+        {% if perms.accounts.assign_groups %}<a href="{% url 'accounts:groups:user_groups' u.pk %}" class="btn btn-subtle">{% icon "key" 16 "2.2" %} Groups &amp; permissions</a>{% endif %}
+      </div>
     </div>
-    <div class="header-actions">
-      <a href="{% url 'accounts:user_reset_password' u.pk %}" class="btn btn-primary">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Reset password
-      </a>
-      <a href="{% url 'accounts:user_edit_roles' u.pk %}" class="btn btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        Edit roles
-      </a>
-      <form method="post" action="{% url 'accounts:user_toggle_active' u.pk %}" class="inline">
-        {% csrf_token %}
-        {% if u.is_active %}
-          <button type="submit" class="btn btn-ghost btn-danger">Deactivate</button>
-        {% else %}
-          <button type="submit" class="btn btn-primary">Activate</button>
-        {% endif %}
-      </form>
+    <div class="qa-hero__stats um-tiles" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong class="um-tiles__word">{{ u.last_login|date:"j M Y"|default:"Never" }}</strong><span>Last sign-in</span></div>
+      <div class="qa-stat"><strong class="um-tiles__word">{{ u.date_joined|date:"j M Y" }}</strong><span>Account since</span></div>
     </div>
   </header>
+  <div class="hr-status-row">
+    {% include "accounts/users/_status.html" %}
+  </div>
 
   <div class="home-grid">
     <div class="home-col-main">
@@ -45,8 +41,16 @@
         <dl class="admin-dl">
           <dt>Email</dt><dd>{{ u.email }}</dd>
           <dt>Name</dt><dd>{{ u.get_full_name|default:"—" }}</dd>
+          <dt>Account type</dt><dd>{{ u.get_user_type_display }}</dd>
+          {% if segment == 'institution' %}
+          <dt>Institution</dt><dd>{% if u.institution %}{{ u.institution.name }} ({{ u.institution.code }}){% else %}—{% endif %}</dd>
+          <dt>Portal account</dt><dd>{{ u.institution_membership.get_account_kind_display|default:"—" }}</dd>
+          {% elif segment == 'external' %}
+          <dt>Professional body</dt><dd>{{ u.professional_body.name|default:"—" }}</dd>
+          {% else %}
           <dt>Department</dt><dd>{{ u.department.name|default:"—" }}</dd>
-          <dt>Role</dt><dd>{{ u.role.name|default:"—" }}</dd>
+          {% endif %}
+          <dt>Role</dt><dd>{{ u.role.name|default:"—" }}{% if role_audience %} <span class="hr-muted">({{ role_audience }} role)</span>{% endif %}</dd>
           <dt>Status</dt><dd>{% if u.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}</dd>
           <dt>Staff member?</dt><dd>{% if u.is_staff %}Yes{% else %}No{% endif %}</dd>
           <dt>Superuser?</dt><dd>{% if u.is_superuser %}Yes{% else %}No{% endif %}</dd>
@@ -57,6 +61,7 @@
     </div>
 
     <aside class="home-col-side">
+      {% if segment == 'nbte' %}
       <div class="home-card">
         <h3 class="home-card-title">Linked staff record</h3>
         {% if u.staff_profile %}
@@ -67,8 +72,27 @@
         {% else %}
           <p class="muted">No linked staff record.</p>
         {% endif %}
+      {% elif segment == 'institution' %}
+      <div class="home-card">
+        <h3 class="home-card-title">Institution</h3>
+        {% if u.institution %}
+          <a href="{% url 'qa_inst:detail' u.institution.code %}" class="home-link-row">
+            <span>{{ u.institution.name }} ({{ u.institution.code }})</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+          <p class="muted">A QA portal account: it has no NBTE staff record and never signs in to the internal system.</p>
+        {% else %}<p class="muted">Not linked to an institution.</p>{% endif %}
+      {% else %}
+      <div class="home-card">
+        <h3 class="home-card-title">Portal account</h3>
+        <p class="muted">{{ u.get_user_type_display }} — signs in on the QA portal only and has no NBTE staff record.</p>
+      {% endif %}
       </div>
     </aside>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'js/hr.js' %}" defer></script>
 {% endblock %}

@@ -42,10 +42,12 @@ def sees_all_departments(user) -> bool:
 
 
 def staff_visible_to(user):
+    from accounts.audience import nbte_staff_records_q
+
     qs = Staff.objects.select_related(
         "user", "department", "office", "state", "category", "reports_to",
         "designation", "state_of_origin",
-    )
+    ).filter(nbte_staff_records_q())   # never a portal account's placeholder record
     if not user or not user.is_authenticated:
         return qs.none()
     if sees_all_departments(user):

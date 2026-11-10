@@ -1,19 +1,100 @@
 {% load qa_tags %}
-<section class="qa-card" aria-labelledby="tab-users">
-  <header class="qa-card__head"><div><h2 id="tab-users" data-qa-focus-heading>Portal users</h2><p>Credentials are never sent as passwords: Send Login Credentials e-mails a one-time link.</p></div></header>
-  <div class="qa-table-wrap"><table class="qa-table">
-    <thead><tr><th>Name</th><th>Role</th><th>Account</th><th>Credentials sent</th></tr></thead>
-    <tbody>{% for m in members %}<tr>
-      <td data-label="Name"><strong>{{ m.user|who }}</strong>{% if m.is_primary_contact %} <span class="qa-chip qa-chip--direct">Primary</span>{% endif %}<span class="qa-desc">{{ m.user.email }}{% if m.job_title %} · {{ m.job_title }}{% endif %}</span></td>
-      <td data-label="Role">{{ m.institution_role.name|default:"—" }}</td>
-      <td data-label="Account"><span class="qa-chip {% if m.user.is_active %}qa-tone-success{% else %}qa-tone-neutral{% endif %}">{% if m.user.is_active %}Active{% else %}Inactive{% endif %}</span></td>
-      <td data-label="Credentials sent">{{ m.credentials_last_sent_at|date:"j M Y, H:i"|default:"Never" }}</td></tr>
-    {% empty %}<tr><td colspan="4" class="qa-muted">No portal users yet.</td></tr>{% endfor %}</tbody>
-  </table></div>
-</section>
-<div class="qa-cols qa-cols--even">
-  <section class="qa-card"><header class="qa-card__head"><h2>Contact history</h2></header>
-    <div class="qa-card__body"><ol class="qa-tl">{% for c in contact_history %}<li class="{% if not c.is_current %}is-internal{% endif %}"><strong>{{ c.get_kind_display }}</strong><span class="qa-tl__text">{{ c.name }} {{ c.value }}</span><small>{{ c.created_at|date:"j M Y" }}{% if not c.is_current %} — replaced {{ c.ended_at|date:"j M Y" }}{% else %} — current{% endif %}</small></li>{% empty %}<li><span class="qa-muted">None.</span></li>{% endfor %}</ol></div></section>
-  <section class="qa-card"><header class="qa-card__head"><h2>Address history</h2></header>
-    <div class="qa-card__body"><ol class="qa-tl">{% for a in address_history %}<li class="{% if not a.is_current %}is-internal{% endif %}"><strong>{{ a.get_kind_display }}</strong><span class="qa-tl__text">{{ a.one_line }}</span><small>{{ a.started_at|date:"j M Y" }}{% if a.ended_at %} → {{ a.ended_at|date:"j M Y" }}{% else %} — current{% endif %}</small></li>{% empty %}<li><span class="qa-muted">None.</span></li>{% endfor %}</ol></div></section>
+<div class="ix-people">
+  <header class="ix-sec-head">
+    <div>
+      <h2 data-qa-focus-heading>People and access</h2>
+      <p>Who runs {{ inst.name }}, how to reach them, and who can sign in to the QA portal.</p>
+    </div>
+    <ul class="ix-mini-stats" role="list">
+      <li><b>{{ team|length }}</b><span>in management</span></li>
+      <li><b>{{ members|length }}</b><span>portal account{{ members|length|pluralize }}</span></li>
+    </ul>
+  </header>
+
+  {% include "institutions/_ce_access.html" %}
+
+  <section class="ux-card ix-card" aria-labelledby="tab-team">
+    <header class="ux-card__head"><div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">{% icon "users" 18 %}</span>
+      <div><h2 id="tab-team">Management team and contacts</h2><p>Everyone the institution has entered, with how to reach them.</p></div></div></header>
+    {% if team %}
+    <ul class="ix-team" role="list">
+      {% for t in team %}
+      <li class="ix-person">
+        <div class="ix-person__top">
+          <span class="ux-avatar {% cycle '' 'ux-avatar--gold' 'ux-avatar--blue' 'ux-avatar--violet' %} ix-avatar-lg" aria-hidden="true">{{ t.full_name|initials }}</span>
+          <div class="ix-person__id">
+            <span class="ix-person__role">{{ t.role.name }}</span>
+            <strong>{% if t.title %}{{ t.title }} {% endif %}{{ t.full_name }}</strong>
+          </div>
+          {% if t.user_id %}<span class="ux-chip ux-chip--green" title="Has a portal account">Portal</span>{% else %}<span class="ux-chip" title="No portal account">No account</span>{% endif %}
+        </div>
+        <div class="ix-person__contacts">
+          {% if t.email %}<div class="ix-contact"><span class="ix-contact__icon">{% icon "mail" 14 %}</span><a href="mailto:{{ t.email }}" class="ix-contact__val">{{ t.email }}</a><button type="button" class="ix-icon-btn" data-ix-copy-text="{{ t.email }}" aria-label="Copy e-mail address of {{ t.full_name }}" title="Copy">{% icon "copy" 14 %}</button></div>{% endif %}
+          {% if t.phone %}<div class="ix-contact"><span class="ix-contact__icon">{% icon "phone" 14 %}</span><a href="tel:{{ t.phone }}" class="ix-contact__val">{{ t.phone }}</a><button type="button" class="ix-icon-btn" data-ix-copy-text="{{ t.phone }}" aria-label="Copy phone number of {{ t.full_name }}" title="Copy">{% icon "copy" 14 %}</button></div>{% endif %}
+          {% if not t.email and not t.phone %}<span class="ux-muted ix-small">No contact details entered.</span>{% endif %}
+        </div>
+        {% if t.email or t.phone %}<div class="ix-person__actions">{% if t.email %}<a class="btn btn-sm btn-subtle" href="mailto:{{ t.email }}">{% icon "mail" 14 %} E-mail</a>{% endif %}{% if t.phone %}<a class="btn btn-sm btn-subtle" href="tel:{{ t.phone }}">{% icon "phone" 14 %} Call</a>{% endif %}</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="ux-empty"><div class="ux-empty__art">{% icon "users" 26 %}</div><strong>No management team yet</strong><span>The institution has not entered its management team yet.</span></div>
+    {% endif %}
+    {% if contacts %}
+    <div class="ix-contact-strip">
+      <span class="ix-contact-strip__label">Institution contacts</span>
+      {% for c in contacts %}<span class="ix-contact-pill"><small>{{ c.get_kind_display }}{% if c.name %} · {{ c.name }}{% endif %}</small><span>{{ c.value }}</span><button type="button" class="ix-icon-btn" data-ix-copy-text="{{ c.value }}" aria-label="Copy {{ c.get_kind_display }}" title="Copy">{% icon "copy" 13 %}</button></span>{% endfor %}
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="ux-card ix-card" aria-labelledby="tab-users">
+    <header class="ux-card__head"><div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">{% icon "key" 18 %}</span>
+      <div><h2 id="tab-users">Portal users</h2><p>Credentials are never sent as passwords: Send Login Credentials e-mails a one-time link.</p></div></div></header>
+    {% if members %}
+    <ul class="ux-list ix-users" role="list">
+      {% for m in members %}
+      <li class="ux-row ix-user">
+        <span class="ux-avatar {% if m.is_primary_contact %}ux-avatar--gold{% elif not m.user.is_active %}ix-avatar--off{% endif %}" aria-hidden="true">{{ m.user|initials }}</span>
+        <div class="ux-row__main">
+          <span class="ux-row__title">{{ m.user|who }}{% if m.is_primary_contact %} <span class="ux-chip ux-chip--gold ux-chip--plain">Primary</span>{% endif %}</span>
+          <div class="ux-row__meta">
+            <span>{{ m.institution_role.name|default:"No role" }}{% if m.job_title %} · {{ m.job_title }}{% endif %}</span>
+            <a href="mailto:{{ m.user.email }}">{{ m.user.email }}</a>
+            {% if m.phone %}<a href="tel:{{ m.phone }}">{{ m.phone }}</a>{% endif %}
+          </div>
+        </div>
+        <div class="ix-user__side">
+          <span class="ux-chip {% if m.user.is_active %}ux-chip--green{% else %}ux-chip--red{% endif %}">{% if m.user.is_active %}Active{% else %}Inactive{% endif %}</span>
+          <small title="Credentials sent">{% icon "mail" 12 %} {% if m.credentials_last_sent_at %}Link sent {{ m.credentials_last_sent_at|date:"j M Y, H:i" }}{% else %}Link never sent{% endif %}</small>
+          <small>{% icon "clock" 12 %} {% if m.user.last_login %}Signed in {{ m.user.last_login|date:"j M Y" }}{% else %}Never signed in{% endif %}</small>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="ux-empty"><div class="ux-empty__art">{% icon "key" 26 %}</div><strong>No portal users yet</strong><span>Accounts appear here once the institution registers or NBTE sends login credentials.</span></div>
+    {% endif %}
+  </section>
+
+  <div class="ux-grid ix-history">
+    <section class="ux-card ux-span-6" aria-labelledby="ix-ch"><header class="ux-card__head"><div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">{% icon "phone" 16 %}</span><h2 id="ix-ch">Contact history</h2></div></header>
+      <ol class="ix-tl">{% for c in contact_history %}<li class="{% if c.is_current %}is-current{% endif %}"><strong>{{ c.get_kind_display }}</strong><span>{{ c.name }} {{ c.value }}</span><small>{{ c.created_at|date:"j M Y" }}{% if not c.is_current %} — replaced {{ c.ended_at|date:"j M Y" }}{% else %} — current{% endif %}</small></li>{% empty %}<li class="ix-tl__none">No changes recorded.</li>{% endfor %}</ol></section>
+    <section class="ux-card ux-span-6" aria-labelledby="ix-ah"><header class="ux-card__head"><div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">{% icon "map" 16 %}</span><h2 id="ix-ah">Address history</h2></div></header>
+      <ol class="ix-tl">{% for a in address_history %}<li class="{% if not a.ended_at %}is-current{% endif %}"><strong>{{ a.get_kind_display }}</strong><span>{{ a.one_line }}</span><small>{{ a.started_at|date:"j M Y" }}{% if a.ended_at %} → {{ a.ended_at|date:"j M Y" }}{% else %} — current{% endif %}</small></li>{% empty %}<li class="ix-tl__none">No changes recorded.</li>{% endfor %}</ol></section>
+  </div>
 </div>
+<script>
+(function () {
+  if (window.__ixCopyText) return; window.__ixCopyText = true;
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-ix-copy-text]"); if (!b) return;
+    var t = b.getAttribute("data-ix-copy-text");
+    var ok = function () {
+      b.classList.add("is-copied"); setTimeout(function () { b.classList.remove("is-copied"); }, 1600);
+      if (window.NBTE && NBTE.Toast && NBTE.Toast.push) NBTE.Toast.push("success", "Copied", t, { duration: 2500 });
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, ok); else ok();
+  });
+})();
+</script>

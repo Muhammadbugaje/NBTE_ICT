@@ -21,6 +21,28 @@ def clearance_returned(ctx):
     services.on_returned(ctx)
 
 
+# --- v2.1 F.15/F.16: onboarding v2 (pay to submit, per-document review) --------
+@register_effect("onboarding_v2_submitted")
+def onboarding_v2_submitted(ctx):
+    from . import onboarding_v2
+
+    onboarding_v2.on_submitted(ctx)
+
+
+@register_effect("onboarding_v3_documents_submitted")
+def onboarding_v3_documents_submitted(ctx):
+    from . import onboarding_v3
+
+    onboarding_v3.on_documents_submitted(ctx)
+
+
+@register_effect("onboarding_physical_verification")
+def onboarding_physical_verification(ctx):
+    from . import onboarding_v2
+
+    onboarding_v2.on_programmes_submitted(ctx)
+
+
 # --- Phase 3: SOP-02 QA requests and SSQs ----------------------------------------
 _P3 = {
     "qa_request_submitted": qa_services.on_submitted,
@@ -71,13 +93,25 @@ def _connect():
             qa_services.payment_rejected(obligation)
 
     def settled(sender, obligation, **kwargs):
+        from . import onboarding_v2
+
         with transaction.atomic():
             services.payment_settled(obligation)
             qa_services.payment_settled(obligation)
+            onboarding_v2.on_payment_settled_v2(obligation)  # v2.1: a waived fee submits too
 
     pay.payment_claimed.connect(claimed, dispatch_uid="acc-payment-claimed", weak=False)
     pay.payment_rejected.connect(rejected, dispatch_uid="acc-payment-rejected", weak=False)
     pay.payment_settled.connect(settled, dispatch_uid="acc-payment-settled", weak=False)
+
+    # v2.1 F.15 (X14, D-5): the Director of Finance's final confirmation submits
+    # the onboarding application automatically.
+    from payments.signals import obligation_confirmed
+
+    from . import onboarding_v2
+
+    obligation_confirmed.connect(onboarding_v2.on_obligation_confirmed, dispatch_uid="acc-onboarding-autosubmit",
+                                 weak=False)
 
 
 _connect()

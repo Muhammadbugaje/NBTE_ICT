@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load static %}{% load icon from qa_tags %}
+{% block title %}Task performance · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Task performance{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}">{% endblock %}
+
+{% block content %}
+<div class="tsk-page tsk-v21 wk-page" data-qa-area="tasks">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tasks">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'tasks:list' %}">{% icon "back" 14 "2.4" %} Tasks</a>
+      <span class="qa-eyebrow">{% icon "chart" 14 "2.2" %} Tasks · Performance</span>
+      <h1>{{ department.name|default:"Task" }} performance</h1>
+      <p>Open and completed tasks per person and per division since {{ month_start|date:"j F Y" }}. Every number opens the list it counts.</p>
+      <div class="qa-hero__actions">
+        {% if departments %}
+        <form method="get" class="tsk-inline-form tsk-dept-form">
+          <label class="sr-only" for="perf-dept">Department</label>
+          <select id="perf-dept" name="department" class="input" onchange="this.form.submit()">
+            {% for d in departments %}<option value="{{ d.pk }}"{% if department and d.pk == department.pk %} selected{% endif %}>{{ d.name }}</option>{% endfor %}
+          </select>
+          <noscript><button type="submit" class="tsk-btn tsk-btn-ghost tsk-btn-sm">Show</button></noscript>
+        </form>
+        {% endif %}
+        <a class="btn btn-subtle" href="{% url 'tasks:division_queue' %}">{% icon "users" 16 "2.2" %} Division queue</a>
+        <a class="btn btn-subtle" href="?{% if department %}department={{ department.pk }}&{% endif %}format=csv">{% icon "download" 16 "2.2" %} Export CSV</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <a class="qa-stat qa-stat--link qa-stat--info" href="{% url 'tasks:list' %}?kind=individual&state=active"><strong>{{ totals.open_individual }}</strong><span>Open individual</span></a>
+      <a class="qa-stat qa-stat--link qa-stat--info" href="{% url 'tasks:list' %}?kind=group&state=active"><strong>{{ totals.open_group }}</strong><span>Open group</span></a>
+      <a class="qa-stat qa-stat--link qa-stat--success" href="{% url 'tasks:list' %}?kind=individual&state=completed&since={{ since }}"><strong>{{ totals.done_individual }}</strong><span>Individual done</span></a>
+      <a class="qa-stat qa-stat--link qa-stat--success" href="{% url 'tasks:list' %}?kind=group&state=completed&since={{ since }}"><strong>{{ totals.done_group }}</strong><span>Group done</span></a>
+    </div>
+  </header>
+
+
+
+  <section class="tsk-panel">
+    <div class="tsk-panel-head"><div><h2 class="tsk-panel-title">Divisions</h2><div class="tsk-panel-sub">Group tasks and capacity</div></div></div>
+    <div class="tsk-table-wrap">
+      <table class="tsk-table tsk-table-cards">
+        <thead><tr><th>Division</th><th class="num">Open</th><th class="num">Capacity</th><th class="num">Waiting for head</th><th class="num">Completed this month</th><th class="num">Avg. days</th></tr></thead>
+        <tbody>
+          {% for r in divisions %}
+            <tr>
+              <td>{{ r.division.name }}</td>
+              <td class="num" data-label="Open"><a href="{% url 'tasks:list' %}?division={{ r.division.pk }}&state=active">{{ r.open }}</a></td>
+              <td class="num" data-label="Capacity"><span class="tsk-load {% if r.capacity_used >= r.max and r.max %}tsk-load-full{% else %}tsk-load-ok{% endif %}">{{ r.capacity_used }}/{{ r.max }}</span></td>
+              <td class="num" data-label="Waiting">{{ r.pending }}</td>
+              <td class="num" data-label="Completed"><a href="{% url 'tasks:list' %}?division={{ r.division.pk }}&state=completed&since={{ since }}">{{ r.done_month }}</a></td>
+              <td class="num" data-label="Avg. days">{{ r.avg_days|default_if_none:"—" }}</td>
+            </tr>
+          {% empty %}<tr><td colspan="6" class="tsk-empty-note">No divisions in this department yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tsk-panel">
+    <div class="tsk-panel-head"><div><h2 class="tsk-panel-title">People</h2><div class="tsk-panel-sub">Individual and group work per person</div></div></div>
+    <div class="tsk-table-wrap">
+      <table class="tsk-table tsk-table-cards">
+        <thead><tr><th>Person</th><th>Division</th><th class="num">Open individual</th><th class="num">Open group</th><th class="num">Completed individual</th><th class="num">Completed group</th><th class="num">Avg. days</th></tr></thead>
+        <tbody>
+          {% for r in people %}
+            <tr>
+              <td>{{ r.user.get_full_name|default:r.user.email }}{% if r.user.role %} <span class="tsk-faint">· {{ r.user.role.name }}</span>{% endif %}</td>
+              <td data-label="Division">{{ r.division.name|default:"—" }}</td>
+              <td class="num" data-label="Open individual"><a href="{% url 'tasks:list' %}?assignee={{ r.user.pk }}&kind=individual&state=active">{{ r.open_individual }}</a></td>
+              <td class="num" data-label="Open group"><a href="{% url 'tasks:list' %}?assignee={{ r.user.pk }}&kind=group&state=active">{{ r.open_group }}</a></td>
+              <td class="num" data-label="Done individual"><a href="{% url 'tasks:list' %}?assignee={{ r.user.pk }}&kind=individual&state=completed&since={{ since }}">{{ r.done_individual }}</a></td>
+              <td class="num" data-label="Done group"><a href="{% url 'tasks:list' %}?assignee={{ r.user.pk }}&kind=group&state=completed&since={{ since }}">{{ r.done_group }}</a></td>
+              <td class="num" data-label="Avg. days">{{ r.avg_days|default_if_none:"—" }}</td>
+            </tr>
+          {% empty %}<tr><td colspan="7" class="tsk-empty-note">No staff found.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

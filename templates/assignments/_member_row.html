@@ -1,0 +1,9 @@
+<tr id="rot-m-{{ m.pk }}"{% if saved %} class="is-saved"{% endif %}>
+  <td><b>{{ m.user.get_full_name|default:m.user.email }}</b><br><small class="rot-crumbs">{{ m.user.role.name|default:"Staff" }}{% if error %} · <span class="rot-chip rot-chip--bad">{{ error }}</span>{% endif %}</small></td>
+  <td><input class="rot-n" form="rot-mf-{{ m.pk }}" type="number" step="0.25" min="0.25" max="5" name="weight" value="{{ m.weight|floatformat:'-2' }}" aria-label="Weight"></td>
+  <td><input class="rot-n" form="rot-mf-{{ m.pk }}" type="number" min="0" max="99" name="max_concurrent" value="{{ m.max_concurrent|default_if_none:'' }}" placeholder="—" aria-label="Own cap"></td>
+  <td><input form="rot-mf-{{ m.pk }}" type="date" name="paused_until" value="{{ m.paused_until|date:'Y-m-d' }}" aria-label="Paused until"></td>
+  <td><input form="rot-mf-{{ m.pk }}" type="text" name="pause_reason" value="{{ m.pause_reason }}" maxlength="120" placeholder="e.g. Annual leave" aria-label="Pause reason"></td>
+  <td><input form="rot-mf-{{ m.pk }}" type="checkbox" name="is_active" value="1"{% if m.is_active %} checked{% endif %} aria-label="In rotation"></td>
+  <td><form id="rot-mf-{{ m.pk }}" hx-post="{% url 'rotation:member_save' m.pk %}" hx-target="#rot-m-{{ m.pk }}" hx-swap="outerHTML">{% csrf_token %}<button class="btn btn-subtle btn-sm" type="submit">Save</button></form></td>
+</tr>

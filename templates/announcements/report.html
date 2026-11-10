@@ -1,37 +1,25 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Report: {{ a.title }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Announcements{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/announcements.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/announcements.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="ann-page">
-  <a href="{% url 'announcements:detail' a.pk %}" class="ann-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Back to the announcement
-  </a>
-
-  <header class="ann-hero ann-kind-{{ a.kind }}">
-    <div class="ann-hero-title">
-      <span class="ann-hero-mark" aria-hidden="true">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      </span>
-      <div>
-        <span class="ann-hero-eyebrow">Acknowledgement report</span>
-        <h1>{{ a.title }}</h1>
-        <p>{{ a.get_kind_display }} · {{ a.audience_label }}{% if a.published_at %} · published {{ a.published_at|date:"j M Y, H:i" }}{% else %} · draft{% endif %}</p>
+  <header class="qa-hero nbte-hero ann-qa-hero" data-qa-area="announcements">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'announcements:detail' a.pk %}">{% icon "back" 14 "2.4" %} Back to the announcement</a>
+      <span class="qa-eyebrow">{% icon "check" 14 "2.4" %} Announcements · Acknowledgement report</span>
+      <h1>{{ a.title }}</h1>
+      <p>{{ a.get_kind_display }} · {{ a.audience_label }}{% if a.published_at %} · published {{ a.published_at|date:"j M Y, H:i" }}{% else %} · draft{% endif %}</p>
+      <div class="qa-hero__actions">
+        <a href="?format=csv" class="btn btn-subtle">{% icon "download" 15 "2.2" %} Export CSV</a>
+        {% if can_edit %}<a href="{% url 'announcements:edit' a.pk %}" class="btn btn-subtle">{% icon "edit" 15 "2.2" %} Edit</a>{% endif %}
       </div>
-    </div>
-    <div class="ann-hero-actions">
-      <a href="?format=csv" class="btn btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Export CSV
-      </a>
-      {% if can_edit %}<a href="{% url 'announcements:edit' a.pk %}" class="btn btn-ghost">Edit</a>{% endif %}
     </div>
   </header>
 

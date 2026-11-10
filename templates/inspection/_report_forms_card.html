@@ -1,0 +1,30 @@
+{% load qa_tags %}{% comment %}v2.4: the template-driven report forms (NBTE/P/4A per programme, NBTE/QA/ICT/VVT/001 per visit).{% endcomment %}
+{% if report_forms and report_forms.available.programme_evaluation or report_forms and report_forms.available.ict_verification %}
+<section class="qa-card rp-forms" aria-labelledby="rforms-h">
+  <header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--amber">{% icon "chart" 17 "2.2" %}</span><div><h2 id="rforms-h">Structured panel reports</h2>
+    <p>Rate the programme against NBTE/P/4A (the score computes Full / Interim / Denied and, on submission, fills the findings, summary and team recommendation below), and record the ICT verification for the visit.</p></div></div></header>
+  <ul class="qa-rowlist rp-formlist" role="list">
+    {% if report_forms.available.programme_evaluation %}{% with f=report_forms.evaluation %}
+    <li class="rp-formrow" data-status="{% if f %}{{ f.status }}{% else %}none{% endif %}">
+      <a class="qa-rowlink" href="{% url 'qa_case:report_form' report_forms.case_id report.pk 'programme_evaluation' %}">
+        <span class="rp-formrow__icon rp-formrow__icon--purple">{% icon "award" 18 "2.2" %}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">Programme evaluation · NBTE/P/4A</span>
+          <span class="qa-small">{% if f %}{{ f.get_status_display }} · {{ f.score.score|default:"—" }}{% if f.score.score %} %{% endif %} · {{ f.score.final_label|default:f.score.outcome_label }}{% else %}Not started{% endif %}</span>
+          {% if f.score.score %}<span class="rp-formrow__bar" style="--rp-pct: {{ f.score.score }}%" aria-hidden="true"><span></span></span>{% endif %}
+        </span>
+        <span class="rp-formrow__go" aria-hidden="true">{% icon "arrow" 16 %}</span>
+      </a>
+    </li>{% endwith %}{% endif %}
+    {% if report_forms.available.ict_verification %}{% with f=report_forms.ict %}
+    <li class="rp-formrow" data-status="{% if f %}{{ f.status }}{% else %}none{% endif %}">
+      <a class="qa-rowlink" href="{% url 'qa_case:report_form' report_forms.case_id report.pk 'ict_verification' %}">
+        <span class="rp-formrow__icon rp-formrow__icon--teal">{% icon "shield" 18 "2.2" %}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">ICT verification · NBTE/QA/ICT/VVT/001 (whole visit)</span>
+          <span class="qa-small">{% if f %}{{ f.get_status_display }} · {{ f.score.points|default:"0" }}/{{ f.score.max_points|default:"400" }} · {{ f.score.outcome_label }}{% else %}Not started{% endif %}</span>
+        </span>
+        <span class="rp-formrow__go" aria-hidden="true">{% icon "arrow" 16 %}</span>
+      </a>
+    </li>{% endwith %}{% endif %}
+  </ul>
+</section>
+{% endif %}

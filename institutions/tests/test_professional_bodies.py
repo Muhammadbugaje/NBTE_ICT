@@ -148,6 +148,32 @@ def test_body_without_e_mail_is_recorded_not_sent(qa_seed, settings):
     assert ProfessionalBodyNotice.unscoped.get(case=case).status == "no_email"
 
 
+def test_body_without_email_still_gets_portal_notice(qa_seed, settings):
+    from accreditation import case_demo
+    from accreditation.models import ProfessionalBodyNotice
+    from accounts.models import User
+    from institutions.models import Programme
+    from notifications.models import Notification
+
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    inst = case_demo.ensure_institution(tag=False)
+    people, _creds = case_demo.ensure_accounts(force_change=False, tag=False)
+    programme = Programme.unscoped.filter(institution=inst, status="accredited").first()
+    body = _pcn(email="")
+    ProgrammeBodyMapping.objects.create(body=body, programme_name=programme.name)
+    user = User.objects.create_user(
+        email="portal-contact@body.example.org", password="test-password",
+        user_type=User.PROFESSIONAL_BODY, professional_body=body, must_change_password=False)
+
+    case = case_demo.create_case(people, inst)
+    notice = ProfessionalBodyNotice.unscoped.get(case=case, body=body)
+    assert notice.status == ProfessionalBodyNotice.NO_EMAIL
+    assert notice.portal_notified_at is not None
+    assert notice.portal_recipient_count == 1
+    assert Notification.objects.filter(
+        recipient=user, title__startswith="Joint QA exercise opened", url="/pb/").exists()
+
+
 def test_unmapped_request_is_not_joint_qa(p4):
     from accreditation.models import ProfessionalBodyNotice
 

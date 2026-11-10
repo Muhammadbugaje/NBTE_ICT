@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% load static qa_tags %}
+
+{% block title %}{% if stage == "preview" %}Import preview{% else %}Import result{% endif %} · Data Hub · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Data Hub{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/datahub.css' %}">{% endblock %}
+
+{% block content %}
+<div class="dh-page">
+  <header class="qa-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "lock" 14 "2.2" %} Data Hub · {% if stage == "preview" %}Step 2 of 3: preview{% else %}Step 3 of 3: result{% endif %}</span>
+      <h1>{% if stage == "preview" %}Check before you import{% elif report.applied %}Import complete{% else %}Nothing was imported{% endif %}</h1>
+      <p><strong>{{ file_name }}</strong> · {{ scope_label }} · {{ report.rows }} row{{ report.rows|pluralize }} in {{ report.sheets|length }} sheet{{ report.sheets|length|pluralize }}</p>
+      <div class="qa-hero__actions">
+        <a class="btn btn-subtle" href="{% url 'core:datahub' %}">{% icon "back" 16 %} Back to the Data Hub</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--success"><strong>{{ report.created }}</strong><span>{% if stage == "preview" %}New{% else %}Created{% endif %}</span></div>
+      <div class="qa-stat qa-stat--info"><strong>{{ report.updated }}</strong><span>{% if stage == "preview" %}Will change{% else %}Updated{% endif %}</span></div>
+      <div class="qa-stat"><strong>{{ report.unchanged }}</strong><span>Unchanged</span></div>
+      <div class="qa-stat {% if report.error_count %}qa-stat--danger{% endif %}"><strong>{{ report.error_count }}</strong><span>Errors</span></div>
+      <div class="qa-stat {% if report.warning_count %}qa-stat--warn{% endif %}"><strong>{{ report.warning_count }}</strong><span>Warnings</span></div>
+    </div>
+  </header>
+
+  {% if stage == "preview" %}
+    {% if report.error_count %}
+      <div class="dh-banner dh-banner--warn" role="status">{% icon "alert" 16 %}<span>{{ report.error_count }} row{{ report.error_count|pluralize }} cannot be imported (listed below). You can fix the file and upload it again, or apply the rest and skip those rows.</span></div>
+    {% else %}
+      <div class="dh-banner dh-banner--ok" role="status">{% icon "check" 16 %}<span>No errors. This was a dry run: nothing has been saved yet.</span></div>
+    {% endif %}
+    <section class="dh-panel" aria-label="Apply">
+      <div class="dh-applybar">
+        <form method="post" action="{% url 'core:datahub_apply' token %}" class="dh-applybar">
+          {% csrf_token %}
+          {% if report.error_count %}
+            <label><input type="checkbox" name="skip_errors" value="1" checked> Skip the {{ report.error_count }} row{{ report.error_count|pluralize }} with errors</label>
+          {% else %}
+            <input type="hidden" name="skip_errors" value="0">
+          {% endif %}
+          <button class="btn btn-primary" type="submit">{% icon "check" 16 %} Apply import</button>
+        </form>
+        <form method="post" action="{% url 'core:datahub_discard' token %}">
+          {% csrf_token %}
+          <button class="btn btn-subtle" type="submit">{% icon "x" 16 %} Discard</button>
+        </form>
+      </div>
+      <p class="dh-note">Everything is saved in a single transaction, in the recommended order. Nothing is deleted. People created by this import get no password and are asked to set one.</p>
+    </section>
+  {% elif report.applied %}
+    <div class="dh-banner dh-banner--ok" role="status">{% icon "check" 16 %}<span>Saved: {{ report.created }} created, {{ report.updated }} updated, {{ report.unchanged }} already up to date{% if report.error_count %}, {{ report.error_count }} skipped because of errors{% endif %}.</span></div>
+  {% else %}
+    <div class="dh-banner dh-banner--bad" role="alert">{% icon "alert" 16 %}<span>The import was rolled back because some rows have errors and "skip" was not ticked. Nothing was changed.{% if token %} You can try again below.{% endif %}</span></div>
+    {% if token %}
+      <section class="dh-panel" aria-label="Retry">
+        <form method="post" action="{% url 'core:datahub_apply' token %}" class="dh-applybar">
+          {% csrf_token %}
+          <label><input type="checkbox" name="skip_errors" value="1" checked> Skip rows with errors</label>
+          <button class="btn btn-primary" type="submit">{% icon "check" 16 %} Apply again</button>
+        </form>
+      </section>
+    {% endif %}
+  {% endif %}
+
+  {% if report.ignored %}
+    <div class="dh-banner" role="note">{% icon "help" 16 %}<span>Ignored sheets (not Data Hub tables): {{ report.ignored|join:", " }}</span></div>
+  {% endif %}
+
+  <section class="dh-panel" aria-labelledby="dh-sheets-title">
+    <h2 id="dh-sheets-title">Sheet by sheet</h2>
+    <p class="dh-sub">In the order they are loaded.</p>
+    {% for g in groups %}
+      <h3 class="dh-cat-title">{{ g.title }}</h3>
+      <div class="dh-tablewrap">
+        <table class="dh-table">
+          <thead><tr><th scope="col">Sheet</th><th scope="col" class="n">Rows</th><th scope="col" class="n">New</th><th scope="col" class="n">Changed</th><th scope="col" class="n">Unchanged</th><th scope="col" class="n">Errors</th></tr></thead>
+          <tbody>
+          {% for s in g.sheets %}
+            <tr class="is-{{ s.status }}">
+              <td>
+                <strong>{{ s.title }}</strong><small>{{ s.label }}{% if s.links_only %} · links{% endif %}</small>
+                {% if s.changed_list %}<small>Changed columns: {% for name, n in s.changed_list %}{{ name }} ({{ n }}){% if not forloop.last %}, {% endif %}{% endfor %}</small>{% endif %}
+                {% if s.errors %}
+                  <ul class="dh-issues dh-issues--bad">{% for row, msg in s.errors|slice:":50" %}<li>Row {{ row }}: {{ msg }}</li>{% endfor %}{% if s.errors|length > 50 %}<li>… and {{ s.errors|length|add:"-50" }} more</li>{% endif %}</ul>
+                {% endif %}
+                {% if s.warnings %}
+                  <details><summary class="dh-muted">{{ s.warnings|length }} warning{{ s.warnings|length|pluralize }}</summary>
+                    <ul class="dh-issues">{% for row, msg in s.warnings|slice:":50" %}<li>Row {{ row }}: {{ msg }}</li>{% endfor %}{% if s.warnings|length > 50 %}<li>… and {{ s.warnings|length|add:"-50" }} more</li>{% endif %}</ul>
+                  </details>
+                {% endif %}
+              </td>
+              <td class="n">{{ s.rows }}</td>
+              <td class="n">{% if s.created %}<span class="dh-pos">{{ s.created }}</span>{% else %}<span class="dh-muted">0</span>{% endif %}</td>
+              <td class="n">{% if s.updated %}<span class="dh-chg">{{ s.updated }}</span>{% else %}<span class="dh-muted">0</span>{% endif %}</td>
+              <td class="n">{{ s.unchanged }}</td>
+              <td class="n">{% if s.errors %}<span class="dh-bad">{{ s.errors|length }}</span>{% else %}<span class="dh-muted">0</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

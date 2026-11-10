@@ -54,12 +54,13 @@ def test_staff_land_on_the_staff_portal_dashboard(officer, portal_host):
     c = Client(HTTP_HOST=portal_host)
     c.force_login(officer)
     r = c.get("/")
-    assert r.status_code == 200
-    assert b"Go to Internal System" in r.content
+    assert r.status_code == 302 and r["Location"] == "/dashboard/"
+    r = c.get("/dashboard/")
+    assert r.status_code == 200 and b"Go to Internal System" in r.content
     r = c.get("/documents/")
-    assert r.status_code == 302 and r["Location"] == "/"
+    assert r.status_code == 302 and r["Location"] == "/dashboard/"
     r = c.get("/documents/", HTTP_HX_REQUEST="true")
-    assert r.status_code == 204 and r["HX-Redirect"] == "/"
+    assert r.status_code == 204 and r["HX-Redirect"] == "/dashboard/"
 
 
 def test_staff_redirected_off_the_portal_when_switched_off(officer, portal_host):
@@ -102,9 +103,12 @@ def test_portal_login_form_refuses_staff_when_switched_off(officer, portal_host)
 def test_institution_user_signs_in_on_portal(inst_user, portal_host):
     c = Client(HTTP_HOST=portal_host)
     r = c.post("/login/", {"username": inst_user.email, "password": PASSWORD})
-    assert r.status_code == 302 and r["Location"] == "/"
+    assert r.status_code == 302 and r["Location"] == "/dashboard/"
     r = c.get("/")
     assert r.status_code == 200
+    assert b"Accreditation you can follow" in r.content
+    assert "_auth_user_id" in c.session
+    r = c.get("/dashboard/")
     assert b"Welcome" in r.content and b"DMP" in r.content
     # No internal menu anywhere on the page.
     for marker in (b"app-sidebar", b"/tasks/", b"/qa/settings", b"Quality Assurance</span>"):
@@ -114,7 +118,7 @@ def test_institution_user_signs_in_on_portal(inst_user, portal_host):
 def test_resource_person_sees_their_variant(resource_person, portal_host):
     c = Client(HTTP_HOST=portal_host)
     c.force_login(resource_person)
-    r = c.get("/")
+    r = c.get("/dashboard/")
     assert r.status_code == 200 and b"Resource person" in r.content
 
 
@@ -168,7 +172,7 @@ def test_forced_password_change_on_portal(institution, make_user, portal_host):
                      role="inst-admin", must_change=True)
     c = Client(HTTP_HOST=portal_host)
     c.force_login(user)
-    r = c.get("/")
+    r = c.get("/dashboard/")
     assert r.status_code == 302 and r["Location"] == "/password/change/"
     r = c.get("/password/change/")
     assert r.status_code == 200 and b"temporary password" in r.content

@@ -111,6 +111,8 @@ def message_json(message, viewer, participants=None):
             "route": f"/memos/{message.linked_memo_id}"},
         "can_edit": data["can_edit"],
         "can_delete_for_everyone": data["can_delete_for_everyone"],
+        "pinned_at": _iso(message.pinned_at) if data["pinned_at"] else None,
+        "my_reminder_at": _iso(message.my_reminder.remind_at) if message.my_reminder else None,
     }
 
 
@@ -222,9 +224,14 @@ def thread_detail_json(thread, participant, user):
     }
 
 
-def updates_json(thread, user, data):
+def updates_json(thread, user, data, *, after=0, since=None):
+    if data.get("unchanged"):
+        return {"server_time": _iso(cs.parse_since(since) or timezone.now()), "last_id": after,
+                "new": [], "changed": [], "receipts": {}, "typing": data["typing"],
+                "v": data["v"], "unchanged": True}
     participants = cs.thread_participants(thread)
     return {
+        "v": data["v"], "unchanged": False,
         "server_time": _iso(data["server_time"]),
         "last_id": data["last_id"],
         "new": [message_json(m, user, participants) for m in data["new"]],
@@ -282,3 +289,48 @@ def search_hit_json(message, user, q):
         "sender_name": "You" if message.sender_id == user.pk else cs.user_name(message.sender),
         "sent_at": _iso(message.sent_at),
     }
+
+
+
+# ---------------------------------------------------------------------------
+# v2.1 Phase E: group info, invites, reminders
+# ---------------------------------------------------------------------------
+def group_json(thread, user):
+    from messaging import group_services as gs
+
+    info = gs.group_info(thread, user)
+    perms = info["permissions"]
+    return {
+        "id": thread.pk,
+        "is_group": info["is_group"],
+        "title": thread.display_title_for(user),
+        "description": thread.description,
+        "photo_path": (_api_path("chats_group_photo", thread.pk) if thread.photo else None),
+        "send_policy": thread.send_policy,
+        "edit_info_policy": thread.edit_info_policy,
+        "add_members_policy": thread.add_members_policy,
+        "auto_managed": thread.auto_managed,
+        "purpose": thread.purpose,
+        "archived_at": _iso(thread.archived_at),
+        "member_count": info["counts"]["members"],
+        "admin_count": info["counts"]["admins"],
+        "my_role": info["me"].role,
+        "permissions": perms,
+        "members": [{**person(p.user), "role": p.role, "joined_at": _iso(p.joined_at)} for p in info["members"]],
+        "pinned": [{"id": m.pk, "preview": (m.body or "Attachment")[:180], "pinned_at": _iso(m.pinned_at),
+                    "sender": person(m.sender)} for m in info["pinned"]],
+    }
+
+
+def invite_json(invite, request=None):
+    from messaging import group_services as gs
+
+    return {"id": invite.pk, "token": invite.token, "url": gs.invite_url(invite, request),
+            "expires_at": _iso(invite.expires_at), "max_uses": invite.max_uses, "use_count": invite.use_count,
+            "revoked": invite.revoked_at is not None, "usable": invite.is_usable()}
+
+
+def reminder_json(r):
+    return {"id": r.pk, "message_id": r.message_id, "thread_id": r.message.thread_id,
+            "remind_at": _iso(r.remind_at), "note": r.note,
+            "preview": cs.preview_text(r.message)[:180]}

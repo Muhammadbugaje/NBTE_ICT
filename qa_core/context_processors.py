@@ -17,7 +17,7 @@ def qa_nav(request):
     if cached is not None:
         return {"qa_nav": cached}
 
-    def build():
+    def build_uncached():
         from .permissions import (
             can_read_outbox, can_view_applications, can_view_finance, can_view_institutions, can_view_pending,
             can_view_qa_settings,
@@ -47,8 +47,17 @@ def qa_nav(request):
         from institutions.pb_views import _can_view as can_view_bodies  # Phase 6: professional bodies
 
         data["professional_bodies"] = can_view_bodies(user)
-        data["professional_bodies_manage"] = user.is_superuser or user.has_perm(
-            "institutions.manage_professional_bodies")
+        from institutions.pb_views import can_manage as can_manage_bodies, can_manage_master
+
+        data["professional_bodies_manage"] = can_manage_bodies(user) or can_manage_master(user)  # Part 1b
+        data["programmes"] = data["professional_bodies"] or can_manage_master(user)  # v2.1 Part 5
+        data["programmes_pending"] = 0
+        if data["programmes"] and user.is_authenticated and (data["professional_bodies_manage"]
+                                                             or can_manage_master(user)):
+            from institutions.models import BodyProgrammeRequest
+
+            data["programmes_pending"] = BodyProgrammeRequest.objects.filter(
+                status=BodyProgrammeRequest.PENDING).count()
         from complaints import views as complaint_views  # Phase 7: complaints
 
         data["complaints"] = complaint_views.can_open(user)
@@ -59,8 +68,20 @@ def qa_nav(request):
                 assigned_to=user, left_at__isnull=True, complaint__closed_at__isnull=True,
                 pauses_sla=False).values("complaint_id").distinct().count()
             data["complaints_reports"] = complaint_views.can_report(user)
+        from assignments.rotation_queue import can_open as can_open_rotation  # directors + ES only
+
+        data["rotation"] = can_open_rotation(user)
+        from documents.services import can_view_register  # v2.1 Phase F (X24-X26): issued documents
+
+        data["documents_register"] = can_view_register(user)
+        from documents import official_letters  # Director (own department), ES, super admins
+
+        data["official_letters"] = official_letters.can_open_queue(user)
+        if data["official_letters"]:
+            data["official_letters_count"] = official_letters.scoped(user).count()
         data["show"] = any(data[k] for k in ("settings", "pending", "institutions", "applications", "finance",
-                                             "qa_requests", "qa_cases", "inspection", "complaints"))
+                                             "qa_requests", "qa_cases", "inspection", "complaints", "rotation",
+                                             "documents_register", "official_letters", "programmes"))
         if data["qa_requests"]:
             from accreditation.models import SSQ
 
@@ -91,6 +112,13 @@ def qa_nav(request):
 
             data["finance_open"] = PaymentVerification.objects.for_user(user).filter(is_open=True).count()
         return data
+
+    def build():
+        # Per-user (and per-impersonation) key; refreshed instantly by core.fastcache signals, 30 s safety TTL.
+        from core import fastcache
+
+        return fastcache.cached(fastcache.NAV, f"i{int(bool(getattr(request, 'is_impersonating', False)))}",
+                                build_uncached, ttl=30, user=user)
 
     lazy = SimpleLazyObject(build)
     request._qa_nav_lazy = lazy  # one build per request (sidebar + workspace switcher)

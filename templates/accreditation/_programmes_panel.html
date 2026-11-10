@@ -1,0 +1,21 @@
+{% load qa_tags %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} SOP-01 · Onboarding programme clearance</span>
+    <h1 data-qa-focus>{% if my_department %}{{ my_department.name }} — programmes to clear{% else %}Programme clearance{% endif %}</h1>
+    <p>New institutions' programme lists. Clear or return each programme with a remark; the institution is told after each decision. When every programme is cleared, the programme processing fee is issued automatically. A return reopens only the returned programmes.</p>
+  </div>
+  <div class="qa-hero__stats"><div class="qa-stat qa-stat--info"><strong>{{ counts.pending }}</strong><span>Waiting</span></div></div>
+</header>
+<nav class="qa-tabs" aria-label="Status">
+  {% for v, l in "pending:Waiting,all:All"|split_pairs %}
+    <a href="?status={{ v }}" hx-get="{% url 'qa_app:programmes' %}?status={{ v }}" hx-target="#qa-panel" hx-push-url="true" class="{% if status == v %}is-active{% endif %}">{{ l }}</a>
+  {% endfor %}
+</nav>
+<section class="qa-card" aria-label="Programme clearance queue">
+  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_app:programmes' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search]" data-qa-no-overlay>
+    <input type="hidden" name="status" value="{{ status }}">
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference or institution" autocomplete="off"></label>
+  </form>
+  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "accreditation/_programmes_rows.html" %}</div>
+</section>

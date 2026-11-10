@@ -1,0 +1,488 @@
+{% extends "qa_portal/base_auth.html" %}
+{% load qa_tags brand %}
+{% comment %}
+  SOP-03: the confirm link in a visit-invitation e-mail. No sign-in required;
+  the link works until the day after the visit ends. Everything the invitee
+  needs is on one page: the facts, a live countdown, the reply, add-to-calendar,
+  a reminder, and a way into their portal account.
+
+  This page deliberately drops the sign-in marketing panel: an invitation is a
+  document, so the whole width is used for the visit and the reply, with the
+  secondary actions in a supporting column on desktop and below the form on
+  phones.
+{% endcomment %}
+{% block title %}Visit invitation · {{ portal_name }}{% endblock %}
+{% block body_class %} qa-invite{% endblock %}
+{% block hero %}{% endblock %}
+{% block form_brand %}{% endblock %}
+{% block form %}
+<div class="vit-page">
+  <header class="vit-topbar">
+    <div class="vit-brand">
+      <img loading="lazy" decoding="async" src="{% brand_logo_url 'primary' %}" alt="">
+      <span>
+        <strong>{{ site_info.portal_short_name|default:"Quality Assurance Portal" }}</strong>
+        <em>National Board for Technical Education</em>
+      </span>
+    </div>
+    <div class="vit-topbar__right">
+      <span class="vit-secure">{% icon "lock" 14 "2.2" %} Secure invitation link</span>
+      <span class="vit-pill{% if done == 'confirmed' or inv.status == 'acknowledged' %} is-ok{% elif done == 'declined' or inv.status == 'declined' %} is-warn{% elif expired or inv.status == 'withdrawn' %} is-muted{% endif %}">
+        {% if done == "confirmed" or inv.status == "acknowledged" %}{% icon "check" 14 "2.6" %} Confirmed
+        {% elif done == "declined" or inv.status == "declined" %}{% icon "mail" 14 "2.2" %} Declined
+        {% elif expired %}{% icon "clock" 14 "2.2" %} Link expired
+        {% elif inv.status == "withdrawn" %}{% icon "ban" 14 "2.2" %} Withdrawn
+        {% else %}{% icon "clock" 14 "2.2" %} Awaiting your reply{% endif %}
+      </span>
+    </div>
+  </header>
+
+  <section class="vit-hero{% if done == 'confirmed' or inv.status == 'acknowledged' %} is-ok{% elif done == 'declined' or inv.status == 'declined' %} is-warn{% elif expired or inv.status == 'withdrawn' %} is-muted{% endif %}">
+    <div class="vit-hero__body">
+      <span class="vit-eyebrow">{% icon "mail" 14 "2.2" %} Quality-assurance visit{% if is_body %} · Professional body{% else %} · Resource person{% endif %}</span>
+      <h1>{% if done == "confirmed" %}You are confirmed{% elif done == "declined" %}Thank you for letting us know{% elif expired %}This link has expired{% elif inv.status == "withdrawn" %}Invitation withdrawn{% else %}You are invited{% endif %}</h1>
+      <p class="vit-hero__inst">{{ ctx.institution }}{% if ctx.code %}<span>· {{ ctx.code }}</span>{% endif %}</p>
+      <div class="vit-hero__chips">
+        <span>{% icon "calendar" 15 "2.2" %} {{ ctx.dates }}</span>
+        <span>{% icon "pin" 15 "2.2" %} {{ ctx.venue }}</span>
+        {% if not expired and inv.status != "withdrawn" %}<span>{% icon "clock" 15 "2.2" %} Reply by <b>{{ ctx.confirm_by }}</b></span>{% endif %}
+      </div>
+    </div>
+
+    {% if calendar and not expired and inv.status != "withdrawn" %}
+    <div class="vit-count" data-countdown data-start="{{ calendar.start_ms }}" data-end="{{ calendar.end_ms }}">
+      <span class="vit-count__label"><span data-count-label>Visit begins in</span></span>
+      <div class="vit-count__grid" role="timer" aria-live="off">
+        <span class="vit-count__unit"><b data-count-days>0</b><i>days</i></span>
+        <span class="vit-count__unit"><b data-count-hours>0</b><i>hours</i></span>
+        <span class="vit-count__unit"><b data-count-mins>0</b><i>mins</i></span>
+        <span class="vit-count__unit"><b data-count-secs>0</b><i>secs</i></span>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  {% if error %}<div class="auth-error" role="alert">{{ error }}</div>{% endif %}
+  {% if request.GET.reminder %}<div class="vit-note vit-note--ok" role="status">{% icon "bell" 16 "2.2" %} Reminder set — we will remind you before the visit.</div>{% endif %}
+
+  <div class="vit-grid">
+    <div class="vit-main">
+      <section class="vit-status{% if done == 'confirmed' or inv.status == 'acknowledged' %} is-ok{% elif done == 'declined' or inv.status == 'declined' %} is-warn{% elif expired or inv.status == 'withdrawn' %} is-muted{% endif %}">
+        <span class="vit-status__icon" aria-hidden="true">{% if done == "confirmed" or inv.status == "acknowledged" %}{% icon "check" 20 "2.6" %}{% elif done == "declined" or inv.status == "declined" %}{% icon "mail" 20 "2.2" %}{% else %}{% icon "calendar" 20 "2.2" %}{% endif %}</span>
+        <div>
+          {% if done == "confirmed" %}
+            <strong>NBTE has your confirmation.</strong>
+            <p>The team lead and the desk officer can see it now. Add the visit to your calendar on the right.</p>
+          {% elif done == "declined" %}
+            <strong>NBTE knows you cannot attend.</strong>
+            <p>{% if is_body %}Your council{% else %}You{% endif %} have been marked as unavailable and NBTE will arrange a replacement.</p>
+          {% elif inv.status == "withdrawn" %}
+            <strong>This invitation was withdrawn.</strong>
+            <p>NBTE no longer needs a reply. Contact {{ ctx.contact_officer }} with any question.</p>
+          {% elif expired %}
+            <strong>The visit has ended.</strong>
+            <p>This link no longer accepts replies. Please contact {{ ctx.contact_officer }}{% if ctx.contact_details %} ({{ ctx.contact_details }}){% endif %}.</p>
+          {% elif inv.status == "acknowledged" %}
+            <strong>Already confirmed{% if inv.responded_at %} on {{ inv.responded_at|date:"j M Y" }}{% endif %}.</strong>
+            <p>Thank you. You can still tell us below if this changes.</p>
+          {% elif inv.status == "declined" %}
+            <strong>You told us you cannot attend.</strong>
+            <p>If that has changed, confirm below and NBTE will see it straight away.</p>
+          {% else %}
+            <strong>Dear {{ inv.name }},</strong>
+            <p>{% if is_body %}you are invited to send a representative on{% else %}you are invited to serve on{% endif %} NBTE's quality-assurance visit. Please reply by <strong>{{ ctx.confirm_by }}</strong>.</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="vit-card">
+        <div class="vit-card__head">
+          <div>
+            <h2>Visit details</h2>
+            <p>Everything the team has agreed for this visit.</p>
+          </div>
+          <span class="vit-ref">{{ ctx.case_reference }}</span>
+        </div>
+        <dl class="vit-facts">
+          <div><dt>{% icon "calendar" 14 "2.2" %} Dates</dt><dd>{{ ctx.dates }}</dd></div>
+          <div><dt>{% icon "pin" 14 "2.2" %} Venue</dt><dd>{{ ctx.venue }}</dd></div>
+          <div class="vit-fact--wide"><dt>{% icon "layers" 14 "2.2" %} Programme{{ ctx.programmes|length|pluralize }}</dt><dd>{{ ctx.programmes }}</dd></div>
+          <div><dt>{% icon "user" 14 "2.2" %} Team lead</dt><dd>{{ ctx.team_lead }}</dd></div>
+          <div><dt>{% icon "mail" 14 "2.2" %} NBTE contact</dt><dd>{{ ctx.contact_officer }}{% if ctx.contact_details %}<span class="vit-muted">{{ ctx.contact_details }}</span>{% endif %}</dd></div>
+          <div class="vit-fact--wide"><dt>{% icon "file" 14 "2.2" %} Please bring</dt><dd>{{ ctx.what_to_bring|capfirst }}</dd></div>
+        </dl>
+
+        {% if inv.letter and not expired and inv.status != "withdrawn" %}
+          <a class="btn btn-ghost btn-block vit-letter" href="{{ letter_url }}" target="_blank" rel="noopener">{% icon "download" 16 "2.2" %} Download the invitation letter (PDF)</a>
+        {% endif %}
+      </section>
+
+      {% if not expired and inv.status != "withdrawn" and not done %}
+      <section class="vit-card vit-reply">
+        <div class="vit-card__head">
+          <div>
+            <h2>Your reply</h2>
+            <p>Confirm attendance, or tell NBTE now if you cannot attend.</p>
+          </div>
+        </div>
+        <form method="post" class="vit-form">{% csrf_token %}
+          <div class="vit-field">
+            <label for="vit-name">Your name</label>
+            <input class="input" id="vit-name" name="name" maxlength="150" autocomplete="name" {% if not is_body %}value="{{ inv.name }}"{% endif %}>
+          </div>
+          <div class="vit-field">
+            <label for="vit-note">Note <span class="hint">(needed if you cannot attend{% if is_body %}; name your representative if you know who{% endif %})</span></label>
+            <textarea class="input" id="vit-note" name="note" rows="3"></textarea>
+          </div>
+          <div class="vit-buttons">
+            <button class="btn btn-primary btn-lg" type="submit" name="answer" value="confirm">{% icon "check" 16 "2.6" %} {% if inv.status == "acknowledged" %}Confirm again{% elif is_body %}Confirm receipt and attendance{% else %}I will attend{% endif %}</button>
+            {% if inv.status != "declined" %}<button class="btn btn-ghost btn-lg" type="submit" name="answer" value="decline">{% if is_body %}We cannot attend{% else %}I cannot attend{% endif %}</button>{% endif %}
+          </div>
+          <p class="vit-fineprint">{% icon "lock" 14 "2.2" %} Your reply is recorded against this invitation only.</p>
+        </form>
+      </section>
+      {% endif %}
+    </div>
+
+    <aside class="vit-side">
+      {% if not expired and inv.status != "withdrawn" and calendar %}
+      <section class="vit-card vit-side-card">
+        <div class="vit-card__head">
+          <div>
+            <h2>{% icon "calendar" 16 "2.2" %} Add to calendar</h2>
+            <p>{{ calendar.start_label }}{% if not calendar.same_day %} – {{ calendar.end_label }}{% endif %}</p>
+          </div>
+        </div>
+        <div class="vit-tools">
+          <a class="vit-tool" href="{{ calendar.google }}" target="_blank" rel="noopener">{% icon "calendar" 18 "2.2" %}<span><strong>Google Calendar</strong><em>Add the visit</em></span></a>
+          <a class="vit-tool" href="{{ calendar_url }}">{% icon "download" 18 "2.2" %}<span><strong>Apple / Outlook</strong><em>Download .ics</em></span></a>
+        </div>
+        {% if inv.reminder_requested_at %}
+          <div class="vit-note vit-note--ok">{% icon "bell" 16 "2.2" %} Reminder already set for {{ inv.reminder_requested_at|date:"j M Y" }}. NBTE will remind you before the visit.</div>
+        {% else %}
+          <form method="post" action="{{ reminder_url }}" class="vit-reminder">{% csrf_token %}
+            <button class="btn btn-subtle btn-block" type="submit">{% icon "bell" 16 "2.2" %} Remind me before the visit</button>
+          </form>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      <section class="vit-card vit-side-card">
+        <div class="vit-card__head">
+          <div>
+            <h2>{% icon "phone" 16 "2.2" %} Need help?</h2>
+            <p>Speak to the NBTE officer handling this visit.</p>
+          </div>
+        </div>
+        <div class="vit-contact">
+          <strong>{{ ctx.contact_officer }}</strong>
+          {% if ctx.contact_email %}<a href="mailto:{{ ctx.contact_email }}">{% icon "mail" 14 "2.2" %} {{ ctx.contact_email }}</a>{% endif %}
+          {% if ctx.contact_phone %}<a href="tel:{{ ctx.contact_phone }}">{% icon "phone" 14 "2.2" %} {{ ctx.contact_phone }}</a>{% endif %}
+          {% if not ctx.contact_email and not ctx.contact_phone %}<span class="vit-muted">{{ ctx.contact_details }}</span>{% endif %}
+        </div>
+      </section>
+
+      <section class="vit-card vit-side-card vit-signin">
+        <div class="vit-card__head">
+          <div>
+            <h2>{% icon "user" 16 "2.2" %} Portal access</h2>
+            <p>{% if is_body %}Your NBTE professional-body portal{% else %}Your NBTE resource-person portal{% endif %}</p>
+          </div>
+        </div>
+        <p>Use your registered email{% if invitee_email %} ({{ invitee_email }}){% endif %}. First time here? Choose <strong>Set or reset password securely</strong> to create your password. You can also reply above without signing in.</p>
+        <div class="vit-signin__actions">
+          <a class="btn btn-primary" href="{{ portal_login_url }}">{% icon "user" 16 "2.2" %} Sign in to the portal</a>
+          <a class="btn btn-subtle" href="{{ portal_password_url }}">Set or reset password securely</a>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+<style>
+  /* The invitation is a document, not a sign-in screen: use the full width
+     and drop the marketing half of the auth layout. */
+  .qa-invite .auth-shell { display: block; min-height: 100vh; min-height: 100dvh; }
+  .qa-invite .auth-form-panel {
+    display: block;
+    padding: 0;
+    background:
+      radial-gradient(1100px 520px at 8% -12%, color-mix(in srgb, var(--primary-solid, #1f6b3e) 9%, transparent), transparent 62%),
+      radial-gradient(900px 480px at 94% 0%, color-mix(in srgb, var(--primary-solid, #1f6b3e) 5%, transparent), transparent 66%),
+      var(--bg);
+  }
+  .qa-invite .auth-form-inner { width: 100%; max-width: none; animation: none; }
+  .qa-invite .qa-auth-tools {
+    position: absolute;
+    top: 24px;
+    right: max(18px, calc((100vw - 1240px) / 2 + 18px));
+    z-index: 40;
+  }
+  .qa-invite .qa-auth-tools .theme-toggle {
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    border: 1px solid var(--border);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+
+  .vit-page {
+    width: 100%;
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: clamp(16px, 2.6vw, 34px) clamp(16px, 3vw, 34px) 40px;
+    display: grid;
+    gap: clamp(16px, 2.2vw, 26px);
+    min-width: 0;
+  }
+  .vit-page * { min-width: 0; }
+
+  .vit-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-right: 50px; }
+  .vit-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .vit-brand img { width: 44px; height: 44px; object-fit: contain; flex-shrink: 0; }
+  .vit-brand span { display: flex; flex-direction: column; line-height: 1.18; min-width: 0; }
+  .vit-brand strong { font-size: .93rem; font-weight: 700; letter-spacing: -.015em; color: var(--fg); }
+  .vit-brand em { font-style: normal; font-size: .72rem; font-weight: 500; color: var(--text-muted); }
+  .vit-topbar__right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .vit-secure { display: inline-flex; align-items: center; gap: 6px; font-size: .74rem; color: var(--text-muted); }
+  .vit-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
+    font-size: .74rem; font-weight: 650; white-space: nowrap; border: 1px solid var(--border);
+    background: var(--surface-2, #f7f8fa); color: var(--text-muted);
+  }
+  .vit-pill.is-ok { color: #0f7d4f; border-color: color-mix(in srgb, #129c62 26%, var(--border)); background: color-mix(in srgb, #129c62 9%, var(--surface)); }
+  .vit-pill.is-warn { color: #b45309; border-color: color-mix(in srgb, #d97706 26%, var(--border)); background: color-mix(in srgb, #d97706 9%, var(--surface)); }
+  .vit-pill.is-muted { color: #475569; }
+
+  .vit-hero {
+    position: relative; overflow: hidden; isolation: isolate;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+    gap: clamp(20px, 3vw, 42px);
+    padding: clamp(24px, 3.4vw, 44px);
+    border-radius: clamp(22px, 2.6vw, 30px);
+    color: #fff;
+    background:
+      radial-gradient(115% 170% at 100% 0%, rgba(255, 255, 255, .17), transparent 48%),
+      radial-gradient(85% 130% at 0% 110%, rgba(0, 0, 0, .3), transparent 62%),
+      linear-gradient(135deg, var(--primary-strong, #063a2b) 0%, var(--primary-solid, #1f6b3e) 56%, var(--primary-solid-hover, #185632) 100%);
+    box-shadow: 0 30px 60px -38px color-mix(in srgb, var(--primary-strong, #063a2b) 75%, transparent),
+                inset 0 1px 0 rgba(255, 255, 255, .16);
+  }
+  .vit-hero::before {
+    content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, .055) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, .055) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(ellipse 90% 80% at 25% 20%, #000 15%, transparent 78%);
+    -webkit-mask-image: radial-gradient(ellipse 90% 80% at 25% 20%, #000 15%, transparent 78%);
+  }
+  .vit-hero.is-ok {
+    background:
+      radial-gradient(115% 170% at 100% 0%, rgba(255, 255, 255, .17), transparent 48%),
+      linear-gradient(135deg, #0b4a30 0%, #129c62 62%, #19b873 100%);
+  }
+  .vit-hero.is-warn {
+    background:
+      radial-gradient(115% 170% at 100% 0%, rgba(255, 255, 255, .17), transparent 48%),
+      linear-gradient(135deg, #6b3410 0%, #b45309 62%, #d97706 100%);
+  }
+  .vit-hero.is-muted {
+    background:
+      radial-gradient(115% 170% at 100% 0%, rgba(255, 255, 255, .12), transparent 48%),
+      linear-gradient(135deg, #273449 0%, #475569 62%, #64748b 100%);
+  }
+  .vit-hero__body { position: relative; z-index: 2; }
+  .vit-eyebrow {
+    display: inline-flex; align-items: center; gap: 7px; font-size: .74rem; font-weight: 650;
+    letter-spacing: .09em; text-transform: uppercase; opacity: .82;
+  }
+  .vit-hero h1 {
+    margin: .45rem 0 0; font-family: var(--font-serif); font-weight: 600; color: #fff !important;
+    font-size: clamp(2rem, 4vw + .4rem, 3.3rem); line-height: 1.03; letter-spacing: -.035em;
+    max-width: 20ch; text-wrap: balance; text-shadow: 0 2px 18px rgba(0, 0, 0, .22);
+  }
+  .vit-hero__inst { margin: .7rem 0 0; color: #fff !important; font-size: clamp(.98rem, 1.2vw + .55rem, 1.16rem); line-height: 1.4; text-shadow: 0 1px 10px rgba(0, 0, 0, .18); }
+  .vit-hero__inst span { opacity: .78; }
+  .vit-hero__chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: clamp(16px, 2vw, 22px); }
+  .vit-hero__chips span {
+    display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+    padding: 7px 12px; border-radius: 999px; font-size: .8rem; line-height: 1.25;
+    background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .17);
+    overflow-wrap: anywhere;
+  }
+  .vit-hero__chips b { font-weight: 700; }
+
+  .vit-count {
+    position: relative; z-index: 2; display: grid; gap: 10px; padding: 18px;
+    min-width: min(100%, 330px); border-radius: 18px;
+    background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .18);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  }
+  .vit-count__label { font-size: .72rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; opacity: .86; }
+  .vit-count__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .vit-count__unit {
+    display: grid; justify-items: center; gap: 2px; padding: 10px 5px; border-radius: 12px;
+    background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .16);
+  }
+  .vit-count__unit b { font-size: clamp(1.2rem, 2vw, 1.7rem); line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .vit-count__unit i { font-size: .62rem; font-style: normal; text-transform: uppercase; letter-spacing: .08em; opacity: .82; }
+  .vit-count.is-live { background: rgba(18, 156, 98, .32); border-color: rgba(255, 255, 255, .28); }
+  .vit-count.is-over { background: rgba(51, 65, 85, .48); }
+
+  .vit-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(310px, .85fr); gap: clamp(16px, 2.2vw, 26px); align-items: start; }
+  .vit-main, .vit-side { display: grid; gap: 16px; align-content: start; }
+
+  .vit-card {
+    padding: clamp(18px, 2vw, 26px);
+    border: 1px solid var(--border); border-radius: 18px; background: var(--surface);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 16px 42px -34px rgba(16, 24, 40, .42);
+  }
+  .vit-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+  .vit-card__head h2 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1.02rem; line-height: 1.25; letter-spacing: -.015em; }
+  .vit-card__head h2 svg { color: var(--primary, #1f6b3e); flex-shrink: 0; }
+  .vit-card__head p { margin: 4px 0 0; font-size: .82rem; line-height: 1.45; color: var(--text-muted); }
+  .vit-ref { flex-shrink: 0; padding-top: 2px; font-size: .7rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  .vit-status {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: start;
+    padding: 16px 18px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+  }
+  .vit-status strong { display: block; font-size: .94rem; line-height: 1.35; }
+  .vit-status p { margin: 3px 0 0; font-size: .86rem; line-height: 1.5; color: var(--text-muted); overflow-wrap: anywhere; }
+  .vit-status__icon {
+    display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+    border-radius: 11px; background: color-mix(in srgb, var(--primary, #1f6b3e) 12%, transparent); color: var(--primary, #1f6b3e);
+  }
+  .vit-status.is-ok { background: color-mix(in srgb, #129c62 7%, var(--surface)); border-color: color-mix(in srgb, #129c62 22%, var(--border)); }
+  .vit-status.is-ok .vit-status__icon { background: color-mix(in srgb, #129c62 14%, transparent); color: #0f7d4f; }
+  .vit-status.is-warn { background: color-mix(in srgb, #d97706 7%, var(--surface)); border-color: color-mix(in srgb, #d97706 22%, var(--border)); }
+  .vit-status.is-warn .vit-status__icon { background: color-mix(in srgb, #d97706 14%, transparent); color: #b45309; }
+  .vit-status.is-muted .vit-status__icon { background: color-mix(in srgb, #64748b 14%, transparent); color: #475569; }
+
+  .vit-facts { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .vit-facts > div { padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2, #fafbfc); }
+  .vit-facts > .vit-fact--wide { grid-column: 1 / -1; }
+  .vit-facts dt { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .055em; }
+  .vit-facts dd { margin: 5px 0 0; font-size: .9rem; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
+  .vit-muted { display: block; margin-top: 2px; color: var(--text-muted); font-size: .78rem; }
+  .vit-letter { width: 100%; margin-top: 16px; }
+
+  .vit-form { display: grid; gap: 14px; }
+  .vit-field { display: grid; gap: 6px; }
+  .vit-field label { font-size: .82rem; font-weight: 650; }
+  .vit-field .hint { font-weight: 400; color: var(--text-muted); }
+  .vit-field .input { width: 100%; }
+  .vit-buttons { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 10px; }
+  .vit-buttons .btn { min-height: 46px; justify-content: center; white-space: normal; text-align: center; }
+  .vit-fineprint { display: flex; align-items: center; gap: 6px; margin: 0; font-size: .74rem; color: var(--text-muted); }
+
+  .vit-tools { display: grid; gap: 8px; }
+  .vit-tool {
+    display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--border);
+    border-radius: 12px; text-decoration: none; color: inherit; background: var(--surface-2, #fafbfc);
+    transition: border-color .15s, background .15s, transform .15s;
+  }
+  .vit-tool:hover { border-color: var(--primary, #1f6b3e); background: color-mix(in srgb, var(--primary, #1f6b3e) 5%, var(--surface)); transform: translateY(-1px); }
+  .vit-tool svg { color: var(--primary, #1f6b3e); flex-shrink: 0; }
+  .vit-tool strong { display: block; font-size: .84rem; line-height: 1.25; }
+  .vit-tool em { display: block; font-style: normal; font-size: .74rem; color: var(--text-muted); }
+  .vit-note {
+    display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+    font-size: .8rem; line-height: 1.45; border: 1px solid var(--border); background: var(--surface-2, #f7f8fa);
+  }
+  .vit-note--ok { color: #0f7d4f; border-color: color-mix(in srgb, #129c62 24%, var(--border)); background: color-mix(in srgb, #129c62 8%, var(--surface)); }
+  .vit-reminder { margin: 10px 0 0; }
+  .vit-reminder .btn { width: 100%; justify-content: center; min-height: 42px; }
+
+  .vit-contact { display: grid; gap: 6px; font-size: .85rem; }
+  .vit-contact strong { font-size: .92rem; line-height: 1.35; }
+  .vit-contact a { display: inline-flex; align-items: center; gap: 6px; color: var(--primary, #1f6b3e); text-decoration: none; overflow-wrap: anywhere; }
+  .vit-contact a:hover { text-decoration: underline; }
+
+  .vit-signin { background: color-mix(in srgb, var(--primary, #1f6b3e) 4%, var(--surface)); }
+  .vit-signin > p { margin: 0 0 12px; font-size: .81rem; line-height: 1.5; color: var(--text-muted); overflow-wrap: anywhere; }
+  .vit-signin__actions { display: grid; gap: 8px; }
+  .vit-signin .btn { justify-content: center; min-width: 0; min-height: 42px; white-space: normal; text-align: center; overflow-wrap: anywhere; }
+
+  .qa-invite .auth-form-foot { margin-top: 26px; padding-bottom: 6px; font-size: .74rem; }
+
+  @media (max-width: 980px) {
+    .vit-grid { grid-template-columns: minmax(0, 1fr); }
+    .vit-side { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .vit-hero { grid-template-columns: minmax(0, 1fr); }
+    .vit-count { width: 100%; min-width: 0; }
+  }
+  @media (max-width: 640px) {
+    .vit-page { padding: 14px 14px 30px; gap: 16px; }
+    .vit-topbar { padding-right: 44px; gap: 10px; }
+    .vit-brand { gap: 9px; }
+    .vit-brand img { width: 38px; height: 38px; }
+    .vit-brand strong { font-size: .82rem; }
+    .vit-brand em { display: none; }
+    .vit-secure { display: none; }
+    .vit-pill { font-size: .68rem; padding: 5px 9px; gap: 4px; }
+    .vit-hero { padding: 22px 20px; border-radius: 20px; gap: 18px; }
+    .vit-hero h1 { font-size: 2rem; }
+    .vit-hero__chips { gap: 6px; margin-top: 16px; }
+    .vit-hero__chips span { font-size: .76rem; padding: 6px 10px; }
+    .vit-count { padding: 14px; border-radius: 15px; }
+    .vit-count__grid { gap: 6px; }
+    .vit-count__unit { padding: 9px 3px; }
+    .vit-count__unit b { font-size: 1.2rem; }
+    .vit-count__unit i { font-size: .56rem; }
+    .vit-status { padding: 14px; gap: 12px; }
+    .vit-status__icon { width: 34px; height: 34px; }
+    .vit-card { padding: 18px; border-radius: 16px; }
+    .vit-facts { grid-template-columns: minmax(0, 1fr); }
+    .vit-facts > .vit-fact--wide { grid-column: auto; }
+    .vit-buttons { grid-template-columns: minmax(0, 1fr); }
+    .vit-side { grid-template-columns: minmax(0, 1fr); }
+    .vit-ref { display: none; }
+  }
+</style>
+<script>
+  (function () {
+    var box = document.querySelector("[data-countdown]");
+    if (!box) return;
+    var start = Number(box.dataset.start), end = Number(box.dataset.end);
+    if (!start) return;
+    var label = box.querySelector("[data-count-label]");
+    var d = box.querySelector("[data-count-days]"), h = box.querySelector("[data-count-hours]");
+    var m = box.querySelector("[data-count-mins]"), s = box.querySelector("[data-count-secs]");
+    function pad(n) { return String(n).padStart(2, "0"); }
+    function tick() {
+      var now = Date.now(), left = start - now;
+      if (left <= 0) {
+        if (end && now < end) {
+          box.classList.add("is-live"); box.classList.remove("is-over");
+          label.textContent = "The visit is happening now — ends in";
+          left = end - now;
+        } else {
+          box.classList.add("is-over"); box.classList.remove("is-live");
+          label.textContent = "The visit date has passed";
+          if (d) d.textContent = "0"; if (h) h.textContent = "00";
+          if (m) m.textContent = "00"; if (s) s.textContent = "00";
+          clearInterval(timer); return;
+        }
+      } else {
+        box.classList.remove("is-live", "is-over");
+        label.textContent = "Visit begins in";
+      }
+      var days = Math.floor(left / 86400000);
+      var hours = Math.floor((left % 86400000) / 3600000);
+      var mins = Math.floor((left % 3600000) / 60000);
+      var secs = Math.floor((left % 60000) / 1000);
+      if (d) d.textContent = days;
+      if (h) h.textContent = pad(hours);
+      if (m) m.textContent = pad(mins);
+      if (s) s.textContent = pad(secs);
+    }
+    tick();
+    var timer = setInterval(tick, 1000);
+  })();
+</script>
+{% endblock %}
+{% block foot %}
+  This invitation link is unique to you. NBTE will never ask for your password by e-mail.<br>
+  NBTE staff? <a href="{{ internal_login_url }}">Sign in to the internal system</a>.
+{% endblock %}

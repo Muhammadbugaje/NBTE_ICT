@@ -1,21 +1,13 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% block title %}New task · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}New task{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=3">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}">{% endblock %}
 
 {% block content %}
-<div class="tsk-page">
-  <header class="tsk-page-head">
-    <div>
-      <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost mb-3">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        All tasks
-      </a>
-      <h1>What kind of task?</h1>
-      <p>Pick a category — it sets the default due date, who can be assigned, and whether review is required.</p>
-    </div>
-  </header>
+<div class="tsk-page wk-page" data-qa-area="tasks">
+  {% url 'tasks:list' as back_url %}
+  {% include "partials/hero.html" with area="tasks" icon="plus" eyebrow="Tasks · New task" title="What kind of task?" lede="Pick a category. It sets the default due date, who can be assigned, and whether review is required." back_url=back_url back_label="All tasks" %}
 
   {% if categories %}
     <div class="tsk-cat-grid">

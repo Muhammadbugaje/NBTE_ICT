@@ -4,6 +4,7 @@ services — used by ``seed_phase5_demo``, ``case_demo.advance`` and tests."""
 from __future__ import annotations
 
 import datetime
+from unittest.mock import patch
 
 from django.utils import timezone
 
@@ -23,15 +24,30 @@ def complete_visit(case, *, absent=()):
     if inspection is None:
         inspection = services.create_for_case(case)
     if inspection.status == "scheduled":
-        today = timezone.localdate()
-        services.complete(inspection, actor=inspection.team_lead, actual_start=today - datetime.timedelta(days=2),
-                          actual_end=today - datetime.timedelta(days=1), absent=absent)
+        with patch("inspection.services.timezone.localdate", return_value=inspection.scheduled_end):
+            services.complete(inspection, actor=inspection.team_lead, absent=absent)
         inspection.refresh_from_db()
     return inspection
 
 
+def prepare_attendee_reports(report):
+    lead = report.inspection.team_lead
+    for member_report in services.ensure_member_reports(report):
+        if member_report.status not in ("draft", "returned"):
+            continue
+        summary = f"{member_report.author.get_full_name() or member_report.author.email}: {DEMO_SUMMARY}"
+        services.save_member_report(member_report, user=member_report.author, summary=summary,
+                                    findings=DEMO_FINDINGS, recommendation="accredit", submit=True)
+        member_report.refresh_from_db()
+        if member_report.status == "submitted":
+            services.review_member_report(member_report, user=lead, action="accept",
+                                          content="Reviewed for the programme compilation.")
+    return services.ensure_member_reports(report)
+
+
 def write_and_submit(report, user=None):
     user = user or report.inspection.team_lead
+    prepare_attendee_reports(report)
     services.save_report(report, user=user, summary=DEMO_SUMMARY, findings=DEMO_FINDINGS, recommendation="accredit")
     return services.submit_report(report, user=user)
 

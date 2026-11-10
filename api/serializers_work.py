@@ -83,6 +83,19 @@ class RequiredReasonSerializer(serializers.Serializer):
     reason = serializers.CharField(allow_blank=True)
 
 
+class TaskPartSerializer(serializers.Serializer):
+    """Phase C (H14, H15): one person's part; ``reason`` when returning it."""
+    user = serializers.IntegerField()
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class TaskDivisionRouteSerializer(serializers.Serializer):
+    """Phase C (H23): route to a division (optionally naming members)."""
+    division = serializers.IntegerField()
+    members = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class PeopleQuerySerializer(serializers.Serializer):
     q = serializers.CharField(required=False, allow_blank=True)
 
@@ -152,6 +165,8 @@ class TaskAssigneeSerializer(serializers.Serializer):
     accepted_at = serializers.DateTimeField(allow_null=True)
     started_at = serializers.DateTimeField(allow_null=True)
     completed_at = serializers.DateTimeField(allow_null=True)
+    review_state = serializers.CharField(help_text="pending / confirmed / returned (Phase C, H14-H15)")
+    review_note = serializers.CharField(allow_blank=True)
 
 
 class TaskRefSerializer(serializers.Serializer):
@@ -213,6 +228,25 @@ class TaskActionsSerializer(serializers.Serializer):
     can_resend = serializers.BooleanField()
     can_comment = serializers.BooleanField()
     can_attach = serializers.BooleanField()
+    # Phase C (v2.1)
+    can_accept_start = serializers.BooleanField()
+    can_confirm_parts = serializers.BooleanField()
+    can_confirm_all = serializers.BooleanField()
+    can_route_division = serializers.BooleanField()
+    can_division_accept = serializers.BooleanField()
+    can_division_complete = serializers.BooleanField()
+    can_download_report = serializers.BooleanField()
+
+
+class TaskDivisionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    state = serializers.CharField(help_text="pending / accepted / declined")
+
+
+class TaskLinkedRequestSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
 
 
 class TaskDetailSerializer(TaskListItemSerializer):
@@ -243,6 +277,9 @@ class TaskDetailSerializer(TaskListItemSerializer):
     activity = WorkActivitySerializer(many=True)
     qa_link_url = serializers.CharField(allow_blank=True,
                                         help_text="Set when the task is driven from the QA screens.")
+    division = TaskDivisionSerializer(allow_null=True, help_text="Group task: the division it is routed to.")
+    linked_request = TaskLinkedRequestSerializer(allow_null=True,
+                                                 help_text="Cross-department subtask handled as this request.")
     actions = TaskActionsSerializer()
 
 
@@ -404,6 +441,38 @@ class TicketActionsSerializer(serializers.Serializer):
     can_comment = serializers.BooleanField()
     can_internal = serializers.BooleanField()
     can_attach = serializers.BooleanField()
+    can_route = serializers.BooleanField()
+    can_accept_division = serializers.BooleanField()
+    can_request_funds = serializers.BooleanField()
+    can_rate = serializers.BooleanField()
+
+
+class TicketDivisionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    state = serializers.CharField(allow_blank=True)
+
+
+class TicketFundsSerializer(serializers.Serializer):
+    state = serializers.CharField()
+    amount = serializers.CharField(allow_null=True)
+    request = serializers.CharField(allow_null=True)
+    note = serializers.CharField(allow_blank=True)
+
+
+class TicketRouteSerializer(serializers.Serializer):
+    division = serializers.IntegerField()
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class TicketFundsRequestSerializer(serializers.Serializer):
+    amount = serializers.CharField()
+    purpose = serializers.CharField()
+
+
+class TicketRateSerializer(serializers.Serializer):
+    rating = serializers.IntegerField(min_value=1, max_value=5)
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class TicketDetailSerializer(TicketListItemSerializer):
@@ -426,6 +495,9 @@ class TicketDetailSerializer(TicketListItemSerializer):
     attachments = WorkAttachmentSerializer(many=True)
     activity = WorkActivitySerializer(many=True)
     actions = TicketActionsSerializer()
+    division = TicketDivisionSerializer(allow_null=True)
+    funds = TicketFundsSerializer(allow_null=True)
+    report_pdf_url = serializers.CharField()
 
 
 class TicketCreateSerializer(serializers.Serializer):
@@ -594,6 +666,8 @@ class LeaveYearSerializer(serializers.Serializer):
 
 
 class LeaveSummarySerializer(serializers.Serializer):
+    leave_type = serializers.CharField(required=False, help_text="v2.1: leave type code.")
+    leave_type_name = serializers.CharField(required=False)
     start_date = serializers.DateField()
     end_date = serializers.DateField()
     requested_days = serializers.CharField()
@@ -660,7 +734,7 @@ class LeaveBalanceSerializer(serializers.Serializer):
     pending = serializers.CharField()
     remaining = serializers.CharField()
     is_set = serializers.BooleanField(help_text="False when no entitlement is configured for you.")
-    entitlement_source = serializers.ChoiceField(choices=["override", "role"], allow_null=True)
+    entitlement_source = serializers.ChoiceField(choices=["override", "role", "type"], allow_null=True)
 
 
 class LeaveApplicationSerializer(serializers.Serializer):
@@ -670,6 +744,8 @@ class LeaveApplicationSerializer(serializers.Serializer):
     start_date = serializers.DateField()
     end_date = serializers.DateField()
     working_days = serializers.IntegerField()
+    leave_type = serializers.CharField(help_text="Leave type code (v2.1), e.g. annual, maternity.")
+    leave_type_name = serializers.CharField()
     status = serializers.CharField()
     status_display = serializers.CharField()
     current_step = serializers.CharField(allow_blank=True)
@@ -699,8 +775,18 @@ class LeaveListQuerySerializer(serializers.Serializer):
 
 
 class LeaveApplySerializer(serializers.Serializer):
+    leave_type = serializers.CharField(required=False, allow_blank=True, max_length=40,
+                                       help_text="Leave type code (default annual). See Settings -> Leave types.")
     start_date = serializers.DateField()
-    end_date = serializers.DateField()
+    end_date = serializers.DateField(required=False, help_text="Dates-mode types.")
+    days = serializers.IntegerField(required=False, min_value=1, max_value=366,
+                                    help_text="Days-mode types: the end date is computed (weekends and holidays "
+                                              "skipped for working-day types).")
+
+    def validate(self, attrs):
+        if not attrs.get("end_date") and not attrs.get("days"):
+            raise serializers.ValidationError({"end_date": ["Give end_date, or days for a days-mode type."]})
+        return attrs
     subject = serializers.CharField(max_length=255, required=False, allow_blank=True)
     body = serializers.CharField(required=False, allow_blank=True)
     priority = PlainChoiceField(choices=["low", "normal", "high", "urgent"], required=False,
@@ -708,8 +794,15 @@ class LeaveApplySerializer(serializers.Serializer):
 
 
 class LeavePreviewQuerySerializer(serializers.Serializer):
+    leave_type = serializers.CharField(required=False, allow_blank=True, max_length=40)
     start_date = serializers.DateField()
-    end_date = serializers.DateField()
+    end_date = serializers.DateField(required=False)
+    days = serializers.IntegerField(required=False, min_value=1, max_value=366)
+
+    def validate(self, attrs):
+        if not attrs.get("end_date") and not attrs.get("days"):
+            raise serializers.ValidationError({"end_date": ["Give end_date, or days for a days-mode type."]})
+        return attrs
 
 
 class LeavePreviewSerializer(serializers.Serializer):
@@ -720,6 +813,8 @@ class LeavePreviewSerializer(serializers.Serializer):
     remaining_before = serializers.CharField(allow_null=True)
     remaining_after = serializers.CharField(allow_null=True)
     is_over_balance = serializers.BooleanField()
+    leave_type = serializers.CharField()
+    leave_type_name = serializers.CharField()
 
 
 class LeaveApprovalSerializer(serializers.Serializer):

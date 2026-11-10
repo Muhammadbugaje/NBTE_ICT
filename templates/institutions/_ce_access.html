@@ -1,0 +1,89 @@
+{% load qa_tags %}
+<section class="ix-ce" id="ce-access" aria-labelledby="ce-access-h">
+  <header class="ix-ce__head">
+    <span class="ix-ce__badge" aria-hidden="true">{% icon "key" 20 %}</span>
+    <div>
+      <span class="ux-kicker">Account access</span>
+      <h2 id="ce-access-h">Chief Executive account</h2>
+      <p>The set-up link goes only to the Chief Executive's own e-mail. The Head of ICT who registered never sees it.{% if not ce_auto_email %} <strong>Automatic e-mail is off</strong> — send it from here when the Chief Executive asks.{% endif %}</p>
+    </div>
+    {% if ce.user %}<span class="ux-chip {% if ce.state == 'active' %}ux-chip--green{% elif ce.state == 'password_set' %}ux-chip--blue{% else %}ux-chip--gold{% endif %}">{% if ce.state == 'active' %}Active — has signed in{% elif ce.state == 'password_set' %}Password set, not signed in yet{% else %}Awaiting set-up{% endif %}</span>{% endif %}
+  </header>
+
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+
+  {% if ce.user %}
+    {% if result.url or result.password %}
+    <div class="ix-secret" role="status" aria-live="polite">
+      <div class="ix-secret__top">
+        <span class="ix-secret__icon" aria-hidden="true">{% if result.url %}{% icon "link" 20 %}{% else %}{% icon "key" 20 %}{% endif %}</span>
+        <div>
+          <strong>{% if result.url %}One-time set-up link for {{ result.email }}{% else %}One-time password for {{ ce.user.email }}{% endif %}</strong>
+          <span class="ix-secret__once">{% icon "eye" 13 %} Shown once — this page will not show it again</span>
+        </div>
+      </div>
+      <div class="ix-secret__field">
+        <code id="ce-secret-val" class="{% if result.password %}is-password{% endif %}">{% if result.url %}{{ result.url }}{% else %}{{ result.password }}{% endif %}</code>
+        <button type="button" class="btn btn-primary btn-sm" data-ix-copy="#ce-secret-val">{% icon "copy" 14 %} <span>Copy</span></button>
+      </div>
+      <ul class="ix-secret__notes" role="list">
+        {% if result.url %}
+        <li>{% icon "clock" 14 %} Valid for <strong>{{ result.hours }} hours</strong> and works once.</li>
+        <li>{% icon "lock" 14 %} Send it privately to the Chief Executive only (e.g. WhatsApp to their own number).</li>
+        <li>{% icon "mail" 14 %} {% if result.sent %}It was also e-mailed to {{ result.email }}.{% else %}<strong>The e-mail could not be sent</strong> — use this link.{% endif %}</li>
+        {% else %}
+        <li>{% icon "lock" 14 %} Give it to the Chief Executive privately — never by group chat or e-mail copy.</li>
+        <li>{% icon "rotate" 14 %} They must choose their own password at first sign-in; any earlier password has stopped working.</li>
+        {% endif %}
+        <li>{% icon "shield" 14 %} Recorded in the institution's audit trail with your name.</li>
+      </ul>
+    </div>
+    {% elif result.email %}
+      {% include "qa_core/partials/_callout.html" with kind="success" title="E-mailed" message="A fresh set-up link was sent to the Chief Executive's e-mail." %}
+    {% endif %}
+
+    <div class="ix-ce__body">
+      <div class="ix-ce__who">
+        <span class="ux-avatar ux-avatar--gold ix-avatar-lg" aria-hidden="true">{{ ce.user|initials }}</span>
+        <div>
+          <strong>{{ ce.user.get_full_name|default:"—" }}</strong>
+          <a href="mailto:{{ ce.user.email }}">{{ ce.user.email }}</a>
+        </div>
+        <dl class="ix-ce__facts">
+          <div><dt>Last link sent</dt><dd>{{ ce.link.credentials_last_sent_at|date:"j M Y, H:i"|default:"Never" }}</dd></div>
+          <div><dt>Last sign-in</dt><dd>{{ ce.user.last_login|date:"j M Y, H:i"|default:"Never" }}</dd></div>
+        </dl>
+      </div>
+      {% if can_manage_ce %}
+      <div class="ix-ce__actions">
+        <form method="post" action="{% url 'qa_inst:ce_action' inst.code 'email' %}" hx-post="{% url 'qa_inst:ce_action' inst.code 'email' %}" hx-target="#ce-access" hx-swap="outerHTML" data-needs-network>{% csrf_token %}
+          <button class="ix-act ix-act--primary" type="submit"><span class="ix-act__icon">{% icon "mail" 18 %}</span><span><strong>E-mail set-up link to the CE</strong><small>Safest: goes to {{ ce.user.email }}</small></span></button></form>
+        <form method="post" action="{% url 'qa_inst:ce_action' inst.code 'reveal' %}" hx-post="{% url 'qa_inst:ce_action' inst.code 'reveal' %}" hx-target="#ce-access" hx-swap="outerHTML" hx-confirm="Show the one-time link on your screen? Only send it to the Chief Executive personally. This is recorded." data-confirm-title="Show the set-up link?" data-confirm-label="Show the link once" data-confirm-tone="default" data-confirm-icon="🔗" data-confirm-note="It is also e-mailed to the Chief Executive. Your name and the time are written to the audit trail." data-needs-network>{% csrf_token %}
+          <button class="ix-act" type="submit"><span class="ix-act__icon">{% icon "link" 18 %}</span><span><strong>Get link to send manually</strong><small>Shown once, to send privately</small></span></button></form>
+        <form method="post" action="{% url 'qa_inst:ce_action' inst.code 'password' %}" hx-post="{% url 'qa_inst:ce_action' inst.code 'password' %}" hx-target="#ce-access" hx-swap="outerHTML" hx-confirm="Issue a one-time password for the Chief Executive? Any earlier password stops working. This is recorded." data-confirm-title="Issue a one-time password?" data-confirm-label="Issue password" data-confirm-tone="danger" data-confirm-icon="🔑" data-confirm-note="The password is shown to you once. The Chief Executive must choose a new one at first sign-in." data-needs-network>{% csrf_token %}
+          <button class="ix-act" type="submit"><span class="ix-act__icon">{% icon "key" 18 %}</span><span><strong>Issue one-time password</strong><small>Replaces any earlier password</small></span></button></form>
+      </div>
+      {% endif %}
+    </div>
+    {% if can_manage_ce %}<p class="ix-ce__foot">{% icon "shield" 13 %} Available to the ES, super admins, the Director of ICT and the ICT officer assigned to this institution. Every action is logged.</p>{% endif %}
+  {% else %}
+    <div class="ux-empty"><div class="ux-empty__art">{% icon "key" 26 %}</div><strong>No Chief Executive account yet</strong><span>It is created when the institution registers its Chief Executive.</span></div>
+  {% endif %}
+</section>
+<script>
+(function () {
+  if (window.__ixCopy) return; window.__ixCopy = true;
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-ix-copy]"); if (!b) return;
+    var el = document.querySelector(b.getAttribute("data-ix-copy")); if (!el) return;
+    var text = el.getAttribute("data-copy") || el.textContent.trim();
+    var done = function () {
+      var label = b.querySelector("span") || b; var old = label.textContent;
+      b.classList.add("is-copied"); label.textContent = "Copied";
+      setTimeout(function () { b.classList.remove("is-copied"); label.textContent = old; }, 2200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, done);
+    else { var r = document.createRange(); r.selectNodeContents(el); var s = getSelection(); s.removeAllRanges(); s.addRange(r); done(); }
+  });
+})();
+</script>

@@ -1,24 +1,27 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 
 {% block title %}Assigned to me · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Assigned to me{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/assigned-requests.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/assigned-requests.css' %}">
 {% endblock %}
 
 {% block content %}
-<main class="assigned-requests-page">
-  <header class="assigned-requests-hero">
+<div class="assigned-requests-page wk-page" data-qa-area="requests">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="requests">
     <div>
-      <p class="assigned-requests-eyebrow">Request workspace</p>
+      <span class="qa-eyebrow">{% icon "user" 14 "2.2" %} Requests · Assigned to me</span>
       <h1>Assigned to me</h1>
-      <p>Requests assigned to you for action or fulfilment.</p>
+      <p>Requests assigned to you for action or fulfilment. Open one to record progress or hand it over.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'workflow:awaiting_action' %}" class="btn btn-subtle">{% icon "clock" 16 "2.2" %} Awaiting my action</a>
+        <a href="{% url 'workflow:my_requests' %}" class="btn btn-subtle">{% icon "inbox" 16 "2.2" %} My requests</a>
+      </div>
     </div>
-    <div class="assigned-requests-total" aria-label="{{ page.paginator.count }} assigned requests">
-      <strong>{{ page.paginator.count }}</strong>
-      <span>assigned request{{ page.paginator.count|pluralize }}</span>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong>{{ page.paginator.count|default:0 }}</strong><span>Assigned request{{ page.paginator.count|pluralize }}</span></div>
     </div>
   </header>
 
@@ -145,5 +148,5 @@
       </section>
     {% endif %}
   </div>
-</main>
+</div>
 {% endblock %}

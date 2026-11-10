@@ -396,3 +396,43 @@ html.nbte-login #login-form { padding: 0; }
   object-fit: contain;
 }
 html.nbte-login #login-form button[type="submit"] { border-radius: 12px; box-shadow: 0 8px 20px -8px rgba(31, 107, 62, .55); }
+
+/* ===================================================== filter sheet (Safari)
+   The Filters sheet is position:fixed inside the main content wrapper, which
+   unfold marks as a size container (class "@container"). Older Safari applies
+   layout containment to size containers: the wrapper then becomes the
+   containing block and stacking context of the sheet, so the sheet opened
+   inside the page (half on screen) and BELOW the blurred page overlay — the
+   page looked blurred and frozen until a reload. On list pages that wrapper
+   needs no container queries (they are only used by inline headings on
+   change forms), so turn the container off there. nbte-admin.js also
+   self-heals any other ancestor that traps the sheet. */
+#main .\@container:has(#changelist),
+#main .\@container:has(#changelist-filter) { container-type: normal; contain: none; }
+/* Show/hide the sheet at once: no half-finished opacity/scale transition. */
+#changelist-filter { transition: none !important; transform: none !important; opacity: 1 !important; }
+/* A plain dim overlay instead of a full-screen backdrop blur (heavy for
+   Safari to composite over the page, and the source of the blurry look). */
+#modal-overlay {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background-color: rgba(15, 15, 14, .32) !important;
+  transition: none !important;
+}
+html.dark #modal-overlay { background-color: rgba(0, 0, 0, .6) !important; }
+/* ========================================================= select mode
+   The checkbox column and the actions bar stay hidden until "Select" in the
+   list toolbar is pressed (nbte-admin.js adds the button and the classes). */
+html.nbte-select-ready:not(.nbte-select-on) #result_list .action-checkbox,
+html.nbte-select-ready:not(.nbte-select-on) #result_list .action-checkbox-column { display: none; }
+html.nbte-select-ready:not(.nbte-select-on) #changelist-actions-wrapper { display: none; }
+html.nbte-select-on #result_list td.action-checkbox { animation: nbte-check-in .18s var(--nbte-ease) both; }
+@keyframes nbte-check-in { from { opacity: 0; } to { opacity: 1; } }
+.nbte-select-btn { white-space: nowrap; }
+.nbte-select-btn .material-symbols-outlined { font-size: 18px; }
+html.nbte-select-on .nbte-select-btn {
+  background-color: var(--color-primary-600, #1f6b3e);
+  border-color: var(--color-primary-600, #1f6b3e);
+  color: #fff;
+}
+@media (prefers-reduced-motion: reduce) { html.nbte-select-on #result_list td.action-checkbox { animation: none; } }

@@ -36,6 +36,31 @@ app.conf.beat_schedule = {
         "task": "core.tasks.purge_media_quarantine",
         "schedule": crontab(hour=2, minute=17),    # daily
     },
+    # v2.1 X5: access grants - extend open work, revoke closed, expire, report.
+    "assignments.sweep_grants": {
+        "task": "assignments.tasks.sweep_grants",
+        "schedule": crontab(minute=7),              # hourly
+    },
+    # v2.1 Part 2.2: SSQ review offers not accepted / reviews past due (one reminder a day each).
+    "accreditation.ssq_assignment_reminders": {
+        "task": "accreditation.ssq_assignment_reminders",
+        "schedule": crontab(minute=23, hour="8-17"),   # hourly in working hours
+    },
+    # Linear onboarding: overdue self-study stages (qa.onboarding.stage_sla_days) — remind, then escalate.
+    "accreditation.onboarding_stage_reminders": {
+        "task": "accreditation.onboarding_stage_reminders",
+        "schedule": crontab(minute=41, hour="8-17"),   # hourly in working hours; each level is sent once
+    },
+    # v2.1 P.5: weekly access digest to the Director of ICT.
+    "assignments.weekly_access_digest": {
+        "task": "assignments.tasks.weekly_access_digest",
+        "schedule": crontab(minute=17, hour=7, day_of_week=1),  # Monday 07:17
+    },
+    # v2.1 I4: remind ticket openers to rate resolved tickets.
+    "tickets.rating_reminders": {
+        "task": "tickets.tasks.rating_reminders",
+        "schedule": crontab(hour=9, minute=13),     # daily
+    },
     "tickets.sla_check": {
         "task": "tickets.tasks.sla_check",
         "schedule": timedelta(seconds=300),  # 5 minutes
@@ -66,6 +91,11 @@ app.conf.beat_schedule = {
         # attendance.auto_mark_absent_hour is set differently.
         "schedule": crontab(hour=20, minute=0),
     },
+    "attendance.nightly_checkout_and_duty": {
+        # v2.1 Phase D (G3, G7): flag missing check-outs; re-sync visit duty days.
+        "task": "attendance.tasks.nightly_checkout_and_duty",
+        "schedule": crontab(hour=23, minute=40),
+    },
     "attendance.weekly_summary": {
         "task": "attendance.tasks.weekly_summary",
         # Monday 08:00 Africa/Lagos
@@ -90,12 +120,22 @@ app.conf.beat_schedule = {
         "task": "messaging.delete_expired_attachments",
         "schedule": 86400.0,
     },
+    # v2.1 Phase E (L7): message reminders ("remind me about this message").
+    "messaging.send-due-reminders": {
+        "task": "messaging.send_due_reminders",
+        "schedule": timedelta(minutes=1),
+    },
       
     # QA Phase 2: payments sweep (reminders, overdue Finance confirmations,
     # provider polls). It never confirms a payment.
     "qa.payments.sweep": {
         "task": "payments.sweep",
         "schedule": timedelta(minutes=15),
+    },
+    # v2.2: nightly reconciliation — provider vs NBTE records vs the ledger.
+    "qa.payments.reconcile": {
+        "task": "payments.reconcile",
+        "schedule": crontab(hour=1, minute=45),
     },
 
     # Phase 8 (Master Plan §22): once a day, take a backup if
@@ -109,6 +149,12 @@ app.conf.beat_schedule = {
     "accreditation.programme_expiry": {
         "task": "accreditation.programme_expiry",
         "schedule": crontab(hour=1, minute=17),  # daily, 01:17
+    },
+
+    # Phase B (D10): weekly promotion overdue notice to HR and the ES.
+    "staff.promotion_overdue_notice": {
+        "task": "staff.tasks.promotion_overdue_notice",
+        "schedule": crontab(day_of_week="mon", hour=7, minute=43),
     },
 
     # Review M12: the duplicate "attendance-auto-mark-absent" (18:30 Mon-Fri)

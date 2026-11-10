@@ -26,3 +26,11 @@ def transcribe_voice_note(voice_note_id):
         return None
     transcription.transcribe(voice)
     return voice.transcript_status
+
+
+# v2.1 Phase E (L7): "remind me about this message" - every minute.
+@shared_task(name="messaging.send_due_reminders")
+def send_due_reminders():
+    from .group_services import send_due_reminders as run
+
+    return run()

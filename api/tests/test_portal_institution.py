@@ -131,6 +131,22 @@ def test_invite_needs_manager(portal_api, p3):
     assert r.status_code == 403 and err(r)["code"] == "permission_denied"
 
 
+def test_locked_institution_users_are_read_only(portal_api, proposed_inst, inst_user):
+    from accreditation.models import Application
+    from django.utils import timezone
+
+    Application.unscoped.create(
+        institution=proposed_inst, reference=f"APP-{proposed_inst.code}-LOCK", status="document_review",
+        submitted_at=timezone.now(), submitted_by=inst_user)
+    api = _api(portal_api, inst_user)
+    body = api.get(BASE + "institution/users/").json()
+    assert body["can_manage"] is False and body["invite_roles"] == []
+    response = api.post(BASE + "institution/users/", {
+        "first_name": "Ada", "last_name": "Obi", "email": "locked@zit.edu.ng", "role": "inst-academic-dept",
+    }, format="json")
+    assert response.status_code == 403 and err(response)["code"] == "permission_denied"
+
+
 # ---------------------------------------------------------------------------
 # Documents
 # ---------------------------------------------------------------------------

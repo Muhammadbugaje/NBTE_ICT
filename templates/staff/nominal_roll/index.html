@@ -1,56 +1,38 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Staff import & export · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Staff import &amp; export{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/showcase.css' %}?v=2">
-  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/showcase.css' %}">
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="nbr-page">
-  <header class="nbte-page-header nbr-header">
-    <div class="nbte-page-header__text">
-      <span class="nbte-page-header__eyebrow">Administration · Nominal roll</span>
-      <h1 class="nbte-page-header__title">Staff import &amp; export</h1>
-      <p class="nbte-page-header__description">The one place to load staff from the HR nominal roll, create their sign-in accounts, and download the staff list back out in the same format.</p>
-    </div>
-    <div class="nbte-page-header__actions">
+  <header class="qa-hero nbte-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} User management · Nominal roll</span>
+      <h1>Staff import &amp; export</h1>
+      <p>Load staff from the HR nominal roll, create their sign-in accounts, and download the list back out in the same format.</p>
       {% if perms.staff.view_staff %}
-        <a href="{% url 'staff:query' %}" class="btn btn-ghost">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-          Advanced query
-        </a>
+      <div class="qa-hero__actions">
+        <a href="{% url 'staff:query' %}" class="btn btn-subtle">{% icon "search" 16 "2.2" %} Advanced query</a>
+      </div>
+      {% endif %}
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ staff_total }}</strong><span>Staff on record</span></div>
+      <div class="qa-stat"><strong>{{ departments|length }}</strong><span>Departments</span></div>
+      <div class="qa-stat"><strong>{{ designation_count }}</strong><span>Designations</span></div>
+      {% if can_import %}
+        {% with last=sessions.0 %}
+        <div class="qa-stat qa-stat--date"><strong>{% if last %}{{ last.created_at|date:"j M Y" }}{% else %}Never{% endif %}</strong><span>Last import</span></div>
+        {% endwith %}
       {% endif %}
     </div>
   </header>
-
-  <dl class="nbr-stats">
-    <div class="nbr-stat">
-      <dt>Staff on record</dt>
-      <dd>{{ staff_total }}</dd>
-    </div>
-    <div class="nbr-stat">
-      <dt>Departments</dt>
-      <dd>{{ departments|length }}</dd>
-    </div>
-    <div class="nbr-stat">
-      <dt>Designations</dt>
-      <dd>{{ designation_count }}</dd>
-    </div>
-    {% if can_import %}
-      <div class="nbr-stat">
-        <dt>Last import</dt>
-        <dd class="nbr-stat-text">
-          {% with last=sessions.0 %}
-            {% if last %}{{ last.created_at|date:"j M Y" }}{% else %}Never{% endif %}
-          {% endwith %}
-        </dd>
-      </div>
-    {% endif %}
-  </dl>
 
   <div class="tabs nbr-tabs" role="tablist" aria-label="Staff import and export" data-tabs>
     {% if can_import %}
@@ -79,5 +61,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/nominal-roll.js' %}?v=1" defer></script>
+  <script src="{% static 'js/nominal-roll.js' %}" defer></script>
 {% endblock %}

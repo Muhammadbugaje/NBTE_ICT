@@ -194,7 +194,7 @@ class GuideBuilder:
         self._shade(cell, FOREST)
         self._cell_margins(cell, top=1.9, bottom=1.0, left=2.2, right=2.2)
         p = cell.paragraphs[0]
-        logo = self._path("logo_disc") or os.path.join(settings.BASE_DIR, "static", "img", "NBTE_logo.png")
+        logo = self._path("logo_disc") or os.path.join(settings.BASE_DIR, "static", "img", "brand", "nbte-logo-512.png")
         if logo and os.path.exists(logo):
             p.add_run().add_picture(logo, width=Cm(3.0))
         p.paragraph_format.space_after = Pt(26)
@@ -240,7 +240,7 @@ class GuideBuilder:
         left, right = table.rows[0].cells
         left.width, right.width = Cm(10.6), Cm(6.0)
         lp = left.paragraphs[0]
-        logo = os.path.join(settings.BASE_DIR, "static", "img", "NBTE_logo.png")
+        logo = os.path.join(settings.BASE_DIR, "static", "img", "brand", "nbte-logo-512.png")
         if os.path.exists(logo):
             lp.add_run().add_picture(logo, height=Cm(0.75))
         run = lp.add_run("   NBTE Quality Assurance Portal")

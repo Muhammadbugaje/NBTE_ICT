@@ -6,7 +6,7 @@
         <span class="qa-rowlink__badge">{{ c.application.institution.code }}</span>
         <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ c.application.institution.name }}</span>
           <span class="qa-rowlink__meta"><span class="qa-mono">{{ c.application.reference }}</span><span>· {{ c.department.name }}</span><span>· round {{ c.round }}</span><span>· {{ c.application.institution.ownership.name|default:"" }}</span></span></span>
-        <span class="qa-rowlink__side"><span class="qa-chip {{ c.status|tone }}">{{ c.get_status_display }}</span>
+        <span class="qa-rowlink__side">{% if c.status == "pending" and c.resubmitted_at %}<span class="qa-chip qa-tone-info" title="A returned document was re-uploaded on {{ c.resubmitted_at|date:'j M Y, H:i' }}">Re-uploaded</span>{% endif %}<span class="qa-chip {{ c.status|tone }}">{{ c.get_status_display }}</span>
           {% if c.status == "pending" %}<span class="qa-small {% if c.waiting_days >= 3 %}qa-strong{% else %}qa-muted{% endif %}">{% if c.waiting_days %}Waiting {{ c.waiting_days }} day{{ c.waiting_days|pluralize }}{% else %}New today{% endif %}</span>{% elif c.decided_by %}<span class="qa-small qa-muted">by {{ c.decided_by|who }}</span>{% endif %}</span></a></li>
     {% endfor %}
   </ul>

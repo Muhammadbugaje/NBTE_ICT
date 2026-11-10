@@ -1,0 +1,177 @@
+{% load qa_tags visit_notice_tags %}{% visit_notices case as vn %}
+{% comment %}
+  SOP-03 Visit tab: invitations to professional bodies and external resource persons (accreditation.visit_invitations)
+  and the joint-QA notice sent when the case opened (ProfessionalBodyNotice). Data from {% visit_notices %}.
+{% endcomment %}
+<section class="c3-sec vin" id="vin" aria-labelledby="vin-h">
+  <header class="c3-sec__head"><span class="c3-sec__num">{% icon "mail" 14 "2.4" %}</span>
+    <div><h2 id="vin-h">Invitations and notices</h2>
+      <p>Professional bodies on the case's programmes and external resource persons on the team get a signed invitation letter by e-mail and on their portal once the ES approves the visit. Confirm here when they reply by phone.</p></div>
+    {% if vn.summary.total %}<span class="qa-chip {% if vn.summary.confirmed == vn.summary.total %}qa-tone-success{% elif vn.summary.declined or vn.summary.problems %}qa-tone-warn{% else %}qa-tone-pending{% endif %} c3-sec__chip">{{ vn.summary.confirmed }} of {{ vn.summary.total }} confirmed</span>{% endif %}
+  </header>
+
+  {% if vn.joint_notices %}
+  <div class="vin-notices" role="list" aria-label="Joint QA notices">
+    {% for n in vn.joint_notices %}
+    <div class="vin-notice" role="listitem">
+      <span class="vin-notice__icon{% if n.status == 'sent' or n.portal_notified_at %} is-ok{% else %} is-warn{% endif %}" aria-hidden="true">{% if n.status == "sent" or n.portal_notified_at %}{% icon "check" 14 "2.6" %}{% else %}{% icon "alert" 14 "2.4" %}{% endif %}</span>
+      <span class="vin-notice__text"><strong>{{ n.body.acronym|default:n.body.name }}</strong>
+        {% if n.status == "sent" %}Joint QA notice sent {{ n.sent_at|date:"j M Y" }}{% if n.portal_notified_at %} · e-mail and portal{% else %} · e-mail{% endif %}
+        {% elif n.portal_notified_at %}Joint QA notice on the portal {{ n.portal_notified_at|date:"j M Y" }} · no e-mail on file
+        {% elif n.status == "failed" %}Joint QA notice could not be e-mailed {{ n.created_at|date:"j M Y" }}: contact them directly
+        {% else %}No e-mail or portal contact on file for the joint QA notice: contact them directly{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if vn.error %}
+  <p class="c3-muted">The invitations could not be loaded. Refresh the page; if it persists, tell ICT.</p>
+  {% elif not vn.invitations %}
+  {% if vn.expected_invitees %}
+  <div class="vin-expected">
+    <div><h3>Mapped invitees</h3>
+      <p>These are the professional bodies mapped to the case programmes and external resource persons mapped for the visit. Invitations are sent after the ES approves the visit.</p></div>
+    <ul class="vin-expected__list" role="list">
+      {% for person in vn.expected_invitees %}
+      <li>
+        <strong>{{ person.name }}</strong>
+        <span>{% if person.kind == "body" %}Professional body{% else %}Resource person{% endif %}{% if person.programmes %} · {{ person.programmes|join:", " }}{% endif %}</span>
+        {% if person.email %}<a href="mailto:{{ person.email }}">{{ person.email }}</a>{% else %}<span class="vin-missing">{% icon "alert" 13 "2.2" %} No e-mail on file</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  <div class="vin-empty">
+    {% icon "send" 22 "2" %}
+    <div>
+      {% if vn.visit_approved %}
+      <strong>No invitations yet</strong>
+      <p>The visit is approved. Send the invitations now to every mapped professional body and external resource person.</p>
+      {% if vn.can_manage %}<form method="post" action="{% url 'qa_invite:send_for_case' case.pk %}">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "send" 16 "2.2" %} Send invitations now</button></form>{% endif %}
+      {% else %}
+      <strong>Invitations go out when the ES approves the visit</strong>
+      <p>Each body and external resource person gets a letter with the dates, venue, team lead and contact officer{% if vn.reminder_days %}, and a reminder {{ vn.reminder_days|join:" and " }} days before the visit if they have not confirmed{% endif %}.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <dl class="vin-counts">
+    <div class="is-ok"><dt>Confirmed</dt><dd>{{ vn.summary.confirmed }}</dd></div>
+    <div><dt>Waiting</dt><dd>{{ vn.summary.waiting }}</dd></div>
+    <div{% if vn.summary.declined %} class="is-bad"{% endif %}><dt>Declined</dt><dd>{{ vn.summary.declined }}</dd></div>
+    <div{% if vn.summary.problems %} class="is-warn"{% endif %}><dt>Not delivered</dt><dd>{{ vn.summary.problems }}</dd></div>
+  </dl>
+
+  <ul class="vin-list" role="list">
+    {% for inv in vn.invitations %}
+    <li class="vin-row{% if inv.status == 'withdrawn' %} is-muted{% endif %}" id="vin-{{ inv.pk }}">
+      <div class="vin-row__main">
+        <span class="vin-avatar" aria-hidden="true">{% if inv.kind == "body" %}{% icon "building" 18 "2" %}{% else %}{% icon "user" 18 "2" %}{% endif %}</span>
+        <div class="vin-who">
+          <strong>{{ inv.name }}</strong>
+          <span class="c3-muted">{{ inv.get_kind_display }}{% if inv.programmes %} · {{ inv.programmes|join:", " }}{% endif %}</span>
+          <span class="vin-contact">
+            {% if inv.email %}<a href="mailto:{{ inv.email }}">{% icon "mail" 13 "2.2" %} {{ inv.email }}</a>{% else %}<span class="vin-missing">{% icon "alert" 13 "2.2" %} No e-mail on file</span>{% endif %}
+            {% if inv.phone %}<a href="tel:{{ inv.phone }}">{% icon "phone" 13 "2.2" %} {{ inv.phone }}</a>{% endif %}
+          </span>
+        </div>
+        <span class="qa-chip {{ inv.status|invite_tone }} vin-chip">{{ inv.get_status_display }}</span>
+      </div>
+
+      <p class="vin-meta">
+        {% if inv.sent_at %}Sent {{ inv.sent_at|date:"j M Y, H:i" }}{% if inv.send_count > 1 %} · {{ inv.send_count }} sends{% endif %}{% elif inv.status != "withdrawn" %}Not e-mailed{% endif %}
+        {% if inv.portal_notified_at %} · portal notice to {{ inv.portal_recipient_count }} account{{ inv.portal_recipient_count|pluralize }}{% endif %}
+        {% if inv.letter %} · letter {{ inv.letter.reference }}{% if inv.is_amended %} (version {{ inv.letter_version }}){% endif %}{% endif %}
+        {% if inv.reminders_sent %} · reminders at {{ inv.reminders_sent|join:", " }} days{% endif %}
+      </p>
+      {% if inv.status == "acknowledged" %}
+      <p class="vin-answer is-ok">{% icon "check" 14 "2.6" %} Confirmed {{ inv.responded_at|date:"j M Y" }} via {{ inv.get_responded_via_display|lower }}{% if inv.responder_name %} by {{ inv.responder_name }}{% endif %}{% if inv.response_note %}: “{{ inv.response_note }}”{% endif %}</p>
+      {% elif inv.status == "declined" %}
+      <p class="vin-answer is-bad">{% icon "x" 14 "2.6" %} Declined {{ inv.responded_at|date:"j M Y" }} via {{ inv.get_responded_via_display|lower }}{% if inv.response_note %}: “{{ inv.response_note }}”{% endif %}. Arrange a replacement.</p>
+      {% elif inv.last_error %}
+      <p class="vin-answer is-warn">{% icon "alert" 14 "2.4" %} {{ inv.last_error }}</p>
+      {% endif %}
+
+      {% if inv.status != "withdrawn" %}
+      <div class="vin-actions">
+        {% if inv.letter %}<a class="btn btn-subtle btn-sm" href="{% url 'qa_invite:letter' inv.pk %}" target="_blank" rel="noopener">{% icon "download" 14 "2.2" %} Letter</a>{% endif %}
+        {% if inv.letter and vn.can_word %}<a class="btn btn-subtle btn-sm" href="{% url 'qa_invite:letter_docx' inv.pk %}">{% icon "download" 14 "2.2" %} Word</a>{% endif %}
+        {% if vn.can_manage %}
+        <form method="post" action="{% url 'qa_invite:resend' inv.pk %}">{% csrf_token %}<button class="btn btn-subtle btn-sm" type="submit">{% icon "send" 14 "2.2" %} Resend</button></form>
+        <button class="btn btn-subtle btn-sm" type="button" data-vin-open="vin-call-{{ inv.pk }}">{% icon "phone" 14 "2.2" %} Record contact</button>
+        {% if inv.status != "acknowledged" %}<button class="btn btn-subtle btn-sm" type="button" data-vin-open="vin-ack-{{ inv.pk }}">{% icon "check" 14 "2.4" %} Mark confirmed</button>{% endif %}
+        <form method="post" action="{% url 'qa_invite:regenerate' inv.pk %}" data-vin-confirm="Generate a new letter for {{ inv.name }}? The current one is marked superseded.">{% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit">{% icon "rotate" 14 "2.2" %} Regenerate letter</button></form>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if inv.log %}
+      <details class="vin-log">
+        <summary>Contact log ({{ inv.log|length }}{% if inv.log|length == 8 %}+{% endif %})</summary>
+        <ol>
+          {% for c in inv.log %}
+          <li><span class="vin-log__when">{{ c.at|date:"j M, H:i" }}</span>
+            <span><strong>{{ c.get_outcome_display }}</strong>{% if c.is_manual %} · {{ c.get_channel_display }}{% endif %}{% if c.contact_name %} · spoke to {{ c.contact_name }}{% endif %}{% if c.by %} · {{ c.by|who }}{% endif %}{% if c.note %}<br><span class="c3-muted">{{ c.note }}</span>{% endif %}</span></li>
+          {% endfor %}
+        </ol>
+      </details>
+      {% endif %}
+
+      {% if vn.can_manage and inv.status != "withdrawn" %}
+      <dialog class="vin-dialog" id="vin-call-{{ inv.pk }}" aria-labelledby="vin-call-h-{{ inv.pk }}">
+        <form method="post" action="{% url 'qa_invite:contact' inv.pk %}" class="vin-form">{% csrf_token %}
+          <h3 id="vin-call-h-{{ inv.pk }}">Record contact · {{ inv.name }}</h3>
+          <div class="vin-form__grid">
+            <div class="qa-field"><label for="vc-ch-{{ inv.pk }}">How</label><select class="input" id="vc-ch-{{ inv.pk }}" name="channel" required>{% for v, l in vn.channels %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+            <div class="qa-field"><label for="vc-out-{{ inv.pk }}">Outcome</label><select class="input" id="vc-out-{{ inv.pk }}" name="outcome" required>{% for v, l in vn.outcomes %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+          </div>
+          <div class="qa-field"><label for="vc-name-{{ inv.pk }}">Spoke to <span class="qa-muted">(optional)</span></label><input class="input" id="vc-name-{{ inv.pk }}" name="contact_name" maxlength="150" placeholder="{% if inv.kind == 'body' %}e.g. the Registrar{% else %}{{ inv.name }}{% endif %}"></div>
+          <div class="qa-field"><label for="vc-note-{{ inv.pk }}">Note</label><textarea class="input" id="vc-note-{{ inv.pk }}" name="note" rows="3" placeholder="What was said; needed when they decline"></textarea></div>
+          <p class="c3-muted c3-small">“Confirmed attendance” marks the invitation confirmed; “Declined” alerts the desk officer and the director.</p>
+          <div class="vin-form__row"><button class="btn btn-ghost" type="button" data-vin-close>Cancel</button><button class="btn btn-primary" type="submit">{% icon "check" 16 "2.4" %} Save</button></div>
+        </form>
+      </dialog>
+      {% if inv.status != "acknowledged" %}
+      <dialog class="vin-dialog" id="vin-ack-{{ inv.pk }}" aria-labelledby="vin-ack-h-{{ inv.pk }}">
+        <form method="post" action="{% url 'qa_invite:acknowledge' inv.pk %}" class="vin-form">{% csrf_token %}
+          <h3 id="vin-ack-h-{{ inv.pk }}">Mark confirmed · {{ inv.name }}</h3>
+          <div class="qa-field"><label for="va-via-{{ inv.pk }}">How did they confirm?</label><select class="input" id="va-via-{{ inv.pk }}" name="via" required>{% for v, l in vn.vias %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+          <div class="qa-field"><label for="va-name-{{ inv.pk }}">Who confirmed <span class="qa-muted">(optional)</span></label><input class="input" id="va-name-{{ inv.pk }}" name="contact_name" maxlength="150"></div>
+          <div class="qa-field"><label for="va-note-{{ inv.pk }}">Note <span class="qa-muted">(optional)</span></label><textarea class="input" id="va-note-{{ inv.pk }}" name="note" rows="2"></textarea></div>
+          <div class="vin-form__row"><button class="btn btn-ghost" type="button" data-vin-close>Cancel</button><button class="btn btn-primary" type="submit">{% icon "check" 16 "2.4" %} Mark confirmed</button></div>
+        </form>
+      </dialog>
+      {% endif %}
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if vn.can_manage and vn.visit_approved %}
+  <form class="vin-foot" method="post" action="{% url 'qa_invite:send_for_case' case.pk %}">{% csrf_token %}
+    <span class="c3-muted c3-small">Team or programmes changed? Invite anyone new and withdraw those no longer on the visit.</span>
+    <button class="btn btn-ghost btn-sm" type="submit">{% icon "rotate" 14 "2.2" %} Update invitations</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>
+<script>
+(function () {
+  if (window.__vinBound) return; window.__vinBound = true;
+  document.addEventListener("click", function (e) {
+    var open = e.target.closest("[data-vin-open]");
+    if (open) {
+      var d = document.getElementById(open.getAttribute("data-vin-open"));
+      if (d) { if (d.showModal) { d.showModal(); } else { d.setAttribute("open", ""); } }
+      return;
+    }
+    var close = e.target.closest("[data-vin-close]");
+    if (close) { var dlg = close.closest("dialog"); if (dlg) { dlg.close ? dlg.close() : dlg.removeAttribute("open"); } }
+  });
+  document.addEventListener("submit", function (e) {
+    var f = e.target.closest("[data-vin-confirm]");
+    if (f && !window.confirm(f.getAttribute("data-vin-confirm"))) { e.preventDefault(); }
+  }, true);
+})();
+</script>

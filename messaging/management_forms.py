@@ -4,6 +4,7 @@ from __future__ import annotations
 from django import forms
 
 from accounts.models import Role, User
+from accounts.selectors import staff_users
 
 from .models import MemoRoute, MemoRouteRule, MemoRouteStep
 
@@ -68,7 +69,7 @@ class MemoRouteStepForm(forms.ModelForm):
         self.route = route
         self.fields["approver_role"].queryset = Role.objects.order_by("-rank", "name")
         self.fields["approver_user"].queryset = (
-            User.objects.filter(is_active=True)
+            staff_users()  # Phase 0 (M9)
             .select_related("department", "role")
             .order_by("first_name", "last_name", "email")
         )
@@ -221,7 +222,7 @@ class GrantBroadcastForm(forms.Form):
 
     def __init__(self, *args, exclude_users=None, **kwargs):
         super().__init__(*args, **kwargs)
-        qs = User.objects.filter(is_active=True)
+        qs = staff_users()  # Phase 0 (M9)
         if exclude_users:
             qs = qs.exclude(pk__in=list(exclude_users))
         self.fields["user"].queryset = qs.select_related(

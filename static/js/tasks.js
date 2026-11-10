@@ -201,7 +201,8 @@
         console.warn("[tasks.subtask] empty-form template produced no row");
         return;
       }
-      container.insertBefore(row, addBtn);
+      var anchor = container.querySelector("[data-subform-actions]") || addBtn;
+      anchor.parentNode.insertBefore(row, anchor);
       totalInput.value = idx + 1;
 
       // Re-init pickers inside the new row (if any) and focus the first input.
@@ -214,7 +215,7 @@
       var removeBtn = e.target.closest("[data-remove-row]");
       if (!removeBtn) return;
       e.preventDefault();
-      var row = removeBtn.closest(".tsk-formset-row");
+      var row = removeBtn.closest(".tsk-subform-row, .tsk-formset-row");
       if (!row) return;
       row.style.transition = "opacity 0.15s ease, transform 0.15s ease";
       row.style.opacity = "0";
@@ -455,6 +456,9 @@
       var name         = root.getAttribute("data-name") || "assignees";
       var taskId       = root.getAttribute("data-task-id") || "";
       var categoryCode = root.getAttribute("data-category-code") || "";
+      var single       = root.getAttribute("data-single") === "1";   // Phase C (H20): reviewer / subtask
+      var mode         = root.getAttribute("data-mode") || "";
+      var placeholder  = root.getAttribute("data-placeholder") || (single ? "Choose a person…" : "Add people…");
       var initialIds   = (root.getAttribute("data-initial-ids") || "")
                            .split(",").map(function (s) { return s.trim(); })
                            .filter(function (s) { return /^\d+$/.test(s); });
@@ -521,8 +525,14 @@
 
       function updateTriggerLabel() {
         if (!label) return;
-        var n = Object.keys(selected).length;
-        label.textContent = n ? (n + " selected") : "Add people…";
+        var keys = Object.keys(selected);
+        if (single) {
+          var one = keys.length ? selected[keys[0]] : null;
+          label.textContent = one ? ((one.name || "…") + (one.role ? ", " + one.role : "")) : placeholder;
+          root.classList.toggle("has-value", !!one);
+          return;
+        }
+        label.textContent = keys.length ? (keys.length + " selected") : placeholder;
       }
 
       function renderList() {
@@ -552,15 +562,14 @@
           option.setAttribute("role", "option");
           option.setAttribute("aria-selected", isSelected ? "true" : "false");
 
-          var capText, capClass;
-          if (disabled) {
-            capText = "Full (" + u.used + "/" + u.max + ")";
+          // Phase C (H5): the load badge - "3 open", "Full 10/10" (disabled).
+          var capText = u.load_label || (u.used + " open"), capClass;
+          if (u.at_capacity) {
+            capText = u.load_label || ("Full " + u.used + "/" + u.max);
             capClass = "is-full";
           } else if (u.remaining <= 1) {
-            capText = u.remaining + " slot" + (u.remaining === 1 ? "" : "s") + " left";
             capClass = "is-warn";
           } else {
-            capText = u.used + "/" + u.max + " open";
             capClass = "";
           }
 
@@ -586,11 +595,15 @@
             option.addEventListener("click", function (e) {
               e.preventDefault();
               if (selected[id]) delete selected[id];
-              else selected[id] = u;
+              else {
+                if (single) selected = {};
+                selected[id] = u;
+              }
               hiddenInputs();
-              renderChips();
+              if (!single) renderChips();
               renderList();
               updateTriggerLabel();
+              if (single) closePanel();
             });
           }
           list.appendChild(option);
@@ -624,6 +637,7 @@
         var params = [];
         if (taskId) params.push("task=" + encodeURIComponent(taskId));
         if (categoryCode) params.push("category=" + encodeURIComponent(categoryCode));
+        if (mode) params.push("mode=" + encodeURIComponent(mode));
         Object.keys(selected).forEach(function (id) {
           params.push("include=" + encodeURIComponent(id));
         });
@@ -647,7 +661,7 @@
               if (found) selected[id] = found;
             });
             renderList();
-            renderChips();
+            if (!single) renderChips();
             updateTriggerLabel();
           })
           .catch(function (err) {
@@ -661,11 +675,14 @@
       }
 
       if (initialIds.length) {
+        var initialName = root.getAttribute("data-initial-name") || "…";
         initialIds.forEach(function (id) {
-          selected[id] = { id: id, name: "…", initials: "…", role: "", rank: "" };
+          selected[id] = { id: id, name: initialName, initials: pickerInitials(initialName), role: "", rank: "" };
         });
         hiddenInputs();
-        renderChips();
+        if (!single) renderChips();
+        updateTriggerLabel();
+      } else {
         updateTriggerLabel();
       }
 

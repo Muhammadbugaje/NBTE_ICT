@@ -1,0 +1,7 @@
+{% load qa_tags %}
+<section class="qa-card qa-pstatus" id="qa-pay-status" aria-labelledby="qa-pstatus-h" aria-live="polite"{% if poll %} hx-get="{% url 'qa_portal:payment' ob.pk %}?poll=1" hx-trigger="every 30s" hx-swap="outerHTML"{% endif %}>
+  <header class="qa-card__head qa-card__head--icon"><span class="qa-tile qa-tile--md qa-tile--orange" aria-hidden="true">{% icon "clock" 18 "2.2" %}</span><div><h2 id="qa-pstatus-h">Payment status</h2><p>{% if poll %}Updated live{% else %}{{ public_label }}{% endif %}</p></div></header>
+  <ol class="qa-stl" role="list">
+    {% for s in timeline %}<li class="qa-stl__i is-{{ s.state }}"{% if s.state == "now" %} aria-current="step"{% endif %}><span class="qa-stl__dot" aria-hidden="true">{% if s.state == "done" %}{% icon "check" 14 "2.8" %}{% else %}{% icon s.icon 14 "2.2" %}{% endif %}</span><div><b>{{ s.title }}</b>{% if s.sub %}<span>{{ s.sub }}</span>{% endif %}</div></li>{% endfor %}
+  </ol>
+</section>

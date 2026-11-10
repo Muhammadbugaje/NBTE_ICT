@@ -238,7 +238,17 @@ def tasks_dashboard_widget(context):
 
     used, cap, remaining = capacity_for_user(user)
 
+    # Phase C (H16, H17): my completed count this month, group vs individual.
+    from tasks.performance import month_start
+    done = (Task.objects.filter(assignee_rows__user=user, state=Task.COMPLETED,
+                                completed_at__gte=month_start()).distinct())
+    completed_group = done.filter(division__isnull=False).count()
+    completed_month = done.count()
+
     return {
+        "completed_month": completed_month,
+        "completed_group": completed_group,
+        "completed_since": month_start().date().isoformat(),
         "visible": bool(assigned_count or created_count or review_count),
         "assigned_open": list(assigned_open),
         "created_open": list(created_open),

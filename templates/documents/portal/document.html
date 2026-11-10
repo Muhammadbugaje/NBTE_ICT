@@ -1,0 +1,61 @@
+{% extends base_template %}
+{% load static qa_tags brand %}
+{% block title %}{{ doc.title }} · {{ portal_name }}{% endblock %}
+{% block content %}<link rel="stylesheet" href="{% static 'css/scan.css' %}">
+<div class="qa-portal-page sv-page">
+  <header class="qa-page-head">
+    <nav class="sv-note" aria-label="Breadcrumb"><a href="{% url 'qa_portal:letters' %}">Letters</a> › {{ doc.kind_label }}</nav>
+    <h1 data-qa-focus>{{ doc.title }}</h1>
+    <p>{% if doc.provisional and not official %}Generated automatically when NBTE approved. The signed official copy follows on this page.{% elif official %}The signed official copy is ready to download.{% else %}Issued by NBTE on {{ doc.issued_at|date:"j F Y" }}.{% endif %}</p>
+  </header>
+  <div class="sv-lwrap">
+    <article class="sv-letter" aria-label="Document preview">
+      {% if doc.provisional and not official %}<div class="sv-wmk" aria-hidden="true">PROVISIONAL<small>OFFICIAL COPY TO FOLLOW</small></div>{% endif %}
+      <div class="lh"><img loading="lazy" decoding="async" src="{% brand_logo_url 'formal' %}" alt=""><div><b>NATIONAL BOARD FOR TECHNICAL EDUCATION</b><small>Plot B, Bida Road, P.M.B. 2239, Kaduna · www.nbte.gov.ng</small></div></div>
+      <div class="ref"><span>Ref: {{ doc.reference }}</span><span>{{ doc.issued_at|date:"j F Y" }}</span></div>
+      {% if doc.kind == "letter" %}<p style="text-align:left">The Head of Institution,<br>{{ doc.payload.institution }}</p>{% endif %}
+      <h2>{{ doc.title|upper }}</h2>
+      {% for p in body %}<p>{{ p|linebreaksbr }}</p>{% endfor %}
+      {% if facts %}<dl>{% for f in facts %}<dt>{{ f.0 }}</dt><dd>{{ f.1 }}</dd>{% endfor %}</dl>{% endif %}
+      <div class="sigblk">
+        <div>{% for s in signers %}<span class="nosig" style="display:block" aria-hidden="true"></span><b>{{ s.name }}</b><small>{{ s.designation }}</small>{% endfor %}</div>
+        <div class="lqr"><img loading="lazy" decoding="async" src="{{ qr }}" alt="Verification QR code"><div>Scan to verify</div><b class="sv-mono">{{ doc.short_code }}</b></div>
+      </div>
+    </article>
+    <aside class="sv-side">
+      <section class="sv-modal" aria-label="About this document">
+        {% if doc.provisional and not official %}<span class="sv-clock">{% icon "clock" 26 "2.2" %}</span><h2>Provisional copy</h2><p>{{ popup_text }}</p>
+        {% if official_status %}<p class="sv-official-line" data-official-status="preparing"><strong>Official signed copy:</strong> being prepared by {{ official_status.by }} (since {{ official_status.since|date:"j M Y" }}).</p>{% endif %}
+        {% elif official %}<span class="sv-clock" style="background:var(--success-subtle);color:var(--success-fg)">{% icon "check" 26 "2.6" %}</span><h2>Official copy issued</h2><p data-official-status="ready">Official copy ready – download it below. NBTE uploaded the signed official copy on {{ official.uploaded_at|date:"j F Y" }}.</p>
+        {% else %}<span class="sv-clock" style="background:var(--success-subtle);color:var(--success-fg)">{% icon "shield" 26 "2.2" %}</span><h2>Genuine NBTE document</h2><p>Anyone can confirm it by scanning the QR code.</p>{% endif %}
+        <dl class="sv-kv">
+          <dt>Reference</dt><dd class="sv-mono">{{ doc.reference }}</dd>
+          <dt>Official copy</dt><dd>{% if official %}Ready – issued {{ official.uploaded_at|date:"j M Y" }}{% elif official_status %}Being prepared by {{ official_status.by }} (since {{ official_status.since|date:"j M Y" }}){% elif doc.provisional %}Await NBTE upload{% else %}This is the official document{% endif %}</dd>
+          {% if signers %}<dt>Signed by</dt><dd>{% for s in signers %}{{ s.name }}{% if s.designation %}, {{ s.designation }}{% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}</dd>{% endif %}
+          <dt>QR shows</dt><dd>{% if doc.status == "revoked" %}Revoked{% elif official %}Official copy issued{% elif doc.provisional %}Provisional{% else %}Valid{% endif %}</dd>
+        </dl>
+        <div class="btn-group">
+          {% if official %}<a class="btn btn-primary" href="{{ official.portal_download_url }}">{% icon "download" 16 "2.2" %} Download official copy</a>{% endif %}
+          {% if doc.file %}<a class="btn {% if official %}btn-ghost{% else %}btn-primary{% endif %}" href="{{ doc.portal_download_url }}">{% icon "download" 16 "2.2" %} Download{% if doc.provisional %} provisional{% endif %}</a>{% endif %}
+        </div>
+      </section>
+    </aside>
+  </div>
+  {% if show_popup %}
+  <dialog class="sv-dialog" data-provisional-popup aria-labelledby="pp-h">
+    <div class="sv-modal">
+      <span class="sv-clock">{% icon "clock" 26 "2.2" %}</span>
+      <h2 id="pp-h">Your {{ doc.kind_label|lower }} is provisional</h2>
+      <p>{{ popup_text }}</p>
+      <dl class="sv-kv"><dt>Reference</dt><dd class="sv-mono">{{ doc.reference }}</dd><dt>Official copy</dt><dd>Await NBTE upload</dd>{% if signers %}<dt>Signed by</dt><dd>{{ signers.0.name }}</dd>{% endif %}<dt>QR shows</dt><dd>Provisional</dd></dl>
+      <form class="btn-group" method="post" action="{% url 'qa_portal:issued_document_ack' doc.pk %}">{% csrf_token %}
+        {% if doc.file %}<a class="btn btn-ghost" href="{{ doc.portal_download_url }}">{% icon "download" 16 "2.2" %} Download provisional</a>{% endif %}
+        <button class="btn btn-primary" type="submit" data-popup-ok>I understand</button>
+      </form>
+    </div>
+  </dialog>
+  <script>(function(){var d=document.querySelector("[data-provisional-popup]");if(!d)return;if(d.showModal){try{d.showModal();}catch(e){d.setAttribute("open","");}}else{d.setAttribute("open","");}
+    var f=d.querySelector("form");f.addEventListener("submit",function(e){e.preventDefault();var b=new FormData(f);fetch(f.action,{method:"POST",body:b,credentials:"same-origin",headers:{"HX-Request":"true"}}).finally(function(){d.close?d.close():d.removeAttribute("open");});});})();</script>
+  {% endif %}
+</div>
+{% endblock %}

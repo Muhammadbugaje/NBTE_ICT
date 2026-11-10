@@ -24,7 +24,7 @@ def world(qa_seed, make_institution, make_user):
         "b_user": make_user("admin@bbb.local", user_type="institution", institution=b, role="inst-admin"),
         "rp": make_user("rp@x.local", user_type="resource_person", role="resource-person"),
         "fin_officer": make_user("fo@fin.local", role="qa-finance-officer", dept="finance"),
-        "fin_director": make_user("fd@fin.local", role="qa-finance-director", dept="finance"),
+        "fin_director": make_user("fd@fin.local", role="director", dept="finance"),  # Phase B: Finance seat
         "fin_deputy": make_user("dd@fin.local", role="deputy-director", dept="finance"),
         "dpap_officer": make_user("o@dpap.local", role="officer", dept="dpap"),
         "dpap_director": make_user("d@dpap.local", role="director", dept="dpap"),

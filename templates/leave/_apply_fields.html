@@ -1,0 +1,57 @@
+<div id="lv-fields" class="lv-fields">
+  {% if leave_type %}
+    <ul class="lv-rules" aria-label="Rules for {{ leave_type.name }}">
+      <li>{% if leave_type.is_days_mode %}Enter the number of days{% else %}Enter the first and last day{% endif %}</li>
+      <li>Counts {% if leave_type.counting == "working" %}working days{% else %}calendar days{% endif %}</li>
+      <li>{% if leave_type.paid %}Paid{% else %}Unpaid{% endif %}</li>
+      {% if leave_type.days %}<li>{{ leave_type.days }} days a year</li>{% endif %}
+      {% if leave_type.notice_days %}<li class="is-strong">{{ leave_type.notice_days }} days' notice</li>{% endif %}
+      {% if leave_type.max_days_per_application %}<li class="is-strong">At most {{ leave_type.max_days_per_application }} days at a time</li>{% endif %}
+      {% if leave_type.max_per_year %}<li>At most {{ leave_type.max_per_year }} a year</li>{% endif %}
+      {% if leave_type.needs_document %}<li class="is-strong">Supporting document required</li>{% endif %}
+      {% if leave_type.gender_restriction %}<li>{{ leave_type.get_gender_restriction_display }}</li>{% endif %}
+    </ul>
+    {% if leave_type.description %}<p class="hrd-sub hrd-mt">{{ leave_type.description }}</p>{% endif %}
+
+    <div class="hrd-grid2 hrd-mt"
+         hx-get="{% url 'leave:apply_preview' %}" hx-trigger="input delay:500ms, change"
+         hx-target="#lv-preview" hx-swap="innerHTML" hx-include="closest form">
+      <div class="field">
+        <label for="{{ form.start_date.id_for_label }}">{{ form.start_date.label }}</label>
+        {{ form.start_date }}
+        {% if form.start_date.errors %}<span class="field-error">{{ form.start_date.errors|join:" " }}</span>{% endif %}
+      </div>
+      {% if leave_type.is_days_mode %}
+        <div class="field">
+          <label for="{{ form.days.id_for_label }}">{{ form.days.label }}</label>
+          {{ form.days }}
+          <span class="hint">{% if leave_type.counting == "working" %}Working days: weekends and public holidays are skipped.{% else %}Calendar days, weekends included.{% endif %}</span>
+          {% if form.days.errors %}<span class="field-error">{{ form.days.errors|join:" " }}</span>{% endif %}
+        </div>
+      {% else %}
+        <div class="field">
+          <label for="{{ form.end_date.id_for_label }}">{{ form.end_date.label }}</label>
+          {{ form.end_date }}
+          {% if form.end_date.errors %}<span class="field-error">{{ form.end_date.errors|join:" " }}</span>{% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    <div id="lv-preview" aria-live="polite" class="hrd-mt">{% include "leave/_apply_preview.html" %}</div>
+
+    {% if leave_type.needs_document %}
+      <div class="field hrd-mt">
+        <label for="{{ form.document.id_for_label }}">{{ form.document.label }}</label>
+        {{ form.document }}
+        <span class="hint">PDF or image, for example a medical note or admission letter.</span>
+        {% if form.document.errors %}<span class="field-error">{{ form.document.errors|join:" " }}</span>{% endif %}
+      </div>
+    {% endif %}
+    {% if request.headers.HX_Request %}
+      <div id="lv-balance" hx-swap-oob="innerHTML">{% include "leave/_apply_balance.html" %}</div>
+      <h2 id="lv-balance-title" hx-swap-oob="true">{{ leave_type.name }} balance · {{ year }}</h2>
+    {% endif %}
+  {% else %}
+    <p class="hrd-sub">No leave types are open for applications. Contact HR.</p>
+  {% endif %}
+</div>

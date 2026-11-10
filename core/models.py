@@ -99,7 +99,8 @@ class AuditLogEntry(models.Model):
         on_delete=models.SET_NULL, related_name="+",
     )
     actor_repr = models.CharField(max_length=255, blank=True)
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES, db_index=True)
+    # v2.2: 64 (named events such as "oversight_task_opened" overflowed 20 on Postgres).
+    action = models.CharField(max_length=64, choices=ACTION_CHOICES, db_index=True)
     model_label = models.CharField(max_length=100, db_index=True)
     object_pk = models.CharField(max_length=64, db_index=True)
     object_repr = models.CharField(max_length=255, blank=True)
@@ -216,3 +217,6 @@ class ContactMessageActivity(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_action_display()} · {self.contact_message_id}"
+
+# v2.1 Phase B (pb-platform): import diff runs (X45) and seed provenance (X51).
+from .v21_models import ImportRow, ImportRun, SeedRecord  # noqa: E402,F401

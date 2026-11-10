@@ -9,3 +9,12 @@ def payments_sweep():
     from . import services
 
     return services.sweep()
+
+
+@shared_task(name="payments.reconcile")
+def payments_reconcile():
+    """v2.2: nightly reconciliation (provider ↔ NBTE ↔ ledger)."""
+    from . import reconcile
+
+    run = reconcile.run(trigger="nightly")
+    return {"run": run.pk, "issues": run.issues_found, "fixed": run.auto_fixed}

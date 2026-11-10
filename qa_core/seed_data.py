@@ -13,8 +13,6 @@ declares it has migrated, and reports the rest as "deferred".
 NEW_ROLES = [
     ("qa-finance-officer", "QA Finance Officer", 20, 6, "staff",
      "First-pass verification of QA payments, statement import, waiver/refund initiation."),
-    ("qa-finance-director", "Director of Finance (QA)", 100, 50, "staff",
-     "Final confirm/reject on every QA payment; confirms waivers, refunds and bank accounts."),
     ("qa-audit-officer", "QA Audit Officer", 20, 6, "staff",
      "Audits QA cost sheets."),
     ("cqac-member", "CQAC Member", 0, 10, "staff",
@@ -37,6 +35,13 @@ NEW_ROLES = [
      "Portal: completes SSQ sections sent back to the department."),
     ("resource-person", "Resource Person", 0, 0, "resource_person",
      "Portal: views own engagements, submits findings, raises complaints."),
+    # v2.1 Phase R (X43): professional body portal accounts.
+    ("pb-admin", "Professional Body Administrator", 0, 0, "professional_body",
+     "Portal: sees the body's programmes and stages, uploads approval letters and certificates."),
+    ("pb-rep", "Professional Body Representative", 0, 0, "professional_body",
+     "Portal: writes the body's report on visits they were assigned to."),
+    ("pb-viewer", "Professional Body Viewer", 0, 0, "professional_body",
+     "Portal: sees the body's programmes and stages (read only)."),
 ]
 
 # QA permissions per role (additive; existing role baselines are untouched).
@@ -47,13 +52,23 @@ ROLE_PERMISSIONS = {
         "qa_core.view_oversight_board", "qa_core.view_pending_actions",
         "accreditation.es_final_decide", "accreditation.batch_decide", "accreditation.approve_fund_release",
         "institutions.confirm_delist", "institutions.confirm_relist", "institutions.confirm_approve_institution",
+        # v2.1 Phase F (G5.e): the ES office issues, uploads official copies and revokes
+        "documents.view_issued_documents", "documents.issue_document", "documents.upload_official_copy",
+        "documents.revoke_document", "documents.view_verification_log",
+        # v2.1 Phase P (G1.e): need-to-know, grants log, audited reopen, dual control
+        "assignments.view_all_journeys", "assignments.reopen_completed_step", "assignments.view_grants_log",
+        "assignments.view_access_report", "assignments.revoke_access_grant", "assignments.assign_work",
+        "qa_core.edit_qa_dual_control_settings",
     ],
     "director": [
+        "assignments.assign_work", "assignments.reopen_completed_step",  # v2.1 Phase P
         "qa_core.reassign_qa_task", "qa_core.place_suspension", "qa_core.lift_suspension",
         "qa_core.view_pending_actions", "qa_core.view_timeline_internal",
         # §12: publishing flows and confirming dual-control settings "need a Director".
         "qa_core.publish_flow_version", "qa_core.edit_qa_dual_control_settings",
         "accreditation.act_on_qa_stage", "institutions.initiate_delist", "institutions.initiate_revert_qa_history",
+        # v2.1 Phase F (G5.e): the handling department director uploads the official copy
+        "documents.view_issued_documents", "documents.upload_official_copy",
     ],
     "deputy-director": [
         "qa_core.reassign_qa_task", "qa_core.view_pending_actions",
@@ -77,7 +92,9 @@ ROLE_PERMISSIONS = {
         "payments.import_bank_statement", "payments.manual_match_payment",
         "payments.initiate_waiver", "payments.initiate_refund",
     ],
-    "qa-finance-director": [
+    # Phase B (B2): not a role — these go to the "Finance – Approvals" group
+    # that the Finance director seat carries (org.seed.FINANCE_SEAT_GROUP).
+    "seat:finance": [
         "qa_core.edit_qa_dual_control_settings", "qa_core.view_pending_actions",
         "payments.second_verify_payment", "payments.final_confirm_payment", "payments.confirm_waiver",
         "payments.confirm_refund", "payments.manage_fee_schedule", "payments.manage_bank_accounts",
@@ -90,6 +107,7 @@ ROLE_PERMISSIONS = {
     "ict-qa-monitor": [
         "qa_core.view_all_institutions", "qa_core.view_timeline_internal", "qa_core.view_pending_actions",
         "qa_core.view_oversight_board", "qa_core.contact_on_oversight_board", "accreditation.view_qa_case",
+        "documents.view_issued_documents", "documents.view_verification_log",  # v2.1 Phase F
     ],
     "qa-settings-admin": [
         "qa_core.edit_qa_settings", "qa_core.manage_flows", "qa_core.manage_reference_formats",
@@ -110,13 +128,14 @@ GROUPS = [
      ["qa_core.view_pending_actions"], []),
     ("QA Senior Confirmers", "Second officers for delist, revert, wipe, category and ownership changes.",
      ["qa_core.view_pending_actions", "qa_core.confirm_any_department"], []),
-    ("Finance – Payment Verification", "First-pass verification of QA payments and statement imports.",
-     ["payments.view_obligation", "payments.view_proof", "payments.verify_payment",
-      "payments.import_bank_statement", "payments.manual_match_payment"], ["qa-finance-officer"]),
+    ("Finance – Payment Verification", "Read the Finance queue, import statements and match bank lines. "
+     "Only the Director of Finance confirms or rejects payment claims.",
+     ["payments.view_obligation", "payments.view_proof", "payments.import_bank_statement",
+      "payments.manual_match_payment"], ["qa-finance-officer"]),
     ("Finance – Approvals", "Director of Finance: final confirmation of payments, waivers, refunds and bank details.",
      ["qa_core.edit_qa_dual_control_settings", "qa_core.view_pending_actions",
       "payments.final_confirm_payment", "payments.confirm_waiver", "payments.confirm_refund"],
-     ["qa-finance-director"]),
+     []),  # Phase B: attached to the Finance director seat, not to a role
     ("Audit – QA Cost", "Audit of QA cost sheets.", ["accreditation.audit_cost_sheet"], ["qa-audit-officer"]),
     ("CQAC", "CQAC review board members and Chairman.",
      ["accreditation.cqac_review"], ["cqac-member", "cqac-chairman"]),
@@ -167,6 +186,7 @@ REFERENCE_FORMATS = [
     ("complaint", "Complaint", "NBTE-CMP-{YEAR}-{SEQ:6}", "yearly", "none", PAYSTACK_SAFE, "global"),
     ("letter", "Outcome letter", "NBTE/QA/LTR/{YEAR}/{SEQ:5}", "yearly", "none", "", "global"),
     ("advice", "Payment advice", "NBTE-ADV-{YEAR}-{SEQ:6}", "yearly", "none", PAYSTACK_SAFE, "global"),
+    ("honoraria", "Honoraria schedule", "NBTE-HON-{YEAR}-{SEQ:6}", "yearly", "none", PAYSTACK_SAFE, "global"),
     ("pending_action", "Pending action", "PA-{YEAR}-{SEQ:6}", "yearly", "none", PAYSTACK_SAFE, "global"),
 ]
 
@@ -237,8 +257,10 @@ ACTION_POLICIES = [
 # and the pending-action flow. Each stage: code, label, public_label, kind,
 # actor_kind, extras. Each transition: from, to, action, label, extras.
 # ---------------------------------------------------------------------------
+# Phase B (B2): the final approver is the director of the department named in
+# qa.payment.finance_department (the Director of Finance), not a role.
 FINAL = {"required_permission": "payments.final_confirm_payment",
-         "required_role_setting": "qa.payment.final_approver_role"}
+         "required_role_setting": "qa.payment.finance_department"}
 
 PAYMENT_FLOW = {
     "code": "payment",
@@ -350,6 +372,12 @@ DEMO_USERS = [
     ("qa.officer@demo.nbte.local", "Amina", "Officer (Demo)", "staff", "dpap", "officer", ["QA Settings Admin"]),
     ("qa.director@demo.nbte.local", "Bello", "Director (Demo)", "staff", "dpap", "director", []),
     ("qa.finance@demo.nbte.local", "Chioma", "Finance (Demo)", "staff", "finance", "qa-finance-officer", []),
+    # A second finance officer: the second check on payments above the dual-verify limit.
+    ("qa.finance_checker@demo.nbte.local", "Kemi", "Checker (Demo)", "staff", "finance", "qa-finance-officer", []),
     ("admin@demo-poly.local", "Danjuma", "Admin (Demo Poly)", "institution", None, "inst-admin", []),
+    # X12: only the Chief Executive submits to NBTE (QA requests, SSQs); without one the demo
+    # institution could never submit anything.
+    ("ce@demo-poly.local", "Hadiza", "Chief Executive (Demo Poly)", "institution", None, "inst-chief-executive",
+     []),
     ("resource@demo.nbte.local", "Esther", "Resource (Demo)", "resource_person", None, "resource-person", []),
 ]

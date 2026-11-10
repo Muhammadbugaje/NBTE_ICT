@@ -109,7 +109,9 @@ def test_email_column_matches_and_fills():
     buf = io.BytesIO(); wb.save(buf)
     NominalRollImporter(io.BytesIO(buf.getvalue()), filename="e.xlsx").run(dry_run=False)
     j = Staff.objects.get(employee_no="1413")
-    assert (j.email, j.phone, j.office.name) == ("jabir@nbte.gov.ng", "08030000000", "Software Unit")
+    # v2.2: offices are units in the one Department list; the column posts the person there.
+    assert (j.email, j.phone, j.department.name) == ("jabir@nbte.gov.ng", "08030000000", "Software Unit")
+    assert j.department.kind == "unit"
 
 
 def test_old_wizard_staff_module_opens_new_page(client):

@@ -9,11 +9,12 @@
           <span class="qa-rowlink__meta"><span class="qa-mono">{{ i.obligation.reference }}</span><span>· {{ i.get_source_display }}</span>{% if i.proof %}<span>· teller {{ i.proof.teller_number|default:"—" }}</span>{% endif %}{% if i.attempt %}<span>· {{ i.attempt.get_provider_display }} {{ i.attempt.provider_reference }}</span>{% endif %}</span>
         </span>
         <span class="qa-rowlink__side">
+          {% if i.gateway %}<span class="qa-gw-badge">{% icon "shield" 12 "2.4" %} Verified by {{ i.attempt.get_provider_display|cut:" (RRR — online or at any bank)"|cut:" (card, transfer, USSD)" }}</span>{% endif %}
           {% if i.decision == "needs_info" %}<span class="qa-chip qa-tone-warn">Needs information</span>
           {% elif i.ready %}<span class="qa-chip qa-tone-success">Ready for the Director</span>
           {% elif i.needs_second %}<span class="qa-chip qa-tone-pending">Needs second check</span>
           {% elif i.decision %}<span class="qa-chip qa-tone-warn">{{ i.ready_why|truncatechars:42 }}</span>
-          {% else %}<span class="qa-chip qa-tone-pending">Needs first pass</span>{% endif %}
+          {% else %}<span class="qa-chip qa-tone-pending">Awaiting review</span>{% endif %}
           <span class="qa-sla{% if i.overdue %} is-late{% elif i.sla_pct >= 50 %} is-near{% endif %}"><span class="qa-progress"><span style="--pct: {{ i.sla_pct }}%"></span></span><small>{% if i.overdue %}Overdue{% else %}Waiting {{ i.opened_at|timesince }}{% endif %}</small></span>
         </span></a></li>
     {% endfor %}

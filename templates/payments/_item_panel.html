@@ -1,4 +1,5 @@
-{% load qa_tags %}{% load ux_tags %}
+{% load qa_tags %}{% load ux_tags %}{% load static %}
+<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
 <nav class="qa-crumbs" aria-label="Breadcrumb">
   <a href="{% url 'qa_fin:queue' %}" hx-get="{% url 'qa_fin:queue' %}" hx-target="#qa-panel" hx-push-url="true">Verification queue</a>
   <span aria-hidden="true">/</span><span aria-current="page">{{ ob.reference }}</span>
@@ -13,6 +14,7 @@
   <div class="qa-detail-head__chips">
     <button type="button" class="qa-chip qa-chip--mono qa-chip--button" data-qa-copy="{{ ob.reference }}" title="Copy reference">{{ ob.reference }}</button>
     <span class="qa-chip {{ ob.status|tone }}" data-qa-announce="Status: {{ stage }}">{{ stage }}</span>
+    {% if gateway %}<span class="qa-gw-badge">{% icon "shield" 12 "2.4" %} Provider verified by {{ item.attempt.get_provider_display|cut:" (RRR — online or at any bank)"|cut:" (card, transfer, USSD)" }}</span>{% endif %}
   </div>
 </header>
 
@@ -31,8 +33,13 @@
           <div><dt>Institution</dt><dd>{{ ob.institution.name }} ({{ ob.institution.code }})</dd></div>
           <div><dt>For</dt><dd>{{ ob.source_reference|default:"—" }}</dd></div>
           <div><dt>Issued / due</dt><dd>{{ ob.created_at|date:"j M Y" }} / {{ ob.due_at|date:"j M Y" }}</dd></div>
-          <div><dt>Formula (frozen at issue)</dt><dd class="qa-mono qa-small">{{ ob.formula_snapshot.expr }} → {{ ob.formula_snapshot.result }}</dd></div>
+          <div><dt>Formula (frozen at issue)</dt><dd class="qa-mono qa-small">{{ ob.formula_snapshot.expr }} → {{ ob.formula_snapshot.base_result|default:ob.formula_snapshot.result }}</dd></div>
         </dl>
+        <div class="qa-bill-lines">{% for l in ob.breakdown %}<div class="qa-bill-line"><span>{{ l.label }}{% if l.to_confirm %}<small>Amount to confirm</small>{% endif %}</span><span>{{ l.amount|naira }}</span></div>{% endfor %}
+          <div class="qa-bill-line qa-bill-line--total"><span>Total</span><span>{{ ob.amount|naira }}</span></div></div>
+        {% if item.provider_amount is not None %}
+          <div class="qa-gw-compare"><span><small>Provider says</small>{{ item.provider_amount|naira }}</span><span><small>Expected (balance)</small>{{ ob.balance|naira }}</span><span><small>Match</small>{% if item.amount_matches %}Yes{% else %}No — Director review required{% endif %}</span></div>
+        {% endif %}
       </div>
     </section>
 
@@ -49,8 +56,8 @@
             </div>
           </div>
         {% endfor %}
-        {% for a in attempts %}{% if a.status == "provider_reported_paid" or a.verify_result %}
-          <div class="qa-ev{% if a.status == 'provider_reported_paid' %} qa-ev--ok{% elif a.status == 'failed' %} qa-ev--warn{% endif %}">
+        {% for a in attempts %}{% if a.status == "provider_reported_paid" or a.verify_result or a.status == "abandoned" %}
+          <div class="qa-ev{% if a.status == 'provider_reported_paid' %} qa-ev--ok{% elif a.status == 'failed' %} qa-ev--warn{% elif a.status == 'abandoned' %} qa-ev--muted{% endif %}">
             <div class="qa-ev__head"><span>{% icon "card" 16 %} {{ a.get_provider_display }} · {{ a.provider_reference }}</span><span class="qa-chip {{ a.status|tone }}">{{ a.get_status_display }}</span></div>
             <div class="qa-ev__kv">
               <span><small>Attempt amount</small>{{ a.amount|naira }}</span>
@@ -83,50 +90,24 @@
   <aside class="qa-card qa-decide" aria-labelledby="dec-title">
     <header class="qa-card__head"><h2 id="dec-title">Decision</h2></header>
     <div class="qa-card__body qa-stack">
-      <div class="qa-pass{% if not item.decision %} is-todo{% endif %}">
-        <div class="qa-pass__who"><strong>1 · First pass (Finance officer)</strong>{% if item.decision %}<span class="qa-chip {{ item.decision|tone }}">{{ item.get_decision_display }}</span>{% endif %}</div>
-        {% if item.decision %}<p>{{ item.verified_by|who }} · {{ item.verified_at|date:"j M, H:i" }}{% if item.amount_confirmed %} · received {{ item.amount_confirmed|naira }}{% endif %}{% if item.reason %} — “{{ item.reason }}”{% endif %}</p>{% else %}<p>Waiting for a Finance officer.</p>{% endif %}
-      </div>
-      {% if needs_second %}
-        <div class="qa-pass{% if not item.second_decision %} is-todo{% endif %}">
-          <div class="qa-pass__who"><strong>2 · Second check (above {{ threshold }})</strong>{% if item.second_decision %}<span class="qa-chip {{ item.second_decision|tone }}">{{ item.get_second_decision_display }}</span>{% endif %}</div>
-          {% if item.second_decision %}<p>{{ item.second_verifier|who }} · {{ item.second_verified_at|date:"j M, H:i" }}</p>{% else %}<p>A different officer must check large payments.</p>{% endif %}
+      <div class="qa-pass">
+        <div class="qa-pass__who"><strong>Payment evidence</strong>
+          {% if gateway %}<span class="qa-chip qa-tone-success">Provider verified</span>{% elif item.decision == "needs_info" %}<span class="qa-chip qa-tone-warn">More information requested</span>{% endif %}
         </div>
-      {% endif %}
+        {% if gateway %}<p>{{ item.reason }} · {{ item.verified_at|date:"j M, H:i" }} · {{ item.amount_confirmed|naira }} verified against the balance.</p>
+        {% else %}<p>{{ item.get_source_display }} submitted{% if item.opened_at %} · {{ item.opened_at|date:"j M Y, H:i" }}{% endif %}. The Director of Finance reviews the evidence and makes the final decision.</p>{% endif %}
+      </div>
       <div class="qa-pass{% if not item.final_decision %} is-todo{% endif %}">
-        <div class="qa-pass__who"><strong>{% if needs_second %}3{% else %}2{% endif %} · Director of Finance</strong>{% if item.final_decision %}<span class="qa-chip {{ item.final_decision|tone }}">{{ item.get_final_decision_display }}</span>{% endif %}</div>
+        <div class="qa-pass__who"><strong>Director of Finance · final decision</strong>{% if item.final_decision %}<span class="qa-chip {{ item.final_decision|tone }}">{{ item.get_final_decision_display }}</span>{% endif %}</div>
         {% if item.final_decision %}<p>{{ item.final_approver|who }} · {{ item.final_decided_at|date:"j M, H:i" }}{% if item.final_reason %} — “{{ item.final_reason }}”{% endif %}</p>{% elif ready %}<p>Ready for the Director's decision.</p>{% else %}<p>{{ ready_why }}</p>{% endif %}
       </div>
 
-      {% if can_first %}
-        <form method="post" action="{% url 'qa_fin:item_first_pass' item.pk %}" hx-post="{% url 'qa_fin:item_first_pass' item.pk %}" hx-target="#qa-panel" class="qa-form">
-          {% csrf_token %}
-          <h3 class="qa-menu__group">{% if item.decision %}Change the first pass{% else %}Record the first pass{% endif %}</h3>
-          <div class="qa-radios" role="radiogroup" aria-label="Recommendation">
-            {% for v, l in first_form.fields.decision.choices %}<label class="qa-radio"><input type="radio" name="decision" value="{{ v }}"{% if first_form.decision.value == v %} checked{% endif %} required> {{ l }}</label>{% endfor %}
-          </div>
-          <div class="qa-field"><label for="fp-amount">Amount received (₦)</label><input class="input" id="fp-amount" name="amount" type="number" step="0.01" min="0" value="{{ first_form.amount.value|default:ob.balance }}"></div>
-          <div class="qa-field"><label for="fp-reason">Note <span class="qa-muted">(required to reject or ask for information)</span></label><textarea class="input" id="fp-reason" name="reason" rows="2">{{ first_form.reason.value|default:'' }}</textarea></div>
-          <button class="btn btn-primary btn-block" type="submit">Save first pass</button>
-        </form>
-      {% endif %}
-
-      {% if can_second %}
-        <form method="post" action="{% url 'qa_fin:item_second_pass' item.pk %}" hx-post="{% url 'qa_fin:item_second_pass' item.pk %}" hx-target="#qa-panel" class="qa-form">
-          {% csrf_token %}<h3 class="qa-menu__group">Second check</h3>
-          <div class="qa-radios"><label class="qa-radio"><input type="radio" name="decision" value="approved" required> Agree — recommend confirm</label><label class="qa-radio"><input type="radio" name="decision" value="rejected"> Recommend reject</label></div>
-          <div class="qa-field"><label for="sp-reason">Note</label><textarea class="input" id="sp-reason" name="reason" rows="2"></textarea></div>
-          <button class="btn btn-subtle btn-block" type="submit">Save second check</button>
-        </form>
-      {% endif %}
-
       {% if is_director %}
-        {% if did_first_pass %}
-          {% include "qa_core/partials/_callout.html" with kind="warn" title="Another approver must decide" message="You did a first-pass check on this payment." %}
-        {% elif can_final %}
+        {% if can_final %}
+          {% if item.amount_confirmed is None %}<div class="qa-field"><label for="fd-amount">Amount received (₦)</label><input class="input" id="fd-amount" name="amount" type="number" step="0.01" min="0" value="{{ ob.balance|stringformat:'s' }}"></div>{% endif %}
           <div class="qa-field"><label for="fd-reason">Reason <span class="qa-muted">(required to reject; the institution sees it)</span></label><textarea class="input" id="fd-reason" name="reason" rows="3" maxlength="2000"></textarea></div>
           <div class="qa-decide__actions">
-            <form method="post" action="{% url 'qa_fin:item_final' item.pk %}" hx-post="{% url 'qa_fin:item_final' item.pk %}" hx-target="#qa-panel" hx-include="#fd-reason" hx-trigger="qa:confirmed"
+            <form method="post" action="{% url 'qa_fin:item_final' item.pk %}" hx-post="{% url 'qa_fin:item_final' item.pk %}" hx-target="#qa-panel" hx-include="#fd-reason, #fd-amount" hx-trigger="qa:confirmed"
                   data-qa-confirm="Confirms {{ item.amount_confirmed|default:ob.balance|naira }} for {{ ob.reference }}, issues the Payment Advice and moves the institution's application forward." data-qa-confirm-title="Confirm this payment?" data-qa-confirm-label="Confirm payment">
               {% csrf_token %}<input type="hidden" name="decision" value="confirmed">
               <button class="btn btn-primary btn-block" type="submit"{% if not ready %} disabled title="{{ ready_why }}"{% endif %}>{% icon "check" 16 "2.4" %} Confirm payment</button></form>
@@ -134,11 +115,24 @@
                   data-qa-require="#fd-reason" data-qa-require-msg="Write the reason the institution will see"
                   data-qa-confirm="The institution sees your reason and can pay again or upload new proof." data-qa-confirm-title="Reject this payment?" data-qa-confirm-label="Reject" data-qa-confirm-tone="danger">
               {% csrf_token %}<input type="hidden" name="decision" value="rejected">
-              <button class="btn btn-subtle btn-block qa-btn-reject" type="submit"{% if not item.decision or item.decision == "needs_info" %} disabled title="Waiting for the first pass"{% endif %}>Reject</button></form>
+              <button class="btn btn-subtle btn-block qa-btn-reject" type="submit"{% if item.decision == "needs_info" %} disabled title="The institution must provide the requested information first"{% endif %}>Reject</button></form>
           </div>
         {% endif %}
-      {% elif not can_first and not can_second and item.is_open %}
-        {% include "qa_core/partials/_callout.html" with title="View only" message="Only the holder of the Director of Finance role can confirm or reject payments." %}
+      {% elif not can_first and not can_second and item.is_open and not is_ict %}
+        {% if seat_holder %}
+          {% include "qa_core/partials/_callout.html" with title="View only" message="Only the Director of Finance confirms or rejects payments. The Director of Finance seat is held by "|add:seat_holder.get_full_name|add:" ("|add:seat_holder.email|add:"). If that is wrong, the ES or a super admin can move the seat under Organisation → Departments → Finance → Assign seat." %}
+        {% else %}
+          {% include "qa_core/partials/_callout.html" with kind="danger" title="Nobody can confirm payments yet" message="The Director of Finance seat is empty. The ES or a super admin must assign it under Organisation → Departments → Finance → Assign seat." %}
+        {% endif %}
+      {% endif %}
+      {% if is_ict and item.is_open %}
+        <div class="qa-remind">
+          {% if can_remind %}
+            <form method="post" action="{% url 'qa_fin:item_remind' item.pk %}" hx-post="{% url 'qa_fin:item_remind' item.pk %}" hx-target="#qa-panel" class="qa-stack">{% csrf_token %}
+              <label class="sr-only" for="rm-note">Note to the Director</label><input class="input" id="rm-note" name="note" maxlength="300" placeholder="Optional note to the Director of Finance">
+              <div class="btn-group"><button class="btn btn-subtle btn-block" type="submit">{% icon "bell" 16 %} Send reminder to the Director of Finance</button></div></form>
+          {% else %}<small>{% icon "bell" 14 %} Reminder sent {{ item.last_dof_reminder_at|date:"j M, H:i" }}; the next one is possible after {{ next_reminder|date:"j M, H:i" }}.</small>{% endif %}
+        </div>
       {% endif %}
       {% if advices %}<div class="qa-stack">{% for a in advices %}<span class="fpv-pair"><a class="btn btn-sm btn-subtle" href="{{ a.download_url }}">{% icon "download" 14 %} Payment Advice {{ a.reference }}</a>{% preview_button a.download_url a.display_name a.size_bytes %}</span>{% endfor %}</div>{% endif %}
     </div>

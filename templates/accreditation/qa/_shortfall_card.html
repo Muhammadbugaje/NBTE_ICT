@@ -1,0 +1,17 @@
+{% load qa_tags %}{% if shortfall %}
+<section class="qa-card sf-band--{{ shortfall.band }}" aria-labelledby="sf-h">
+  <header class="qa-card__head"><div><h2 id="sf-h">Resource shortfall</h2><p>Weighted equipment and facility score at submission #{{ submission.version }}. Internal to NBTE.</p></div></header>
+  <div class="qa-card__body qa-stack">
+    <div class="sf-head">
+      <span class="sf-score">{{ shortfall.score|floatformat:"-1" }}<span class="qa-small qa-muted"> / 100</span></span>
+      <span class="sf-bar" role="img" aria-label="Score {{ shortfall.score }} out of 100"><span style="width: {{ shortfall.score|floatformat:0 }}%"></span></span>
+      <span class="qa-chip {% if shortfall.band == 'good' %}qa-tone-success{% elif shortfall.band == 'fair' %}qa-tone-warn{% else %}qa-tone-danger{% endif %}">{{ shortfall.get_band_display }}</span>
+    </div>
+    <p class="qa-small qa-muted">{{ shortfall.items|length }} of {{ shortfall.items_scored }} item{{ shortfall.items_scored|pluralize }} short or missing. Bands: 80 and above good · 60 to 79 fair · below 60 major. Critical items count double.</p>
+    {% if shortfall.items %}<ul class="sf-list" role="list">{% for i in shortfall.items|slice:":12" %}<li>
+      <span><strong>{{ i.name }}</strong>{% if i.critical %} <span class="qa-chip qa-tone-danger qa-small">Critical</span>{% endif %}<br><span class="qa-small qa-muted">{{ i.section }}</span></span>
+      <span class="qa-small">{% if i.missing %}<span class="qa-chip qa-tone-danger">Missing</span>{% else %}<span class="qa-chip qa-tone-warn">Short</span>{% endif %} {{ i.declared }} of {{ i.required }} {{ i.unit }}</span>
+    </li>{% endfor %}</ul>{% if shortfall.items|length > 12 %}<p class="qa-small qa-muted">and {{ shortfall.items|length|add:"-12" }} more.</p>{% endif %}{% endif %}
+    <p class="qa-small"><strong>Suggested:</strong> {{ shortfall_suggested }}.{% if shortfall.band == "major" %} Accepting needs a remark.{% endif %}</p>
+  </div>
+</section>{% endif %}

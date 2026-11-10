@@ -11,6 +11,18 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+# Outbound TLS (Brevo SMTP, any stdlib HTTPS) verifies against certifi's CA
+# bundle unless SSL_CERT_FILE is already set: python.org builds of Python on
+# macOS ship without access to the system keychain, which otherwise fails with
+# "CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate". The
+# payment providers pass certifi explicitly (payments.providers.base.tls_context).
+try:
+    import certifi as _certifi
+
+    os.environ.setdefault("SSL_CERT_FILE", _certifi.where())
+except ImportError:  # pragma: no cover - certifi is in requirements.txt
+    pass
+
 INSTALLED_APPS = [
     # Admin theme (Phase 8): django-unfold must load before django.contrib.admin.
     "unfold",
@@ -26,6 +38,7 @@ INSTALLED_APPS = [
     "core",
     "accounts",
     "staff",
+    "org",            # Phase B (v2.1): directors, divisions, grade levels, grants
     "config",
     "notifications",
     "messaging",
@@ -48,6 +61,10 @@ INSTALLED_APPS = [
     "inspection",     # empty until Phase 5
     "complaints",     # empty until Phase 7
     "backups",        # Phase 8 (Master Plan §22): backup and restore of the whole system
+    "documents",      # v2.1 Phase B (X23): staff signatures; issued documents from Phase F
+    "honoraria",      # v2.1 Phase B (X33): staff bank details; schedules from Phase H
+    "facilities",     # v2.2: ND/HND minimum facilities and equipment register
+    "assignments",    # v2.1 Phase C (X5): AccessGrant engine; WorkAssignment + rotation in Phase P
     # Phase 9: mobile API (Flutter app) - see api/README.md
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
@@ -56,7 +73,17 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # v2.2: /healthz liveness probe (answers before host checks and the HTTPS redirect).
+    "core.middleware.HealthzMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # v2.2 (Phase G): site-wide Content-Security-Policy (CSP_ENABLED / CSP_REPORT_ONLY in env).
+    "core.middleware.ContentSecurityPolicyMiddleware",
+    # v2.1 S-25 (Phase F): camera only on /scan/ (and the pages that already use it).
+    "documents.middleware.PermissionsPolicyMiddleware",
+    # v2.1 P.4 (S-05): /admin/ only from ADMIN_ALLOWED_IPS when it is set.
+    "assignments.admin_guard.AdminIPGuardMiddleware",
+    # Phase 0 (N2, T-UX-1): Vary on HTMX headers; history-restore = full page.
+    "core.middleware.HtmxVaryMiddleware",
     # Phase 9: /api/ responses get X-NBTE-Min-App-Version and JSON error bodies.
     "api.middleware.ApiResponseMiddleware",
     # QA: requests for QA_PORTAL_HOST use the portal's own URLconf (§3, §16).
@@ -65,6 +92,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # v2.1 S-24/S-26: idle and absolute session ages (settings), optional e-mail code.
+    "core.session_policy.SessionPolicyMiddleware",
     # Phase 9: last-seen time for "Signed-in devices" (cheap; before impersonation swaps the user).
     "accounts.middleware.LastSeenMiddleware",
     "core.middleware.ImpersonationMiddleware",
@@ -75,8 +104,10 @@ MIDDLEWARE = [
     # on the portal (Master Plan §3). After impersonation, before password checks.
     "accounts.middleware.ExternalUserGuardMiddleware",
     "accounts.middleware.ForcePasswordChangeMiddleware",
-    "core.middleware.DrainHtmxMessagesMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    # After MessageMiddleware so it reads the messages before they are stored
+    # again: HTMX responses carry them as toasts (HX-Trigger nbte:messages).
+    "core.middleware.DrainHtmxMessagesMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -96,6 +127,7 @@ TEMPLATES = [
                 "core.context_processors.site",
                 "core.context_processors.sidebar_counts",
                 "config.context_processors.site_info",
+                "config.context_processors.appearance",  # v2.1 A9
                 "qa_core.context_processors.qa_nav",
                 "qa_core.workspace.context",
                 "qa_core.context_processors.qa_portal_link",
@@ -110,7 +142,12 @@ LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "core:home"
 LOGOUT_REDIRECT_URL = "core:landing"
 
-PDF_LOGO_PATH = BASE_DIR / "static" / "img" / "NBTE_logo.png"
+# v2.1 A5: PNG rendered once from the SVG crest (manage.py build_brand_assets).
+PDF_LOGO_PATH = BASE_DIR / "static" / "img" / "brand" / "nbte-logo-512.png"
+
+# v2.1 P.4 (S-05): comma-separated IPs / CIDR networks allowed to open /admin/.
+# Empty = any address (superuser login still required for QA models).
+ADMIN_ALLOWED_IPS = os.environ.get("ADMIN_ALLOWED_IPS", "").strip()
 
 # --- NBTE QA portal (Master Plan §3, §10.1 .env.example) ---------------------
 # Institutions and resource persons sign in on their own subdomain, served by
@@ -126,9 +163,9 @@ QA_SCOPING_STRICT = os.environ.get("QA_SCOPING_STRICT", "False") == "True"
 # Public link to the QA portal (landing page button and footer). Blank = built
 # from QA_PORTAL_HOST with https.
 QA_PORTAL_URL = os.environ.get("QA_PORTAL_URL", "").strip()
-# Phase 2: QA e-mails are logged to the console and kept in the QA outbox,
-# never sent. Set QA_EMAIL_DELIVERY=queue to hand them to the e-mail engine.
-QA_EMAIL_DELIVERY = os.environ.get("QA_EMAIL_DELIVERY", "console").strip().lower()
+# QA e-mails go through the configured delivery engine by default. Set
+# QA_EMAIL_DELIVERY=console explicitly for a local, log-only development run.
+QA_EMAIL_DELIVERY = os.environ.get("QA_EMAIL_DELIVERY", "queue").strip().lower()
 
 # --- QA payments (Master Plan §10.1). Secrets live here, never in ConfigEntry.
 REMITA_BASE_URL = os.environ.get("REMITA_BASE_URL", "https://remitademo.net/remita").rstrip("/")
@@ -138,12 +175,24 @@ REMITA_API_PATH = "/" + os.environ.get("REMITA_API_PATH", "/exapp/api/v1/send/ap
 REMITA_MERCHANT_ID = os.environ.get("REMITA_MERCHANT_ID", "")
 REMITA_API_KEY = os.environ.get("REMITA_API_KEY", "")
 REMITA_API_TOKEN = os.environ.get("REMITA_API_TOKEN", "")
+# v2.1 F.4: default Remita service type when a fee schedule has none of its own
+# (Settings → Fees can still set one per schedule).
+REMITA_SERVICE_TYPE_ID = os.environ.get("REMITA_SERVICE_TYPE_ID", "").strip()
+# v2.1 F.18: Remita does not sign notifications; when set, the notification URL
+# registered with Remita must end with ?token=<this value> (checked in constant time).
+REMITA_WEBHOOK_TOKEN = os.environ.get("REMITA_WEBHOOK_TOKEN", "").strip()
 REMITA_WEBHOOK_ALLOWED_IPS = [ip.strip() for ip in os.environ.get("REMITA_WEBHOOK_ALLOWED_IPS", "").split(",")
                               if ip.strip()]
 PAYSTACK_BASE_URL = os.environ.get("PAYSTACK_BASE_URL", "https://api.paystack.co").rstrip("/")
 PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+# v2.1 F.4 (T-SEC-8): gateways this deployment uses ("remita,paystack"). In
+# production every named gateway must have its keys or the server refuses to start.
+PAYMENTS_GATEWAYS = [g.strip().lower() for g in os.environ.get("PAYMENTS_GATEWAYS", "").split(",") if g.strip()]
 PAYMENT_QR_SIGNING_KEY = os.environ.get("PAYMENT_QR_SIGNING_KEY", "")
+# v2.1 X33 / S-28: key(s) for field encryption of staff bank account numbers
+# (core/fieldcrypto.py). Comma-separated for rotation; the first encrypts.
+FIELD_ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY", "")
 PAYMENT_VERIFY_BASE_URL = os.environ.get("PAYMENT_VERIFY_BASE_URL", "").strip()
 # Development only: when a provider's keys are missing, talk to an in-process
 # simulator instead of the real API (never in production; see payments/providers).
@@ -410,16 +459,28 @@ def _admin_link(title, icon, app, model, badge=None):
     return item
 
 
+def _brand_url(slot, dark=False):
+    """v2.1 A5: the mark chosen for a brand slot (Settings → Branding)."""
+    try:
+        from config.branding import logo_url
+
+        return logo_url(slot, dark=dark) or _static("img/brand/nbte-logo-light.svg")
+    except Exception:
+        return _static("img/brand/nbte-logo-dark.svg" if dark else "img/brand/nbte-logo-light.svg")
+
+
 UNFOLD = {
     "SITE_TITLE": "NBTE Admin",
     "SITE_HEADER": "NBTE Admin",
     "SITE_SUBHEADER": "ICT System · Digital QA",
     "SITE_URL": "/home/",
-    "SITE_LOGO": lambda request: _static("img/NBTE_logo.png"),
-    "SITE_ICON": lambda request: _static("img/NBTE_logo.png"),
+    # v2.1 A5/A6: SVG crest, with the dark version for Unfold's dark mode.
+    "SITE_LOGO": {"light": lambda request: _brand_url("primary"), "dark": lambda request: _brand_url("primary", True)},
+    "SITE_ICON": {"light": lambda request: _brand_url("primary"), "dark": lambda request: _brand_url("primary", True)},
     "SITE_SYMBOL": "verified",
     "SITE_FAVICONS": [
-        {"rel": "icon", "sizes": "any", "type": "image/png", "href": lambda request: _static("img/NBTE_logo.png")},
+        {"rel": "icon", "sizes": "any", "type": "image/svg+xml", "href": lambda request: _static("img/brand/nbte-app-icon.svg")},
+        {"rel": "icon", "sizes": "32x32", "type": "image/png", "href": lambda request: _static("img/brand/nbte-icon-32.png")},
     ],
     "SITE_DROPDOWN": [
         {"icon": "home", "title": "Staff system", "link": "/home/"},
@@ -432,8 +493,8 @@ UNFOLD = {
     "ENVIRONMENT": "core.admin_dashboard.environment_callback",
     "DASHBOARD_CALLBACK": "core.admin_dashboard.dashboard_callback",
     "BORDER_RADIUS": "10px",
-    "STYLES": [lambda request: _static("admin-theme/nbte-admin.css") + "?v=2"],
-    "SCRIPTS": [lambda request: _static("admin-theme/nbte-admin.js") + "?v=3"],
+    "STYLES": [lambda request: _static("admin-theme/nbte-admin.css") + "?v=20261022b"],
+    "SCRIPTS": [lambda request: _static("admin-theme/nbte-admin.js") + "?v=20261022b"],
     "COLORS": {
         "base": {
             "50": "#fafaf8", "100": "#f4f4f1", "200": "#e8e8e3", "300": "#d5d5ce", "400": "#a3a39b",
@@ -695,6 +756,7 @@ SPECTACULAR_SETTINGS = {
         "QAClearDecisionEnum": ["clear", "return"],
         "QASSQDecisionEnum": ["accept", "return"],
         # --- end qa_staff ---
+        "ChatGroupPolicyEnum": ["all", "admins"],  # v2.1 Phase E (L3)
     },
 }
 
@@ -708,3 +770,14 @@ API_DEV_DOOR_HEADER = False
 # Off unless this points to a Firebase service-account JSON file - see
 # PUSH_NOTIFICATIONS.md.
 FCM_SERVICE_ACCOUNT_FILE = os.environ.get("FCM_SERVICE_ACCOUNT_FILE", "").strip()
+
+
+# v2.1 S-24: the cookie never outlives the absolute staff limit (12 h);
+# idle and absolute ages per surface are ConfigEntry settings enforced by
+# core.session_policy.SessionPolicyMiddleware (security.session.*).
+SESSION_COOKIE_AGE = 12 * 60 * 60
+
+
+# v2.2 (Phase G): Content-Security-Policy (core.middleware.ContentSecurityPolicyMiddleware)
+CSP_ENABLED = os.environ.get("CSP_ENABLED", "True") == "True"
+CSP_REPORT_ONLY = os.environ.get("CSP_REPORT_ONLY", "False") == "True"

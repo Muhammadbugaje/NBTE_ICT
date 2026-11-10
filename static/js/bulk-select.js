@@ -143,9 +143,14 @@
 
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
-    if (document.querySelector(".nbte-confirm, .fpv, [role=dialog][aria-modal=true]:not([hidden])")) return;
+    if (Array.prototype.some.call(document.querySelectorAll(".nbte-confirm, .fpv, [role=dialog][aria-modal=true]:not([hidden])"), function (d) { return d.getClientRects().length > 0 && !d.closest("[aria-hidden=true], [hidden]"); })) return;
     var open = document.querySelector(".bulk-bar.is-visible");
-    if (open) { clear(open.getAttribute("data-uxb-bar")); return; }
+    if (open) {
+      var oid = open.getAttribute("data-uxb-bar");
+      // With a Select button, Esc leaves select mode (hides the boxes too).
+      if (hasToggle(oid)) setMode(oid, false); else clear(oid);
+      return;
+    }
     Object.keys(modeOn).forEach(function (id) { if (modeOn[id]) setMode(id, false); });
   });
 

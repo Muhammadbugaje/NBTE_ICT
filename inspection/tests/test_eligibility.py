@@ -22,6 +22,9 @@ def _rules(problems):
 def test_rule1_min_rank_blocks_staff_below_the_role(p5):
     from inspection import rules
 
+    # The deployed minimum is "director" (v2.1); pin a two-rank window so the
+    # rule's mechanics are tested regardless of the default.
+    set_config("qa.resource_person.min_rank", "deputy-director")
     officer_staff = p5.people.desk_officer.staff_profile
     assert "min_rank" in _rules(rules.staff_problems(officer_staff))
     assert not rules.staff_problems(p5.people.team_lead.staff_profile)
@@ -133,21 +136,28 @@ def test_rule6_institutional_admin_department(p5):
     set_config("qa.institution.admin_required_department", "Human Resources")
     base = {"first_name": "Ade", "last_name": "Admin", "email": "ade.admin@p4demo.local", "role": "inst-admin",
             "grade_level": 13}
+    # v2.1 X9: portal accounts are locked once the application is in, so the
+    # invites here ride an approved change request; the rule under test is the
+    # required-department check, not the lock.
     with pytest.raises(ValidationError) as exc:
-        services.invite_user(p5.inst, {**base, "institution_department": "Bursary"}, actor=p5.people.institution_admin)
+        services.invite_user(p5.inst, {**base, "institution_department": "Bursary"},
+                             actor=p5.people.institution_admin, approved_request=True)
     assert "institution_department" in exc.value.message_dict
     user = services.invite_user(p5.inst, {**base, "institution_department": "human resources"},
-                                actor=p5.people.institution_admin)
+                                actor=p5.people.institution_admin, approved_request=True)
     assert user.institution_membership.institution_department == "human resources"
 
 
-def test_rule6_at_add_tvet(p5, lookups, add_tvet_payload):
+def test_rule6_at_add_tvet(p5, make_user, lookups, add_tvet_payload):
     from qa_core import actions
 
+    # v2.1 X47: Add TVET is carried by the TVET Support – Initiators group.
+    initiator = make_user("elig.tvet.init@t.local", role="officer", dept="ntird",
+                          groups=["TVET Support – Initiators"])
     set_config("qa.institution.admin_required_department", "Human Resources")
     payload = add_tvet_payload()
     with pytest.raises(ValidationError):
-        actions.initiate("institutions.add_tvet", actor=p5.people.desk_officer, payload=payload, reason="New TVET")
+        actions.initiate("institutions.add_tvet", actor=initiator, payload=payload, reason="New TVET")
 
 
 # ---------------------------------------------------------------------------
@@ -157,18 +167,22 @@ def test_rule7_chief_executive_must_be_the_head(p5):
     from institutions import services
     from institutions.models import InstitutionContact
 
+    # v2.1 X9: team locked after submission — invites ride approved requests.
     InstitutionContact.unscoped.create(institution=p5.inst, kind="head_of_institution", name="Dr. Musa Rector",
                                        value="rector@p4demo.local")
     base = {"role": "inst-chief-executive", "grade_level": None}
     with pytest.raises(ValidationError):
         services.invite_user(p5.inst, {**base, "first_name": "Someone", "last_name": "Else",
-                                       "email": "else@p4demo.local"}, actor=p5.people.institution_admin)
+                                       "email": "else@p4demo.local"}, actor=p5.people.institution_admin,
+                             approved_request=True)
     user = services.invite_user(p5.inst, {**base, "first_name": "Musa", "last_name": "Rector",
-                                          "email": "rector@p4demo.local"}, actor=p5.people.institution_admin)
+                                          "email": "rector@p4demo.local"}, actor=p5.people.institution_admin,
+                                approved_request=True)
     assert user.pk
     set_config("qa.institution.chief_executive_required_position", "false")
     services.invite_user(p5.inst, {**base, "first_name": "Deputy", "last_name": "Rector",
-                                   "email": "deputy@p4demo.local"}, actor=p5.people.institution_admin)
+                                   "email": "deputy@p4demo.local"}, actor=p5.people.institution_admin,
+                         approved_request=True)
 
 
 # ---------------------------------------------------------------------------

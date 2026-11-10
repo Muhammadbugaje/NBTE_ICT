@@ -1,41 +1,30 @@
 {% extends "manage/messages/_layout.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}{{ route.name }} · Memo routes{% endblock %}
 {% block page_title %}{{ route.name }}{% endblock %}
 
-{% block mm_content %}
-
-<a href="{% url 'messaging_manage:route_list' %}" class="mm-back">
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-  All routes
-</a>
-
-<header class="mm-hero">
-  <div class="mm-hero-inner">
-    <div class="mm-hero-icon">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    </div>
-    <div>
-      <h1>{{ route.name }}</h1>
-      <p>
-        <code class="mono text-xs">{{ route.code }}</code>
-        · {{ steps|length }} step{{ steps|length|pluralize }}
-        · same-rank: {{ route.get_same_rank_behaviour_display }}
-        {% if not route.is_active %} · <span class="mm-pill mm-pill-warn">Inactive</span>{% endif %}
-      </p>
-      {% if route.description %}<p class="mt-1">{{ route.description }}</p>{% endif %}
+{% block mm_hero %}
+<header class="qa-hero nbte-hero">
+  <div>
+    <a class="nbte-hero__back" href="{% url 'messaging_manage:route_list' %}">{% icon "back" 14 "2.4" %} All routes</a>
+    <span class="qa-eyebrow">{% icon "send" 14 "2.2" %} Memo routing · Routes</span>
+    <h1>{{ route.name }}</h1>
+    <p><code class="mono text-xs">{{ route.code }}</code> · same-rank: {{ route.get_same_rank_behaviour_display }}{% if not route.is_active %} · <span class="mm-pill mm-pill-warn">Inactive</span>{% endif %}{% if route.description %} · {{ route.description }}{% endif %}</p>
+    <div class="qa-hero__actions">
+      <a href="{% url 'messaging_manage:step_create' route.pk %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} Add step</a>
+      <a href="{% url 'messaging_manage:route_update' route.pk %}" class="btn btn-subtle">{% icon "edit" 16 "2.2" %} Edit</a>
+      <a href="{% url 'messaging_manage:route_delete' route.pk %}" class="btn btn-ghost text-danger">{% icon "trash" 16 "2.2" %} Delete</a>
     </div>
   </div>
-  <div class="mm-hero-actions">
-    <a href="{% url 'messaging_manage:step_create' route.pk %}" class="btn btn-primary">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Add step
-    </a>
-    <a href="{% url 'messaging_manage:route_update' route.pk %}" class="btn btn-ghost">Edit</a>
-    <a href="{% url 'messaging_manage:route_delete' route.pk %}" class="btn btn-ghost text-danger">Delete</a>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <div class="qa-stat"><strong>{{ steps|length }}</strong><span>Step{{ steps|length|pluralize }}</span></div>
+    <div class="qa-stat"><strong>{{ using|length }}</strong><span>Rule{{ using|length|pluralize }} using it</span></div>
   </div>
 </header>
+{% endblock %}
+
+{% block mm_content %}
 
 <div class="mm-grid">
 

@@ -40,7 +40,7 @@ def read_rows(file_like, sheet_index=0, header_row=1):
         if all(_clean(c) in (None, "") for c in row):
             continue
         yield {
-            header[i]: row[i]
+            header[i]: unneutralise(row[i])
             for i in range(min(len(header), len(row)))
             if header[i]
         }
@@ -166,7 +166,7 @@ def write_export(header, rows, sheet_title="Export"):
         ws.column_dimensions[get_column_letter(col_index)].width = max(len(str(name)) + 4, 18)
     for r, row in enumerate(rows, start=2):
         for c, value in enumerate(row, start=1):
-            ws.cell(row=r, column=c, value=value)
+            ws.cell(row=r, column=c, value=neutralise(value))
     return _to_bytes(wb)
 
 
@@ -182,11 +182,46 @@ def write_rejected(header, rows, sheet_title="Rejected rows"):
     error_col = len(header)
     for r, row in enumerate(rows, start=2):
         for c, value in enumerate(row, start=1):
-            cell = ws.cell(row=r, column=c, value=value)
+            cell = ws.cell(row=r, column=c, value=neutralise(value))
             if c == error_col:
                 cell.fill = _ERROR_FILL
                 cell.alignment = Alignment(vertical="top", wrap_text=True)
     return _to_bytes(wb)
+
+
+# ---------------------------------------------------------------------------
+# v2.1 S-16: spreadsheet formula injection. A text cell starting with = + - @
+# (or a tab / carriage return) would run as a formula when the file is opened
+# (openpyxl even stores "=..." strings AS formulas). Exports prefix it with an
+# apostrophe; reading strips that apostrophe again so round trips are exact.
+# ---------------------------------------------------------------------------
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def neutralise(value):
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+def unneutralise(value):
+    if isinstance(value, str) and len(value) > 1 and value[0] == "'" and value[1:].startswith(FORMULA_PREFIXES):
+        return value[1:]
+    return value
+
+
+def to_cell(value):
+    """A value openpyxl can write (model instances become their text)."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    import datetime
+    import decimal
+
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        return value
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    return str(value)
 
 
 # ---------------------------------------------------------------------------

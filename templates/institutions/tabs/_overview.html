@@ -38,6 +38,7 @@
     </section>
   </div>
   <aside class="qa-stack">
+    {% include "accreditation/_institution_visit_invites.html" %}{# SOP-03 visit invitations #}
     <section class="qa-card"><div class="qa-card__body qa-stack">
       <div class="qa-board">
         <div class="qa-board__item"><strong>{{ programme_count }}</strong><span>Programmes</span></div>
@@ -58,6 +59,36 @@
         {% if impersonation %}<p class="qa-small qa-muted">You have a live view-as session until {{ impersonation.expires_at|time:"H:i" }}.</p>{% endif %}
       </div>
     </section>
+    {% if can_assign_oversight or oversight_assignment %}
+    <section class="qa-card" aria-labelledby="ov-oversight">
+      <header class="qa-card__head"><h2 id="ov-oversight">ICT oversight</h2></header>
+      <div class="qa-card__body qa-stack">
+        {% if oversight_assignment %}<p class="qa-small">Current supervisor: <strong>{{ oversight_assignment.assignee|who }}</strong></p>
+        {% else %}<p class="qa-small qa-muted">No ICT supervisor has been assigned yet.</p>{% endif %}
+        {% if can_assign_oversight %}
+        <form method="post" action="{% url 'qa_inst:assign_oversight' inst.code %}" class="qa-stack">
+          {% csrf_token %}
+          <label class="qa-field" for="oversight-assignee"><span>Assign an ICT staff member</span>
+            <select class="input" id="oversight-assignee" name="assignee" required data-pp-auto data-pp-noun="staff member">
+              <option value="">Choose staff</option>
+              {% for person in oversight_candidates %}
+            {% if oversight_suggestion and oversight_suggestion.pk == person.pk %}
+              <option value="{{ person.pk }}" selected>{{ person|who }}</option>
+            {% elif oversight_assignment and oversight_assignment.assignee_id == person.pk %}
+              <option value="{{ person.pk }}" selected>{{ person|who }}</option>
+            {% else %}
+              <option value="{{ person.pk }}">{{ person|who }}</option>
+            {% endif %}
+          {% endfor %}
+            </select>
+          </label>
+          {% if oversight_suggestion %}<p class="qa-small qa-muted">Suggested by rotation: <strong>{{ oversight_suggestion|who }}</strong></p>{% endif %}
+          <button type="submit" class="btn btn-primary">{% if oversight_assignment %}Reassign supervisor{% else %}Assign supervisor{% endif %}</button>
+        </form>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
     <section class="qa-card" aria-labelledby="ov-pending">
       <header class="qa-card__head"><h2 id="ov-pending">Waiting for confirmation</h2></header>
       <div class="qa-card__body">

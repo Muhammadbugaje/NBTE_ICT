@@ -158,17 +158,16 @@ def _audit(action, obj, actor, note, changes=None):
 
 
 def ict_recipients():
-    """Director of ICT role holders and ict-qa-monitor holders (fallback: superusers)."""
+    """The Director of ICT (org.director_of) and ict-qa-monitor holders (fallback: superusers)."""
+    import org
     from accounts.models import User
-    from django.db.models import Q
 
     from qa_core.departments import qa_department
 
-    ict = qa_department("ict")
-    q = Q(role__code="ict-qa-monitor")
-    if ict is not None:
-        q |= Q(role__code="director", department=ict)
-    users = list(User.objects.filter(q, is_active=True).distinct())
+    users = list(org.users_with_role("ict-qa-monitor"))
+    director = org.director_of(qa_department("ict"))
+    if director is not None and director not in users:
+        users.append(director)
     if not users:
         users = list(User.objects.filter(is_superuser=True, is_active=True))
     return users

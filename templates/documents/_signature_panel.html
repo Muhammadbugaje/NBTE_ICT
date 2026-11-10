@@ -1,0 +1,140 @@
+{% url 'documents:my_signature' as sig_url %}
+<section class="pf-card sig-card" id="sig-root" data-sig-root aria-labelledby="sig-title">
+  <header class="pf-card__head">
+    <span class="pf-card__icon pf-card__icon--violet" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c3-4 5-9 7-9s-1 9 1 9 3-5 5-5 1 4 3 4"/><path d="M3 21h18"/></svg></span>
+    <div>
+      <h2 id="sig-title">My signature</h2>
+      <p>Printed on letters, receipts, memos and every document your approvals generate.</p>
+    </div>
+    {% if sig.active %}<span class="pf-chip pf-chip--ok">In use</span>{% elif sig.required %}<span class="pf-chip pf-chip--danger">Required</span>{% else %}<span class="pf-chip">Not added</span>{% endif %}
+  </header>
+
+  {% if notice %}<div class="pf-alert pf-alert--ok" role="status">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="pf-alert pf-alert--danger" role="alert">{{ error }}</div>{% endif %}
+
+  {% if impersonating %}
+    <div class="pf-lock" role="note">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      <div><strong>Only the account owner can see or change this signature.</strong>
+        <span>You are acting as this person. {% if sig.active %}A signature is on file.{% else %}No signature is on file yet.{% endif %}</span></div>
+    </div>
+  {% else %}
+
+  {% if sig.required and not sig.active %}
+    <div class="pf-alert pf-alert--warn" role="note"><strong>Your rank needs a signature.</strong> Directors and above must have one on file: approvals that produce a document or memo wait until you add it.</div>
+  {% endif %}
+
+  {% if sig.pending %}
+    <div class="sig-check">
+      <p class="sig-check__lead"><strong>Check your signature.</strong> This is what we lifted from your photo. Adjust it until the strokes are clean and complete, then use it.</p>
+      <div class="sig-compare">
+        <figure class="sig-paper"><img loading="lazy" decoding="async" src="{{ sig.pending_uri }}" alt="Your signature, cleaned up"><figcaption>On paper, as it will print</figcaption></figure>
+        <figure class="sig-paper sig-paper--dark" aria-hidden="true"><img loading="lazy" decoding="async" src="{{ sig.pending_uri }}" alt=""><figcaption>Transparent background check</figcaption></figure>
+      </div>
+      <form method="post" action="{{ sig_url }}" class="sig-adjust" hx-post="{{ sig_url }}" hx-target="#sig-root" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="section" value="sig_adjust">
+        <label class="sig-field">
+          <span>Sensitivity <output data-sig-range-value="sensitivity">{{ sig.pending.sensitivity }}</output></span>
+          <input type="range" name="sensitivity" min="0" max="100" step="5" value="{{ sig.pending.sensitivity }}" data-sig-range aria-describedby="sig-sens-help">
+          <small id="sig-sens-help" class="muted">Lower for a heavy marker; higher for a faint ballpoint.</small>
+        </label>
+        <fieldset class="sig-inks"><legend>Ink</legend>
+          {% for k in sig.inks %}<label class="sig-ink sig-ink--{{ k }}"><input type="radio" name="ink" value="{{ k }}" {% if sig.pending.ink == k %}checked{% endif %}><span>{{ k|capfirst }}</span></label>{% endfor %}
+        </fieldset>
+        <div class="btn-group"><button class="btn btn-ghost btn-sm" type="submit">Apply</button></div>
+      </form>
+      <div class="btn-group">
+        <form method="post" action="{{ sig_url }}" hx-post="{{ sig_url }}" hx-target="#sig-root" hx-swap="outerHTML">{% csrf_token %}<input type="hidden" name="section" value="sig_accept">
+          <button class="btn btn-primary btn-sm" type="submit">Use this signature</button></form>
+        <form method="post" action="{{ sig_url }}" hx-post="{{ sig_url }}" hx-target="#sig-root" hx-swap="outerHTML">{% csrf_token %}<input type="hidden" name="section" value="sig_discard">
+          <button class="btn btn-subtle btn-sm" type="submit">Discard and start again</button></form>
+      </div>
+    </div>
+  {% else %}
+    {% if sig.active %}
+      <div class="sig-current">
+        <figure class="sig-paper sig-paper--line"><img loading="lazy" decoding="async" src="{{ sig.active_uri }}" alt="Your current signature"></figure>
+        <div class="sig-current__meta">
+          <p class="muted">{% if sig.demo %}Demo signature (generated){% elif sig.drawn %}Drawn on screen{% else %}From a photo{% endif %} · added {{ sig.active.accepted_at|date:"j M Y" }}. Documents you already signed keep the signature they were signed with.</p>
+          {% if recent_auth %}
+          <div class="btn-group">
+            <a class="btn btn-ghost btn-sm" href="#sig-capture" data-sig-replace>Replace</a>
+            <form method="post" action="{{ sig_url }}" hx-post="{{ sig_url }}" hx-target="#sig-root" hx-swap="outerHTML" hx-confirm="Your signature will no longer be added to documents you approve. Documents you already signed keep it. Remove it?">
+              {% csrf_token %}<input type="hidden" name="section" value="sig_remove">
+              <button class="btn btn-subtle btn-sm" type="submit">Remove</button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="pf-empty">You have not added a signature yet. Upload a photo of it or draw it below.</div>
+    {% endif %}
+
+    {% if not recent_auth %}
+      <form method="post" action="{{ sig_url }}" class="pf-reauth" hx-post="{{ sig_url }}" hx-target="#sig-root" hx-swap="outerHTML" data-reauth>
+        {% csrf_token %}<input type="hidden" name="section" value="reauth">
+        <div class="pf-reauth__text">
+          <strong>Confirm it’s you</strong>
+          <span>Enter your password to {% if sig.active %}replace or remove{% else %}add{% endif %} your signature. It stays unlocked for {{ reauth_minutes }} minutes.</span>
+        </div>
+        <label class="sr-only" for="sig-reauth-pw">Your password</label>
+        <input class="input" type="password" id="sig-reauth-pw" name="password" autocomplete="current-password" placeholder="Your password" required>
+        <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">Confirm</button></div>
+      </form>
+    {% else %}
+    <details class="sig-capture" id="sig-capture" {% if not sig.active %}open{% endif %}>
+      <summary>{% if sig.active %}Add a new signature{% else %}Add my signature{% endif %}</summary>
+      <div class="sig-tabs" role="tablist" aria-label="How to add your signature">
+        <button type="button" role="tab" id="sig-tab-draw" aria-controls="sig-panel-draw" aria-selected="true" data-sig-tab="draw">Draw it</button>
+        <button type="button" role="tab" id="sig-tab-upload" aria-controls="sig-panel-upload" aria-selected="false" data-sig-tab="upload">Upload a photo</button>
+      </div>
+
+      <form method="post" action="{{ sig_url }}" class="sig-panel" id="sig-panel-draw" role="tabpanel" aria-labelledby="sig-tab-draw" hx-post="{{ sig_url }}" hx-target="#sig-root" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="section" value="sig_draw">
+        <div class="sig-pad" data-sig-pad data-ink="navy">
+          <canvas data-sig-canvas aria-label="Signature pad: sign here with a finger, pen or mouse" role="img"></canvas>
+          <span class="sig-pad__line" aria-hidden="true"></span>
+          <span class="sig-pad__x" aria-hidden="true">×</span>
+          <span class="sig-pad__hint" data-sig-hint>Sign here</span>
+          <input type="hidden" name="sig_data" data-sig-output>
+          <div class="sig-row">
+            <fieldset class="sig-inks"><legend>Ink</legend>
+              {% for k in sig.inks %}<label class="sig-ink sig-ink--{{ k }}"><input type="radio" name="ink" value="{{ k }}" data-sig-ink {% if forloop.first %}checked{% endif %}><span>{{ k|capfirst }}</span></label>{% endfor %}
+            </fieldset>
+            <div class="btn-group">
+              <button type="button" class="btn btn-subtle btn-sm" data-sig-undo>Undo</button>
+              <button type="button" class="btn btn-subtle btn-sm" data-sig-clear>Clear</button>
+              <button type="submit" class="btn btn-primary btn-sm" data-sig-save disabled>Save signature</button>
+            </div>
+          </div>
+        </div>
+      </form>
+
+      <form method="post" action="{{ sig_url }}" enctype="multipart/form-data" class="sig-panel" id="sig-panel-upload" role="tabpanel" aria-labelledby="sig-tab-upload" hidden hx-post="{{ sig_url }}" hx-encoding="multipart/form-data" hx-target="#sig-root" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="section" value="sig_upload">
+        <ol class="sig-tips">
+          <li>Sign with a dark pen on plain white paper.</li>
+          <li>Take the photo in good light, straight on, the signature filling most of the frame.</li>
+          <li>We remove the paper, shadows and ruled lines and keep only the ink.</li>
+        </ol>
+        <div class="sig-file">
+          <label class="btn btn-ghost btn-sm" for="sig-photo">Choose photo or scan</label>
+          <input class="sr-only" type="file" id="sig-photo" name="sig_photo" accept="image/png,image/jpeg,image/webp" capture="environment" data-sig-file>
+          <span class="muted" data-sig-file-name>No file chosen</span>
+        </div>
+        <div class="sig-row">
+          <label class="sig-field"><span>Sensitivity <output data-sig-range-value="sensitivity">50</output></span>
+            <input type="range" name="sensitivity" min="0" max="100" step="5" value="50" data-sig-range></label>
+          <fieldset class="sig-inks"><legend>Ink</legend>
+            {% for k in sig.inks %}<label class="sig-ink sig-ink--{{ k }}"><input type="radio" name="ink" value="{{ k }}" {% if forloop.first %}checked{% endif %}><span>{{ k|capfirst }}</span></label>{% endfor %}
+          </fieldset>
+        </div>
+        <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit" data-sig-upload-go disabled>Clean up my signature</button></div>
+      </form>
+    </details>
+    {% endif %}
+  {% endif %}
+  {% endif %}
+  <p class="pf-foot muted">Your signature image is never published at a web address. It is only placed inside the documents your approvals generate.</p>
+</section>

@@ -137,6 +137,21 @@ def test_capacity_prefill_reads_the_ssq_and_the_request(row):
     assert inputs["library"]["students_per_stream"] == row.programme.category.students_per_stream
 
 
+def test_decisions_board_does_not_depend_on_rebound_current_helper(row, monkeypatch):
+    from accreditation import capacity, decisions
+    from accreditation.models import QACase
+
+    case = QACase.unscoped.create(reference="NBTE/QA/TEST/CAPACITY/0001", qa_request=row.qa_request,
+                                  institution=row.qa_request.institution)
+    monkeypatch.setattr(capacity, "current", None)
+
+    stage_code = next(iter(decisions.STAGE_OF_FLOW))
+    board_rows = decisions.board(case, stage_code, user=None)
+
+    assert len(board_rows) == 1
+    assert board_rows[0]["capacity"] is None
+
+
 # ---------------------------------------------------------------------------
 # Approval types and expiry derivation (B18)
 # ---------------------------------------------------------------------------

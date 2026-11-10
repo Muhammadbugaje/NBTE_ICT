@@ -1,24 +1,30 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags audience_tags %}
 
 {% block title %}Access for {{ u.get_full_name|default:u.email }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Groups &amp; permissions{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="gp-page">
   <a class="gp-back" href="{% url 'accounts:groups:users' %}">← All users</a>
-  <header class="page-header">
+  <header class="qa-hero nbte-hero">
     <div>
-      <p class="gp-eyebrow">Groups &amp; permissions</p>
+      <a class="nbte-hero__back" href="{% url 'accounts:groups:users' %}{% if segment != 'nbte' %}?segment={{ segment }}{% endif %}">{% icon "back" 14 "2.4" %} Access by person</a>
+      <span class="qa-eyebrow">{% icon "key" 14 "2.2" %} User management · {{ seg.label }}</span>
       <h1>{{ u.get_full_name|default:u.email }}</h1>
-      <p class="muted">{{ u.email }}{% if u.department %} · {{ u.department.name }}{% endif %}</p>
+      <p>{{ u.email }}{% if u.department %} · {{ u.department.name }}{% endif %}{% if u.institution %} · {{ u.institution.name }}{% endif %}{% if segment != 'nbte' %} — a portal account: groups carried by NBTE internal roles cannot be given.{% endif %}</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'accounts:user_detail' u.pk %}" class="btn btn-subtle">{% icon "user" 16 "2.2" %} Account details</a>
+      </div>
     </div>
-    <div class="header-actions">
-      <a href="{% url 'accounts:user_detail' u.pk %}" class="btn btn-ghost">Account details</a>
+    <div class="qa-hero__stats um-tiles" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong>{{ effective_total }}</strong><span>Effective permissions</span></div>
+      <div class="qa-stat"><strong>{{ inherited_total }}</strong><span>From role</span></div>
+      <div class="qa-stat"><strong>{{ direct_total }}</strong><span>Direct</span></div>
     </div>
   </header>
 
@@ -97,6 +103,7 @@
                 <span class="gp-group-meta">{{ row.perm_count }} permission{{ row.perm_count|pluralize }}</span>
               </label>
               {% if row.inherited %}<span class="badge badge-info" title="The role already gives this group, so removing it here won't take it away.">also inherited</span>{% endif %}
+              {% if row.internal %}<span class="um-aud" title="Carried by an NBTE internal role: not for portal accounts.">NBTE internal</span>{% endif %}
               {% if row.locked %}<span class="badge">locked</span>{% endif %}
             </li>
           {% empty %}
@@ -123,5 +130,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+  <script src="{% static 'js/groups.js' %}" defer></script>
 {% endblock %}

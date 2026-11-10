@@ -1,22 +1,44 @@
 {% extends base_template %}
-{% load qa_tags %}
+{% load qa_tags static %}
 {% block title %}Payments · {{ portal_name }}{% endblock %}
 {% block content %}
-<div class="qa-portal-page">
+<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
+<div class="qa-portal-page pp-page">
   <header class="qa-page-head">
     <span class="qa-eyebrow">{% icon "card" 14 "2.2" %} Fees and payments</span>
     <h1 data-qa-focus>Payments</h1>
-    <p>Every bill NBTE issues to {{ institution.name|default:"your institution" }}. A payment counts only when NBTE’s Director of Finance confirms it — you get a Payment Advice when that happens.</p>
+    <p>Every bill NBTE issues to {{ institution.name|default:"your institution" }}. Pay online with Remita or Paystack, or by bank transfer. A payment counts once NBTE Finance confirms it — you then get a Payment Advice (your receipt) here.</p>
+    <p class="qa-small"><a href="{% url 'qa_portal:refunds' %}" hx-get="{% url 'qa_portal:refunds' %}" hx-target="#qa-main" hx-push-url="true">{% icon "rotate" 14 %} Refunds</a> · <a href="{% url 'qa_portal:refund_policy' %}" hx-get="{% url 'qa_portal:refund_policy' %}" hx-target="#qa-main" hx-push-url="true">Cancellations and refunds policy</a></p>
   </header>
-  <div class="qa-board" aria-label="Summary">
-    <a class="qa-board__item" href="?group=due"><strong>{{ due_total|naira }}</strong><span>To pay · {{ counts.due }}</span></a>
-    <a class="qa-board__item" href="?group=checking"><strong>{{ counts.checking }}</strong><span>Being confirmed</span></a>
-    <a class="qa-board__item" href="?group=settled"><strong>{{ counts.settled }}</strong><span>Settled</span></a>
+
+  <div class="pp-pay-top">
+    <div class="ux-stats" role="list" aria-label="Summary">
+      <a role="listitem" class="ux-stat ux-stat--gold{% if filters.group == 'due' %} is-active{% endif %}" href="?group=due" hx-get="?group=due" hx-target="#qa-main" hx-push-url="true">
+        <span class="ux-stat__label">{% icon "card" 15 "2.2" %} To pay</span><span class="ux-stat__value pp-money">{{ due_total|naira }}</span>
+        <span class="ux-stat__hint">{{ counts.due }} bill{{ counts.due|pluralize }} waiting for you</span></a>
+      <a role="listitem" class="ux-stat ux-stat--blue{% if filters.group == 'checking' %} is-active{% endif %}" href="?group=checking" hx-get="?group=checking" hx-target="#qa-main" hx-push-url="true">
+        <span class="ux-stat__label">{% icon "clock" 15 "2.2" %} Being confirmed</span><span class="ux-stat__value">{{ counts.checking }}</span>
+        <span class="ux-stat__hint">NBTE Finance is checking</span></a>
+      <a role="listitem" class="ux-stat{% if filters.group == 'settled' %} is-active{% endif %}" href="?group=settled" hx-get="?group=settled" hx-target="#qa-main" hx-push-url="true">
+        <span class="ux-stat__label">{% icon "check" 15 "2.4" %} Paid</span><span class="ux-stat__value">{{ counts.settled }}</span>
+        <span class="ux-stat__hint">{{ money.settled|naira }} confirmed</span></a>
+    </div>
+    <section class="pp-chart-card" aria-labelledby="pp-pay-chart-h">
+      <h2 id="pp-pay-chart-h">Where your money stands</h2>
+      <p>All bills, by amount.</p>
+      {% if pay_chart.0.data %}<div class="ux-chart ux-chart--sm"><canvas data-ux-chart="pp-pay-status" role="img" aria-label="To pay {{ money.due|naira }}, being confirmed {{ money.checking|naira }}, paid {{ money.settled|naira }}"></canvas></div>
+      {% else %}<div class="pp-empty" style="padding:18px 8px"><span class="pp-empty__art" aria-hidden="true">{% icon "card" 26 %}</span><strong>No bills yet</strong></div>{% endif %}
+    </section>
   </div>
-  <section class="qa-card qa-mt-sm" aria-label="Bills">
+  {{ pay_chart|json_script:"ux-chart-data" }}
+
+  <section class="qa-card" aria-label="Bills">
+    <nav class="ux-filters pp-filters" aria-label="Show bills" hx-boost="true" hx-target="#qa-main" hx-push-url="true">
+      {% for v, l in groups %}<a class="ux-filter{% if filters.group|default:'' == v %} is-active{% endif %}" href="?group={{ v }}"{% if filters.group|default:'' == v %} aria-current="true"{% endif %}>{{ l }}{% if v == "due" %} <b>{{ counts.due }}</b>{% elif v == "checking" %} <b>{{ counts.checking }}</b>{% elif v == "settled" %} <b>{{ counts.settled }}</b>{% endif %}</a>{% endfor %}
+    </nav>
     <form class="qa-toolbar" role="search" hx-get="{% url 'qa_portal:payments' %}" hx-target="#qa-pay-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change">
-      <label class="qa-search"><span class="sr-only">Search bills</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Reference or description" autocomplete="off"></label>
-      <select class="input qa-select" name="group" aria-label="Status">{% for v, l in groups %}<option value="{{ v }}"{% if filters.group == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <input type="hidden" name="group" value="{{ filters.group|default:'' }}">
+      <label class="qa-search"><span class="sr-only">Search bills</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Search by reference or description" autocomplete="off"></label>
       <select class="input qa-select" name="fee" aria-label="Fee"><option value="">All fees</option>{% for f in fees %}<option value="{{ f.code }}"{% if filters.fee == f.code %} selected{% endif %}>{{ f.name }}</option>{% endfor %}</select>
       <select class="input qa-select" name="period" aria-label="Period"><option value="">Any time</option><option value="30d"{% if filters.period == "30d" %} selected{% endif %}>Last 30 days</option><option value="90d"{% if filters.period == "90d" %} selected{% endif %}>Last 90 days</option><option value="1y"{% if filters.period == "1y" %} selected{% endif %}>Last year</option></select>
     </form>

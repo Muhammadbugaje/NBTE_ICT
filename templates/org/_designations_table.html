@@ -1,0 +1,14 @@
+{% include "org/_alerts.html" %}
+<p class="org-muted">{{ total }} designation{{ total|pluralize }}{% if q %} matching “{{ q }}”{% endif %}.</p>
+<div class="org-table-wrap">
+  <table class="org-table">
+    <thead><tr><th scope="col">Designation</th><th scope="col" colspan="5">Rank · default role · lowest grade · highest grade</th></tr></thead>
+    <tbody>{% for d in page %}{% include "org/_designation_row.html" %}{% empty %}<tr><td colspan="6" class="org-muted">No designations match.</td></tr>{% endfor %}</tbody>
+  </table>
+</div>
+<nav class="org-toolbar org-gap btn-group" aria-label="Pages">
+  {% if page.has_previous %}<a class="btn btn-ghost" hx-get="?q={{ q|urlencode }}&mapped={{ mapped }}&page={{ page.previous_page_number }}" hx-target="#org-desig" hx-push-url="true" href="?q={{ q|urlencode }}&mapped={{ mapped }}&page={{ page.previous_page_number }}">Previous</a>{% endif %}
+  <span class="org-muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a class="btn btn-ghost" hx-get="?q={{ q|urlencode }}&mapped={{ mapped }}&page={{ page.next_page_number }}" hx-target="#org-desig" hx-push-url="true" href="?q={{ q|urlencode }}&mapped={{ mapped }}&page={{ page.next_page_number }}">Next</a>{% endif %}
+  {% if not show_all and page.paginator.num_pages > 1 %}<a class="btn btn-ghost" hx-get="?q={{ q|urlencode }}&mapped={{ mapped }}&all=1" hx-target="#org-desig" hx-push-url="true" href="?q={{ q|urlencode }}&mapped={{ mapped }}&all=1">Show all</a>{% endif %}
+</nav>

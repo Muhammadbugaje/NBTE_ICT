@@ -1,14 +1,49 @@
 {% load qa_tags %}
 {% if page.rows %}
-<div class="qa-table-wrap"><table class="qa-table">
-  <thead><tr><th scope="col">Person</th><th scope="col">Programme · case</th><th scope="col">Duty</th><th scope="col">Dates</th><th scope="col">Status</th></tr></thead>
+<div class="qa-table-wrap" role="region" aria-label="QA mappings table" tabindex="0"><table class="qa-table qa-table--scroll qa-mapping-table">
+  <thead><tr><th scope="col">Person</th><th scope="col">Programme · case</th><th scope="col">Duty</th><th scope="col">Dates</th><th scope="col">Status</th><th scope="col">Approval</th></tr></thead>
   <tbody>{% for m in page.rows %}<tr>
-    <td><strong>{{ m.person }}</strong><br><span class="qa-small qa-muted">{% if m.resource_person_id %}Resource person{% else %}QA personnel{% endif %}</span></td>
+    <td>
+      <span class="qa-map-person"><strong>{{ m.person }}</strong>
+        <span class="qa-small qa-muted">{% if m.resource_person_id %}Resource person{% else %}QA personnel{% endif %}</span></span>
+    </td>
     <td>{{ m.qa_request_programme.programme }}<br><a class="qa-small qa-mono" href="{% url 'qa_case:detail' m.case_id %}">{{ m.case.reference }}</a></td>
     <td>{{ m.get_duty_display }}</td>
     <td>{{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</td>
     <td><span class="qa-chip {{ m.status|tone }}">{{ m.get_status_display }}</span>{% if m.created_via %}<br><span class="qa-small qa-muted qa-mono">{{ m.created_via.reference }}</span>{% endif %}</td>
+    <td class="qa-map-approval">
+      <span class="qa-map-steps" aria-label="Approval state">
+        <span class="qa-map-step{% if m.director_approved_at %} is-done{% endif %}" title="{% if m.director_approved_by %}Director approved{% else %}Waiting for the Director{% endif %}">{% icon "check" 11 "3" %} Director</span>
+        <span class="qa-map-step{% if m.es_approved_at %} is-done{% endif %}" title="{% if m.es_approved_by %}ES approved{% else %}Waiting for the ES{% endif %}">{% icon "check" 11 "3" %} ES</span>
+      </span>
+      <span class="qa-small qa-muted">{{ m.approval_label }}</span>
+      {% if m.can_director_approve and not m.director_approved_at or m.can_es_approve and m.director_approved_at and not m.es_approved_at %}
+      <form class="qa-map-actions" method="post" action="{% url 'qa_insp:mapping_decide' m.pk %}" hx-post="{% url 'qa_insp:mapping_decide' m.pk %}" hx-target="body">
+        {% csrf_token %}
+        {% if m.can_director_approve and not m.director_approved_at %}
+          <input type="hidden" name="layer" value="director">
+          <button class="btn btn-xs btn-primary" type="submit" name="decision" value="approve">Approve</button>
+          <button class="btn btn-xs btn-ghost" type="submit" name="decision" value="reject">Send back</button>
+        {% elif m.can_es_approve and m.director_approved_at and not m.es_approved_at %}
+          <input type="hidden" name="layer" value="es">
+          <button class="btn btn-xs btn-primary" type="submit" name="decision" value="approve">ES approve</button>
+          <button class="btn btn-xs btn-ghost" type="submit" name="decision" value="reject">Send back</button>
+        {% endif %}
+      </form>
+      {% endif %}
+    </td>
   </tr>{% endfor %}</tbody>
 </table></div>
+<style>
+  .qa-mapping-table td { vertical-align: top; }
+  .qa-map-person strong { display: block; }
+  .qa-map-approval { min-width: 210px; }
+  .qa-map-steps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+  .qa-map-step { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 99px;
+    border: 1px solid var(--border); font-size: .72rem; color: var(--text-muted); background: var(--surface-2, #f7f8fa); }
+  .qa-map-step.is-done { color: #0f7d4f; border-color: color-mix(in srgb, #129c62 28%, var(--border));
+    background: color-mix(in srgb, #129c62 9%, var(--surface)); }
+  .qa-map-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+</style>
 {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
 {% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "link" 28 %}</span><h3 class="nbte-empty-state__title">No mappings</h3><p class="nbte-empty-state__body">Use the availability finder to map people to a case.</p></div>{% endif %}

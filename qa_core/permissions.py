@@ -41,7 +41,15 @@ def can_view_qa_settings(user):
 
 
 def can_view_pending(user):
-    return _is_staff(user) and (user.is_superuser or any(user.has_perm(p) for p in PENDING_VIEW_PERMS))
+    if not _is_staff(user):
+        return False
+    if user.is_superuser or any(user.has_perm(p) for p in PENDING_VIEW_PERMS):
+        return True
+    # X47: anyone who confirms or approves something (e.g. the TVET Support groups), and the ES.
+    import org
+    if org.is_es(user) or org.is_super_admin(user):
+        return True
+    return any(p.split(".", 1)[-1].startswith(("confirm_", "approve_")) for p in user.get_all_permissions())
 
 
 def can_see_qa_menu(user):
@@ -90,7 +98,8 @@ def can_view_institutions(user):
         return False
     if user.is_superuser or user.has_perm("qa_core.view_all_institutions") or user.department_id:
         return True
-    return False
+    from assignments import access
+    return access.full_viewer_everywhere(user)  # X2: ES / super admin without a department
 
 
 def can_view_finance(user):
@@ -100,9 +109,13 @@ def can_view_finance(user):
 
 
 def can_view_applications(user):
-    return _is_staff(user) and (user.is_superuser or user.has_perm("accreditation.view_onboarding_application")
-                                or user.has_perm("accreditation.decide_departmental_clearance")
-                                or user.has_perm("qa_core.view_all_institutions"))
+    if not _is_staff(user):
+        return False
+    import org
+
+    return (user.is_superuser or user.has_perm("accreditation.view_onboarding_application")
+            or user.has_perm("accreditation.decide_departmental_clearance")
+            or user.has_perm("qa_core.view_all_institutions") or org.is_director(user, "ict"))
 
 
 def can_see_qa_menu(user):  # noqa: F811 (Phase 2 widens the Phase 1 rule)

@@ -75,8 +75,19 @@ def notify_many(recipients, **kwargs):
     except Exception:
         logger.exception("Failed to bulk-create %d notifications", len(rows))
         return []
+    _forget_badges(seen)
     _push(created)
     return created
+
+
+def _forget_badges(user_ids):
+    """v2.1 L9: drop the 5-second unread-count cache of these people."""
+    try:
+        from messaging.live import forget_notification_unread
+
+        forget_notification_unread(*user_ids)
+    except Exception:  # pragma: no cover
+        pass
 
 
 def _push(notifications):
@@ -124,6 +135,7 @@ def bulk_apply(user, action, ids, actor=None):
     else:
         own.filter(is_read=True).update(is_read=False, read_at=None)
         verb = "marked as unread"
+    _forget_badges([user.pk])
     if done:
         audit.log("delete" if action == "delete" else "update", user, actor=actor or user,
                   note=f"notifications {verb}: {len(done)}", changes={"ids": done[:100]})
@@ -134,4 +146,6 @@ def mark_all_read(user):
     """Mark every unread notification of ``user`` read; returns how many."""
     from django.utils import timezone
 
-    return Notification.objects.filter(recipient=user, is_read=False).update(is_read=True, read_at=timezone.now())
+    count = Notification.objects.filter(recipient=user, is_read=False).update(is_read=True, read_at=timezone.now())
+    _forget_badges([user.pk])
+    return count

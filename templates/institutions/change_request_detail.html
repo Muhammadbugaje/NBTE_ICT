@@ -1,0 +1,71 @@
+{% extends "qa_core/_shell.html" %}
+{% block qa_title %}{{ change_request.reference }}{% endblock %}
+{% block qa_page_title %}Institution change request{% endblock %}
+{% block panel %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow"><a href="{% url 'qa_inst:change_requests' %}">Institution change requests</a> · {{ change_request.reference }}</span>
+    <h1 data-qa-focus>{{ change_request.institution.name }}</h1>
+    <p>{{ change_request.get_change_type_display }} · {{ change_request.get_status_display }}</p>
+    <div class="qa-hero__actions"><a class="btn btn-subtle" href="{% url 'qa_inst:detail' change_request.institution.code %}">Open institution record</a></div>
+  </div>
+</header>
+<div class="qa-grid">
+  <section class="qa-card">
+    <header class="qa-card__head"><div><h2>Request details</h2><p>Submitted by {{ change_request.requested_by.get_full_name|default:change_request.requested_by.email }} on {{ change_request.created_at|date:"j M Y, H:i" }}</p></div></header>
+    <dl class="qa-dl">
+      <div><dt>Reason</dt><dd>{{ change_request.reason|linebreaksbr }}</dd></div>
+      {% for key, value in change_request.payload.items %}<div><dt>{{ key|title }}</dt><dd>{{ value|default:"—" }}</dd></div>{% endfor %}
+      {% if change_request.assigned_to %}<div><dt>Assigned reviewer</dt><dd>{{ change_request.assigned_to.get_full_name|default:change_request.assigned_to.email }}</dd></div>{% endif %}
+      {% if change_request.review_note %}<div><dt>ICT review</dt><dd>{{ change_request.review_note|linebreaksbr }}</dd></div>{% endif %}
+      {% if change_request.decision_note %}<div><dt>Decision note</dt><dd>{{ change_request.decision_note|linebreaksbr }}</dd></div>{% endif %}
+    </dl>
+  </section>
+  {% if can_assign or can_decide or can_review_profile or can_final_profile_decide %}
+  <section class="qa-card">
+    <header class="qa-card__head"><div><h2>Review actions</h2><p>Only apply changes after checking the institution record and supporting details.</p></div></header>
+    {% if can_assign and change_request.status == "pending" or can_assign and change_request.status == "assigned" %}
+    <form method="post" class="qa-card__body qa-stack">
+      {% csrf_token %}<input type="hidden" name="action" value="assign">
+      <label for="change-assignee">Assign an ICT reviewer</label>
+      <select class="input" id="change-assignee" name="assignee" required>
+        <option value="">Choose staff member</option>
+        {% for user in reviewers %}<option value="{{ user.pk }}"{% if change_request.assigned_to_id == user.pk %} selected{% endif %}>{{ user.get_full_name|default:user.email }}</option>{% endfor %}
+      </select>
+      {% if reviewers %}<button class="btn btn-primary" type="submit">Assign reviewer</button>{% else %}<p class="qa-small qa-tone-warn">No active ICT reviewers are available.</p>{% endif %}
+    </form>
+    {% endif %}
+    {% if can_review_profile %}
+    <form method="post" class="qa-card__body qa-stack">
+      {% csrf_token %}
+      <label for="profile-review-note">Review summary</label>
+      <textarea class="input" id="profile-review-note" name="note" rows="3" maxlength="2000" required minlength="5"></textarea>
+      <button class="btn btn-primary" name="action" value="review" type="submit">Recommend for senior approval</button>
+    </form>
+    {% endif %}
+    {% if can_final_profile_decide %}
+    <form method="post" class="qa-card__body qa-stack" data-qa-confirm="This will apply the approved profile changes immediately.">
+      {% csrf_token %}
+      <label for="change-note">Decision note <span class="qa-muted">(required when not approving)</span></label>
+      <textarea class="input" id="change-note" name="note" rows="3" maxlength="2000"></textarea>
+      <div class="btn-group">
+        <button class="btn btn-primary" name="action" value="approve" type="submit">Approve and apply</button>
+        <button class="btn btn-subtle" name="action" value="reject" type="submit">Do not approve</button>
+      </div>
+    </form>
+    {% endif %}
+    {% if can_decide %}
+    <form method="post" class="qa-card__body qa-stack" data-qa-confirm="This will apply the requested change immediately.">
+      {% csrf_token %}
+      <label for="change-note">Decision note <span class="qa-muted">(required when not approving)</span></label>
+      <textarea class="input" id="change-note" name="note" rows="3" maxlength="2000"></textarea>
+      <div class="btn-group">
+        <button class="btn btn-primary" name="action" value="approve" type="submit">Approve and apply</button>
+        <button class="btn btn-subtle" name="action" value="reject" type="submit">Do not approve</button>
+      </div>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

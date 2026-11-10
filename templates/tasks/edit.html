@@ -1,19 +1,17 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load tasks_tags %}
 {% block title %}Edit {{ task.reference }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Edit task{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=4">{% endblock %}
-{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=4" defer></script>{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}" defer></script>{% endblock %}
 
 {% block content %}
-<div class="tsk-page">
-  <header class="tsk-page-head">
+<div class="tsk-page wk-page wk-page--narrow" data-qa-area="tasks">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tasks">
     <div>
-      <a href="{% url 'tasks:detail' task.pk %}" class="tsk-btn tsk-btn-ghost mb-3">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        Back to {{ task.reference }}
-      </a>
+      <a class="nbte-hero__back" href="{% url 'tasks:detail' task.pk %}">{% icon "back" 14 "2.4" %} Back to {{ task.reference }}</a>
+      <span class="qa-eyebrow">{% icon "edit" 14 "2.2" %} Tasks · Edit <span class="wk-ref">{{ task.reference }}</span></span>
       <h1>Edit task</h1>
       <p>Update the content, schedule, and reviewer. Assignees are managed below.</p>
     </div>
@@ -73,10 +71,10 @@
         {{ form.requires_review }}
         <span>Requires review before closing.</span>
       </label>
-      <label class="tsk-field mt-4">
+      <div class="tsk-field mt-4">
         <span class="tsk-field-label">Reviewer</span>
-        {{ form.reviewer }}
-      </label>
+        {% include "tasks/_assignee_picker.html" with picker_name="reviewer" picker_single=True picker_mode="reviewer" picker_initial_ids=task.reviewer_id|default_if_none:"" picker_initial_name=reviewer_name picker_placeholder="Review it yourself" %}
+      </div>
     </div>
 
     <div class="tsk-form-section">

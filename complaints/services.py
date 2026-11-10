@@ -105,10 +105,13 @@ def _user_type(user):
 
 
 def sees_everything(user):
-    """NBTE-wide complaint oversight: the ES and the ICT QA monitor (they hold
-    the oversight board). Seeing every institution (Finance does, for bills)
-    is not enough: a complaint is shown to the people it is routed to."""
-    return bool(user.is_superuser or user.has_perm("qa_core.view_oversight_board"))
+    """NBTE-wide complaint oversight (v2.1 X9): the ES, super admin and the
+    Director of ICT (``assignments.access.full_viewer_everywhere``). Holding
+    the oversight board or seeing every institution is not enough: a complaint
+    is shown to the people it is routed to."""
+    from assignments import access
+    return bool(user is not None and getattr(user, "is_authenticated", False)
+                and (user.is_superuser or access.full_viewer_everywhere(user)))
 
 
 def is_handler(user):
@@ -117,8 +120,34 @@ def is_handler(user):
                  or user.has_perm("complaints.view_complaint_reports") or sees_everything(user)))
 
 
+def watch_overseeing_director():
+    return _bool("qa.complaints.watch_overseeing_director", True)
+
+
+def watch_ict_supervisor():
+    return _bool("qa.complaints.watch_ict_supervisor", True)
+
+
+def _directed_department(user):
+    import org
+    return org.directed_department(user)
+
+
+def _delegated_lead(user):
+    """A staff member the director delegated ``assignments.view_department_qa`` to (X4)."""
+    return bool(user.department_id and user.has_perm("assignments.view_department_qa"))
+
+
 def visible_to(user):
-    """Every complaint ``user`` may open (a queryset; never raises)."""
+    """Every complaint ``user`` may open (a queryset; never raises).
+
+    v2.1 X9 (Master Plan §13.21 "Permissions and visibility"): the raiser /
+    institution; the director of the handling department (and a person he
+    delegated department view to); the assigned officer; people an escalation
+    made watchers; the director of the department overseeing the institution
+    and the institution's ICT supervisor (read-only watchers, each behind a
+    setting); the ES, super admin and Director of ICT. Other staff of the
+    handling department do not see it until it is assigned to them."""
     if user is None or not user.is_authenticated or not user.is_active:
         return Complaint.unscoped.none()
     kind = _user_type(user)
@@ -128,17 +157,27 @@ def visible_to(user):
         return Complaint.unscoped.filter(raised_by=user)
     if sees_everything(user):
         return Complaint.unscoped.all()
-    involved = Q(raised_by=user) | Q(watchers=user) | Q(stages__assigned_to=user) | Q(referred_user=user)
-    if user.department_id and (user.has_perm(HANDLE_PERM) or user.has_perm(QUEUE_PERM)):
-        involved |= (Q(current_department_id=user.department_id) | Q(stages__assigned_department_id=user.department_id)
-                     | Q(referred_department_id=user.department_id))
+    from assignments import access
+    involved = (Q(raised_by=user) | Q(assigned_officer=user) | Q(current_assignee=user) | Q(watchers=user)
+                | Q(referred_user=user))
+    directed = _directed_department(user)
+    if directed is not None:
+        involved |= Q(current_department=directed) | Q(referred_department=directed)
+        if watch_overseeing_director():
+            involved |= Q(institution__handling_department=directed)
+    if _delegated_lead(user):
+        involved |= Q(current_department_id=user.department_id)
+    if watch_ict_supervisor():
+        sup = access.supervised_institution_ids(user)
+        if sup:
+            involved |= Q(institution_id__in=list(sup))
     ids = Complaint.unscoped.filter(involved).values("pk")
     return Complaint.unscoped.filter(pk__in=ids)
 
 
 def get_visible(user, pk):
     return visible_to(user).select_related("layer", "institution", "raised_by", "current_department",
-                                           "current_assignee").filter(pk=pk).first()
+                                           "current_assignee", "assigned_officer").filter(pk=pk).first()
 
 
 def can_view(user, complaint):
@@ -146,7 +185,8 @@ def can_view(user, complaint):
 
 
 def can_handle_view(user, complaint):
-    """Staff who may read internal notes on this complaint."""
+    """Staff who may read internal notes on this complaint (watchers included:
+    they may add internal notes, D-27)."""
     return _user_type(user) == "staff" and can_view(user, complaint) and (
         user.is_superuser or user.has_perm("complaints.view_internal_messages") or user.has_perm(HANDLE_PERM)
         or sees_everything(user))
@@ -163,28 +203,129 @@ def is_raiser(user, complaint):
             and complaint.raiser_type == "institution")
 
 
+# ---------------------------------------------------------------------------
+# v2.1 X10/X11: the director / officer split
+# ---------------------------------------------------------------------------
+def is_directed(complaint):
+    """True when the complaint runs on a flow with the director / officer split
+    (flow ``complaint`` v2 or a layer flow built the same way)."""
+    from . import flow_v2
+
+    cached = getattr(complaint, "_qa_directed", None)
+    if cached is not None:
+        return cached
+    inst = flow.instance_for(complaint)
+    value = bool(inst is not None and flow_v2.is_directed(inst.flow_version))
+    try:
+        complaint._qa_directed = value
+    except Exception:
+        pass
+    return value
+
+
+def handling_department(complaint):
+    """The department whose director acts now (the referred one while referred)."""
+    if complaint.status == "referred" and complaint.referred_department_id:
+        return complaint.referred_department
+    return complaint.current_department
+
+
+def can_direct(user, complaint):
+    """The handling department's director, a staff member he delegated
+    assignment to (X31), the ES or super admin (``assignments.work.can_assign``)."""
+    if user is None or not getattr(user, "is_authenticated", False) or _user_type(user) != "staff":
+        return False
+    from assignments import work
+    if work.is_top(user):
+        return True
+    dept = handling_department(complaint)
+    return dept is not None and work.can_assign(user, dept)
+
+
+def is_assigned_officer(user, complaint):
+    return bool(user is not None and getattr(user, "pk", None) and complaint.assigned_officer_id == user.pk)
+
+
+def is_watcher_only(user, complaint):
+    """Can read the complaint but has no step on it (overseeing director, ICT
+    supervisor, an escalation watcher of a v2 complaint)."""
+    return (_user_type(user) == "staff" and complaint.is_open and can_view(user, complaint)
+            and not can_act(user, complaint)[0])
+
+
+def watch_reason(user, complaint):
+    """For the read-only banner: why ``user`` sees this complaint."""
+    from assignments import access
+
+    inst = complaint.institution
+    if inst is not None and watch_ict_supervisor() and access.is_ict_supervisor(user, inst):
+        return "You can see this because you supervise this institution."
+    directed = _directed_department(user)
+    if (inst is not None and directed is not None and watch_overseeing_director()
+            and inst.handling_department_id == directed.pk):
+        return "You can see this because your department oversees this institution."
+    return ""
+
+
 def can_act(user, complaint):
     """(ok, reason) for the handler actions of the current stage."""
     if user is None or not user.is_authenticated or _user_type(user) != "staff":
         return False, "Only NBTE staff handle complaints."
     if not complaint.is_open:
         return False, "This complaint is closed."
-    if user.is_superuser:
+    if is_directed(complaint):
+        if can_direct(user, complaint) or is_assigned_officer(user, complaint):
+            return True, ""
+        if can_view(user, complaint):
+            return False, "You can read this complaint but not act on it."
+        return False, "This complaint is handled by another department."
+    # Flow v1 (complaints opened before v2.1): the stage resolver, the referred
+    # person, an escalation watcher, the handling director, the ES.
+    if user.is_superuser or can_direct(user, complaint):
         return True, ""
     if not user.has_perm(HANDLE_PERM):
         return False, "You do not hold complaints.handle_complaint."
     stage = complaint.open_stage()
     if stage is None:
         return False, "No stage is open."
-    if stage.assigned_to_id == user.pk:
-        return True, ""
-    if stage.assigned_department_id and stage.assigned_department_id == user.department_id:
+    if stage.assigned_to_id == user.pk or complaint.current_assignee_id == user.pk:
         return True, ""
     if complaint.referred_user_id == user.pk:
         return True, ""
     if complaint.watchers.filter(pk=user.pk).exists():
         return True, ""  # an escalation target may act; escalation never reassigns
     return False, "This complaint is handled by another department."
+
+
+def action_allowed(user, complaint, action_code):
+    """Per-step rule of flow v2 (Master Plan §13.21 guards): director steps need
+    the director seat (or a delegate / the ES / super admin); officer steps
+    need the assigned officer."""
+    from . import flow_v2
+
+    if not is_directed(complaint):
+        return True
+    if action_code in flow_v2.DIRECTOR_ACTIONS:
+        return can_direct(user, complaint)
+    if action_code in flow_v2.OFFICER_ACTIONS:
+        return is_assigned_officer(user, complaint)
+    return can_direct(user, complaint) or is_assigned_officer(user, complaint)
+
+
+def assignable_officers(user, complaint):
+    """Staff ``user`` may assign this complaint to (the server re-checks)."""
+    from accounts.models import User
+    from assignments import work
+
+    if not can_direct(user, complaint):
+        return []
+    dept = handling_department(complaint)
+    qs = User.objects.filter(is_active=True, user_type="staff").order_by("first_name", "last_name", "pk")
+    if dept is not None:
+        qs = qs.filter(Q(department=dept) | Q(staff_profile__department=dept)).distinct()
+    elif not work.is_top(user):
+        return []
+    return list(qs[:300])
 
 
 # ===========================================================================
@@ -296,6 +437,16 @@ def raise_complaint(user, *, layer, subject, body, priority="", related=None, an
     flow.start(complaint.flow_code, complaint, actor=user)
     complaint.refresh_from_db()
     _notify([user], "complaint.received", _ctx(complaint), url=portal_path(complaint))
+    if is_directed(complaint):
+        # X9: the handling director only (never the whole department); the
+        # read-only watchers get a summary.
+        _notify([_director_of_complaint(complaint)], "complaint.routed", _ctx(complaint),
+                url=internal_path(complaint))
+        dept_name = getattr(complaint.current_department, "name", "") or "NBTE"
+        _notify(watchers_of(complaint), "complaint.watch", dict(_ctx(complaint), department=dept_name),
+                url=internal_path(complaint))
+        _audit("complaint_routed", complaint, user,
+               {"department": getattr(complaint.current_department, "code", None)})
     return complaint
 
 
@@ -359,7 +510,8 @@ def _staff(department=None, roles=None, perm=None):
     if department is not None:
         qs = qs.filter(department=department)
     if roles:
-        qs = qs.filter(role__code__in=roles)
+        import org
+        qs = qs.filter(org.role_q(*roles))
     users = list(qs[:300])
     if perm:
         users = [u for u in users if u.has_perm(perm)]
@@ -370,7 +522,8 @@ def department_handlers(department):
     """Who works a department queue: handlers first, then the heads."""
     users = [u for u in _staff(department, perm=HANDLE_PERM) if not u.is_superuser]
     if not users:
-        users = _staff(department, roles=["division-head", "deputy-director", "director", "qa-finance-director"])
+        import org
+        users = org.heads_of(department) if department is not None else []
     return users
 
 
@@ -405,7 +558,55 @@ def _target(rule, complaint):
         if case is None:
             return None, []
         return case.desk_officer.department or getattr(inst, "handling_department", None), [case.desk_officer]
+    if kind == "institution_ict_supervisor":  # v2.1 X9
+        users = ict_supervisors(inst)
+        return (users[0].department, users[:1]) if users else (None, [])
     return None, []
+
+
+def ict_supervisors(inst):
+    """Staff holding an open ICT oversight assignment on the institution (X2)."""
+    if inst is None:
+        return []
+    from assignments.models import WorkAssignment
+
+    rows = (WorkAssignment.objects.filter(institution=inst, kind__in=WorkAssignment.FULL_JOURNEY_KINDS,
+                                          status__in=WorkAssignment.WORKING, assignee__is_active=True)
+            .select_related("assignee", "assignee__department").order_by("assigned_at", "pk"))
+    seen, out = set(), []
+    for wa in rows:
+        if wa.assignee_id not in seen:
+            seen.add(wa.assignee_id)
+            out.append(wa.assignee)
+    return out
+
+
+def overseeing_director(complaint):
+    """The director of the department overseeing the institution (its handling department)."""
+    import org
+
+    inst = complaint.institution
+    dept = getattr(inst, "handling_department", None)
+    return org.director_of(dept) if dept is not None else None
+
+
+def watchers_of(complaint):
+    """The read-only watchers by privacy (X9), per the settings; never the handlers."""
+    out = []
+    if watch_overseeing_director():
+        out.append(overseeing_director(complaint))
+    if watch_ict_supervisor():
+        out += ict_supervisors(complaint.institution)
+    handling = handling_department(complaint)
+    import org
+    director = org.director_of(handling) if handling is not None else None
+    seen, clean = set(), []
+    for u in out:
+        if u is None or u.pk in seen or (director is not None and u.pk == director.pk):
+            continue
+        seen.add(u.pk)
+        clean.append(u)
+    return clean
 
 
 def rules_for(complaint, stage_code):
@@ -417,8 +618,44 @@ def rules_for(complaint, stage_code):
                 .order_by("order", "id"))
 
 
+def _stage_is_directed(complaint, stage):
+    from . import flow_v2
+
+    flow_version = getattr(stage, "flow", None)
+    if flow_version is not None:
+        return flow_v2.is_directed(flow_version)
+    return is_directed(complaint)
+
+
 def route(complaint, stage):
-    """The first rule whose condition holds wins; else the fallback queue."""
+    """Who handles ``stage``. Flow v2 (X9/X10): the category picks the
+    department on entry (a matching rule, else the layer's handling
+    department, else the fallback); the department's director holds every
+    director stage and the assigned officer holds the work stage."""
+    base = _route_by_rules(complaint, stage)
+    if not _stage_is_directed(complaint, stage):
+        return base
+    import org
+    from . import flow_v2
+
+    code = getattr(stage, "code", stage)
+    dept = base.department
+    if code == "referred" and complaint.referred_department_id:
+        dept = complaint.referred_department
+    elif code != "received" and complaint.current_department_id:
+        dept = complaint.current_department  # sticky after the first routing (and after a referral)
+    if code in flow_v2.OFFICER_STAGES:
+        officer = complaint.assigned_officer if complaint.assigned_officer_id else None
+        users = [officer] if officer is not None and officer.is_active else []
+        return Route(dept, users, rule=base.rule if code == "received" else None, why="The assigned officer")
+    director = org.director_of(dept) if dept is not None else None
+    return Route(dept, [director] if director is not None else [], rule=base.rule if code == "received" else None,
+                 why=(base.why if code == "received" else "The handling department's director"))
+
+
+def _route_by_rules(complaint, stage):
+    """The first rule whose condition holds wins; else the layer's handling
+    department (X9); else the fallback queue."""
     from qa_core.formula import FormulaError, evaluate_value
 
     code = getattr(stage, "code", stage)
@@ -441,6 +678,11 @@ def route(complaint, stage):
         if dept is None and not users:
             continue
         return Route(dept, users, rule=rule, why=f"Rule #{rule.order}: {rule.note or rule}")
+    layer = complaint.layer
+    handling = layer.handling_department or (layer.parent.handling_department if layer.parent_id else None)
+    if handling is not None:
+        return Route(handling, _least_loaded(department_handlers(handling)),
+                     why=f"The category's handling department ({handling.name})")
     fallback = qa_department(str(config.get("qa.complaints.fallback_department", "ict") or "ict"))
     return Route(fallback, _least_loaded(department_handlers(fallback)) if fallback else [],
                  why="No rule matched: the general triage queue")
@@ -451,7 +693,8 @@ def _resolver(complaint, stage, prefer_user):
     if routes is None:
         routes = complaint._qa_routes = {}
     r = route(complaint, stage)
-    if prefer_user is not None and prefer_user.is_active and _user_type(prefer_user) == "staff":
+    if (prefer_user is not None and prefer_user.is_active and _user_type(prefer_user) == "staff"
+            and not _stage_is_directed(complaint, stage)):
         r = Route(prefer_user.department or r.department, [prefer_user], r.rule, "Back to the officer who sent it on")
     routes[stage.code] = r
     return r.users, r.department, f"{complaint.reference} · {complaint.subject[:70]}"
@@ -576,7 +819,7 @@ def handler_actions(user, complaint):
     if inst is None or inst.completed_at is not None or not can_act(user, complaint)[0]:
         return []
     return [t for t in flow.available(inst, user)
-            if t.action_code not in RAISER_ACTIONS + SYSTEM_ACTIONS]
+            if t.action_code not in RAISER_ACTIONS + SYSTEM_ACTIONS and action_allowed(user, complaint, t.action_code)]
 
 
 def raiser_actions(user, complaint):
@@ -602,13 +845,119 @@ def within_reopen_window(complaint, now=None):
 
 MESSAGE_VISIBILITY = {"request_info": "public", "resolve": "public", "close": "public", "refer": "internal",
                       "refer_back": "internal", "acknowledge": "public", "withdraw": "public",
-                      "reopen": "public", "confirm": "public"}
+                      "reopen": "public", "confirm": "public", "assign": "internal",
+                      "submit_for_review": "internal", "return_to_officer": "internal"}
+
+
+def _audit(step, complaint, actor, changes=None, note=""):
+    """One audit row per complaint step (``core.audit``; the action column is
+    short, so the step goes in ``changes["step"]``)."""
+    from core import audit
+
+    try:
+        audit.log("state_change", complaint, actor=actor if getattr(actor, "pk", None) else None,
+                  changes={"step": step, **(changes or {})}, note=(note or "")[:250])
+    except Exception:  # the audit trail never blocks the complaint
+        logger.exception("complaint audit %s failed", action)
+
+
+def _complaint_work(complaint, assignee=None):
+    from assignments.models import WorkAssignment
+
+    qs = WorkAssignment.objects.for_subject(complaint).filter(kind="complaint_task", status__in=WorkAssignment.OPEN)
+    if assignee is not None:
+        qs = qs.filter(assignee=assignee)
+    return qs
+
+
+def _open_officer_work(complaint, officer, actor):
+    """X10: the officer's complaint_task WorkAssignment, taken on now, with its
+    time-boxed grants (``assignments.work``; revoked when the complaint is resolved)."""
+    from assignments import work
+
+    if complaint.institution_id is None or officer is None:
+        return None
+    for old in _complaint_work(complaint).exclude(assignee=officer):
+        work.cancel(old, actor, "reassigned")
+    stage = complaint.open_stage()
+    wa = work.assign(complaint.institution, "complaint_task", officer, subject=complaint,
+                     department=handling_department(complaint) or officer.department, assigned_by=actor,
+                     due_at=getattr(stage, "due_at", None), role_on_work="analyst")
+    work.accept(wa, actor if actor is not None and work.can_assign(actor, wa.department) else officer)
+    work.start(wa, actor)
+    return wa
+
+
+def _close_officer_work(complaint, actor, reason="completed"):
+    from assignments import work
+
+    for wa in _complaint_work(complaint):
+        if reason == "completed":
+            work.complete(wa, actor)
+        else:
+            work.cancel(wa, actor, reason)
+
+
+def _director_of_complaint(complaint):
+    import org
+
+    dept = handling_department(complaint)
+    return org.director_of(dept) if dept is not None else None
 
 
 @transaction.atomic
-def act(complaint, action_code, actor, *, remark="", refer_department=None, refer_user=None, system=False):
+def assign_officer(complaint, actor, officer, *, remark=""):
+    """X10: the handling director (a delegate, the ES or super admin) gives the
+    complaint to one of his own staff. The department rule is enforced here
+    (``assignments.work.check_assignee``), so a forged POST naming someone of
+    another department is refused."""
+    from assignments import work
+
+    complaint = Complaint.unscoped.select_for_update().get(pk=complaint.pk)
+    if not complaint.is_open:
+        raise ValidationError("This complaint is closed.")
+    if not is_directed(complaint):
+        raise ValidationError("This complaint runs on the earlier workflow: it is not assigned by the director.")
+    if not can_direct(actor, complaint):
+        raise PermissionDenied("Only the director of the handling department (or a delegate) can assign it.")
+    if officer is None or _user_type(officer) != "staff":
+        raise ValidationError("Choose an NBTE staff member.")
+    dept = handling_department(complaint)
+    if dept is None:
+        raise ValidationError("This complaint has no handling department yet.")
+    work.check_assignee(actor, dept, officer)
+    inst = flow.instance_for(complaint)
+    if inst is None or not flow.can(inst, "assign"):
+        raise ValidationError("The complaint cannot be assigned at this stage.")
+    previous = complaint.assigned_officer
+    Complaint.unscoped.filter(pk=complaint.pk).update(
+        assigned_officer=officer, current_department=dept, referred_department=None, referred_user=None)
+    flow.transition(inst, "assign", actor, remark=(remark or "").strip())
+    complaint.refresh_from_db()
+    _open_officer_work(complaint, officer, actor)
+    _audit("complaint_assigned", complaint, actor,
+           {"assigned_officer": {"old": getattr(previous, "email", None), "new": officer.email},
+            "department": dept.code})
+    who = officer.get_full_name() or officer.email
+    ComplaintMessage.objects.create(complaint=complaint, author=actor, visibility=ComplaintMessage.INTERNAL,
+                                    body=f"Assigned to {who}." + (f" {remark.strip()}" if remark else ""))
+    _notify([officer], "complaint.assigned", _ctx(complaint), url=internal_path(complaint))
+    return complaint
+
+
+@transaction.atomic
+def act(complaint, action_code, actor, *, remark="", refer_department=None, refer_user=None, system=False,
+        officer=None):
     """Take ``action_code`` on the complaint's flow, with the checks this
-    module owns (who may act, the reopen window, referral targets)."""
+    module owns (who may act, the reopen window, referral targets). In flow
+    v2 the director steps need the director seat and the officer steps the
+    assigned officer (``action_allowed``); ``assign`` needs ``officer``."""
+    if action_code == "assign":
+        if system:
+            raise PermissionDenied("The system does not assign complaints.")
+        if officer is None:
+            raise ValidationError({"officer": "Choose the officer to assign."})
+        return assign_officer(complaint, actor, officer, remark=remark)
     complaint = Complaint.unscoped.select_for_update().get(pk=complaint.pk)
     remark = (remark or "").strip()
     if action_code in SYSTEM_ACTIONS and not system:
@@ -620,9 +969,25 @@ def act(complaint, action_code, actor, *, remark="", refer_department=None, refe
         ok, why = can_act(actor, complaint)
         if not ok:
             raise PermissionDenied(why)
+        if not action_allowed(actor, complaint, action_code):
+            from . import flow_v2
+            if action_code in flow_v2.OFFICER_ACTIONS:
+                raise PermissionDenied("Only the officer the complaint is assigned to can do this.")
+            raise PermissionDenied("Only the director of the handling department can do this.")
+    directed = is_directed(complaint)
+    if directed and action_code == "return_to_officer" and len(remark) < 3:
+        raise ValidationError({"remark": "Say what the officer needs to change."})
+    if directed and action_code == "submit_for_review" and len(remark) < 3:
+        raise ValidationError({"remark": "Give your proposed resolution."})
     if action_code == "reopen" and not within_reopen_window(complaint):
         raise ValidationError(f"A resolved complaint can be reopened within {reopen_window_days()} days "
                               f"of its resolution.")
+    if action_code == "refer" and directed:
+        if refer_department is None:
+            raise ValidationError("Choose the department to refer the complaint to.")
+        if refer_department.pk == complaint.current_department_id:
+            raise ValidationError("The complaint is already with this department.")
+        refer_user = None  # that department's director assigns again
     if action_code == "refer":
         if refer_department is None and refer_user is None:
             raise ValidationError("Choose the department or person to refer the complaint to.")
@@ -649,6 +1014,8 @@ def act(complaint, action_code, actor, *, remark="", refer_department=None, refe
         updates["closed_at"] = now
     if action_code == "refer_back":
         updates.update(referred_department=None, referred_user=None)
+    if directed and action_code == "submit_for_review":
+        updates["submitted_for_review_at"] = now
     if updates:
         Complaint.unscoped.filter(pk=complaint.pk).update(**updates)
         complaint.refresh_from_db()
@@ -656,10 +1023,56 @@ def act(complaint, action_code, actor, *, remark="", refer_department=None, refe
         visibility = MESSAGE_VISIBILITY.get(action_code, "internal" if _user_type(actor) == "staff" else "public")
         ComplaintMessage.objects.create(complaint=complaint, author=None if system else actor, body=remark,
                                         visibility=visibility, is_system=system)
+    if directed:
+        _after_directed_step(complaint, action_code, actor, remark, system=system)
     if action_code in ("resolve",) or stage_now in RESOLVED_CODES:
         _notify([complaint.raised_by], "complaint.resolved", dict(_ctx(complaint), resolution=remark),
                 url=portal_path(complaint))
     return complaint
+
+
+def _after_directed_step(complaint, action_code, actor, remark, *, system=False):
+    """Flow v2 side effects: the officer's work and grants, notifications, audit."""
+    from assignments import work
+
+    officer = complaint.assigned_officer
+    by = None if system else actor
+    ctx = dict(_ctx(complaint), remark=remark)
+    if action_code == "submit_for_review":
+        for wa in _complaint_work(complaint, officer):
+            work.submit(wa, actor)
+        _notify([_director_of_complaint(complaint)], "complaint.review_ready",
+                dict(ctx, who=actor.get_full_name() or actor.email, summary=remark), url=internal_path(complaint))
+    elif action_code == "return_to_officer":
+        for wa in _complaint_work(complaint, officer):
+            work.return_to_assignee(wa, actor, remark)
+        Complaint.unscoped.filter(pk=complaint.pk).update(submitted_for_review_at=None)
+        _notify([officer], "complaint.returned", ctx, url=internal_path(complaint))
+    elif action_code == "resolve":
+        _close_officer_work(complaint, by)  # grants end with the work (X5)
+        _notify([officer] + watchers_of(complaint), "complaint.closed_out", dict(ctx, status="resolved"),
+                url=internal_path(complaint))
+    elif action_code == "refer":
+        _close_officer_work(complaint, by, "reassigned")
+        Complaint.unscoped.filter(pk=complaint.pk).update(assigned_officer=None, submitted_for_review_at=None)
+        _notify([_director_of_complaint(complaint)], "complaint.routed", _ctx(complaint),
+                url=internal_path(complaint))
+    elif action_code == "reopen":
+        # Back to the same officer, with the work (and its grants) open again.
+        if officer is not None and officer.is_active:
+            try:
+                _open_officer_work(complaint, officer, None)
+            except (PermissionDenied, ValidationError):
+                logger.warning("could not reopen the officer's work on %s", complaint.reference, exc_info=True)
+        Complaint.unscoped.filter(pk=complaint.pk).update(submitted_for_review_at=None)
+        _notify([_director_of_complaint(complaint), officer], "complaint.closed_out", dict(ctx, status="reopened"),
+                url=internal_path(complaint))
+    elif action_code in ("close", "withdraw", "confirm", "auto_close"):
+        complaint.refresh_from_db()
+        if complaint.closed_at is not None:
+            _close_officer_work(complaint, by)
+    _audit(f"complaint_{action_code}", complaint, by,
+           {"status": complaint.status, "assigned_officer": getattr(officer, "email", None)}, note=remark)
 
 
 @transaction.atomic
@@ -703,6 +1116,15 @@ def reply(complaint, user, body, files=()):
 
 
 def _handlers_of(complaint):
+    if is_directed(complaint):
+        users = [complaint.assigned_officer, _director_of_complaint(complaint)]
+        users += [u for u in complaint.watchers.all()]
+        seen, out = set(), []
+        for u in users:
+            if u is not None and u.pk not in seen:
+                seen.add(u.pk)
+                out.append(u)
+        return out
     users = []
     stage = complaint.open_stage()
     if stage is not None and stage.assigned_to_id:
@@ -729,7 +1151,9 @@ def escalation_targets(rule, complaint, stage):
     dept = stage.assigned_department or complaint.current_department
     kind = rule.target_kind
     if kind == "department_director":
-        return _heads(dept, ["director"])[:1] or _heads(dept, ["qa-finance-director"])[:1]
+        import org
+        director = org.director_of(dept) if dept is not None else None
+        return [director] if director is not None else []
     if kind == "deputy_director":
         return _heads(dept, ["deputy-director"])[:1] or _heads(dept, ["division-head"])[:1]
     if kind == "division_head":
@@ -902,16 +1326,14 @@ def sla_sweep(now=None):
                     if spent * 2 >= total:
                         cs.reminded_at = now
                         cs.save(update_fields=["reminded_at"])
-                        holders = [cs.assigned_to] if cs.assigned_to_id else department_handlers(
-                            cs.assigned_department)[:3]
+                        holders = _stage_holders(complaint, cs)
                         _notify(holders, "complaint.reminder", dict(_ctx(complaint), due=_fmt(cs.due_at),
                                                                     stage=cs.stage_label), url=internal_path(complaint))
                         report["reminded"] += 1
                 if cs.breached_at is None and now >= cs.due_at:
                     cs.breached_at = now
                     cs.save(update_fields=["breached_at"])
-                    holders = [cs.assigned_to] if cs.assigned_to_id else department_handlers(
-                        cs.assigned_department)[:3]
+                    holders = _stage_holders(complaint, cs)
                     _notify(holders, "complaint.breached", dict(_ctx(complaint), due=_fmt(cs.due_at),
                                                                 stage=cs.stage_label), url=internal_path(complaint))
                     timeline.record(complaint.institution, "complaint.breached", subject=complaint,
@@ -936,6 +1358,17 @@ def sla_sweep(now=None):
             logger.exception("complaint SLA sweep failed for %s", complaint.reference)
     report["auto_closed"] = auto_close(now)
     return report
+
+
+def _stage_holders(complaint, cs):
+    """Who a reminder / breach goes to: the stage holder; with nobody on the
+    stage, the department queue (v1) or the handling director (v2, never the
+    whole department)."""
+    if cs.assigned_to_id:
+        return [cs.assigned_to]
+    if is_directed(complaint):
+        return [_director_of_complaint(complaint)]
+    return department_handlers(cs.assigned_department)[:3]
 
 
 def auto_close(now=None):
@@ -1133,9 +1566,17 @@ def detail_rights(user, complaint):
     """What ``user`` may do on one complaint page (Phase 9: shared with the API)."""
     internal = can_handle_view(user, complaint)
     ok, why = can_act(user, complaint)
+    actions = handler_actions(user, complaint)
     return {
         "internal": internal, "can_write": internal, "can_act": ok, "act_why": why,
-        "actions": handler_actions(user, complaint),
+        "actions": actions,
+        # v2.1 X9–X11
+        "read_only": bool(complaint.is_open and not ok and _user_type(user) == "staff"),
+        "watch_reason": watch_reason(user, complaint) if not ok else "",
+        "is_director": can_direct(user, complaint) if is_directed(complaint) else False,
+        "is_officer": is_assigned_officer(user, complaint),
+        "officers": assignable_officers(user, complaint) if any(t.action_code == "assign" for t in actions)
+        else [],
         "can_escalate": complaint.is_open and (user.is_superuser or user.has_perm("complaints.escalate_complaint")),
         "can_hold": complaint.is_open and hold_allowed(complaint) and (
             user.is_superuser or user.has_perm("qa_core.place_suspension")),
@@ -1149,3 +1590,10 @@ def messages_for(user, complaint, *, internal=None):
     if not internal:
         qs = qs.filter(visibility=ComplaintMessage.PUBLIC)
     return qs
+
+
+def record_satisfaction(complaint, user, rating):
+    """The raiser's 1–5 rating on confirming a resolution (portal and app)."""
+    if not 1 <= int(rating) <= 5:
+        return
+    type(complaint).unscoped.filter(pk=complaint.pk).update(satisfaction=int(rating))

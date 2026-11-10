@@ -37,7 +37,7 @@ from .models import (
     PendingAction,
     ReferenceFormat,
 )
-from .permissions import can_view_pending, can_view_qa_settings, require
+from .permissions import can_view_pending, can_view_qa_settings, is_qa_staff, require
 from .settings_catalogue import GROUP_ORDER
 from .ui import paginate, render_qa, toast
 
@@ -45,6 +45,7 @@ TABS = [
     ("rules", "Rules & thresholds", "qa:settings_rules"),
     ("formulas", "Formulas", "qa:settings_formulas"),
     ("references", "Reference formats", "qa:settings_references"),
+    ("type_fees", "Fees by institution category", "qa_set:type_fees"),  # v2.2
     ("fees", "Fees & bank accounts", "qa_set:fees"),
     ("methods", "Payment methods", "qa_set:methods"),
     ("rates", "Rate table", "qa_set:rates"),
@@ -57,6 +58,8 @@ TABS = [
     ("complaints", "Complaints", "qa_set:complaints"),  # Phase 7
     ("workflows", "Workflows", "qa:settings_workflows"),
     ("templates", "Notification templates", "qa:settings_templates"),
+    ("access_grants", "Access grants log", "assignments:grants"),  # v2.1 Phase P (P.5)
+    ("access_who", "Who can see", "assignments:who_index"),  # v2.1 Phase P (P.5)
 ]
 
 # Phase 8 UI: the settings navigation is grouped (macOS System Settings
@@ -65,6 +68,7 @@ TAB_META = {
     "rules": ("General", "slate", "Thresholds, switches and limits"),
     "formulas": ("General", "slate", "How fees and scores are worked out"),
     "references": ("General", "slate", "How reference numbers are built"),
+    "type_fees": ("Money", "green", "Registration, processing and programme fees per category"),
     "fees": ("Money", "green", "Fee schedule and NBTE bank accounts"),
     "methods": ("Money", "green", "How institutions can pay"),
     "rates": ("Money", "green", "Cost sheet amounts"),
@@ -77,6 +81,8 @@ TAB_META = {
     "complaints": ("Cases & messages", "orange", "Layers, routing and escalation"),
     "workflows": ("Cases & messages", "orange", "Stages each process moves through"),
     "templates": ("Cases & messages", "orange", "Words sent in-app and by e-mail"),
+    "access_grants": ("Privacy & access", "red", "Temporary access that comes with work"),
+    "access_who": ("Privacy & access", "red", "Who can see an institution, and why"),
 }
 
 
@@ -103,6 +109,33 @@ def _settings_context(request, tab, **extra):
     }
     ctx.update(extra)
     return ctx
+
+
+# ===========================================================================
+# v2.1 N1: the QA home by role and office (qa_core.home builds the widgets)
+# ===========================================================================
+@require(is_qa_staff)
+@require_GET
+def qa_home(request):
+    from . import home
+
+    from . import spotlight
+
+    from assignments import inbox
+
+    from core import fastcache
+
+    user = request.user
+    imp = int(bool(getattr(request, "is_impersonating", False)))
+    # Per-user key; any write in the QA data apps bumps the epoch, so figures refresh at once (20 s safety TTL).
+    data = fastcache.cached(fastcache.HOME, f"home{imp}", lambda: home.build(user, request), ttl=20, user=user)
+    ctx = {"home": data, "now": timezone.now(), "spotlight": spotlight.new_institutions(request.user),
+           "tracked": spotlight.tracked(request.user)}
+    ctx.update(inbox.context(request.user))   # v2.3: "Your work"
+    from . import home_charts
+
+    ctx["charts"] = fastcache.cached(fastcache.HOME, "charts", lambda: home_charts.build(user), ttl=60, user=user)   # v2.3: charts by permission
+    return render_qa(request, "qa_core/home.html", ctx)
 
 
 # ===========================================================================
@@ -152,6 +185,11 @@ def _decorate(entries, user):
         e.can_edit, e.cannot_edit_reason = settings_service.can_edit(user, e)
         e.control = settings_service.control_label(e)
         e.display = settings_service.display_value(e.value_type, e.value)
+        if e.key == "qa.cqac.recommendation_mode":
+            e.display = {
+                "shared": "Shared recommendation",
+                "individual": "Individual votes · majority (ties return)",
+            }.get(e.value, "Shared recommendation")
         e.pending_reference = pending.get(str(e.pk), "")
     return entries
 
@@ -698,7 +736,11 @@ def _detail_context(request, pa, **extra):
            "confirm_options": data["confirm_options"],
            "stale": data["stale"], "can_withdraw": pa.is_open and pa.initiated_by_id == request.user.pk,
            "history": AuditLogEntry.objects.filter(model_label="qa_core.PendingAction", object_pk=str(pa.pk))
-           .order_by("timestamp")[:30]}
+           .order_by("timestamp")[:30],
+           "trail": actions.trail(pa), "layers": actions.layers_for(pa.policy),
+           "record_history": list(actions.visible_to(request.user).filter(
+               content_type_id=pa.content_type_id, object_id=pa.object_id).exclude(pk=pa.pk)
+               .order_by("-initiated_at")[:10]) if pa.content_type_id else []}
     ctx.update(extra)
     return ctx
 
@@ -811,3 +853,52 @@ def outbox(request):
            "categories": sorted(set(OutboundEmail.objects.values_list("category", flat=True)))}
     return render_qa(request, "qa_core/outbox.html", ctx, {"qa-panel": "qa_core/_outbox_panel.html",
                                                            "qa-rows": "qa_core/_outbox_rows.html"})
+
+
+
+# ===========================================================================
+# v2.2 — staff guides, read online
+# ===========================================================================
+@require(is_qa_staff)
+@require_GET
+def staff_guides(request, slug=None):
+    from django.http import Http404
+
+    from .guide_render import render as render_guide
+    from .staff_guides_content import (STAFF_AUDIENCES, STAFF_GUIDES, STAFF_META, STAFF_ORDER,
+                                       STAFF_START_HERE)
+
+    def words(value):
+        if isinstance(value, str):
+            return len(value.split())
+        if isinstance(value, dict):
+            return sum(words(v) for v in value.values())
+        if isinstance(value, (list, tuple)):
+            return sum(words(v) for v in value)
+        return 0
+
+    items = []
+    for k in STAFF_ORDER:
+        g = STAFF_GUIDES[k]
+        meta = STAFF_META.get(k, {})
+        items.append({"slug": k, **g, "icon": meta.get("icon", "help"), "tone": meta.get("tone", "green"),
+                      "tags": meta.get("tags", []), "kicker": meta.get("kicker", "Guide"),
+                      "minutes": max(2, round(words(g) / 180)),
+                      "parts": sum(1 for b in g.get("blocks", []) if b and b[0] == "part")})
+    by_slug = {i["slug"]: i for i in items}
+    audiences = [{"code": c, "label": lbl, "count": sum(1 for i in items if c in i["tags"])}
+                 for c, lbl in STAFF_AUDIENCES]
+    if slug is None:
+        return render(request, "qa_core/guides/index.html", {
+            "items": items, "audiences": [a for a in audiences if a["count"]],
+            "start_here": [by_slug[s] for s in STAFF_START_HERE if s in by_slug],
+            "start_minutes": sum(by_slug[s]["minutes"] for s in STAFF_START_HERE if s in by_slug),
+            "total_minutes": sum(i["minutes"] for i in items)})
+    if slug not in STAFF_GUIDES:
+        raise Http404
+    toc, body = render_guide(STAFF_GUIDES[slug])
+    pos = STAFF_ORDER.index(slug)
+    return render(request, "qa_core/guides/read.html", {
+        "g": by_slug[slug], "slug": slug, "toc": toc, "body": body, "items": items,
+        "prev_guide": items[pos - 1] if pos > 0 else None,
+        "next_guide": items[pos + 1] if pos + 1 < len(items) else None})

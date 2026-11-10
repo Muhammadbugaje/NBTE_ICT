@@ -172,6 +172,15 @@ class AddTvetHandler(ActionHandler):
         if state is None:
             raise ValidationError("Choose a state.")
         services.validate_lga(state, payload.get("lga", ""))
+        # v2.1 R.7 (X46)
+        status = payload.get("status_at_add") or "proposed"
+        if status not in ("proposed", "existing", "approved"):
+            raise ValidationError("Choose the status at registration.")
+        if status == "approved" and not payload.get("approval_letter_path"):
+            raise ValidationError("Upload the approval letter of an approved institution.")
+        own = InstitutionOwnership.objects.filter(pk=payload.get("ownership_id")).first()
+        if own is not None and not own.is_public and not (payload.get("cac_rc_number") or "").strip():
+            raise ValidationError("Enter the RC / CAC number of the private institution.")
 
     def preview(self, target, payload):
         p = payload
@@ -191,8 +200,15 @@ class AddTvetHandler(ActionHandler):
             DiffRow("Head of institution", "", p.get("head_name", "")),
             DiffRow("Portal administrator", "", f"{p.get('admin_first_name', '')} {p.get('admin_last_name', '')} "
                                                 f"<{p.get('admin_email', '')}> (inactive until credentials are sent)"),
-            DiffRow("Status", "", "Proposed"),
-            DiffRow("Handled by", "", _name(dept)),
+            DiffRow("Postal address", "", p.get("postal_address", "")),
+            DiffRow("Chief executive", "", " · ".join(x for x in (p.get("head_name"), p.get("ce_email"),
+                                                                 p.get("ce_phone")) if x)),
+            DiffRow("Head of ICT", "", " · ".join(x for x in (p.get("ict_name"), p.get("ict_email"),
+                                                             p.get("ict_phone")) if x)),
+            DiffRow("Status", "", {"existing": "Approved (existing institution)",
+                                   "approved": "Approved (letter attached)"}.get(p.get("status_at_add"), "Proposed")),
+            DiffRow("Handled by", "", _name(dept) if p.get("status_at_add", "proposed") == "proposed"
+                    else "Its category's department"),
         ]
 
     def apply(self, target, payload, actor):
@@ -207,14 +223,56 @@ class AddTvetHandler(ActionHandler):
             "website": p.get("website", ""),
             "contacts": {"official_email": {"value": p.get("official_email", "")},
                          "phone": {"value": p.get("phone", "")},
-                         "head_of_institution": {"name": p.get("head_name", ""), "value": ""}},
+                         "head_of_institution": {"name": p.get("head_name", ""), "value": p.get("ce_email", "")},
+                         "head_of_ict": {"name": p.get("ict_name", ""), "value": p.get("ict_email", "")}},
             "address": {"line1": p.get("address_line1", ""), "town": p.get("address_town", ""),
                         "lga": p.get("lga", ""), "state": _state(p["state_id"])},
             "admin": {"first_name": p.get("admin_first_name", ""), "last_name": p.get("admin_last_name", ""),
                       "email": p.get("admin_email", ""), "phone": p.get("admin_phone", ""),
                       "job_title": p.get("admin_job_title", ""), "department": p.get("admin_department", "")},
         }
-        services.create_institution(data, actor=actor, origin="nbte", activate_admin=False)
+        inst = services.create_institution(data, actor=actor, origin="nbte", activate_admin=False)
+        _after_add_tvet(inst, p, actor)
+
+
+def _after_add_tvet(inst, p, actor):
+    """v2.1 R.7 (X46): extra contacts, postal address, status at registration
+    and the approval letter."""
+    from django.utils import timezone
+
+    from qa_core import timeline
+
+    from .models import DocumentKind, InstitutionAddress, InstitutionContact, InstitutionDocument
+
+    for label, phone in (("Chief executive", p.get("ce_phone")), ("Head of ICT", p.get("ict_phone"))):
+        if phone:
+            InstitutionContact.unscoped.create(institution=inst, kind="phone", value=phone.strip(), name=label,
+                                               is_primary=False)
+    if p.get("postal_address"):
+        InstitutionAddress.unscoped.create(institution=inst, kind="postal", line1=p["postal_address"].strip(),
+                                           state=inst.state, lga=inst.lga)
+    status = p.get("status_at_add") or "proposed"
+    if status in ("existing", "approved"):
+        inst.status = Institution.APPROVED
+        inst.approved_at = timezone.now()
+        inst.origin = "legacy" if status == "existing" else inst.origin
+        dept = inst.derive_handling_department(status=Institution.APPROVED)
+        if dept is not None:
+            inst.handling_department = dept
+        inst.save(update_fields=["status", "approved_at", "origin", "handling_department", "updated_at"])
+        timeline.record(inst, "institution.registered_approved", actor=actor, visibility="internal",
+                        internal_text=f"Registered as {'an existing' if status == 'existing' else 'an approved'} "
+                                      "institution through Add TVET.")
+    if p.get("approval_letter_path"):
+        kind, _ = DocumentKind.objects.get_or_create(code="approval_letter",
+                                                     defaults={"name": "NBTE approval letter",
+                                                               "accepted_extensions": ["pdf"]})
+        doc = InstitutionDocument(institution=inst, kind=kind, status=InstitutionDocument.ACCEPTED,
+                                  uploaded_by=actor, accepted_by=actor, accepted_at=timezone.now(),
+                                  original_name=p.get("approval_letter_name", ""),
+                                  sha256=p.get("approval_letter_sha256", ""))
+        doc.file.name = p["approval_letter_path"]
+        doc.save()
 
 
 @register
@@ -224,13 +282,32 @@ class ApproveInstitutionHandler(InstitutionHandler):
     icon = "check"
     allowed_statuses = (Institution.PROPOSED, Institution.UNDER_REVIEW)
     summary = "Approve a proposed institution; it moves to its category's department."
+    document_event = "institution.approved"  # v2.1 X24: provisional approval letter signed by the confirmer
 
     def validate(self, target, payload):
         self.check_status(target)
+        # Same rule as the onboarding "Approve institution" button: every
+        # programme self-study must be cleared. Institutions with no onboarding
+        # application (legacy / imported / Add TVET) stay approvable.
+        from accreditation.onboarding_linear import approval_blocker
+
+        blocker = approval_blocker(target)
+        if blocker:
+            raise ValidationError(f"Cannot approve yet — {blocker}")
         if not target.category_id or not (target.category.routing_department_id
                                           or (target.institution_type_id
                                               and target.institution_type.default_department_id)):
             raise ValidationError("Set a category that maps to a department before approving.")
+
+    def available_for(self, institution):
+        """Grey the Action-menu entry out with the reason while self-studies are not cleared."""
+        ok, reason = super().available_for(institution)
+        if not ok:
+            return ok, reason
+        from accreditation.onboarding_linear import approval_blocker
+
+        blocker = approval_blocker(institution)
+        return (False, blocker) if blocker else (True, "")
 
     def preview(self, target, payload):
         new_dept = target.derive_handling_department(status=Institution.APPROVED)
@@ -248,6 +325,15 @@ class ApproveInstitutionHandler(InstitutionHandler):
                         public_text=f"{target.name} was approved by NBTE.",
                         internal_text=f"Handling department: {_name(old)} → {_name(new_dept)}.")
         services.notify_institution(target, "institution.approved", {"department": _name(new_dept)})
+        from documents.issue import approval_recorded  # v2.1 X24/X25: provisional letter with signature + QR
+
+        approval_recorded(self.document_event, target, actor=actor, institution=target,
+                          context={"department": _name(new_dept)})
+        # Linear onboarding: the formal QA request for the cleared programmes
+        # starts at once, carrying their self-studies over (never blocks the approval).
+        from accreditation.onboarding_linear import on_institution_approved
+
+        on_institution_approved(target, actor)
 
 
 # ===========================================================================
@@ -287,6 +373,69 @@ class DropProgrammesHandler(InstitutionHandler):
         # QA task links arrive with the Phase 4 task bridge; nothing to cancel yet.
         timeline.record(target, "programmes.dropped", actor=actor, visibility="public",
                         public_text=f"Programmes dropped: {', '.join(names)}.")
+
+
+@register
+class UpdateProgrammeHandler(InstitutionHandler):
+    """v2.1 R.7 (X48): edit one programme (name, level, category, body)."""
+    code = "institutions.update_programme"
+    form_class = forms.UpdateProgrammeForm
+    icon = "edit"
+    summary = "Correct a programme's name, level, category or professional body."
+
+    def _programme(self, target, payload):
+        return (Programme.unscoped.filter(institution=target, pk=payload.get("programme_id"))
+                .select_related("level", "category", "professional_body").first())
+
+    def validate(self, target, payload):
+        from .models import ProfessionalBody, ProgrammeCategory, ProgrammeLevel
+
+        p = self._programme(target, payload)
+        if p is None or p.status == "dropped":
+            raise ValidationError("Choose a programme of this institution that is not dropped.")
+        level = ProgrammeLevel.objects.filter(pk=payload.get("level_id")).first()
+        if level is None or len(payload.get("name") or "") < 2:
+            raise ValidationError("Enter the programme name and level.")
+        if Programme.unscoped.filter(institution=target, name__iexact=payload["name"], level=level).exclude(
+                pk=p.pk).exists():
+            raise ValidationError("The institution already has this programme at this level.")
+        body = ProfessionalBody.objects.filter(pk=payload.get("professional_body_id")).first()
+        cat = ProgrammeCategory.objects.filter(pk=payload.get("category_id")).first()
+        if body is not None:
+            from .programme_master import body_covers, scope_error
+
+            if not body_covers(body, category=cat, level=level):
+                raise ValidationError(scope_error(body, payload["name"], category=cat, level=level))
+        changes = [r for r in self.preview(target, payload) if r.before != r.after]
+        if not changes:
+            raise ValidationError("Nothing changed.")
+
+    def preview(self, target, payload):
+        from .models import ProfessionalBody, ProgrammeCategory, ProgrammeLevel
+
+        p = self._programme(target, payload)
+        if p is None:
+            return []
+        level = ProgrammeLevel.objects.filter(pk=payload.get("level_id")).first()
+        cat = ProgrammeCategory.objects.filter(pk=payload.get("category_id")).first()
+        body = ProfessionalBody.objects.filter(pk=payload.get("professional_body_id")).first()
+        return [DiffRow("Name", p.name, payload.get("name", "")),
+                DiffRow("Level", _name(p.level), _name(level)),
+                DiffRow("Category", _name(p.category), _name(cat)),
+                DiffRow("Professional body", _name(p.professional_body), _name(body))]
+
+    def apply(self, target, payload, actor):
+        p = self._programme(target, payload)
+        before = str(p)
+        p.name = payload["name"]
+        p.level_id = payload["level_id"]
+        p.category_id = payload.get("category_id")
+        if p.professional_body_id != payload.get("professional_body_id"):
+            p.professional_body_id = payload.get("professional_body_id")
+            p.body_source = "nbte" if p.professional_body_id else ""
+        p.save()
+        timeline.record(target, "programme.updated", subject=p, actor=actor, visibility="public",
+                        public_text=f"Programme corrected: {before} → {p}.")
 
 
 @register

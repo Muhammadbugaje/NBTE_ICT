@@ -23,8 +23,8 @@
         {% else %}
           <div class="att-day
             {% if not cell.is_working %}is-off{% endif %}
-            {% if cell.record %}{% if cell.record.status == 'present' %}is-present{% elif cell.record.status == 'late' %}is-late{% elif cell.record.status == 'absent' %}is-absent{% elif cell.record.status == 'excused' %}is-excused{% elif cell.record.status == 'holiday' %}is-holiday{% elif cell.record.status == 'on_leave' %}is-on_leave{% endif %}{% endif %}"
-            title="{{ cell.date|date:'M j, Y' }}{% if cell.record %} · {{ cell.record.get_status_display }}{% endif %}">
+            {% if cell.record %}{% if cell.record.status == 'present' %}is-present{% elif cell.record.status == 'late' %}is-late{% elif cell.record.status == 'absent' %}is-absent{% elif cell.record.status == 'excused' %}is-excused{% elif cell.record.status == 'holiday' %}is-holiday{% elif cell.record.status == 'on_leave' %}is-on_leave{% elif cell.record.status == 'on_duty' %}is-on_duty{% endif %}{% if cell.record.missing_checkout %} is-missing-out{% endif %}{% endif %}"
+            title="{{ cell.date|date:'M j, Y' }}{% if cell.record %} · {{ cell.record.status_label }}{% if cell.record.check_out_at %} · out {{ cell.record.check_out_at|time:'H:i' }}{% elif cell.record.missing_checkout %} · no check-out{% endif %}{% endif %}">
             <span class="att-day-num">{{ cell.date.day }}</span>
             {% if cell.record %}
               <span class="att-day-dot"></span>
@@ -41,5 +41,7 @@
     <span class="att-legend-item"><span class="att-legend-dot is-absent"></span>Absent</span>
     <span class="att-legend-item"><span class="att-legend-dot is-excused"></span>Excused</span>
     <span class="att-legend-item"><span class="att-legend-dot is-on_leave"></span>On approved leave</span>
+    <span class="att-legend-item"><span class="att-legend-dot is-holiday"></span>Holiday</span>
+    <span class="att-legend-item"><span class="att-legend-dot is-on_duty"></span>On official duty</span>
   </div>
 </div>

@@ -113,6 +113,13 @@ def ensure_accounts(*, reset_passwords=False, force_change=True, tag=True, email
             if designation is not None and profile is not None and profile.designation_id is None:
                 profile.designation = designation
                 profile.save(update_fields=["designation"])
+        # v2.1 X23: approvals that generate a document need a signature on file
+        # (rank >= qa.signatures.required_min_rank). The real demo seed grants
+        # one (documents/seed_sets.py demo_signatures); the test cast must match.
+        if user.user_type == "staff":
+            from documents.testing import give_if_required
+
+            give_if_required(User.objects.get(pk=user.pk))
         people[key] = User.objects.get(pk=user.pk)
         creds.append((key, email, password, role_code, getattr(user.department, "name", "") or
                       (inst.name if inst and role_code.startswith("inst-") else "")))
@@ -200,6 +207,28 @@ def demo_pins(people):
             "role:division-head": people.get("division_head"), "role:deputy-director": people.get("deputy_director")}
 
 
+def _chief_executive(inst, *, tag=True):
+    """The institution's Chief Executive account (a demo one is created when
+    missing, e.g. ce.kdp@p4demo.local)."""
+    from accounts.models import Role, User
+    from institutions.models import InstitutionUser
+    from institutions.services import chief_executives
+
+    found = chief_executives(inst)
+    if found:
+        return found[0]
+    user = User(email=f"ce.{inst.code.lower()}@p4demo.local", first_name="Chief", last_name=f"Executive ({inst.code})",
+                user_type="institution", institution=inst, role=Role.objects.get(code="inst-chief-executive"),
+                is_active=True, must_change_password=False)
+    user.set_password(secrets.token_urlsafe(12))
+    user.save()
+    InstitutionUser.unscoped.get_or_create(user=user, defaults={"institution": inst, "institution_role": user.role,
+                                                                 "job_title": "Chief Executive"})
+    if tag:
+        DemoTag.tag(user)
+    return user
+
+
 @transaction.atomic
 def create_case(people, inst=None):
     """QA request → fee waived → SSQs submitted → QA case (started)."""
@@ -224,14 +253,15 @@ def create_case(people, inst=None):
 
     programmes = list(Programme.unscoped.filter(institution=inst, status="accredited"))
     req = svc.create_request(inst, qa_type, programmes, user=admin)
-    svc.submit(req, user=admin, declaration=True)
+    ce = _chief_executive(inst, tag=True)  # X12: only the Chief Executive submits
+    svc.submit(req, user=ce, declaration=True)
     req.refresh_from_db()
     _waive(req, people)
     req.refresh_from_db()
     with cs.pinned_actors(demo_pins(people)):
         for ssq in svc.request_ssqs(req):
             _complete_ssq(ssq, admin)
-            svc.submit_ssq(ssq, user=admin, declaration=True)
+            svc.submit_ssq(ssq, user=ce, declaration=True)
     req.refresh_from_db()
     case = QACase.unscoped.get(qa_request=req)
     DemoTag.tag(req)
@@ -313,6 +343,7 @@ def advance(case, people, target):
         elif code == "post_visit_recommendation":
             from inspection import demo as inspection_demo
 
+            run_demo_capacity(case, people.desk_officer)
             inspection_demo.recommend_all(case)
             holder = (cs.holders(case, code) or [None])[0]
             cs.act(case, user=holder, stage_code=code, action="approve", remark="Demo")
@@ -323,8 +354,6 @@ def advance(case, people, target):
             holder = (cs.holders(case, code) or [None])[0]
             if holder is None:
                 raise RuntimeError(f"Nobody holds {code}")
-            if code == "cqac_recommendation":
-                run_demo_capacity(case, people.director)
             record_demo_decisions(case, code, holder)
             cs.act(case, user=holder, stage_code=code, action="approve", remark="Demo")
         else:
@@ -361,14 +390,14 @@ def record_demo_decisions(case, stage_code, user, *, commencement=None):
 
 
 def run_demo_capacity(case, user):
-    """Phase 8: run every capacity assessment once from the SSQ prefill, so the
-    CQAC sees results (a kind whose prefill is incomplete is skipped)."""
+    """Prepare capacity as the desk officer and confirm it as Stage 13's Director."""
     from django.core.exceptions import ValidationError
 
     from . import capacity
     from . import decisions as dec
 
-    for row in dec.rows(case):
+    rows = dec.rows(case)
+    for row in rows:
         current = capacity.current(row)
         for kind, inputs in capacity.prefill(row).items():
             if current[kind] is not None:
@@ -377,3 +406,9 @@ def run_demo_capacity(case, user):
                 capacity.run(row, kind, inputs, user=user)
             except ValidationError:
                 continue
+    reviewer = next(iter(cs.holders(case, "post_visit_recommendation")), None)
+    if reviewer is None:
+        raise RuntimeError("Nobody holds post_visit_recommendation to confirm demo capacity.")
+    for row in rows:
+        if not capacity.missing_assessments([row]):
+            capacity.confirm_review(case, row, user=reviewer)

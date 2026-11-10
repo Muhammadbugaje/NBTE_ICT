@@ -111,6 +111,14 @@ class TicketCategory(TimeStampedModel):
         ),
     )
 
+    # v2.1 Phase C (I2): tickets of this category go to a division of the
+    # handling department; the division head accepts before members see it.
+    handling_division = models.ForeignKey(
+        "org.Division", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="handled_ticket_categories",
+        help_text="Optional: route new tickets of this category to this division (head accepts).",
+    )
+
     # Optional hero icon name (used by the templates).
     icon = models.CharField(
         max_length=40, blank=True,
@@ -170,13 +178,15 @@ class Ticket(TimeStampedModel):
     CANCELLED = "cancelled"
 
     AWAITING_DIRECTOR = "awaiting_director"
-    
+    AWAITING_FUNDS = "awaiting_funds"   # v2.1 I8: a funds request is with Finance / ES
+
     STATE_CHOICES = [
         (NEW, "New"),
         (ASSIGNED, "Assigned"),
         (IN_PROGRESS, "In progress"),
         (AWAITING_RESPONSE, "Awaiting response"),
         (AWAITING_DIRECTOR, "Awaiting director sign-off"),
+        (AWAITING_FUNDS, "Awaiting funds approval"),
         (ESCALATED, "Escalated"),
         (RESOLVED, "Resolved"),
         (CLOSED, "Closed"),
@@ -186,7 +196,7 @@ class Ticket(TimeStampedModel):
 
     OPEN_STATES = {
         NEW, ASSIGNED, IN_PROGRESS, AWAITING_RESPONSE,
-        AWAITING_DIRECTOR, ESCALATED, REOPENED,
+        AWAITING_DIRECTOR, AWAITING_FUNDS, ESCALATED, REOPENED,
     }
     CLOSED_STATES = {RESOLVED, CLOSED, CANCELLED}
 
@@ -322,6 +332,48 @@ class Ticket(TimeStampedModel):
     # --- Email bookkeeping ---
     resolution_email_sent_at = models.DateTimeField(null=True, blank=True)
 
+    # --- v2.1 Phase C (I2, I3): division routing --------------------------
+    DIV_PENDING = "pending"
+    DIV_ACCEPTED = "accepted"
+    DIVISION_STATE_CHOICES = [("", "Not routed"), (DIV_PENDING, "Awaiting the head"),
+                              (DIV_ACCEPTED, "Accepted by the division")]
+    division = models.ForeignKey(
+        "org.Division", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="tickets", help_text="Division handling the ticket (routed by the director).",
+    )
+    division_state = models.CharField(max_length=12, choices=DIVISION_STATE_CHOICES, blank=True, default="",
+                                      db_index=True)
+    division_routed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    division_routed_at = models.DateTimeField(null=True, blank=True)
+    division_accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    division_accepted_at = models.DateTimeField(null=True, blank=True)
+
+    # --- v2.1 Phase C (I8-I10): ticket <-> workflow request ----------------
+    FUNDS_REQUESTED = "requested"
+    FUNDS_APPROVED = "approved"
+    FUNDS_REJECTED = "rejected"
+    FUNDS_STATE_CHOICES = [("", "None"), (FUNDS_REQUESTED, "Requested"), (FUNDS_APPROVED, "Approved"),
+                           (FUNDS_REJECTED, "Rejected")]
+    funds_request = models.ForeignKey(
+        "workflow.Request", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="funded_tickets", help_text="The latest funds request raised from this ticket.",
+    )
+    funds_state = models.CharField(max_length=12, choices=FUNDS_STATE_CHOICES, blank=True, default="")
+    funds_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True,
+                                       help_text="Amount asked for (approved amount once approved).")
+    funds_decision_note = models.TextField(blank=True)
+    source_request = models.ForeignKey(
+        "workflow.Request", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="converted_tickets", help_text="The request this ticket was converted from (I9).",
+    )
+
+    # --- v2.1 Phase C (I4): rating reminders --------------------------------
+    rated_at = models.DateTimeField(null=True, blank=True)
+    rating_reminders_sent = models.PositiveSmallIntegerField(default=0)
+    last_rating_reminder_at = models.DateTimeField(null=True, blank=True)
+
 
     class Meta:
         ordering = ["-created_at"]
@@ -330,6 +382,7 @@ class Ticket(TimeStampedModel):
             models.Index(fields=["assigned_to", "state"]),
             models.Index(fields=["handling_department", "state"]),
             models.Index(fields=["raised_by", "-created_at"]),
+            models.Index(fields=["division", "division_state"]),
         ]
 
     def __str__(self):
@@ -343,6 +396,15 @@ class Ticket(TimeStampedModel):
     @property
     def is_closed(self):
         return self.state in self.CLOSED_STATES
+
+    @property
+    def needs_rating(self):
+        """Resolved or closed by the system, and not rated yet (I4)."""
+        return self.state in (self.RESOLVED, self.CLOSED) and not self.satisfaction_rating
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("tickets:detail", args=[self.pk])
 
     @property
     def has_first_response(self):

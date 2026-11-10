@@ -155,16 +155,30 @@ def _is_staff_on_ticket(ticket, user):
         return True
     if ticket.raised_by_id == user.pk:
         return True
-    if (
-        user.department_id
-        and user.department_id == ticket.handling_department_id
-        and user.role_id
-        and user.role.code in ("director", "deputy-director",
-                                "office-head-admin", "office-head-ts",
-                                "office-head-dev")
-    ):
+    import org
+    if user.department_id and user.department_id == ticket.handling_department_id \
+            and org.is_department_lead(user, ticket.handling_department_id):
         return True
     return False
+
+
+def _department_leads(department_id, role_codes):
+    """Phase B: leads of a department for notifications. "director" means the
+    department's director seat (org.director_of); other codes are roles."""
+    import org
+    from accounts.models import User
+    out = []
+    if not department_id:
+        return out
+    if "director" in role_codes:
+        director = org.director_of(department_id)
+        if director is not None:
+            out.append(director)
+    others = [c for c in role_codes if c != "director"]
+    if others:
+        out += [u for u in User.objects.filter(org.role_q(*others), is_active=True, department_id=department_id)
+                .order_by("pk") if u not in out]
+    return out
 
 
 def _is_department_head(user, department_id):
@@ -173,12 +187,8 @@ def _is_department_head(user, department_id):
         return True
     if not user.department_id or user.department_id != department_id:
         return False
-    if not user.role_id:
-        return False
-    return user.role.code in (
-        "director", "deputy-director",
-        "office-head-admin", "office-head-ts", "office-head-dev",
-    )
+    import org
+    return org.is_department_lead(user, department_id)
 
 
 def _can_assign(ticket, user):
@@ -196,7 +206,14 @@ def _can_assign(ticket, user):
             return True
         # Reassignment follows the category toggle
         return bool(getattr(ticket.category, "allow_raiser_reassign", True))
+    if is_division_head_of(user, ticket) and ticket.division_state == Ticket.DIV_ACCEPTED:
+        return True  # v2.1 H23: the head hands accepted division tickets to members
     return _is_department_head(user, ticket.handling_department_id)
+
+
+def is_division_head_of(user, ticket):
+    div = ticket.division if ticket.division_id else None
+    return bool(div is not None and div.is_active and div.head_id and div.head_id == getattr(user, "pk", None))
 
 
 def _can_resolve(ticket, user):
@@ -327,8 +344,16 @@ def create_ticket(*, raised_by, category, subject, body,
                 "Auto-assignment failed for ticket %s", ticket.reference,
             )
 
+    # v2.1 I2: category routes to a division (head accepts).
+    if category.handling_division_id:
+        from .routing import auto_route
+        auto_route(ticket)
+
     # Notify the handling department's team about the new ticket.
     _notify_new_ticket(ticket)
+    import org
+    _email_event(ticket, "created", _department_leads(ticket.handling_department_id, org.DEPARTMENT_LEAD_ROLES),
+                 raised_by)
 
     return ticket
 
@@ -365,6 +390,8 @@ def _apply_assignment(ticket, *, actor, assignee, reason="", log_as_system=False
     )
     if actor is not None and actor.pk != assignee.pk:
         _notify_assignee(ticket, assignee, actor)
+    _after_change(ticket, actor)
+    _email_event(ticket, "assigned", [assignee], actor)
     return ticket
 
 
@@ -375,6 +402,14 @@ def assign_ticket(ticket, user, assignee, reason=""):
         raise PermissionDenied("You cannot assign this ticket.")
     if ticket.is_closed:
         raise ValidationError("Closed tickets cannot be reassigned.")
+    if assignee is not None and getattr(assignee, "user_type", "staff") != "staff":  # Phase 0 (H22)
+        raise ValidationError("Tickets can only be assigned to NBTE staff.")
+    if (assignee is not None and ticket.division_id and ticket.division_state == Ticket.DIV_ACCEPTED
+            and is_division_head_of(user, ticket) and not _is_department_head(user, ticket.handling_department_id)):
+        import org
+        div = org.division_of(assignee)
+        if assignee.pk != user.pk and (div is None or div.pk != ticket.division_id):
+            raise ValidationError("A division head can only assign the ticket to members of the division.")
 
     return _apply_assignment(
         ticket, actor=user, assignee=assignee, reason=reason,
@@ -405,6 +440,7 @@ def start_work(ticket, user, note=""):
         message=note or "Work started.",
     )
     _notify_raiser(ticket, user, f"{user.get_full_name() or user.email} has started work on your ticket.")
+    _after_change(ticket, user)
     return ticket
 
 
@@ -495,6 +531,7 @@ def resolve_ticket(ticket, user, resolution_notes="",
         )
         _finalise_resolution(ticket, user)
 
+    _after_change(ticket, user)
     return ticket
 
 
@@ -535,7 +572,7 @@ def _finalise_resolution(ticket, actor):
     sent = False
     try:
         from .emails import send_ticket_resolution_email
-        sent = send_ticket_resolution_email(ticket)
+        sent = send_ticket_resolution_email(ticket)  # honours tickets.email.enabled / .resolved
     except Exception:
         logger.exception("Resolution email failed for %s", ticket.reference)
 
@@ -550,7 +587,9 @@ def _finalise_resolution(ticket, actor):
     _notify_raiser(
         ticket, actor,
         f"{ticket.reference} has been resolved. "
-        f"{'Check your email for details.' if sent else 'Open the ticket for details.'}",
+        f"{'Check your email for details. ' if sent else ''}Please rate the service: open the ticket "
+        "and choose 1 to 5 stars.",
+        url=f"/tickets/{ticket.pk}/#rate",
     )
 
 @transaction.atomic
@@ -571,6 +610,7 @@ def close_ticket(ticket, user, *, rating=None, comment=""):
             r = int(rating)
             if 1 <= r <= 5:
                 ticket.satisfaction_rating = r
+                ticket.rated_at = now
         except (TypeError, ValueError):
             pass
     if comment:
@@ -578,7 +618,7 @@ def close_ticket(ticket, user, *, rating=None, comment=""):
 
     ticket.save(update_fields=[
         "state", "closed_at", "satisfaction_rating",
-        "satisfaction_comment", "updated_at",
+        "satisfaction_comment", "rated_at", "updated_at",
     ])
 
     log_activity(
@@ -590,6 +630,7 @@ def close_ticket(ticket, user, *, rating=None, comment=""):
         },
     )
     _notify_staff_on_change(ticket, user, "Ticket closed", "closed")
+    _after_change(ticket, user)
     return ticket
 
 
@@ -641,6 +682,7 @@ def reopen_ticket(ticket, user, reason=""):
         _notify_assignee(ticket, ticket.assigned_to, user)
     else:
         _notify_new_ticket(ticket)
+    _after_change(ticket, user)
     return ticket
 
 
@@ -664,6 +706,7 @@ def cancel_ticket(ticket, user, reason=""):
     )
     if ticket.assigned_to_id:
         _notify_staff_on_change(ticket, user, "Ticket cancelled", "cancelled")
+    _after_change(ticket, user)
     return ticket
 
 
@@ -693,9 +736,20 @@ def escalate_ticket(ticket, *, reason="", level=None, actor=None):
 # ===========================================================================
 # Comments
 # ===========================================================================
+CLOSED_TICKET_MESSAGE = "This ticket is closed. Reopen it to add comments or files."
+
+
+def _refuse_if_closed(ticket):
+    """Phase 0 (I12, T-SEC-5): a closed ticket (resolved, closed or
+    cancelled) takes no new comments, notes or attachments from anyone."""
+    if ticket.is_closed:
+        raise ValidationError(CLOSED_TICKET_MESSAGE)
+
+
 @transaction.atomic
 def add_public_comment(ticket, user, body):
     """Visible to raiser + handling staff."""
+    _refuse_if_closed(ticket)
     if not _can_comment(ticket, user, internal=False):
         raise PermissionDenied("You cannot comment on this ticket.")
     body = (body or "").strip()
@@ -735,6 +789,7 @@ def add_public_comment(ticket, user, body):
 @transaction.atomic
 def add_internal_comment(ticket, user, body):
     """Staff-only note. Raiser never sees it."""
+    _refuse_if_closed(ticket)
     if not _can_comment(ticket, user, internal=True):
         raise PermissionDenied("Only staff can add internal notes.")
     body = (body or "").strip()
@@ -759,10 +814,8 @@ def add_internal_comment(ticket, user, body):
 # ===========================================================================
 @transaction.atomic
 def add_attachment(ticket, user, file, description=""):
-    """Attach a file. Raiser can attach at any time while the ticket is
-    open; staff can attach throughout."""
-    if ticket.is_closed and user.pk != ticket.raised_by_id and not user.is_superuser:
-        raise PermissionDenied("This ticket is closed. No new attachments.")
+    """Attach a file while the ticket is open (raiser or staff on it)."""
+    _refuse_if_closed(ticket)
     if user.pk != ticket.raised_by_id and not _is_staff_on_ticket(ticket, user):
         raise PermissionDenied("You cannot attach files to this ticket.")
 
@@ -797,6 +850,7 @@ def _can_delete_content(actor, owner, ticket):
 
 @transaction.atomic
 def delete_comment(ticket, user, comment):
+    _refuse_if_closed(ticket)
     if not _can_delete_content(user, comment.author, ticket):
         raise PermissionDenied("You cannot delete this comment.")
     log_activity(
@@ -813,6 +867,7 @@ def delete_comment(ticket, user, comment):
 
 @transaction.atomic
 def delete_attachment(ticket, user, attachment):
+    _refuse_if_closed(ticket)
     if not _can_delete_content(user, attachment.uploaded_by, ticket):
         raise PermissionDenied("You cannot delete this attachment.")
     log_activity(
@@ -934,17 +989,8 @@ def _notify_new_ticket(ticket):
     Recipients: every active user in `handling_department` holding a
     director / deputy / office-head role. If none exist, notify admins.
     """
-    from accounts.models import User
-    recipients = list(
-        User.objects.filter(
-            is_active=True,
-            department_id=ticket.handling_department_id,
-            role__code__in=(
-                "director", "deputy-director",
-                "office-head-admin", "office-head-ts", "office-head-dev",
-            ),
-        )
-    )
+    import org
+    recipients = _department_leads(ticket.handling_department_id, org.DEPARTMENT_LEAD_ROLES)
     for user in recipients:
         try:
             notify(
@@ -981,7 +1027,7 @@ def _notify_assignee(ticket, assignee, assigner):
         logger.exception("Could not notify assignee %s", assignee.pk)
 
 
-def _notify_raiser(ticket, actor, message):
+def _notify_raiser(ticket, actor, message, url=None):
     if not ticket.raised_by_id:
         return
     try:
@@ -989,7 +1035,7 @@ def _notify_raiser(ticket, actor, message):
             recipient=ticket.raised_by,
             title=f"Update on {ticket.reference}",
             body=message,
-            url=f"/tickets/{ticket.pk}/",
+            url=url or f"/tickets/{ticket.pk}/",
             category=Notification.REQUEST,
             level=Notification.INFO,
             actor=actor,
@@ -1004,12 +1050,8 @@ def _notify_staff_on_change(ticket, actor, title, kind):
     recipients = set()
     if ticket.assigned_to_id and ticket.assigned_to_id != (actor.pk if actor else None):
         recipients.add(ticket.assigned_to_id)
-    heads = User.objects.filter(
-        is_active=True,
-        department_id=ticket.handling_department_id,
-        role__code__in=("director", "deputy-director"),
-    ).values_list("pk", flat=True)
-    recipients.update(heads)
+    recipients.update(u.pk for u in _department_leads(ticket.handling_department_id,
+                                                       ("director", "deputy-director")))
     if actor is not None:
         recipients.discard(actor.pk)
 
@@ -1045,29 +1087,12 @@ def _notify_escalation(ticket, level, reason):
     if level >= 1:
         if ticket.assigned_to_id:
             targets.add(ticket.assigned_to_id)
-        targets.update(
-            User.objects.filter(
-                is_active=True,
-                department_id=dept_id,
-                role__code__in=("office-head-admin", "office-head-ts", "office-head-dev"),
-            ).values_list("pk", flat=True)
-        )
+        targets.update(u.pk for u in _department_leads(
+            dept_id, ("office-head-admin", "office-head-ts", "office-head-dev")))
     if level >= 2:
-        targets.update(
-            User.objects.filter(
-                is_active=True,
-                department_id=dept_id,
-                role__code="deputy-director",
-            ).values_list("pk", flat=True)
-        )
+        targets.update(u.pk for u in _department_leads(dept_id, ("deputy-director",)))
     if level >= 3:
-        targets.update(
-            User.objects.filter(
-                is_active=True,
-                department_id=dept_id,
-                role__code="director",
-            ).values_list("pk", flat=True)
-        )
+        targets.update(u.pk for u in _department_leads(dept_id, ("director",)))
 
     for uid in targets:
         recipient = User.objects.filter(pk=uid, is_active=True).first()
@@ -1119,16 +1144,8 @@ def _notify_director_signoff_needed(ticket, actor):
     """Ping the handling department's director (or deputy) that a
     resolution needs sign-off."""
     from accounts.models import User
-    recipient = (
-        User.objects
-        .filter(
-            is_active=True,
-            department_id=ticket.handling_department_id,
-            role__code__in=("director", "deputy-director"),
-        )
-        .order_by("pk")
-        .first()
-    )
+    leads = _department_leads(ticket.handling_department_id, ("director", "deputy-director"))
+    recipient = leads[0] if leads else None
     if recipient is None:
         # No director — fall through to superusers
         for admin in User.objects.filter(is_active=True, is_superuser=True):
@@ -1187,9 +1204,47 @@ def available_actions(ticket, user):
         "can_reopen": is_raiser and ticket.state in (Ticket.RESOLVED, Ticket.CLOSED),
         "can_cancel": is_raiser and ticket.state in (
             Ticket.NEW, Ticket.ASSIGNED, Ticket.AWAITING_RESPONSE),
-        "can_comment": not ticket.is_closed or is_raiser or user.is_superuser,
-        "can_internal": (not is_raiser and _is_staff_on_ticket(ticket, user)) or user.is_superuser,
-        "can_attach": not ticket.is_closed or is_raiser or user.is_superuser,
+        "can_comment": not ticket.is_closed,  # Phase 0 (I12)
+        "can_internal": not ticket.is_closed and (
+            (not is_raiser and _is_staff_on_ticket(ticket, user)) or user.is_superuser),
+        "can_attach": not ticket.is_closed,  # Phase 0 (I12)
         "can_signoff": (ticket.state == Ticket.AWAITING_DIRECTOR
                         and _is_department_head(user, ticket.handling_department_id)),
+        **_phase_c_actions(ticket, user, is_raiser),
     }
+
+
+def _phase_c_actions(ticket, user, is_raiser):
+    from . import bridge, rating, routing
+    return {
+        "can_route": routing.can_route(ticket, user),
+        "can_accept_division": routing.can_decide(ticket, user),
+        "can_request_funds": bridge.can_request_funds(ticket, user),
+        "can_rate": rating.can_rate(ticket, user),
+        "can_download_report": True,
+    }
+
+
+# ===========================================================================
+# v2.1 Phase C hooks
+# ===========================================================================
+def _after_change(ticket, actor):
+    """Run after every assignment / state change: keep the assignee's
+    temporary asset access (X5) in step with the ticket."""
+    try:
+        from .asset_access import sync_asset_grant
+        sync_asset_grant(ticket, actor)
+    except Exception:
+        logger.exception("Could not sync asset access for %s", ticket.reference)
+
+
+def _email_event(ticket, event, recipients, actor=None):
+    """I6: ticket e-mails behind tickets.email.enabled + tickets.email.<event>."""
+    try:
+        from .emails import send_event_email
+        for r in recipients or []:
+            if r is None or (actor is not None and r.pk == getattr(actor, "pk", None)):
+                continue
+            send_event_email(ticket, event, r)
+    except Exception:
+        logger.exception("Ticket %s e-mail failed for %s", event, ticket.reference)

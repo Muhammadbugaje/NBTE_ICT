@@ -1,36 +1,36 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Assets · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Assets{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/assets.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/assets.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="wf-page-head">
+<header class="qa-hero nbte-hero asset-qa-hero" data-qa-area="assets">
   <div>
+    <span class="qa-eyebrow">{% icon "box" 14 "2.2" %} Assets · Register</span>
     <h1>Assets</h1>
-    <p>{{ total }} asset{{ total|pluralize }} in your scope.</p>
+    <p>Every tagged item of equipment in your scope — who holds it, where it is and what state it is in.</p>
+    <div class="qa-hero__actions">
+      {% if perms.assets.add_asset or request.user.is_superuser %}<a href="{% url 'assets:create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New asset</a>{% endif %}
+      <a href="{% url 'assets:scan' %}" class="btn btn-subtle">{% icon "qr" 15 "2.2" %} Scan</a>
+      <a href="{% url 'assets:my_assets' %}" class="btn btn-subtle">{% icon "user" 15 "2.2" %} My assets</a>
+      {% if can_export_assets %}
+        <a href="{% url 'assets:export_xlsx' %}" class="btn btn-subtle" title="Every asset, its holders, issues and attachment list as a Data Hub workbook">{% icon "download" 15 "2.2" %} Export assets (Excel)</a>
+        <a href="{% url 'assets:export_xlsx' %}?template=1" class="btn btn-subtle" title="Blank workbook with dropdowns and an Instructions sheet">{% icon "sheet" 15 "2.2" %} Blank template</a>
+      {% endif %}
+      {% if can_import_assets %}
+        <a href="{% url 'core:datahub' %}?scope=assets#dh-import" class="btn btn-subtle" title="Preview, then apply, in the Data Hub (site administrators)">{% icon "upload" 15 "2.2" %} Import assets</a>
+      {% endif %}
+    </div>
   </div>
-  <div class="cluster">
-    <a href="{% url 'assets:scan' %}" class="btn btn-ghost">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
-      Scan
-    </a>
-    <a href="{% url 'assets:my_assets' %}" class="btn btn-ghost">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      My assets
-    </a>
-    {% if perms.assets.add_asset or request.user.is_superuser %}
-      <a href="{% url 'assets:create' %}" class="btn btn-primary">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New asset
-      </a>
-    {% endif %}
+  <div class="qa-hero__stats" aria-label="Summary">
+    <div class="qa-stat"><strong>{{ total }}</strong><span>Asset{{ total|pluralize }} in scope</span></div>
   </div>
-</div>
+</header>
 
 {# Filter form — submits via HTMX, only the list container is swapped #}
 <form method="get"
@@ -61,6 +61,13 @@
       {% endfor %}
     </select>
 
+    <select name="mode" class="input asset-filter-select" aria-label="How it is held">
+      <option value="">Any holding</option>
+      {% for value, label in modes %}
+        <option value="{{ value }}" {% if mode_filter == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
     {% if can_see_all %}
       <select name="department" class="input asset-filter-select">
         <option value="">Any department</option>
@@ -82,13 +89,19 @@
   </div>
 </form>
 
-{# Batch label printing: tick assets (kept across pages), then print #}
+{# Batch label printing: press Select, tick assets (kept across pages), then print #}
+<div class="asset-select-toolbar">
+  <button type="button" class="bulk-select-btn asset-select-mode-btn" data-asset-select-mode aria-pressed="false" aria-controls="asset-list-container">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="m8 12 3 3 5-6"/></svg>
+    <span data-asset-select-mode-label>Select</span>
+  </button>
+</div>
 <div class="asset-select-bar" data-asset-select-bar hidden
      data-print-url="{% url 'assets:print_labels' %}">
   <label class="asset-select-all"><input type="checkbox" data-asset-select-page> Select this page</label>
   <span><strong data-asset-select-count>0</strong> selected</span>
   <button type="button" class="btn btn-primary btn-sm" data-asset-select-print>Print labels</button>
-  <button type="button" class="btn btn-ghost btn-sm" data-asset-select-clear>Clear</button>
+  <button type="button" class="btn btn-ghost btn-sm" data-asset-select-clear>Cancel</button>
 </div>
 
 {# The list container — HTMX swaps this in place on filter changes #}
@@ -123,6 +136,7 @@
           </div>
           <div class="asset-card-badges">
             <span class="badge badge-state-{{ asset.state }}">{{ asset.get_state_display }}</span>
+            {% if asset.assignment_mode != 'individual' %}<span class="badge badge-mode-{{ asset.assignment_mode }}">{% if asset.assignment_mode == 'shared' %}Shared{% else %}Department{% endif %}</span>{% endif %}
           </div>
         </a>
         </div>
@@ -132,8 +146,8 @@
     {% if page.has_other_pages %}
       <nav class="pagination">
         {% if page.has_previous %}
-          <a href="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.previous_page_number }}"
-             hx-get="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.previous_page_number }}"
+          <a href="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&mode={{ mode_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.previous_page_number }}"
+             hx-get="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&mode={{ mode_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.previous_page_number }}"
              hx-target="#asset-list-container"
              hx-select="#asset-list-container"
              hx-swap="outerHTML"
@@ -141,8 +155,8 @@
         {% else %}<span class="disabled">« Prev</span>{% endif %}
         <span class="current">{{ page.number }} / {{ page.paginator.num_pages }}</span>
         {% if page.has_next %}
-          <a href="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.next_page_number }}"
-             hx-get="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.next_page_number }}"
+          <a href="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&mode={{ mode_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.next_page_number }}"
+             hx-get="?q={{ q }}&category={{ cat_filter }}&state={{ state_filter }}&mode={{ mode_filter }}&department={{ dept_filter }}&mine={{ mine_filter|yesno:'1,' }}&page={{ page.next_page_number }}"
              hx-target="#asset-list-container"
              hx-select="#asset-list-container"
              hx-swap="outerHTML"
@@ -166,5 +180,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/asset-select.js' %}?v=1"></script>
+  <script src="{% static 'js/asset-select.js' %}"></script>
 {% endblock %}

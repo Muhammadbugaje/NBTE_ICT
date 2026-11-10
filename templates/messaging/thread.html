@@ -5,13 +5,14 @@
 {% block page_title %}{{ thread.display_title|default:"Thread" }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=11">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="msg-page msg-page-thread msg-chat" data-messaging-thread data-chat
      data-thread-id="{{ thread.pk }}"
      data-updates-url="{% url 'messaging:thread_updates' thread.pk %}"
+     data-inbox-updates-url="{% url 'messaging:inbox_updates' %}"
      data-typing-url="{% url 'messaging:typing' thread.pk %}"
      data-voice-url="{% url 'messaging:voice_upload' thread.pk %}"
      data-poll-url="{% url 'messaging:poll_create' thread.pk %}"
@@ -22,34 +23,34 @@
      data-is-group="{{ is_group|yesno:'1,0' }}"
      data-current-user-initials="{% if request.user.first_name or request.user.last_name %}{{ request.user.first_name|slice:':1'|upper }}{{ request.user.last_name|slice:':1'|upper }}{% else %}{{ request.user.username|slice:':1'|upper|default:'?' }}{% endif %}"
      data-current-user-name="{{ request.user.get_full_name|default:request.user.email }}"
-     data-current-user-color="{{ current_user_color|default:'c5' }}">
-  <a href="{% if thread_is_archived %}{% url 'messaging:archived' %}{% else %}{% url 'messaging:inbox' %}{% endif %}" class="msg-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    {% if thread_is_archived %}Archived{% else %}Inbox{% endif %}
-  </a>
-
-  {# Sticky opaque chat header (messaging.css .msg-chat-head): flush under the top bar. #}
+     data-current-user-color="{{ current_user_color|default:'c5' }}"
+     data-version="{{ live_version }}"
+     data-info-url="{% url 'messaging:group_info' thread.pk %}"
+     {% if perms.can_pin %}data-can-pin{% endif %}
+     {% if not perms.can_send %}data-read-only{% endif %}>
   <div class="msg-chat-head" data-chat-head>
   <header class="msg-thread-hero">
     <div class="msg-thread-hero-main">
-      <div class="msg-thread-hero-body">
-        <h1>
-          <span class="msg-thread-title">{{ thread.display_title|default:"Thread" }}</span>
-          {% if participant.is_pinned %}<span class="msg-flag" title="Pinned" aria-label="Pinned"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 3a1 1 0 0 1 .7 1.7L15 6.4v4.2l3.3 3.3a1 1 0 0 1-.7 1.7H13v5.4l-1 1-1-1v-5.4H6.4a1 1 0 0 1-.7-1.7L9 10.6V6.4L7.3 4.7A1 1 0 0 1 8 3z"/></svg></span>{% endif %}
-          {% if is_muted %}<span class="msg-flag" title="Muted" aria-label="Muted"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg></span>{% endif %}
-        </h1>
-        <p class="msg-typing-line" data-typing-line aria-live="polite" hidden></p>
-        <div class="msg-thread-participants" data-participants-line>
-          {% for p in participants %}
-            <span class="msg-participant-chip">
-              <span class="msg-avatar msg-avatar-xs msg-avatar-{% cycle 'c0' 'c1' 'c2' 'c3' 'c4' 'c5' 'c6' 'c7' %}">
-                {{ p.user.first_name|slice:":1"|upper }}{{ p.user.last_name|slice:":1"|upper }}
-              </span>
-              {{ p.user.get_full_name|default:p.user.email }}
-            </span>
-          {% endfor %}
-        </div>
-      </div>
+      <a href="{% if thread_is_archived %}{% url 'messaging:archived' %}{% else %}{% url 'messaging:inbox' %}{% endif %}" class="msg-head-back" data-chat-back aria-label="Back to {% if thread_is_archived %}archived chats{% else %}the inbox{% endif %}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        <span class="msg-head-back-label">{% if thread_is_archived %}Archived{% else %}Inbox{% endif %}</span>
+      </a>
+      <h1 class="msg-head-h1"><button type="button" class="msg-head-id" data-group-info-open data-info-url="{% url 'messaging:group_info' thread.pk %}" aria-haspopup="dialog" aria-label="{% if is_group %}Group info, members and settings{% else %}Chat info{% endif %}">
+        {% if group_photo_url %}
+          <img loading="lazy" decoding="async" class="msg-avatar msg-head-avatar msg-head-photo" src="{{ group_photo_url }}" alt="" width="40" height="40">
+        {% else %}
+          <span class="msg-avatar msg-head-avatar msg-avatar-{{ thread_color }}" aria-hidden="true">{% if is_group %}{{ thread.display_title|slice:":2"|upper }}{% else %}{{ thread.display_title|slice:":1"|upper }}{% endif %}</span>
+        {% endif %}
+        <span class="msg-thread-hero-body">
+          <span class="msg-head-title-row">
+            <span class="msg-head-title msg-thread-title">{{ thread.display_title|default:"Thread" }}</span>
+            {% if participant.is_pinned %}<span class="msg-flag" title="Pinned" aria-label="Pinned"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 3a1 1 0 0 1 .7 1.7L15 6.4v4.2l3.3 3.3a1 1 0 0 1-.7 1.7H13v5.4l-1 1-1-1v-5.4H6.4a1 1 0 0 1-.7-1.7L9 10.6V6.4L7.3 4.7A1 1 0 0 1 8 3z"/></svg></span>{% endif %}
+            {% if is_muted %}<span class="msg-flag" title="Muted" aria-label="Muted"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg></span>{% endif %}
+          </span>
+          <span class="msg-head-sub" data-participants-line data-head-subtitle>{% if is_group %}{{ head_subtitle }}{% else %}Direct chat · tap for info{% endif %}</span>
+          <span class="msg-typing-line" data-typing-line aria-live="polite" hidden></span>
+        </span>
+      </button></h1>
 
       <div class="msg-thread-tools">
         <button type="button" class="msg-icon-btn" data-search-toggle aria-label="Search in this chat" aria-expanded="{% if search_q %}true{% else %}false{% endif %}" title="Search in this chat">
@@ -60,6 +61,10 @@
             <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
           </summary>
           <div class="msg-chat-menu-panel" role="menu">
+            <a href="{% url 'messaging:group_info' thread.pk %}" role="menuitem" data-group-info-open>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              {% if is_group %}Group info and members{% else %}Chat info{% endif %}
+            </a>
             <form method="post" action="{% url 'messaging:pin' thread.pk %}">
               {% csrf_token %}
               <input type="hidden" name="pinned" value="{% if participant.is_pinned %}0{% else %}1{% endif %}">
@@ -135,6 +140,7 @@
       {% endif %}
     </form>
   </header>
+  {% include "messaging/partials/pinned_bar.html" with pinned=pinned_messages %}
   </div>
 
   {% for error in thread_errors %}
@@ -163,7 +169,11 @@
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
   </button>
 
-  <form method="post" action="{% url 'messaging:reply' thread.pk %}" class="msg-reply" data-reply-form enctype="multipart/form-data">
+  <p class="msg-readonly-note" data-readonly-note role="status"{% if perms.can_send %} hidden{% endif %}>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <span data-readonly-text>{% if perms.read_only %}This group is archived. You can read it, but nobody can post.{% else %}Only admins can send messages in this group.{% endif %}</span>
+  </p>
+  <form method="post" action="{% url 'messaging:reply' thread.pk %}" class="msg-reply" data-reply-form enctype="multipart/form-data"{% if not perms.can_send %} hidden{% endif %}>
     {% csrf_token %}
     <input type="hidden" name="reply_to" value="" data-reply-to-field>
     <div class="msg-reply-inner">
@@ -310,13 +320,52 @@
     <div class="msg-sheet-body" data-reactors-body></div>
   </dialog>
 
+  <dialog class="msg-sheet msg-sheet-info" data-group-info-dialog aria-labelledby="ginfo-title">
+    <span class="msg-sheet-grabber" aria-hidden="true"></span>
+    <header class="msg-sheet-head">
+      <h2 id="ginfo-title">{% if is_group %}Group info{% else %}Chat info{% endif %}</h2>
+      <button type="button" class="msg-icon-btn" data-sheet-close aria-label="Close">×</button>
+    </header>
+    <div class="msg-sheet-body" data-group-info-body><p class="muted">Loading…</p></div>
+  </dialog>
+
+  <dialog class="msg-sheet msg-sheet-sm" data-remind-dialog aria-labelledby="remind-title">
+    <span class="msg-sheet-grabber" aria-hidden="true"></span>
+    <form method="post" data-remind-form>
+      {% csrf_token %}
+      <header class="msg-sheet-head">
+        <h2 id="remind-title">Remind me about this message</h2>
+        <button type="button" class="msg-icon-btn" data-sheet-close aria-label="Close">×</button>
+      </header>
+      <div class="msg-sheet-body">
+        <p class="msg-remind-quote" data-remind-quote></p>
+        <div class="msg-remind-presets" role="group" aria-label="Quick choices">
+          <button type="submit" name="preset" value="1h" class="msg-chip-btn">In 1 hour</button>
+          <button type="submit" name="preset" value="3h" class="msg-chip-btn">In 3 hours</button>
+          <button type="submit" name="preset" value="tomorrow" class="msg-chip-btn">Tomorrow 09:00</button>
+          <button type="submit" name="preset" value="1w" class="msg-chip-btn">Next week</button>
+        </div>
+        <label class="msg-field-label" for="remind-at">Or pick a date and time</label>
+        <input id="remind-at" class="msg-input" type="datetime-local" name="remind_at" data-remind-at>
+        <label class="msg-field-label" for="remind-note">Note (optional)</label>
+        <input id="remind-note" class="msg-input" name="note" maxlength="200" placeholder="What should you do?">
+        <p class="msg-remind-current muted" data-remind-current hidden></p>
+      </div>
+      <footer class="msg-sheet-foot btn-group btn-group--end">
+        <button type="button" class="btn btn-ghost" data-remind-cancel hidden>Remove reminder</button>
+        <button type="submit" class="btn btn-primary" data-remind-custom>Set reminder</button>
+      </footer>
+    </form>
+  </dialog>
+
   <div class="msg-toast" data-chat-toast role="status" aria-live="polite" hidden></div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/messaging.js' %}?v=4" defer></script>
-<script src="{% static 'js/thread-send.js' %}?v=2" defer></script>
-<script src="{% static 'js/chat-live.js' %}?v=2" defer></script>
-<script src="{% static 'js/voice-notes.js' %}?v=1" defer></script>
+<script src="{% static 'js/messaging.js' %}" defer></script>
+<script src="{% static 'js/thread-send.js' %}" defer></script>
+<script src="{% static 'js/chat-live.js' %}" defer></script>
+<script src="{% static 'js/chat-groups.js' %}" defer></script>
+<script src="{% static 'js/voice-notes.js' %}" defer></script>
 {% endblock %}

@@ -1,0 +1,49 @@
+<div class="hrd-split">
+  <section class="hrd-card" aria-labelledby="hol-title">
+    <div class="btn-group btn-group--between">
+      <div>
+        <h2 id="hol-title">{{ year }}: {{ holidays|length }} holiday{{ holidays|length|pluralize }}</h2>
+        <p class="hrd-sub">{% if to_confirm %}{{ to_confirm }} date{{ to_confirm|pluralize }} to confirm when the Federal Government declares {{ to_confirm|pluralize:"it,them" }}.{% else %}All dates confirmed.{% endif %}</p>
+      </div>
+      <div class="btn-group btn-group--end">
+        {% for y in years %}
+          <a class="btn btn-sm {% if y == year %}btn-subtle{% else %}btn-ghost{% endif %}" href="?year={{ y }}" hx-get="{% url 'leave:holidays' %}?year={{ y }}" hx-select="#hol-body" hx-target="#hol-body" hx-swap="outerHTML" hx-push-url="true">{{ y }}</a>
+        {% endfor %}
+        <a class="btn btn-primary btn-sm" href="?year={{ year }}&edit=new" hx-get="{% url 'leave:holiday_new' %}?year={{ year }}" hx-target="#hol-editor" hx-swap="innerHTML">Add holiday</a>
+      </div>
+    </div>
+    <div class="hrd-list">
+      {% for h in holidays %}
+        <article class="hrd-row hrd-row--date {% if not h.is_active %}is-off{% endif %} {% if saved and saved.pk == h.pk %}is-saved{% endif %}">
+          <div class="hrd-date" aria-hidden="true"><b>{{ h.date_start|date:"j" }}</b><small>{{ h.date_start|date:"M" }}</small></div>
+          <div>
+            <strong>{{ h.name }}</strong>
+            <div class="hrd-meta">
+              <span class="hrd-tag">{{ h.date_start|date:"D j M" }}{% if h.date_end != h.date_start %} – {{ h.date_end|date:"D j M" }}{% endif %}{% if h.days > 1 %} · {{ h.days }} days{% endif %}</span>
+              <span class="hrd-tag is-info">{{ h.get_kind_display }}</span>
+              {% if h.to_confirm %}<span class="hrd-tag is-warn">Date to confirm</span>{% endif %}
+              {% if h.is_recurring %}<span class="hrd-tag">Every year</span>{% endif %}
+              {% if h.visibility == "department" and h.department %}<span class="hrd-tag">{{ h.department.name }} only</span>{% elif h.visibility == "role" %}<span class="hrd-tag">Some roles</span>{% else %}<span class="hrd-tag is-ok">All staff</span>{% endif %}
+              {% if not h.is_active %}<span class="hrd-tag is-danger">Off</span>{% endif %}
+            </div>
+          </div>
+          <div class="btn-group btn-group--end">
+            <a class="btn btn-ghost btn-sm" href="?year={{ year }}&edit={{ h.pk }}" hx-get="{% url 'leave:holiday_edit' h.pk %}?year={{ year }}" hx-target="#hol-editor" hx-swap="innerHTML">Edit</a>
+            <form method="post" action="{% url 'leave:holiday_delete' h.pk %}" hx-post="{% url 'leave:holiday_delete' h.pk %}" hx-target="#hol-body" hx-swap="innerHTML" hx-confirm="Remove {{ h.name }}? Absences recorded on that day come back.">
+              {% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit">Remove</button>
+            </form>
+          </div>
+        </article>
+      {% empty %}
+        <div class="nbte-empty-state"><p class="nbte-empty-state__title">No holidays for {{ year }} yet</p><p class="nbte-empty-state__body">Add one, or run the seed (hr.holidays) for the standard Federal Government list.</p></div>
+      {% endfor %}
+    </div>
+  </section>
+  <aside class="hrd-card hrd-sticky" id="hol-editor" aria-live="polite">
+    {% if edit_form %}{% include "leave/_holiday_editor.html" %}{% else %}
+      <h2>Add or edit a holiday</h2>
+      <p class="hrd-sub">New holidays are awarded to all staff. Department-only holidays stay available from the staff portal's holiday list.</p>
+      <p class="hrd-sub">Holidays also show in attendance exports as H and on the analytics page.</p>
+    {% endif %}
+  </aside>
+</div>

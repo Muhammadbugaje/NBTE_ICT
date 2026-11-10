@@ -1,23 +1,23 @@
 {% load qa_tags %}
-<div id="case-board" class="qa-board" role="list" aria-label="Cases by stage">
+<div class="qa-board c3-board" role="list" aria-label="Cases by stage">
   {% for col in columns %}
-  <section class="qa-board__col" role="listitem" aria-labelledby="col-{{ col.key }}">
+  <section class="qa-board__col c3-board__col" role="listitem" aria-labelledby="col-{{ col.key }}">
     <header class="qa-board__head"><h2 id="col-{{ col.key }}">{{ col.label }}</h2><span class="qa-board__count" aria-label="{{ col.cards|length }} cases">{{ col.cards|length }}</span></header>
     <ul class="qa-board__list" role="list">
       {% for c in col.cards %}
-      <li><a class="qa-card-case{% if c.overdue %} is-overdue{% elif c.needs_reassignment %} is-flagged{% endif %}" href="{% url 'qa_case:detail' c.pk %}" hx-get="{% url 'qa_case:detail' c.pk %}" hx-target="#qa-panel" hx-push-url="true">
-        <span class="qa-card-case__top"><span class="qa-card-case__ref">{{ c.reference }}</span>{% if c.stage_no %}<span class="qa-stage-no" title="SOP-03 stage {{ c.stage_no }}">{{ c.stage_no }}</span>{% endif %}</span>
-        <span class="qa-card-case__inst">{{ c.institution.name }}</span>
-        <span class="qa-card-case__stage">{{ c.stage_label }}</span>
-        <span class="qa-card-case__meta">
-          <span>{% icon "building" 12 %} {{ c.owning_department.name|default:"—" }}</span>
-          <span>· {{ c.programme_count }} programme{{ c.programme_count|pluralize }}</span>
-          {% if c.holders %}<span>· {% for u in c.holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}
-          {% if c.due %}<span>· {% if c.overdue %}<strong class="qa-req">overdue</strong>{% else %}due {{ c.due|date:"j M" }}{% endif %}</span>{% endif %}
+      <li><a class="qa-card-case c3-ccard{% if c.overdue %} is-overdue{% elif c.needs_reassignment %} is-flagged{% endif %}" href="{% url 'qa_case:detail' c.pk %}" hx-get="{% url 'qa_case:detail' c.pk %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="c3-ccard__top"><span class="qa-mono c3-ccard__ref">{{ c.reference }}</span>{% if c.stage_no != None and c.stage_no != "" %}<span class="c3-ccard__no" title="SOP-03 stage {{ c.stage_no }} of 17">{{ c.stage_no }}<small>/17</small></span>{% endif %}</span>
+        <span class="c3-ccard__inst">{{ c.institution.name }}</span>
+        <span class="c3-ccard__stage">{{ c.stage_label }}</span>
+        {% if c.stage_no != None and c.stage_no != "" %}<span class="c3-ccard__bar" aria-hidden="true"><span style="width: {% widthratio c.stage_no 17 100 %}%"></span></span>{% endif %}
+        <span class="c3-ccard__meta">
+          {% if c.holders %}<span class="c3-ccard__who">{% for u in c.holders|slice:":3" %}<span class="c3-av c3-av--xs" title="{{ u|who }}" aria-hidden="true">{{ u|initials }}</span>{% endfor %}<span>{% for u in c.holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %}</span></span>{% endif %}
+          <span class="c3-ccard__facts"><span>{{ c.owning_department.name|default:"—" }}</span><span>{{ c.programme_count }} programme{{ c.programme_count|pluralize }}</span>
+          {% if c.due %}{% if c.overdue %}<strong class="c3-late">Overdue</strong>{% else %}<span>Due {{ c.due|date:"j M" }}</span>{% endif %}{% endif %}</span>
           {% if c.needs_reassignment %}<span class="qa-chip qa-tone-warn">Needs reassignment</span>{% endif %}
         </span>
       </a></li>
-      {% empty %}<li class="qa-board__empty">No cases.</li>{% endfor %}
+      {% empty %}<li class="qa-board__empty">No cases here.</li>{% endfor %}
     </ul>
   </section>
   {% endfor %}

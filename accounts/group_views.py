@@ -67,6 +67,13 @@ def _visible_users(actor):
     return scope_to_department(User.objects.all(), actor)
 
 
+def _internal_group_ids():
+    """Groups carried by at least one NBTE internal (staff-audience) role."""
+    from . import audience
+    staff_roles = audience.roles_for(audience.STAFF)
+    return set(Group.objects.filter(roles__in=staff_roles).values_list("pk", flat=True))
+
+
 # ---------------------------------------------------------------------------
 # presentation helpers
 # ---------------------------------------------------------------------------
@@ -333,6 +340,13 @@ def user_groups_edit(request, pk):
                          reverse("accounts:groups:user_groups", args=[target.pk]))
         gform = UserGroupForm(request.POST, target=target, actor=actor)
         pform = UserDirectPermissionForm(request.POST, target=target, actor=actor)
+        if gform.is_valid() and target.user_type != User.STAFF:
+            # Strict separation: a portal account never gets a group that an
+            # NBTE internal role carries (that would hand it internal access).
+            internal = sorted(g.name for g in gform.cleaned_data["groups"] if g.pk in _internal_group_ids())
+            if internal:
+                gform.add_error("groups", "These groups belong to NBTE internal roles and cannot be given to a "
+                                          f"portal account: {', '.join(internal)}.")
         if gform.is_valid() and pform.is_valid():
             before_groups = set(target.groups.values_list("name", flat=True))
             before_direct = {ps.perm_label(p) for p in target.user_permissions.select_related("content_type")}
@@ -366,17 +380,23 @@ def user_groups_edit(request, pk):
         group_ids = set(target.groups.values_list("pk", flat=True))
         perm_ids = set(target.user_permissions.values_list("pk", flat=True))
     role_group_ids = {g.pk for g in role_groups}
+    internal_ids = _internal_group_ids() if target.user_type != User.STAFF else set()
     group_rows = [{
         "group": g, "checked": g.pk in group_ids, "inherited": g.pk in role_group_ids,
-        "locked": not can_act or not ps.can_assign_group(actor, target, g),
+        "internal": g.pk in internal_ids,
+        "locked": not can_act or not ps.can_assign_group(actor, target, g)
+                  or (g.pk in internal_ids and g.pk not in group_ids),
         "perm_count": g.perm_count,
     } for g in Group.objects.order_by("name").annotate(perm_count=Count("permissions", distinct=True))]
     picker = build_picker(
         permission_queryset(), selected=perm_ids, inherited=inherited,
         locked=lambda p: not can_act or not ps.can_assign_permission(actor, target, p),
     )
+    from . import audience
+    segment = audience.segment_of(target)
     return render(request, "accounts/users/groups.html", {
         "u": target, "gform": gform, "pform": pform, "can_act": can_act,
+        "segment": segment, "seg": audience.SEGMENTS[segment],
         "role_groups": [{"group": g, "apps": _apps_of(ps.group_permissions(g))} for g in role_groups],
         "role_baseline_apps": _apps_of({ps.perm_label(p) for p in target.role.permissions.select_related("content_type")})
         if target.role_id else [],
@@ -411,8 +431,13 @@ def permission_matrix(request):
                 }
             cells.append({"app": a, "count": len(codes), "key": key})
         rows.append({"role": r, "cells": cells, "total": len(role_sets[r.pk])})
+    from . import audience
+    aud = request.GET.get("audience") or ""
+    if aud in audience.AUDIENCE_LABELS:
+        rows = [r for r in rows if audience.role_audience(r["role"]) == aud]
     return render(request, "accounts/permissions/matrix.html", {
-        "rows": rows, "apps": [{"label": a, "name": _app_name(a)} for a in apps],
+        "rows": rows, "audience": aud, "role_total": len(roles),
+        "nbte_roles": sum(1 for r in roles if audience.role_audience(r) == audience.STAFF), "apps": [{"label": a, "name": _app_name(a)} for a in apps],
         "detail": detail,
     })
 
@@ -426,7 +451,11 @@ def user_access_list(request):
     user_views.py) so Stage 1's user list is untouched; each row links to the
     existing user detail page and to the new groups & permissions page."""
     _require(request.user, "accounts.view_user", "accounts.assign_groups", any_of=True)
-    qs = (_visible_users(request.user).select_related("role", "department")
+    from . import audience
+    from .user_views import segment_counts
+    segment = audience.clean_segment(request.GET.get("segment"))
+    visible = _visible_users(request.user)
+    qs = (visible.filter(audience.segment_q(segment)).select_related("role", "department", "institution")
           .annotate(group_count=Count("groups", distinct=True),
                     direct_perm_count=Count("user_permissions", distinct=True))
           .order_by("first_name", "last_name", "email"))
@@ -439,6 +468,7 @@ def user_access_list(request):
     page = Paginator(qs, 20).get_page(request.GET.get("page"))
     return render(request, "accounts/users/access_list.html", {
         "page": page, "q": q, "role": role,
-        "roles": Role.objects.order_by("-rank", "name"),
+        "segment": segment, "seg": audience.SEGMENTS[segment], "segment_counts": segment_counts(visible),
+        "roles": audience.roles_for_segment(segment).order_by("-rank", "name"),
         "can_assign": request.user.has_perm("accounts.assign_groups"),
     })

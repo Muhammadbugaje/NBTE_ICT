@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -76,25 +76,67 @@ def lga_map():
     return data if isinstance(data, dict) else {}
 
 
+# X49 slice (Phase 0): the state list says "FCT" while the bundled LGA file
+# says "Federal Capital Territory"; these names all mean the capital.
+FCT_ALIASES = ("fct", "f.c.t", "f.c.t.", "abuja", "fct abuja", "fct, abuja", "federal capital territory")
+
+
+def _state_key(name):
+    return (name or "").strip().lower().replace(" state", "")
+
+
 def lgas_for(state):
+    """LGA names of ``state`` (v2.1 X49: from the staff.LGA table, cached; the
+    bundled file is the fallback until `seed_nbte --only geo` has run)."""
+    from staff import geo
+
+    return geo.lga_names(state)
+
+
+def lgas_from_file(state):
     if state is None:
         return []
     name = state.name if hasattr(state, "name") else str(state)
     data = lga_map()
+    wanted = _state_key(name)
     for key, values in data.items():
-        if key.lower().replace(" state", "") == name.lower().replace(" state", ""):
+        if _state_key(key) == wanted:
             return list(values)
-    if name.lower().startswith("fct") or "abuja" in name.lower():
-        return list(data.get("FCT", data.get("Abuja", [])))
+    if wanted in FCT_ALIASES or wanted.startswith("fct"):
+        for key, values in data.items():
+            if _state_key(key) in FCT_ALIASES:
+                return list(values)
     return []
 
 
+def lga_groups():
+    """[(state name, [LGAs])] for the no-JS fallback (an <optgroup> per state)."""
+    from staff import geo
+
+    groups = geo.lga_groups()
+    if groups is not None:
+        return groups
+    return sorted(((k, list(v)) for k, v in lga_map().items()), key=lambda x: x[0])
+
+
 def validate_lga(state, lga):
+    """The LGA must belong to ``state`` (case-insensitive). An LGA of another
+    state is rejected even when the state has no list in the bundled file."""
     if not lga:
         return
+    from staff import geo
+
+    if geo._table_ready() and state is not None and hasattr(state, "pk"):
+        geo.validate_lga(state, lga)
+        return
     options = lgas_for(state)
-    if options and lga not in options:
-        raise ValidationError(f"'{lga}' is not an LGA of {state}. Choose one from the list.")
+    if options:
+        if lga.strip().lower() not in {o.lower() for o in options}:
+            raise ValidationError(f"'{lga}' is not an LGA of {state}. Choose one from the list.")
+        return
+    for key, values in lga_map().items():
+        if lga.strip().lower() in {v.lower() for v in values}:
+            raise ValidationError(f"'{lga}' is an LGA of {key}, not {state}.")
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +212,7 @@ CONTACT_KINDS = [k for k, _l in InstitutionContact.KIND_CHOICES]
 
 
 @transaction.atomic
-def create_institution(data, *, actor=None, origin="nbte", activate_admin=False, admin_password=None):
+def create_institution(data, *, actor=None, origin="nbte", activate_admin=False, admin_password=None, request=None):
     """Create a proposed institution with its contacts, address and primary
     portal account. `data` keys: name, code, ownership, institution_type,
     category, state, lga, year_established, cac_rc_number, website,
@@ -221,22 +263,261 @@ def create_institution(data, *, actor=None, origin="nbte", activate_admin=False,
                                                name=f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip())
         user = User(email=email, first_name=(admin.get("first_name") or "").strip(),
                     last_name=(admin.get("last_name") or "").strip(),
-                    user_type=User.INSTITUTION, institution=inst, role=Role.objects.filter(code="inst-admin").first(),
+                    user_type=User.INSTITUTION, institution=inst,
+                    role=Role.objects.filter(code=admin.get("role") if admin.get("role") in (
+                        "inst-admin", CHIEF_EXECUTIVE_ROLE) else "inst-admin").first(),
                     is_active=bool(activate_admin), must_change_password=False)
         if admin_password:
             user.set_password(admin_password)
         else:
             user.set_unusable_password()
         user.save()
+        role_code = getattr(user.role, "code", "")
         InstitutionUser.unscoped.create(institution=inst, user=user, institution_role=user.role,
                                         is_primary_contact=True, job_title=(admin.get("job_title") or "")[:120],
                                         institution_department=(admin.get("department") or "")[:120],
-                                        invited_at=timezone.now(), invited_by=actor if getattr(actor, "pk", None) else None)
+                                        invited_at=timezone.now(), invited_by=actor if getattr(actor, "pk", None) else None,
+                                        account_kind=(InstitutionUser.CHIEF_EXECUTIVE if role_code == CHIEF_EXECUTIVE_ROLE
+                                                      else InstitutionUser.ICT_HEAD))
+        _record_management(inst, "head-of-ict" if role_code != CHIEF_EXECUTIVE_ROLE else "chief-executive",
+                           full_name=user.get_full_name(), email=email, phone=admin.get("phone", ""), user=user,
+                           actor=actor)
+    ce = data.get("chief_executive") or {}
+    if ce.get("email"):
+        invite_chief_executive(inst, ce, actor=actor or user, request=request)
     label = {"nbte": "added by NBTE", "self": "self-registered on the portal", "import": "created by bulk import"}
     timeline.record(inst, "institution.created", actor=actor, visibility="public",
                     public_text=f"{inst.name} was registered as a proposed institution ({inst.code}).",
                     internal_text=f"Institution {label.get(origin, origin)}; handled by {dept.name}.")
+    transaction.on_commit(lambda: notify_registration_reviewers(inst.pk))
     return inst
+
+
+def notify_registration_reviewers(institution_id):
+    """Alert the NBTE leads responsible for new institution registrations."""
+    import org
+    from accounts.models import User
+    from notifications.models import Notification
+    from notifications.services import notify
+    from qa_core.departments import qa_department
+
+    inst = Institution.unscoped.select_related("handling_department").filter(pk=institution_id).first()
+    if inst is None:
+        return
+    recipients = {}
+    staff = User.objects.filter(is_active=True, user_type=User.STAFF).select_related("role", "department")
+    for user in staff:
+        if org.is_es(user) or org.is_super_admin(user):
+            recipients[user.pk] = user
+    ict = qa_department("ict")
+    for dept in (ict, inst.handling_department):
+        if dept and dept.director_id:
+            user = User.objects.filter(pk=dept.director_id, is_active=True, user_type=User.STAFF).first()
+            if user:
+                recipients[user.pk] = user
+    for user in recipients.values():
+        notify(user, title="New proposed institution", body=f"{inst.name} ({inst.code}) was registered and needs "
+               "NBTE oversight assignment.", url=f"/qa/institutions/{inst.code}/", category=Notification.QA)
+    queue_ict_supervisor_task(institution_id)
+
+
+def rotate_oversight_open(inst):
+    """An ICT supervisor is already appointed (open oversight_ict work)."""
+    from assignments.models import WorkAssignment
+
+    return WorkAssignment.objects.filter(
+        institution=inst, kind=WorkAssignment.OVERSIGHT_ICT, status__in=WorkAssignment.OPEN).exists()
+
+
+def queue_ict_supervisor_task(institution_id):
+    """X19: a new institution opens "Assign an ICT supervisor" for the ICT
+    department — a task on the director's list with a rotation suggestion,
+    linked in QA so it closes itself when the supervisor is appointed."""
+    from .models import Institution
+
+    inst = (Institution.unscoped.filter(pk=institution_id, status__in=("proposed", "under_review")).first())
+    if inst is None or rotate_oversight_open(inst):
+        return
+    _open_oversight_task(inst)
+
+
+def _open_oversight_task(inst):
+    """Create (or reuse) the oversight task; suggested person from rotation."""
+    from django.contrib.contenttypes.models import ContentType
+
+    import assignments.rotation as rotation
+    from accounts.models import User
+    from assignments.models import WorkAssignment
+    from qa_core.models import QATaskLink
+    from qa_core.task_bridge import bridge_active, system_user
+    from tasks import services as task_services
+    from tasks.models import TaskAssignee, TaskCategory
+
+    ct = ContentType.objects.get_for_model(Institution, for_concrete_model=True)
+    if QATaskLink.objects.filter(content_type=ct, object_id=inst.pk, stage_code="oversight_ict",
+                                 closed_at__isnull=True).exists():
+        return
+    ict = qa_department("ict")
+    if ict is None:
+        return
+    director = (User.objects.filter(pk=ict.director_id, is_active=True, user_type=User.STAFF).first()
+                if ict.director_id else None)
+    suggested = ""
+    try:
+        s = rotation.suggest_ict_supervisor(inst, record=True)
+        if s.suggested is not None:
+            suggested = (s.suggested.user.get_full_name() or s.suggested.user.email) if getattr(
+                s.suggested, "user", None) else s.suggested.name
+    except Exception:
+        pass
+    sys_user = system_user()
+    description = ("Assign an ICT supervisor for the new institution. Open the institution page in QA and "
+                   "use the ICT oversight card."
+                   + (f"\n\nRotation suggests: {suggested}." if suggested else ""))
+    with bridge_active():
+        task = task_services.create_task(
+            created_by=sys_user, title=f"[QA] Assign an ICT supervisor — {inst.name}"[:200],
+            description=description,
+            category=TaskCategory.objects.filter(code="qa-onboarding").first(),
+            owner_department=ict, priority="high", requires_review=False)
+        if director is not None:
+            if not TaskAssignee.objects.filter(task=task, user=director).exists():
+                TaskAssignee.objects.create(task=task, user=director, state=TaskAssignee.ASSIGNED,
+                                            assigned_by=sys_user)
+                task_services.log_activity(task, "assignee_added", actor=sys_user,
+                                           message=f"Assigned by QA to {director.get_full_name() or director.email}",
+                                           metadata={"assignee_id": director.pk})
+        QATaskLink.objects.create(task=task, content_type=ct, object_id=inst.pk, stage_code="oversight_ict",
+                                  kind="stage_action")
+        if director is not None:
+            task_services.open_task(task, sys_user)
+    audit.log("oversight_task_opened", inst, actor=None,
+              changes={"task_reference": getattr(task, "reference", ""), "suggested": suggested})
+
+
+def _record_management(inst, role_code, *, full_name, email="", phone="", title="", user=None, actor=None):
+    """X13: the CE / Head of ICT are also management staff (linked to their account)."""
+    from .models import ManagementRole, ManagementStaff
+
+    role = ManagementRole.objects.filter(code=role_code, is_active=True).first()
+    if role is None or not (full_name or "").strip():
+        return None
+    ManagementStaff.unscoped.filter(institution=inst, role=role, is_current=True).update(
+        is_current=False, end_date=timezone.localdate(), updated_at=timezone.now())
+    return ManagementStaff.unscoped.create(institution=inst, role=role, title=(title or "")[:30],
+                                           full_name=full_name.strip()[:150], email=(email or "").strip().lower(),
+                                           phone=(phone or "").strip()[:30], is_current=True, user=user,
+                                           start_date=timezone.localdate(),
+                                           added_by=actor if getattr(actor, "pk", None) else None)
+
+
+def _split_name(full_name):
+    parts = (full_name or "").strip().split()
+    if not parts:
+        return "", ""
+    return " ".join(parts[:-1]) or parts[0], parts[-1] if len(parts) > 1 else ""
+
+
+def _make_set_password_link(user, request):
+    from django.utils.encoding import force_bytes
+    from django.utils.http import urlsafe_base64_encode
+
+    from qa_core.hosts import portal_absolute, portal_reverse
+    from qa_core.portal_tokens import link_valid_hours, portal_token_generator
+
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = portal_token_generator.make_token(user)
+    path = portal_reverse("qa_portal:password_set", uidb64=uid, token=token)
+    return portal_absolute(path, request), link_valid_hours()
+
+
+@transaction.atomic
+def invite_chief_executive(inst, ce, *, actor=None, request=None):
+    """X12 (F.13): create the Chief Executive's account (no password) and
+    e-mail a set-password invitation. Replaces an earlier, unused CE link."""
+    from accounts.models import Role, User
+
+    email = (ce.get("email") or "").strip().lower()
+    if User.objects.filter(email__iexact=email).exists():
+        raise ValidationError({"ce_email": f"{email} already has an account."})
+    first, last = _split_name(ce.get("full_name"))
+    role = Role.objects.filter(code=CHIEF_EXECUTIVE_ROLE).first()
+    user = User(email=email, first_name=first[:150], last_name=last[:150], user_type=User.INSTITUTION,
+                institution=inst, role=role, is_active=True, must_change_password=False)
+    user.set_unusable_password()
+    user.save()
+    InstitutionUser.unscoped.filter(institution=inst, account_kind=InstitutionUser.CHIEF_EXECUTIVE,
+                                    is_active_link=True).update(is_active_link=False, updated_at=timezone.now())
+    InstitutionUser.unscoped.create(institution=inst, user=user, institution_role=role, is_primary_contact=False,
+                                    job_title="Chief Executive", invited_at=timezone.now(),
+                                    invited_by=actor if getattr(actor, "pk", None) else None,
+                                    account_kind=InstitutionUser.CHIEF_EXECUTIVE)
+    _record_management(inst, "chief-executive", full_name=ce.get("full_name", ""), email=email,
+                       phone=ce.get("phone", ""), title=ce.get("title", ""), user=user, actor=actor)
+    # v2.2: the setup link is never shown to the registrant (Head of ICT) —
+    # it goes only to the Chief Executive's own e-mail, automatically unless
+    # NBTE switched that off; NBTE staff with access can send it again.
+    if ce_auto_email():
+        transaction.on_commit(lambda: _send_ce_invite(inst, user, actor, request, None))
+    else:
+        timeline.record(inst, "credentials.ce_manual", visibility="internal",
+                        internal_text="Chief Executive set-up link held for NBTE to send (automatic e-mail is off).")
+    timeline.record(inst, "users.invited", actor=actor if getattr(actor, "pk", None) else None, visibility="public",
+                    public_text=f"{user.get_full_name()} was invited as the Chief Executive.")
+    return user
+
+
+def ce_auto_email():
+    """v2.2 setting qa.onboarding.ce_auto_email (default on)."""
+    value = cfg_value("qa.onboarding.ce_auto_email", True)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def cfg_value(key, default=None):
+    import config
+    return config.get(key, default)
+
+
+def _send_ce_invite(inst, user, actor, request, prepared_link=None):
+    try:
+        send_credentials(inst, actor=actor, user=user, request=request, reveal_once=False,
+                         prepared_link=prepared_link)
+    except ValidationError:
+        logger.warning("CE invitation for %s not sent (cool-down or portal off)", inst.code)
+
+
+def resend_ce_invitation(inst, *, actor, request=None):
+    """X12: the Head of ICT resends the CE's invitation (rate-limited by
+    qa.onboarding.ce_invite_resend_minutes; the credentials cool-down also applies)."""
+    from django.core.cache import cache
+
+    if not getattr(actor, "pk", None) or not (InstitutionUser.unscoped.filter(
+            institution=inst, user=actor, account_kind=InstitutionUser.ICT_HEAD, is_active_link=True).exists()
+            or can_manage_ce_access(actor, inst)):
+        raise PermissionDenied("Only the institution's Head of ICT or NBTE staff with access can resend it.")
+
+    link = (InstitutionUser.unscoped.filter(institution=inst, account_kind=InstitutionUser.CHIEF_EXECUTIVE,
+                                            is_active_link=True).select_related("user").first())
+    if link is None:
+        raise ValidationError("There is no Chief Executive account to invite.")
+    if link.user.has_usable_password() and link.user.last_login:
+        raise ValidationError("The Chief Executive has already signed in.")
+    minutes = cfg_int("qa.onboarding.ce_invite_resend_minutes", 15)
+    key = f"qa:ce-invite:{inst.pk}"
+    if minutes and cache.get(key):
+        raise ValidationError(f"The invitation was sent less than {minutes} minutes ago. Try again later.")
+    from django.core.cache import cache as _c
+    from qa_core.portal_views import _cooldown_key
+
+    _c.delete(_cooldown_key(link.user))  # this rate limit replaces the generic credentials cool-down
+    # v2.2: e-mailed to the Chief Executive only; never shown to the Head of ICT.
+    send_credentials(inst, actor=actor, user=link.user, request=request, reveal_once=False)
+    if minutes:
+        cache.set(key, timezone.now().isoformat(), minutes * 60)
+    InstitutionUser.unscoped.filter(pk=link.pk).update(invited_at=timezone.now(), updated_at=timezone.now())
+    return link.user
 
 
 # ---------------------------------------------------------------------------
@@ -359,9 +640,16 @@ def max_document_mb(kind):
 def upload_document(inst, kind, upload, *, user, application=None):
     if not kind.is_active:
         raise ValidationError("This document type is no longer collected.")
-    validate_upload(upload, extensions=kind.extensions(), max_mb=max_document_mb(kind), label="document")
     previous = (InstitutionDocument.unscoped.select_for_update()
                 .filter(institution=inst, kind=kind).order_by("-version").first())
+    was_returned = previous is not None and previous.status == InstitutionDocument.RETURNED
+    if application is not None and not was_returned:
+        from accreditation import onboarding_v3
+
+        if onboarding_v3.document_upload_blocked(application):
+            raise ValidationError("Required uploads unlock after NBTE Finance confirms the institutional and "
+                                  "processing fees.")
+    validate_upload(upload, extensions=kind.extensions(), max_mb=max_document_mb(kind), label="document")
     version = (previous.version + 1) if previous else 1
     doc = InstitutionDocument(institution=inst, kind=kind, version=version, supersedes=previous,
                               status=InstitutionDocument.SUBMITTED, uploaded_by=user, application=application)
@@ -373,6 +661,13 @@ def upload_document(inst, kind, upload, *, user, application=None):
     timeline.record(inst, "document.uploaded", subject=doc, actor=user, visibility="public",
                     public_text=f"{kind.name} uploaded (version {version}).")
     _maybe_lift_ownership_hold(inst, user)
+    doc.routed_department = None
+    if was_returned:
+        # O8/O9 (first slice of X17): a re-upload of a returned document goes
+        # straight back to the department that returned it — no resubmission.
+        from accreditation.services import on_document_reuploaded
+
+        doc.routed_department = on_document_reuploaded(doc, previous, user=user)
     return doc
 
 
@@ -500,16 +795,13 @@ def credentials_cooldown_left(user):
     return bool(cache.get(_cooldown_key(user)))
 
 
-def send_credentials(inst, *, actor, user=None, request=None):
+def send_credentials(inst, *, actor, user=None, request=None, reveal_once=False, prepared_link=None):
     """Activate the account and e-mail a one-time set-password link (never a
     plaintext password). Respects qa.credentials.resend_cooldown_minutes."""
     from django.core.cache import cache
-    from django.utils.encoding import force_bytes
-    from django.utils.http import urlsafe_base64_encode
 
     from qa_core import mail
-    from qa_core.hosts import portal_absolute, portal_reverse
-    from qa_core.portal_tokens import link_valid_hours, portal_token_generator
+    from qa_core.portal_tokens import link_valid_hours
     from qa_core.portal_views import _cooldown_key
 
     user = user or inst.primary_user()
@@ -523,18 +815,141 @@ def send_credentials(inst, *, actor, user=None, request=None):
     if not user.is_active:
         user.is_active = True
         user.save(update_fields=["is_active"])
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = portal_token_generator.make_token(user)
-    link = portal_absolute(portal_reverse("qa_portal:password_set", uidb64=uid, token=token), request)
-    mail.send("Set your NBTE Quality Assurance Portal password", [user.email], "emails/qa_set_password.html",
-              {"user": user, "set_url": link, "valid_hours": link_valid_hours(), "institution": inst},
-              category="reset")
+    link, valid_hours = _make_set_password_link(user, request) if prepared_link is None else (
+        prepared_link, link_valid_hours())
+    if reveal_once and request is not None and getattr(actor, "pk", None) and prepared_link is None \
+            and getattr(actor, "user_type", "") == "staff":
+        request.session["qa_ce_activation_link_once"] = {
+            "url": link, "email": user.email, "institution": inst.pk, "issuer_id": actor.pk,
+            "valid_hours": valid_hours,
+        }
+    delivery_failed = False
+    try:
+        mail.send("Set your NBTE Quality Assurance Portal password", [user.email], "emails/qa_set_password.html",
+                  {"user": user, "set_url": link, "valid_hours": valid_hours, "institution": inst},
+                  category="reset")
+    except Exception:
+        if not (getattr(actor, "user_type", "") == "staff" or _is_registration_actor(inst, actor)):
+            raise
+        delivery_failed = True
+        logger.exception("Could not deliver the CE password setup email for institution %s; the one-time link is available to the issuer", inst.pk)
     if cooldown:
         cache.set(_cooldown_key(user), timezone.now().isoformat(), cooldown * 60)
     InstitutionUser.unscoped.filter(user=user).update(credentials_last_sent_at=timezone.now())
-    timeline.record(inst, "credentials.sent", actor=actor, visibility="internal",
-                    internal_text=f"Set-password link e-mailed to {user.email}.")
+    timeline.record(inst, "credentials.delivery_failed" if delivery_failed else "credentials.sent",
+                    actor=actor, visibility="internal",
+                    internal_text=(f"Set-password email delivery failed for {user.email}; the one-time link was issued."
+                                   if delivery_failed else f"Set-password invitation prepared for {user.email}."))
     return user
+
+
+def _is_registration_actor(inst, actor):
+    """The Head of ICT registering: a mail failure must not undo the
+    registration; NBTE resends from the institution page."""
+    return bool(getattr(actor, "pk", None) and InstitutionUser.unscoped.filter(
+        institution=inst, user=actor, account_kind=InstitutionUser.ICT_HEAD).exists())
+
+
+# ---------------------------------------------------------------------------
+# v2.2 — Chief Executive account access, NBTE side
+# ---------------------------------------------------------------------------
+def chief_executive_link(inst):
+    return (InstitutionUser.unscoped.filter(institution=inst, account_kind=InstitutionUser.CHIEF_EXECUTIVE,
+                                            is_active_link=True).select_related("user").first())
+
+
+def can_manage_ce_access(user, inst):
+    """ES, super admin / superuser, the Director of ICT, and the ICT officer
+    assigned to oversee this institution."""
+    if not getattr(user, "is_authenticated", False) or not user.is_active \
+            or getattr(user, "user_type", "staff") != "staff":
+        return False
+    import org
+    from assignments import access
+
+    if user.is_superuser or org.is_es(user) or org.is_super_admin(user):
+        return True
+    if org.is_director(user, access.ict_department_code()):
+        return True
+    if access.is_ict_supervisor(user, inst):
+        return True
+    from assignments.models import WorkAssignment
+
+    return WorkAssignment.objects.filter(institution=inst, assignee=user, kind=WorkAssignment.OVERSIGHT_ICT,
+                                         status__in=WorkAssignment.OPEN).exists()
+
+
+def ce_status(inst):
+    link = chief_executive_link(inst)
+    if link is None:
+        return {"state": "none", "user": None, "link": None}
+    u = link.user
+    state = "active" if (u.has_usable_password() and u.last_login) else (
+        "password_set" if u.has_usable_password() else "invited")
+    return {"state": state, "user": u, "link": link}
+
+
+@transaction.atomic
+def nbte_send_ce_link(inst, *, actor, request=None, reveal=False):
+    """E-mail a fresh set-up link to the Chief Executive's own address. With
+    ``reveal`` the link is also returned once to the NBTE officer (to send by
+    another channel when e-mail fails). Audited either way."""
+    if not can_manage_ce_access(actor, inst):
+        raise PermissionDenied("You cannot manage this institution's Chief Executive account.")
+    link = chief_executive_link(inst)
+    if link is None:
+        raise ValidationError("This institution has no Chief Executive account yet.")
+    url, hours = _make_set_password_link(link.user, request)
+    sent = True
+    try:
+        from qa_core import mail
+
+        mail.send("Set your NBTE Quality Assurance Portal password", [link.user.email], "emails/qa_set_password.html",
+                  {"user": link.user, "set_url": url, "valid_hours": hours, "institution": inst}, category="reset")
+    except Exception:
+        sent = False
+        logger.exception("CE link e-mail failed for %s", inst.code)
+    InstitutionUser.unscoped.filter(pk=link.pk).update(credentials_last_sent_at=timezone.now(),
+                                                       invited_at=timezone.now(), updated_at=timezone.now())
+    from core import audit
+
+    audit.log("other", link.user, actor=actor,
+              note=(f"CE set-up link {'e-mailed' if sent else 'e-mail FAILED'} to {link.user.email}"
+                    + ("; link shown once to the NBTE officer" if reveal else ""))[:255])
+    timeline.record(inst, "credentials.sent", actor=actor, visibility="internal",
+                    internal_text=f"NBTE ({actor.get_full_name()}) sent the Chief Executive set-up link to "
+                                  f"{link.user.email}{'' if sent else ' — e-mail failed'}"
+                                  f"{'; link also shown to the officer' if reveal else ''}.")
+    return {"url": url if reveal else None, "hours": hours, "sent": sent, "email": link.user.email}
+
+
+@transaction.atomic
+def nbte_issue_ce_password(inst, *, actor):
+    """Generate a one-time password for the Chief Executive (shown once to
+    the NBTE officer, who passes it on). The CE must change it at first
+    sign-in. Audited; the password itself is never stored or logged."""
+    import secrets
+    import string
+
+    if not can_manage_ce_access(actor, inst):
+        raise PermissionDenied("You cannot manage this institution's Chief Executive account.")
+    link = chief_executive_link(inst)
+    if link is None:
+        raise ValidationError("This institution has no Chief Executive account yet.")
+    alphabet = string.ascii_letters + string.digits
+    password = "-".join("".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3)) + "#"
+    user = link.user
+    user.set_password(password)
+    user.must_change_password = True
+    user.is_active = True
+    user.save(update_fields=["password", "must_change_password", "is_active"])
+    from core import audit
+
+    audit.log("other", user, actor=actor, note=f"One-time CE password issued by NBTE for {user.email}")
+    timeline.record(inst, "credentials.password_issued", actor=actor, visibility="internal",
+                    internal_text=f"{actor.get_full_name()} issued a one-time password for the Chief Executive "
+                                  f"({user.email}); they must change it at first sign-in.")
+    return password
 
 
 def impersonation_target(inst):
@@ -548,6 +963,13 @@ def impersonation_target(inst):
 def start_impersonation(inst, *, staff, reason, write_mode=False):
     if len((reason or "").strip()) < 5:
         raise ValidationError("Give a reason for viewing as this institution.")
+    # v2.1 P.4 (S-08): impersonation never widens scope — the portal shows
+    # the institution's documents, payments and SSQs, so only people who
+    # already see this institution's whole journey may view as it.
+    from assignments import access
+    if not access.can_see(staff, inst, "full_journey" if access.assignment_mode() else "summary"):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied("You can only view as an institution whose whole journey you can already see.")
     view_as = impersonation_target(inst)
     if view_as is None:
         raise ValidationError("This institution has no active portal account to view as. Send its login "
@@ -592,6 +1014,52 @@ def notify_institution(inst, event, context, *, url=""):
     notify.dispatch(event, ctx, {"institution_users": institution_users(inst)}, url=url)
 
 
+# ---------------------------------------------------------------------------
+# X12 slice (Phase 0): only the Chief Executive submits to NBTE
+# ---------------------------------------------------------------------------
+CHIEF_EXECUTIVE_ROLE = "inst-chief-executive"
+CE_ONLY_MESSAGE = "Only the Chief Executive of the institution can submit {what} to NBTE."
+
+
+def is_chief_executive(user):
+    """The institution's Chief Executive: the typed account (X12, F.13) or,
+    for older rows, the inst-chief-executive role."""
+    if user is None or getattr(user, "user_type", "") != "institution":
+        return False
+    if getattr(getattr(user, "role", None), "code", "") == CHIEF_EXECUTIVE_ROLE:
+        return True
+    return InstitutionUser.unscoped.filter(user=user, account_kind=InstitutionUser.CHIEF_EXECUTIVE,
+                                           is_active_link=True).exists()
+
+
+def require_chief_executive(user, what="this"):
+    """Service guard for every institution → NBTE submission (application,
+    programmes, QA requests, SSQs). Phase F replaces it with portal
+    permissions (spec G3)."""
+    if not is_chief_executive(user):
+        raise PermissionDenied(CE_ONLY_MESSAGE.format(what=what))
+
+
+def institution_team_locked(inst):
+    """Lock direct profile, management, and user changes after submission."""
+    from accreditation.models import Application
+    from django.db.models import Q
+
+    if inst.status != Institution.PROPOSED:
+        return True
+    return Application.unscoped.filter(institution=inst).filter(
+        Q(submitted_at__isnull=False) | ~Q(status__in=("draft", "withdrawn"))
+    ).exists()
+
+
+def chief_executives(inst):
+    import org
+    from accounts.models import User
+
+    return list(User.objects.filter(org.role_q(CHIEF_EXECUTIVE_ROLE), institution=inst, user_type="institution",
+                                    is_active=True))
+
+
 def staff_in_department(dept, *, perm=None, roles=None):
     from accounts.models import User
 
@@ -599,10 +1067,17 @@ def staff_in_department(dept, *, perm=None, roles=None):
         return []
     users = User.objects.filter(is_active=True, user_type="staff", department=dept).select_related("role")
     if roles:
-        users = users.filter(role__code__in=roles)
+        import org
+        users = users.filter(org.role_q(*roles))
     out = list(users[:200])
     if perm:
         out = [u for u in out if u.has_perm(perm)]
+    if roles is None:
+        from assignments import access
+        if access.assignment_mode():
+            # X1/X3/X4: institution notices reach the department's leads (who
+            # assign the work), not every member — staff hear once assigned.
+            out = [u for u in out if access.is_department_lead(u)]
     return out
 
 
@@ -678,10 +1153,13 @@ def nominee_problems(inst, data):
     return problems
 
 
-def invite_user(inst, data, *, actor, request=None):
+def invite_user(inst, data, *, actor, request=None, approved_request=False):
     """Add a portal user to the institution and e-mail a set-password link."""
     from accounts.models import Role, User
 
+    if (getattr(actor, "user_type", "") == User.INSTITUTION and institution_team_locked(inst)
+            and not approved_request):
+        raise PermissionDenied("Institution users are locked after application submission. Submit a change request.")
     problems = nominee_problems(inst, data)
     if problems:
         raise ValidationError(problems)
@@ -786,3 +1264,16 @@ def filter_institutions(qs, *, q="", status="", ownership="", type_code="", dept
     if zone:
         qs = qs.filter(zone=zone)
     return qs.order_by(INSTITUTION_SORTS.get(sort or "name", "name"))
+
+
+def programme_name_choices(limit=500):
+    """Distinct programme names offered anywhere (names only, no institution),
+    for datalists. v2.1 P.3: views never call ``.unscoped``."""
+    return sorted({n for n in Programme.unscoped.values_list("name", flat=True) if n})[:limit]
+
+
+def lga_in_use(lga):
+    """True when any institution or institution address uses ``lga`` (Settings → LGAs)."""
+    from .models import Institution, InstitutionAddress
+    return (Institution.unscoped.filter(lga_ref=lga).exists()
+            or InstitutionAddress.unscoped.filter(lga_ref=lga).exists())

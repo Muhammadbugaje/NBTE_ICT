@@ -48,15 +48,38 @@ def p2(qa_seed, make_user):
     ns.aspd = mk("p2.aspd@t.local", "officer", "academic-planning")
     ns.ppd = mk("p2.ppd@t.local", "officer", "physical-planning")
     ns.fin_officer = mk("p2.fin.officer@t.local", "qa-finance-officer", "finance")
-    ns.fin_director = mk("p2.fin.director@t.local", "qa-finance-director", "finance")
+    # v2.1 X47: TVET institution changes are no longer carried by the officer /
+    # director roles — the three TVET Support groups hold them. Most Phase 2+ /
+    # Phase 3 tests still exercise the old institution actions with "the
+    # officer", so give them named holders of those group permissions.
+    ns.tvet_initiator = mk("p2.tvetstaff.initiator@t.local", role="officer", dept="dpap",
+                           groups=["TVET Support – Initiators"])
+    ns.tvet_confirmer = mk("p2.tvetstaff.confirmer@t.local", role="director", dept="dpap",
+                           groups=["TVET Support – Confirmers"])
+    ns.tvet_approver = mk("p2.tvetstaff.approver@t.local", role="director", dept="dpap",
+                          groups=["TVET Support – Approvers"])
+    # Phase B (B2): the Director of Finance is the director of Finance (seat).
+    ns.fin_director = mk("p2.fin.director@t.local", "director", "finance")
     ns.dpap_monitor = mk("p2.dpap.plain@t.local", "officer", "dpap")
+    # v2.1 Phase 0 (O10): officers no longer clear by role; the four
+    # clearance officers act as ClearanceDelegates of their departments.
+    from accreditation.clearance_access import _sync_override
+    from accreditation.models import ClearanceDelegate
+
+    for officer in (ns.legal, ns.finance_clr, ns.aspd, ns.ppd):
+        ClearanceDelegate.objects.create(department=officer.department, user=officer, note="test delegate")
+        _sync_override(officer)
+    ns.legal, ns.finance_clr, ns.aspd, ns.ppd = (User.objects.get(pk=u.pk) for u in
+                                                 (ns.legal, ns.finance_clr, ns.aspd, ns.ppd))
     # Finance has set the account printed on slips (otherwise bills wait in
     # "issued" — see test_bills_wait_for_a_real_bank_account).
     from payments.models import BankAccount
 
     ns.bank = BankAccount.objects.create(bank_name="Central Bank of Nigeria — TSA", account_name="NBTE",
                                          account_number="1234567890", is_active=True, is_default=True)
-    assert Role.objects.filter(code="qa-finance-director").exists()
+    import org
+    assert org.is_director(ns.fin_director, ns.fin_director.department)
+    assert not Role.objects.filter(code="qa-finance-director").exists()
     return ns
 
 
@@ -102,18 +125,26 @@ def add_tvet_payload(lookups):
 
 
 @pytest.fixture
-def proposed_inst(p2, add_tvet_payload):
-    """A proposed private polytechnic created through Add TVET (two officers),
+def proposed_inst(p2, add_tvet_payload, make_user):
+    """A proposed private polytechnic created by configured TVET Support staff,
     with an active primary portal user."""
     from institutions.models import Institution
     from qa_core import actions
 
-    pa = actions.initiate("institutions.add_tvet", actor=p2.officer, payload=add_tvet_payload(), reason="new")
-    actions.confirm(pa, p2.director)
+    initiator = make_user("p2.tvet.initiator@t.local", role="officer", dept="dpap",
+                          groups=["TVET Support – Initiators"])
+    confirmer = make_user("p2.tvet.confirmer@t.local", role="director", dept="dpap",
+                          groups=["TVET Support – Confirmers"])
+    pa = actions.initiate("institutions.add_tvet", actor=initiator, payload=add_tvet_payload(), reason="new")
+    actions.confirm(pa, confirmer)
     inst = Institution.unscoped.get(name="Zaria Institute of Technology")
     user = inst.primary_user()
     user.is_active = True
     user.must_change_password = False
+    # v2.1 X12: only the Chief Executive submits; the primary user here is the CE.
+    from accounts.models import Role
+
+    user.role = Role.objects.get(code="inst-chief-executive")
     user.save()
     return inst
 

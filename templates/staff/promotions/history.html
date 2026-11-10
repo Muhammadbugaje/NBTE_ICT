@@ -1,26 +1,27 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Promotion history · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Promotions{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}">
+  <link rel="stylesheet" href="{% static 'css/hr.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="nbr-page promo-page">
-  <a href="{% url 'staff:promotions' %}" class="nbr-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Promotions
-  </a>
-  <header class="nbte-page-header nbr-header">
-    <div class="nbte-page-header__text">
-      <span class="nbte-page-header__eyebrow">People · Promotions</span>
-      <h1 class="nbte-page-header__title">Promotion history</h1>
-      <p class="nbte-page-header__description">Every promotion and rollback, newest first. A rollback never deletes the original — it adds a reversing entry.</p>
+  <header class="qa-hero nbte-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "trend" 14 "2.2" %} User management · Promotions</span>
+      <h1>Promotion history</h1>
+      <p>Every promotion and rollback, newest first; a rollback adds a reversing entry and never deletes the original.{% if not may_rollback %} Only the Executive Secretary can roll back a promotion.{% endif %}</p>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ page.paginator.count }}</strong><span>{% if filters_active %}Matching{% else %}Entries{% endif %}</span></div>
     </div>
   </header>
+  {% include "staff/promotions/_tabs.html" %}
 
   <form method="get" class="nbr-toolbar" role="search" aria-label="Filter promotions">
     <div class="field">
@@ -114,6 +115,7 @@
   {% endif %}
 </div>
 
+{% if may_rollback %}
 <div class="modal-root" id="promo-rollback-modal" aria-hidden="true" data-promo-rollback-modal>
   <div class="modal-backdrop"></div>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="promo-rollback-title" aria-describedby="promo-rollback-body">
@@ -136,8 +138,9 @@
     </form>
   </div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/promotions.js' %}?v=1" defer></script>
+  <script src="{% static 'js/promotions.js' %}" defer></script>
 {% endblock %}

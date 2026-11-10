@@ -1,0 +1,35 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}{{ p }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:pb_dashboard' %}">Programmes</a><span aria-hidden="true">/</span><span aria-current="page">{{ p }}</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "layers" 14 "2.2" %} {{ p.institution.name }}</span>
+    <h1 data-qa-focus>{{ p.name }} <span class="qa-muted">{{ p.level.code|upper }}</span></h1>
+    <p><span class="qa-chip{% if stage_code == 'awaiting_letter' %} qa-tone-warn{% endif %}">{{ stage }}</span></p>
+  </header>
+  <dl class="qa-prog-facts">
+    <div><dt>Institution</dt><dd>{{ p.institution.name }}</dd></div>
+    <div><dt>Level</dt><dd>{{ p.level.name }}</dd></div>
+    <div><dt>Stage</dt><dd>{{ stage }}</dd></div>
+    <div><dt>Visit</dt><dd>{{ visit|date:"j M Y"|default:"—" }}</dd></div>
+  </dl>
+  <section class="qa-card qa-mt" aria-labelledby="pb-letters-h">
+    <header class="qa-card__head"><div><h2 id="pb-letters-h">Letters and certificates</h2><p>Seen by NBTE's department and the institution.</p></div></header>
+    {% if letters %}<ul class="qa-rowlist" role="list">{% for l in letters %}<li><a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_portal:pb_letter' l.pk %}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ l.get_kind_display }}{% if l.reference %} · {{ l.reference }}{% endif %}</span><span class="qa-rowlink__meta">{{ l.original_name }} · uploaded {{ l.created_at|date:"j M Y" }}</span></span></a></li>{% endfor %}</ul>
+    {% else %}<p class="qa-card__body qa-muted qa-small">No letter uploaded yet.</p>{% endif %}
+    {% if is_admin %}<div class="qa-card__body">
+      {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not uploaded" message=error %}{% endif %}
+      <form class="qa-form qa-stack" method="post" enctype="multipart/form-data" action="{% url 'qa_portal:pb_letter_upload' p.pk %}">{% csrf_token %}
+        <div class="qa-fields">
+          <div class="qa-field"><label for="pbl-kind">Kind</label><select class="input" id="pbl-kind" name="kind">{% for code, label in kinds %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
+          <div class="qa-field"><label for="pbl-ref">Reference</label><input class="input" id="pbl-ref" name="reference" maxlength="80"></div>
+          <div class="qa-field"><label for="pbl-date">Issued on</label><input class="input" id="pbl-date" name="issued_on" type="date"></div>
+          <div class="qa-field is-wide"><label for="pbl-file">Signed PDF (up to 10 MB)</label><input class="input" id="pbl-file" name="file" type="file" accept=".pdf,.jpg,.jpeg,.png" required></div>
+        </div>
+        <div class="qa-form-actions btn-group"><button class="btn btn-primary" type="submit">{% icon "upload" 16 %} Upload letter</button></div>
+      </form></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

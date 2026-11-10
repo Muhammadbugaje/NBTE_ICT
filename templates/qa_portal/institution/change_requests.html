@@ -1,0 +1,32 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Change requests · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow"><a href="{% url 'qa_portal:institution' %}">Institution</a> · NBTE approval</span>
+    <h1 data-qa-focus>Change requests</h1>
+    <p>Changes to institution users and management are reviewed by NBTE after your first application is submitted.</p>
+    {% if can_submit_change_request %}<div class="qa-hero__actions pp-actions">
+      <a class="btn btn-primary" href="{% url 'qa_portal:change_requests_new' %}?type=profile">Request profile change</a>
+      <a class="btn btn-subtle" href="{% url 'qa_portal:change_requests_new' %}?type=management">Request management change</a>
+      <a class="btn btn-subtle" href="{% url 'qa_portal:change_requests_new' %}?type=user_invite">Request user invitation</a>
+      <a class="btn btn-subtle" href="{% url 'qa_portal:change_requests_new' %}?type=user_remove">Request user removal</a>
+    </div>{% endif %}
+  </header>
+  <section class="qa-card" aria-label="Submitted change requests">
+    <header class="qa-card__head"><div><h2>Request history</h2><p>{{ requests|length }} request{{ requests|length|pluralize }}</p></div></header>
+    {% if requests %}
+    <ul class="qa-rowlist" role="list">
+      {% for row in requests %}
+      <li><div class="qa-rowlink"><span class="qa-rowlink__main">
+        <span class="qa-rowlink__title">{{ row.reference }} · {{ row.get_change_type_display }}</span>
+        <span class="qa-rowlink__meta">Submitted {{ row.created_at|date:"j M Y, H:i" }} · {{ row.get_status_display }}</span>
+        {% if row.decision_note %}<span class="qa-rowlink__meta">{{ row.decision_note }}</span>{% endif %}
+      </span></div></li>
+      {% endfor %}
+    </ul>
+    {% else %}<div class="qa-empty"><h3>No requests yet</h3><p>When a protected change is needed, submit it here for NBTE review.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

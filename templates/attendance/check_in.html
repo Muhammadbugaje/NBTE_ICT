@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Check in · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Check in{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -14,18 +14,18 @@
      data-preview-url="{% url 'attendance:location_preview' %}"
      data-home-url="{% url 'attendance:home' %}">
 
-  <a class="att-back" href="{% url 'attendance:home' %}">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <line x1="19" y1="12" x2="5" y2="12"/>
-      <polyline points="12 19 5 12 12 5"/>
-    </svg>
-    Back
-  </a>
+  <header class="qa-hero nbte-hero att-qa-hero att-qa-hero--narrow" data-qa-area="attendance">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'attendance:home' %}">{% icon "back" 14 "2.4" %} Attendance</a>
+      <span class="qa-eyebrow">{% icon "map" 14 "2.2" %} Attendance · Check in</span>
+      <h1>Check in</h1>
+      <p>We confirm you are at your office using your device location, then record the time.</p>
+    </div>
+  </header>
 
   {% if not is_working_day %}
     <section class="att-checkin-card is-muted">
-      <h1>Not a working day</h1>
+      <h2 class="att-checkin-title">Not a working day</h2>
       <p>Today isn't a working day for you. See you on the next working day.</p>
       <a class="att-btn att-btn-primary att-btn-full" href="{% url 'attendance:home' %}">
         Back to attendance
@@ -40,7 +40,7 @@
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       </div>
-      <h1>Already checked in</h1>
+      <h2 class="att-checkin-title">Already checked in</h2>
       <p>
         You checked in at
         <strong>{{ today_record.check_in_at|time:"H:i" }}</strong>
@@ -68,7 +68,7 @@
         </svg>
       </div>
 
-      <h1 id="att-checkin-title">Locating you…</h1>
+      <h2 class="att-checkin-title" id="att-checkin-title">Locating you…</h2>
       <p id="att-checkin-message">
         We'll use your current location to confirm you're at the office.
       </p>
@@ -101,6 +101,7 @@
         </div>
       </div>
 
+      <div class="btn-group btn-group--stack att-checkin-actions">{# v2.1 X52 #}
       <button type="button"
               class="att-btn att-btn-primary att-btn-full att-checkin-submit"
               id="att-submit"
@@ -114,6 +115,7 @@
               hidden>
         Try again
       </button>
+      </div>
 
       <p class="att-checkin-hint" id="att-hint"></p>
 

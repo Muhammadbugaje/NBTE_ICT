@@ -371,10 +371,13 @@ def complaint_world(qa_seed, make_institution, make_user):
     raiser = make_user("admin@cmp.local", user_type="institution", institution=inst, role="inst-admin")
     fin = make_user("fo@cmp-fin.local", role="qa-finance-officer", dept="finance")
     dpap = make_user("o@cmp-dpap.local", role="officer", dept="dpap")
+    fin_director = make_user("fd@cmp-fin.local", role="director", dept="finance")
     complaint = services.raise_complaint(raiser, layer=ComplaintLayer.objects.get(code="payment-issues"),
                                          subject="Payment not confirmed after a week",
                                          body="We paid and uploaded the teller a week ago.")
-    return {"complaint": complaint, "fin": fin, "dpap": dpap, "raiser": raiser}
+    # v2.1 X10: a Finance officer sees the complaint once the Director of Finance assigns it.
+    services.act(complaint, "assign", fin_director, officer=fin)
+    return {"complaint": complaint, "fin": fin, "dpap": dpap, "raiser": raiser, "fin_director": fin_director}
 
 
 def test_complaints_queue_reply_and_act(staff_api, complaint_world):
@@ -444,6 +447,6 @@ def test_schema_lists_the_qa_routes():
 
     schema = SchemaGenerator(urlconf="nbte_ict.urls").get_schema(request=None, public=True)
     paths = [p for p in schema["paths"] if p.startswith("/api/v1/qa/")]
-    assert len(paths) == 35
+    assert len(paths) == 37  # v2.1 Phase 0: onboarding programme clearance (list, decide)
     portal = SchemaGenerator(urlconf="qa_core.portal_urls").get_schema(request=None, public=True)
     assert not [p for p in portal["paths"] if p.startswith("/api/v1/qa/")]

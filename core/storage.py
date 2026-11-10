@@ -102,3 +102,27 @@ def capture_original_filename(instance, field_name, target_attr):
         setattr(instance, target_attr, name[:255])
     elif not field_file:
         setattr(instance, target_attr, "")
+
+from django.contrib.staticfiles.storage import ManifestStaticFilesStorage  # noqa: E402
+
+try:  # v2.2: pre-compressed .gz (and .br when `brotli` is installed) copies for WhiteNoise
+    from whitenoise.storage import CompressedManifestStaticFilesStorage as _ManifestBase  # noqa: E402
+except ImportError:  # pragma: no cover - whitenoise not installed
+    _ManifestBase = ManifestStaticFilesStorage
+
+
+class NBTEManifestStaticFilesStorage(_ManifestBase):
+    """Production static storage (v2.1 V7, T-CONS-7): hashed file names.
+
+    * Source-map comments are left alone: vendored libraries (swagger-ui …)
+      ship without their .map files, which would otherwise stop collectstatic.
+    * manifest_strict is off, so a template that names a file missing from the
+      manifest serves the plain name instead of a 500 page.
+    """
+    manifest_strict = False
+    patterns = (
+        ("*.css", (
+            r"""(?P<matched>url\((?P<quote>['"]{0,1})\s*(?P<url>.*?)(?P=quote)\))""",
+            (r"""(?P<matched>@import\s*["']\s*(?P<url>.*?)["'])""", """@import url("%(url)s")"""),
+        )),
+    )

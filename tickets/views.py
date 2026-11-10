@@ -11,6 +11,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from qa_core.ui import htmx_fragment  # Phase 0 (N2): fragment URLs
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
@@ -153,7 +154,13 @@ def ticket_list(request):
         "state_choices": Ticket.STATE_CHOICES,
         "priority_choices": Ticket.PRIORITY_CHOICES,
         "total": qs.count(),
+        "can_see_counts": _can_see_counts(request.user),
     })
+
+
+def _can_see_counts(user):
+    from .routing import counts_scope
+    return counts_scope(user)[0] is not None
 
 
 @login_required
@@ -322,13 +329,42 @@ def ticket_detail(request, pk):
     can_internal, can_attach = flags["can_internal"], flags["can_attach"]
 
     asset_link_ok = False
+    asset_grant = None
+    asset_panel = None
     if ticket.asset_id:
         from assets.access import can_view_asset
         asset_link_ok = can_view_asset(user, ticket.asset)
+        if asset_link_ok:
+            from assignments.access import grant_for
+            asset_grant = grant_for(user, ticket.asset, "asset")
+            a = ticket.asset
+            asset_panel = {
+                "asset": a,
+                "holders": list(a.open_assignments()),
+                "past_tickets": list(a.tickets.exclude(pk=ticket.pk).select_related("assigned_to")
+                                     .order_by("-created_at")[:5]),
+                "issues": list(a.issues.order_by("-reported_at")[:5]),
+            }
+
+    from .bridge import path_events
+    from .routing import load_label, routable_divisions
+    divisions = []
+    if flags["can_route"]:
+        divisions = list(routable_divisions(ticket))
+        for d in divisions:
+            d.load_label = load_label(d)
+    assign_division = (ticket.division if ticket.division_id and ticket.division_state == Ticket.DIV_ACCEPTED
+                       and services.is_division_head_of(user, ticket)
+                       and not services._is_department_head(user, ticket.handling_department_id) else None)
 
     return render(request, "tickets/detail.html", {
         "ticket": ticket,
         "asset_link_ok": asset_link_ok,
+        "asset_grant": asset_grant,
+        "asset_panel": asset_panel,
+        "path": path_events(ticket),
+        "divisions": divisions,
+        "flags": flags,
         "activities": activities,
         "comments": comments,
         "attachments": attachments,
@@ -345,7 +381,7 @@ def ticket_detail(request, pk):
         "can_internal": can_internal,
         "can_attach": can_attach,
         # forms
-        "assign_form": AssignTicketForm(department=ticket.handling_department),
+        "assign_form": AssignTicketForm(department=ticket.handling_department, division=assign_division),
         "start_form": StartWorkForm(),
         "await_form": AwaitingForm(),
         "resolve_form": ResolveForm(),
@@ -602,6 +638,7 @@ def ticket_delete_attachment(request, pk, attachment_id):
 # Timeline partial (for future SSE-driven live updates)
 # ---------------------------------------------------------------------------
 @login_required
+@htmx_fragment("tickets:detail")
 def ticket_timeline_partial(request, pk):
     ticket = get_object_or_404(_visible_tickets_qs(request.user), pk=pk)
     activities = ticket.activities.select_related("actor").order_by("created_at")
@@ -629,3 +666,92 @@ def ticket_stream(request, pk):
     return activity_response(request, TicketActivity.objects.filter(ticket_id=ticket.pk))
 
 
+
+
+# ===========================================================================
+# v2.1 Phase C: routing (I2), funds (I8), rating (I4), report (I13), counts (I3, I10)
+# ===========================================================================
+def _post_service(request, pk, fn, success):
+    ticket = get_object_or_404(_visible_tickets_qs(request.user), pk=pk)
+    try:
+        fn(ticket)
+    except (PermissionDenied, ValidationError) as exc:
+        msgs = getattr(exc, "messages", None) or [str(exc)]
+        messages.error(request, "; ".join(msgs))
+    else:
+        messages.success(request, success)
+    return redirect("tickets:detail", pk=ticket.pk)
+
+
+@login_required
+@require_POST
+def ticket_route(request, pk):
+    from org.models import Division
+    from .routing import route_to_division
+    division = Division.objects.filter(pk=request.POST.get("division") or 0).first()
+    return _post_service(request, pk, lambda t: route_to_division(t, request.user, division,
+                                                                  request.POST.get("note", "")),
+                         "Routed to the division. The head has been asked to accept it.")
+
+
+@login_required
+@require_POST
+def ticket_division_accept(request, pk):
+    from .routing import accept_division
+    return _post_service(request, pk, lambda t: accept_division(t, request.user),
+                         "Accepted. The division's members can now see this ticket.")
+
+
+@login_required
+@require_POST
+def ticket_division_decline(request, pk):
+    from .routing import decline_division
+    return _post_service(request, pk, lambda t: decline_division(t, request.user, request.POST.get("reason", "")),
+                         "Declined. The ticket is back with the director.")
+
+
+@login_required
+@require_POST
+def ticket_request_funds(request, pk):
+    from .bridge import request_funds
+    return _post_service(request, pk, lambda t: request_funds(t, request.user, request.POST.get("amount", ""),
+                                                              request.POST.get("purpose", "")),
+                         "Funds requested. Finance and the Executive Secretary will see the ticket's full trail.")
+
+
+@login_required
+@require_POST
+def ticket_rate(request, pk):
+    from .rating import rate_ticket
+    return _post_service(request, pk, lambda t: rate_ticket(t, request.user, request.POST.get("rating"),
+                                                            request.POST.get("comment", "")),
+                         "Thank you for rating this ticket.")
+
+
+@login_required
+@require_GET
+def ticket_report_pdf(request, pk):
+    from .pdf import render_ticket_pdf
+    ticket = get_object_or_404(_visible_tickets_qs(request.user), pk=pk)
+    resp = HttpResponse(render_ticket_pdf(ticket), content_type="application/pdf")
+    resp["Content-Disposition"] = f'inline; filename="{ticket.reference}.pdf"'
+    return resp
+
+
+@login_required
+def ticket_counts(request):
+    """Division queue + counts (I3) and paths taken (I10), scoped to the viewer:
+    division head (own division), director (department), ES / super admin (all)."""
+    from .routing import counts_for, load_label
+    data = counts_for(request.user)
+    if data is None:
+        raise PermissionDenied("Ticket counts are for division heads, directors and the ES.")
+    queue = Ticket.objects.none()
+    from org.models import Division
+    headed = Division.objects.filter(head=request.user, is_active=True)
+    if headed.exists():
+        queue = (Ticket.objects.filter(division__in=headed, state__in=Ticket.OPEN_STATES)
+                 .select_related("category", "assigned_to", "division").order_by("division_state", "-created_at"))
+    for d in data["divisions"]:
+        d.load_label = load_label(d)
+    return render(request, "tickets/counts.html", {"data": data, "queue": queue})

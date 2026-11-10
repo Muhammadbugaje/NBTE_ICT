@@ -1,0 +1,82 @@
+{% load qa_tags %}{# The ONE linear journey (qa_core.portal_journey.linear_journey). Pass j=<journey>. Plain words only. #}
+{% if j %}{% with c=j.current %}
+<section class="lj{% if j.complete %} lj--complete{% endif %}" aria-labelledby="lj-h" id="your-journey">
+  <header class="lj__head">
+    <div class="lj-ring" style="--p:{{ j.pct }}" role="img" aria-label="{{ j.pct }}% of your journey is done">
+      <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false"><circle class="lj-ring__bg" cx="60" cy="60" r="52"/><circle class="lj-ring__fg" cx="60" cy="60" r="52" pathLength="100" style="stroke-dasharray:{{ j.pct }} 100"/></svg>
+      <span><b>{{ j.pct }}%</b><small>done</small></span>
+    </div>
+    <div class="lj__intro">
+      <p class="lj__eyebrow">Your journey with NBTE{% if not j.complete %} · <b>step {{ j.position }} of {{ j.total }}</b>{% endif %}</p>
+      <h2 id="lj-h">{{ j.headline }}</h2>
+      {% if c %}<p class="lj__who"><span class="lj-who{% if c.state == 'action' %} lj-who--you{% endif %}"><i aria-hidden="true">{% if c.state == "action" %}✓{% else %}N{% endif %}</i>{% if c.state == "action" %}Your turn · {{ c.holder|default:"You" }}{% else %}With {{ c.holder|default:"NBTE" }}{% endif %}</span>
+        {% if c.since_days %}<span class="lj-since">for {{ c.since_days }} day{{ c.since_days|pluralize }}</span>{% endif %}</p>{% endif %}
+    </div>
+  </header>
+
+  <ol class="lj-track" aria-label="Every step of your journey">
+    {% for st in j.steps %}
+    <li class="lj-step is-{{ st.state }}"{% if c and st.n == c.n %} aria-current="step"{% endif %}>
+      <span class="lj-step__dot" aria-hidden="true">{% if st.state == "done" %}✓{% elif st.state == "action" %}!{% else %}{{ st.n }}{% endif %}</span>
+      <span class="lj-step__text">
+        <strong>{{ st.label }}</strong>
+        <small>{% if st.state == "done" %}Done{% elif st.state == "action" %}Needs your action{% elif st.state == "current" %}In progress{% else %}Coming up{% endif %}</small>
+      </span>
+    </li>
+    {% endfor %}
+  </ol>
+
+  {% if j.complete %}
+  <div class="lj-now">
+    <div class="lj-box lj-box--done">
+      <p class="lj-box__kicker">{% icon "check" 15 "2.6" %} All done</p>
+      <h3>Every step is complete</h3>
+      <p>Well done. When you want NBTE to look at a programme again, start a new request.</p>
+      <a class="btn btn-primary btn-lg" href="{% url 'qa_portal:qa_request_new' %}">{% icon "plus" 18 "2.4" %} Start a new request</a>
+    </div>
+  </div>
+  {% elif c %}
+  <div class="lj-now">
+    <div class="lj-box {% if c.todo %}lj-box--act{% else %}lj-box--wait{% endif %}" role="region" aria-labelledby="lj-todo-h">
+      <p class="lj-box__kicker" id="lj-todo-h">{% if c.todo %}{% icon "flag" 15 "2.4" %}{% else %}{% icon "clock" 15 "2.4" %}{% endif %} What you need to do now</p>
+      {% if c.todo %}
+        <h3>{{ c.todo.title }}</h3>
+        {% if c.todo.text and c.todo.text != c.todo.title %}<p>{{ c.todo.text }}</p>{% endif %}
+        {% if c.todo.cta_url %}<a class="btn btn-primary btn-lg lj-box__cta" href="{{ c.todo.cta_url }}">{{ c.todo.cta_label|default:"Continue" }} <span aria-hidden="true">→</span></a>{% endif %}
+      {% else %}
+        <h3>Nothing to do now</h3>
+        <p>{{ c.wait }}</p>
+      {% endif %}
+    </div>
+    <div class="lj-about">
+      <h3>What is happening</h3>
+      <p>{{ c.sentence|default:c.title }}{% if c.detail and c.detail != c.sentence %} {{ c.detail }}{% endif %}</p>
+      <dl class="lj-facts">
+        <div><dt>Step</dt><dd>{{ c.title }}</dd></div>
+        <div><dt>Who has it</dt><dd>{% if c.state == "action" %}{{ c.holder|default:"You" }}{% else %}{{ c.holder|default:"NBTE" }}{% endif %}</dd></div>
+        {% if c.since_days %}<div><dt>At this step for</dt><dd>{{ c.since_days }} day{{ c.since_days|pluralize }}</dd></div>{% endif %}
+      </dl>
+      {% if c.programmes %}
+      <h4 class="lj-progs__h">Each programme</h4>
+      <ul class="lj-progs" role="list">{% for p in c.programmes %}
+        <li class="is-{{ p.state }}"><span class="lj-progs__dot" aria-hidden="true">{% if p.state == "done" %}✓{% elif p.state == "action" %}!{% else %}•{% endif %}</span>
+          <span><strong>{{ p.name }}</strong><small>{{ p.label }}{% if p.days and p.state != "done" %} · {{ p.days }} day{{ p.days|pluralize }}{% endif %}</small></span>
+          {% if p.state == "action" and p.url %}<a class="btn btn-sm btn-subtle" href="{{ p.url }}">Open</a>{% endif %}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if j.side_track %}{% with t=j.side_track %}
+  <div class="lj-side" role="note">
+    <h3>{% icon "layers" 16 "2.2" %} {{ t.title }}</h3>
+    <ul class="lj-progs" role="list">{% for p in t.programmes %}
+      <li class="is-{{ p.state }}"><span class="lj-progs__dot" aria-hidden="true">{% if p.state == "done" %}✓{% elif p.state == "action" %}!{% else %}•{% endif %}</span>
+        <span><strong>{{ p.name }}</strong><small>{{ p.label }}</small></span>
+        {% if p.url %}<a class="btn btn-sm {% if p.state == 'action' %}btn-primary{% else %}btn-subtle{% endif %}" href="{{ p.url }}">{% if p.code == "returned_to_institution" %}Correct it{% elif p.state == "action" %}Fill it in{% else %}Open{% endif %}</a>{% endif %}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endwith %}{% endif %}
+</section>
+{% endwith %}{% endif %}

@@ -59,7 +59,7 @@ def test_submit_issues_the_qa_fee_for_the_programme_count(p3):
     assert req.status == "draft" and req.reference.startswith("NBTE/QAR/")
     assert req.institution_request is not None and req.institution_request.request_type.code == "qa"
     svc.drop_programme(req, req.active_programmes()[1], user=p3.admin, reason="Not ready this year")
-    req = svc.submit(req, user=p3.admin, declaration=True)
+    req = svc.submit(req, user=p3.ceo, declaration=True)
     assert req.status == "fee_due"
     bill = bill_of(req)
     assert bill.amount == 200000  # 50,000 + 1 × 150,000
@@ -70,7 +70,7 @@ def test_unconfirmed_fee_waits_at_fee_due_and_can_be_retried(p3):
     from accreditation import qa_services as svc
 
     set_config("qa.fee.qa_request_processing.confirmed", "false")
-    req = svc.submit(make_request(p3), user=p3.admin, declaration=True)
+    req = svc.submit(make_request(p3), user=p3.ceo, declaration=True)
     assert req.status == "fee_due" and req.fee_note and bill_of(req) is None
     with pytest.raises(ValidationError):
         svc.retry_fee(req, user=p3.p2.officer)
@@ -84,7 +84,7 @@ def test_declaration_is_required(p3):
     from accreditation import qa_services as svc
 
     with pytest.raises(ValidationError):
-        svc.submit(make_request(p3), user=p3.admin, declaration=False)
+        svc.submit(make_request(p3), user=p3.ceo, declaration=False)
 
 
 def test_confirmed_fee_opens_one_ssq_per_programme(paid_request):
@@ -102,11 +102,11 @@ def test_qa_case_created_when_every_ssq_is_submitted(p3, paid_request, django_ca
     for ssq in (first, second):
         complete_ssq(ssq, p3.admin)
     with django_capture_on_commit_callbacks(execute=True):
-        svc.submit_ssq(first, user=p3.admin, declaration=True)
+        svc.submit_ssq(first, user=p3.ceo, declaration=True)
     paid_request.refresh_from_db()
     assert paid_request.status == "ssq_in_progress" and not QACase.unscoped.exists()
     with django_capture_on_commit_callbacks(execute=True):
-        svc.submit_ssq(second, user=p3.admin, declaration=True)
+        svc.submit_ssq(second, user=p3.ceo, declaration=True)
     paid_request.refresh_from_db()
     assert paid_request.status == "in_workflow"
     case = QACase.unscoped.get(qa_request=paid_request)
@@ -126,7 +126,7 @@ def _to_stage(p3, stage):
     req = make_request(p3)
     if stage == "draft":
         return req
-    svc.submit(req, user=p3.admin, declaration=True)
+    svc.submit(req, user=p3.ceo, declaration=True)
     req.refresh_from_db()
     if stage == "fee_due":
         return req
@@ -229,7 +229,7 @@ def test_new_programme_goes_through_clearance(p3, resource_type):
     from accreditation import qa_services as svc
 
     req = make_request(p3, [p3.proposed], type_code="resource_inspection")
-    req = svc.submit(req, user=p3.admin, declaration=True)
+    req = svc.submit(req, user=p3.ceo, declaration=True)
     assert req.status == "programme_clearance"
     ok, why = svc.can_clear(req, p3.p2.officer)   # DPAP officer: no clear permission
     assert not ok
@@ -238,7 +238,7 @@ def test_new_programme_goes_through_clearance(p3, resource_type):
     svc.return_programmes(req, user=p3.p2.ntird_director, remark="Add the curriculum first")
     req.refresh_from_db()
     assert req.status == "draft" and req.active_programmes()[0].clearance_status == "returned"
-    req = svc.submit(req, user=p3.admin, declaration=True)
+    req = svc.submit(req, user=p3.ceo, declaration=True)
     svc.clear_programmes(req, user=p3.p2.ntird_director, remark="Fine")
     req.refresh_from_db()
     assert req.status == "fee_due" and req.active_programmes()[0].clearance_status == "cleared"
@@ -248,7 +248,7 @@ def test_new_programme_goes_through_clearance(p3, resource_type):
 # ---------------------------------------------------------------------------
 # Phase 2 actions now live
 # ---------------------------------------------------------------------------
-def test_add_programme_to_qa_action_is_live(p3):
+def test_add_programme_to_qa_action_is_live(p3, department_mode):
     from accreditation.models import QARequestProgramme
     from qa_core import actions
     from qa_core.models import ActionPolicy
@@ -263,7 +263,7 @@ def test_add_programme_to_qa_action_is_live(p3):
     assert QARequestProgramme.unscoped.filter(qa_request=req, programme=p3.eee, status="active").exists()
 
 
-def test_add_programme_action_refused_past_fee_due(p3):
+def test_add_programme_action_refused_past_fee_due(p3, department_mode):
     from qa_core import actions
 
     req = _to_stage(p3, "ssq_in_progress")
@@ -272,7 +272,7 @@ def test_add_programme_action_refused_past_fee_due(p3):
                          payload={"qa_request_id": req.pk, "programme_id": p3.expired.pk}, reason="x")
 
 
-def test_cancel_request_action_uses_r25(p3):
+def test_cancel_request_action_uses_r25(p3, department_mode):
     from qa_core import actions
 
     early = _to_stage(p3, "draft")
@@ -286,7 +286,7 @@ def test_cancel_request_action_uses_r25(p3):
     late = make_request(p3, [p3.expired])
     from accreditation import qa_services as svc
 
-    svc.submit(late, user=p3.admin, declaration=True)
+    svc.submit(late, user=p3.ceo, declaration=True)
     waive_fee(p3, late)
     late.refresh_from_db()
     with pytest.raises(ValidationError, match="R-25"):
@@ -294,14 +294,16 @@ def test_cancel_request_action_uses_r25(p3):
                          payload={"request_id": late.institution_request_id, "reason": "x"}, reason="x")
 
 
-def test_drop_programmes_action_takes_the_programme_off_open_requests(p3):
+def test_drop_programmes_action_takes_the_programme_off_open_requests(p3, department_mode):
     from qa_core import actions
 
+    # v2.1 X47: Drop Programmes is a TVET institution change now held by the
+    # TVET Support groups, not the officer/director roles.
     req = make_request(p3)
-    pa = actions.initiate("institutions.drop_programmes", actor=p3.p2.officer, target=p3.inst,
+    pa = actions.initiate("institutions.drop_programmes", actor=p3.p2.tvet_initiator, target=p3.inst,
                           payload={"programme_ids": [p3.eee.pk], "reason": "Closed by the institution"},
                           reason="Closed by the institution")
-    actions.confirm(pa, p3.p2.director)
+    actions.confirm(pa, p3.p2.tvet_confirmer)
     assert [r.programme for r in req.active_programmes()] == [p3.cs]
 
 
@@ -324,12 +326,21 @@ def test_staff_portal_dashboard(p3, paid_request, portal_host):
         assert r.status_code == 302 and r["Location"] == "/", path
 
 
-def test_staff_dashboard_lists_work_with_internal_links(p3, paid_request, portal_host):
+def test_staff_dashboard_lists_work_with_internal_links(p3, paid_request, portal_host, department_mode):
     from accreditation import qa_services as svc
 
     ssq = svc.request_ssqs(paid_request)[0]
     complete_ssq(ssq, p3.admin)
-    svc.submit_ssq(ssq, user=p3.admin, declaration=True)
+    svc.submit_ssq(ssq, user=p3.ceo, declaration=True)
+    # SSQs are on a strict allow-list (assignments.access.ssq_accessible_ids): an
+    # officer sees one only once the department director assigns it and they accept.
+    import org
+    from accounts.models import User
+    from accreditation import ssq_assign
+    from assignments import work
+
+    director = User.objects.get(pk=org.director_of(p3.inst.handling_department).pk)
+    work.accept(ssq_assign.assign(ssq, by=director, officer=p3.p2.officer), User.objects.get(pk=p3.p2.officer.pk))
     c = Client(HTTP_HOST=portal_host)
     c.force_login(p3.p2.officer)
     body = c.get("/").content.decode()
@@ -359,6 +370,10 @@ def test_other_institution_gets_404_on_the_portal(p3, paid_request, portal_host)
 def test_portal_new_request_and_submit_screens(p3, portal_host):
     from accreditation.models import QARequest
 
+    # v2.1 X13 runs the profile gate on top; this test checks the request
+    # screens themselves (the gate has its own tests in test_v21_onboarding).
+    set_config("qa.onboarding.profile_gate_enabled", "false")
+
     c = Client(HTTP_HOST=portal_host)
     c.force_login(p3.admin)
     r = c.get("/qa-requests/new/?type=reaccreditation")
@@ -367,6 +382,11 @@ def test_portal_new_request_and_submit_screens(p3, portal_host):
                HTTP_HX_REQUEST="true", HTTP_HX_TARGET="qa-main")
     assert r.status_code == 204 and "HX-Location" in r
     req = QARequest.unscoped.get(institution=p3.inst)
+    # v2.1 X12: the administrator cannot submit; the Chief Executive can.
+    r = c.post(f"/qa-requests/{req.pk}/submit/", {"declaration": "on"}, HTTP_HX_REQUEST="true",
+               HTTP_HX_TARGET="qa-main")
+    assert r.status_code == 422 and b"Chief Executive" in r.content
+    c.force_login(p3.ceo)
     r = c.post(f"/qa-requests/{req.pk}/submit/", {"declaration": "on"}, HTTP_HX_REQUEST="true",
                HTTP_HX_TARGET="qa-main")
     assert r.status_code == 200 and b"QA processing fee due" in r.content

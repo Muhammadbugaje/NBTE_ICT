@@ -1,0 +1,35 @@
+{% load qa_tags %}
+{% include "institutions/programmes/_subnav.html" %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "institution" 14 "2.2" %} Programmes</span>
+    <h1 data-qa-focus>Body programme requests</h1>
+    <p>“Put this programme under us.” One custodian approves or rejects with a remark; on approval the mapping lands in the master list, the mapping table and the institution's programmes at once.</p>
+  </div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <span class="qa-stat"><strong>{{ pending_count }}</strong><span>Waiting for NBTE</span></span>
+  </div>
+</header>
+<section class="qa-card" aria-label="Requests">
+  <form class="qa-toolbar" role="search" method="get" action="{% url 'qa_programmes:requests' %}">
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Programme, institution, code or body" autocomplete="off"></label>
+    <select class="input qa-select" name="status" aria-label="Status">
+      <option value="">All statuses</option>
+      {% for value, label in statuses %}<option value="{{ value }}"{% if filters.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-subtle" type="submit">Show</button>
+    <a class="btn btn-ghost" href="{% url 'qa_programmes:requests' %}">Clear</a>
+  </form>
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th scope="col">Body</th><th scope="col">Programme</th><th scope="col">Institution</th><th scope="col">Level</th>
+      <th scope="col">Sent</th><th scope="col">Status</th></tr></thead>
+    <tbody>{% for row in page.rows %}
+      <tr><td>{{ row.body.acronym|default:row.body.name }}</td>
+        <td><a href="{% url 'qa_programmes:request_detail' row.pk %}">{{ row.programme_name }}</a></td>
+        <td>{{ row.institution.name }}</td><td>{{ row.level.code|upper|default:"Any" }}</td>
+        <td>{{ row.created_at|date:"j M Y" }}</td>
+        <td><span class="qa-chip {% if row.status == 'pending' %}qa-tone-info{% elif row.status == 'approved' %}qa-tone-success{% elif row.status == 'rejected' %}qa-tone-danger{% endif %}">{{ row.get_status_display }}</span></td></tr>
+    {% empty %}<tr><td colspan="6" class="qa-muted">No programme requests{% if filters.q or filters.status %} for this filter{% endif %}.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if page.has_next %}<a class="btn btn-subtle" href="?{% for k, v in request.GET.items %}{{ k }}={{ v|urlencode }}&amp;{% endfor %}p={{ page.page|add:1 }}">Show more</a>{% endif %}
+</section>

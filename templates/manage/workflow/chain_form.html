@@ -4,29 +4,19 @@
 {% block title %}{% if mode == "create" %}New chain{% else %}Edit {{ chain.name }}{% endif %}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="wf-page wf-page-narrow">
+  {% if chain %}{% url 'workflow_manage:chain_detail' chain.pk as back_url %}{% else %}{% url 'workflow_manage:chain_list' as back_url %}{% endif %}
+  {% if mode == "create" %}
+    {% include "partials/hero.html" with icon="link" eyebrow="Workflow management · Chains" title="New chain" lede="Give the chain a name and a short, memorable code." back_url=back_url back_label="Back" %}
+  {% else %}
+    {% include "partials/hero.html" with icon="link" eyebrow="Workflow management · Chains" title=chain.name lede="Edit this chain's name, code and description." back_url=back_url back_label="Back" %}
+  {% endif %}
+
   {% include "manage/workflow/_tabs.html" %}
-
-  <a href="{% if chain %}{% url 'workflow_manage:chain_detail' chain.pk %}{% else %}{% url 'workflow_manage:chain_list' %}{% endif %}" class="wf-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Back
-  </a>
-
-  <header class="wf-hero">
-    <div class="wf-hero-inner">
-      <div class="wf-hero-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
-      </div>
-      <div>
-        <h1>{% if mode == "create" %}New chain{% else %}Edit chain{% endif %}</h1>
-        <p>Give it a name and a short, memorable code.</p>
-      </div>
-    </div>
-  </header>
 
   <form method="post" class="wf-form" novalidate>
     {% csrf_token %}

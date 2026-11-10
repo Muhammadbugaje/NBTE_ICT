@@ -86,10 +86,10 @@ def install_all():
     except Exception:
         logger.exception("file cleanup: QA registration failed")
 
-    # ---- QA (Phase 3): SSQ evidence and query responses
+    # ---- QA: SSQ evidence, query responses and visit-report uploads
     try:
-        from accreditation.models import Evidence, Response
-        for model in (Evidence, Response):
+        from accreditation.models import Evidence, Response, VisitReportAttachment
+        for model in (Evidence, Response, VisitReportAttachment):
             register_file_cleanup(model, ["file"])
     except Exception:
-        logger.exception("file cleanup: QA Phase 3 registration failed")
+        logger.exception("file cleanup: QA report evidence registration failed")

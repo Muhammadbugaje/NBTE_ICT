@@ -11,11 +11,16 @@ pytestmark = pytest.mark.django_db
 
 def _complete(p5, absent_users=()):
     from inspection import services
+    from inspection.models import Inspection
 
     insp = p5.inspection
     absent = [m.pk for m in services.team(insp)
               if (m.staff_id and m.staff.user in absent_users)]
     today = timezone.localdate()
+    Inspection.unscoped.filter(pk=insp.pk).update(
+        scheduled_start=today - datetime.timedelta(days=2),
+        scheduled_end=today - datetime.timedelta(days=1))
+    insp.refresh_from_db()
     services.complete(insp, actor=insp.team_lead, actual_start=today - datetime.timedelta(days=2),
                       actual_end=today - datetime.timedelta(days=1), absent=absent)
     insp.refresh_from_db()
@@ -58,6 +63,108 @@ def test_only_the_team_lead_records_the_visit(p5_visit):
                           actual_start=today, actual_end=today + datetime.timedelta(days=1))
 
 
+def test_stage_twelve_never_has_an_unowned_department_queue(p5_visit):
+    from accreditation import case_services as cs
+    from accreditation.models import VisitDetail
+    from inspection.models import Inspection
+
+    case = p5_visit.case
+    case.desk_officer = None
+    case.save(update_fields=["desk_officer", "updated_at"])
+    VisitDetail.unscoped.filter(case=case).update(team_lead=None)
+    Inspection.unscoped.filter(pk=p5_visit.inspection.pk).update(team_lead=None)
+
+    holders = cs.holders(case, "post_visit_report")
+    assert holders
+    assert p5_visit.people.director in holders
+
+
+def test_visit_and_post_visit_stages_require_named_owners(p5_visit):
+    from accreditation import case_services as cs
+    from accreditation.models import QACase, VisitDetail
+    from inspection.models import Inspection
+
+    case = p5_visit.case
+    case.desk_officer = None
+    case.save(update_fields=["desk_officer", "updated_at"])
+    VisitDetail.unscoped.filter(case=case).update(team_lead=None)
+    Inspection.unscoped.filter(pk=p5_visit.inspection.pk).update(team_lead=None)
+    case = QACase.unscoped.get(pk=case.pk)
+
+    visit_problems = cs.prerequisites(case, "add_visit_details")
+    assert any("desk officer" in problem.lower() for problem in visit_problems)
+    assert any("team lead" in problem.lower() for problem in visit_problems)
+
+    report_problems = cs.prerequisites(case, "post_visit_report")
+    assert any("desk officer" in problem.lower() for problem in report_problems)
+    assert any("team lead" in problem.lower() for problem in report_problems)
+
+
+def test_report_task_falls_back_to_a_case_owner_when_team_lead_is_missing(p5_visit):
+    from accreditation.models import VisitDetail
+    from inspection import services
+    from inspection.models import Inspection
+    from tasks.models import TaskAssignee
+    from qa_core import flow
+
+    report = _eee_report(p5_visit)
+    case = report.inspection.case
+    VisitDetail.unscoped.filter(case=case).update(team_lead=None)
+    Inspection.unscoped.filter(pk=p5_visit.inspection.pk).update(team_lead=None)
+    report = type(report).unscoped.select_related("inspection__case").get(pk=report.pk)
+    _, link = services.report_holders(report)
+    TaskAssignee.objects.filter(task=link.task).update(state="declined")
+    assert services.report_holders(report)[0] == [p5_visit.people.desk_officer]
+
+    instance = flow.instance_for(report, "post_visit_report")
+    stage = instance.flow_version.stages.get(code="draft")
+
+    users, _, _ = services._report_resolver(report, stage, None)
+    assert users == [p5_visit.people.desk_officer]
+
+
+def test_ict_report_is_locked_until_the_team_lead_records_the_visit(p5_visit):
+    from accreditation import report_forms
+    from accreditation import template_library
+    from inspection import services
+
+    assert not template_library.install()["errors"]
+    report = _eee_report(p5_visit)
+    _, ict = report_forms.ensure_forms(report)
+    assert ict is not None
+    assigned = services.ict_assignees(p5_visit.inspection)
+    assert assigned
+    allowed, reason = report_forms.can_edit(ict, assigned[0])
+    assert not allowed and "record the visit" in reason.lower()
+
+
+def test_ict_report_access_is_limited_to_assignees_and_authorised_leadership(p5_visit):
+    from accreditation import report_forms
+    from accounts.models import Role, User
+    from inspection import services
+
+    assigned = services.ict_assignees(p5_visit.inspection)
+    assert assigned
+    expected = sorted((u for u in assigned if u.is_active),
+                      key=lambda u: (u.first_name.lower(), u.last_name.lower(), u.email.lower()))[0]
+    assert report_forms.prefill_ict(p5_visit.inspection)["ict_officer"] == (
+        expected.get_full_name() or expected.email)
+
+    superadmin = User(email="sop03-superadmin@example.test", first_name="SOP03", last_name="Admin",
+                      user_type="staff", role=Role.objects.get(code="super-admin"), is_active=True)
+    superadmin.set_unusable_password()
+    superadmin.save()
+    allowed = [*assigned, p5_visit.people.ict_director, p5_visit.people.es,
+               superadmin]
+    for user in allowed:
+        assert services.can_edit_ict(p5_visit.inspection, user)[0], user.email
+
+    outsider = next(user for user in (p5_visit.people.desk_officer, p5_visit.people.division_head,
+                                     p5_visit.people.director) if user not in assigned)
+    ok, reason = services.can_edit_ict(p5_visit.inspection, outsider)
+    assert not ok and "assigned ICT officer" in reason
+
+
 def test_recording_the_visit_writes_the_service_history_for_attendees_only(p5_visit):
     from inspection.models import ServiceRecord
 
@@ -70,10 +177,38 @@ def test_recording_the_visit_writes_the_service_history_for_attendees_only(p5_vi
         ServiceRecord.unscoped.filter(inspection=insp).first().delete()  # append-only
 
 
+def test_visit_recording_task_opens_for_the_team_lead_on_the_last_day(p5_visit):
+    from django.contrib.contenttypes.models import ContentType
+    from django.utils import timezone
+    from inspection import services
+    from inspection.models import Inspection
+    from qa_core.models import QATaskLink
+    from tasks.models import TaskAssignee
+
+    today = timezone.localdate()
+    inspection = p5_visit.inspection
+    Inspection.unscoped.filter(pk=inspection.pk).update(
+        scheduled_start=today - datetime.timedelta(days=1), scheduled_end=today)
+    inspection.refresh_from_db()
+
+    assert services.visit_recording_sweep(now=timezone.now()) == {"due": 1, "opened": 1}
+    content_type = ContentType.objects.get_for_model(Inspection, for_concrete_model=True)
+    link = QATaskLink.objects.get(content_type=content_type, object_id=inspection.pk,
+                                  stage_code=services.REC_RECORD_STAGE, closed_at__isnull=True)
+    assert TaskAssignee.objects.filter(task=link.task, user=inspection.team_lead).exists()
+    assert "come prefilled" in link.task.description
+    assert services.visit_recording_sweep(now=timezone.now()) == {"due": 1, "opened": 0}
+
+    services.complete(inspection, actor=inspection.team_lead, actual_start=today - datetime.timedelta(days=1),
+                      actual_end=today)
+    link.refresh_from_db()
+    assert link.closed_at is not None
+
+
 # ---------------------------------------------------------------------------
-# B17 — only attendees submit the report
+# B17 — attendees submit individually; the Team Lead owns the compilation
 # ---------------------------------------------------------------------------
-def test_b17_only_attendees_write_and_submit(p5_visit):
+def test_b17_attendees_write_their_own_reports_and_only_team_lead_compiles(p5_visit):
     from inspection import services
 
     report = _eee_report(p5_visit)
@@ -84,11 +219,64 @@ def test_b17_only_attendees_write_and_submit(p5_visit):
     assert services.can_write(report, p5_visit.people.team_lead)[0]
     for outsider in (p5_visit.people.desk_officer, p5_visit.people.division_head, p5_visit.people.director):
         ok, why = services.can_write(report, outsider)
-        assert not ok and "B17" in why
+        assert not ok and "Team Lead" in why
         with pytest.raises(PermissionDenied):
             services.submit_report(report, user=outsider)
-    # The attending resource person (portal account) is an attendee too.
-    assert services.can_write(report, p5_visit.rps["rp_eng"].user)[0]
+    rp_member_report = next(row for row in services.ensure_member_reports(report)
+                            if row.author_id == p5_visit.rps["rp_eng"].user.pk)
+    assert services.can_write_member_report(rp_member_report, p5_visit.rps["rp_eng"].user)[0]
+    assert not services.can_write_member_report(rp_member_report, p5_visit.people.team_lead)[0]
+    roster = services.member_report_roster(report, user=p5_visit.people.desk_officer)
+    absent = next(row for row in roster if row.person == p5_visit.people.desk_officer.staff_profile)
+    assert absent.status == "Absent" and absent.member_report is None
+    other_report = next(r for r in services.reports_of(p5_visit.case)
+                        if r.qa_request_programme_id != report.qa_request_programme_id)
+    assert all(row.person != p5_visit.rps["rp_eng"] for row in
+               services.member_report_roster(other_report, user=p5_visit.rps["rp_eng"].user))
+
+
+def test_team_lead_reviews_individual_reports_before_compiling(p5_visit):
+    from inspection import demo, services
+    from inspection.models import PostVisitMemberReview
+
+    _complete(p5_visit, absent_users=[p5_visit.people.desk_officer])
+    report = _eee_report(p5_visit)
+    rp = p5_visit.rps["rp_eng"]
+    contribution = next(row for row in services.ensure_member_reports(report) if row.author_id == rp.user_id)
+    values = {"summary": "The laboratories and equipment were physically checked.",
+              "findings": {"facilities": "The electrical machines laboratory matches its declaration."},
+              "recommendation": "accredit"}
+    services.save_member_report(contribution, user=rp.user, **values, submit=True)
+    contribution.refresh_from_db()
+    assert contribution.status == "submitted"
+    assert "submitted" in " ".join(services.member_reports_ready(report))
+    with pytest.raises(PermissionDenied):
+        services.review_member_report(contribution, user=p5_visit.people.director,
+                                      action="accept")
+    with pytest.raises(PermissionDenied):
+        services.save_member_report(contribution, user=p5_visit.people.team_lead, summary="Trying to edit.")
+
+    services.review_member_report(contribution, user=p5_visit.people.team_lead, action="return",
+                                  content="Please add the workshop equipment count.")
+    contribution.refresh_from_db()
+    assert contribution.status == "returned"
+    assert contribution.review_note == "Please add the workshop equipment count."
+    services.save_member_report(
+        contribution, user=rp.user, summary=values["summary"] + " Counts are now recorded.",
+        findings=values["findings"], recommendation="accredit", submit=True)
+    contribution.refresh_from_db()
+    services.review_member_report(contribution, user=p5_visit.people.team_lead, action="accept")
+    contribution.refresh_from_db()
+    assert contribution.status == "accepted"
+    assert PostVisitMemberReview.unscoped.filter(member_report=contribution).count() == 2
+
+    demo.prepare_attendee_reports(report)
+    assert services.member_reports_ready(report) == []
+    services.save_report(report, user=p5_visit.people.team_lead, summary=demo.DEMO_SUMMARY,
+                         findings=demo.DEMO_FINDINGS, recommendation="accredit")
+    report = services.submit_report(report, user=p5_visit.people.team_lead)
+    assert report.status == "deputy_verified"
+    assert services.report_holders(report)[0] == [p5_visit.people.director]
 
 
 def test_submit_needs_a_summary_and_a_recommendation(p5_visit):
@@ -101,6 +289,31 @@ def test_submit_needs_a_summary_and_a_recommendation(p5_visit):
     assert {"summary", "recommendation"} <= set(exc.value.message_dict)
 
 
+def test_report_route_skips_stages_already_covered_by_team_lead(p5_visit):
+    from inspection import services
+
+    p5_visit.inspection.team_lead = p5_visit.people.deputy_director
+    p5_visit.inspection.save(update_fields=["team_lead"])
+    report = _eee_report(p5_visit)
+    assert services._report_submission_stage(report) == "deputy_verified"
+
+    p5_visit.inspection.team_lead = p5_visit.people.director
+    p5_visit.inspection.save(update_fields=["team_lead"])
+    report.refresh_from_db()
+    assert services._report_submission_stage(report) == "deputy_verified"
+
+
+def test_report_route_skips_vacant_deputy_stage(p5_visit, monkeypatch):
+    from inspection import services
+
+    report = _eee_report(p5_visit)
+    report.status = "submitted"
+    original = services._report_stage_users
+    monkeypatch.setattr(services, "_report_stage_users",
+                        lambda target, stage: [] if stage == "division_endorsed" else original(target, stage))
+    assert services._report_next_endorsement_stage(report) == "deputy_verified"
+
+
 # ---------------------------------------------------------------------------
 # The endorsement chain (B14): endorse / add content / return with a remark
 # ---------------------------------------------------------------------------
@@ -111,7 +324,9 @@ def test_endorsement_chain_return_with_mandatory_remark_and_resubmit(p5_visit):
 
     _complete(p5_visit)
     people = p5_visit.people
-    report = demo.write_and_submit(_eee_report(p5_visit), people.team_lead)
+    p5_visit.inspection.team_lead = people.desk_officer
+    p5_visit.inspection.save(update_fields=["team_lead"])
+    report = demo.write_and_submit(_eee_report(p5_visit), people.desk_officer)
     assert report.status == "submitted"
     assert services.report_holders(report)[0] == [people.division_head]
     with pytest.raises(PermissionDenied):  # not this layer's holder
@@ -128,12 +343,12 @@ def test_endorsement_chain_return_with_mandatory_remark_and_resubmit(p5_visit):
                               content="Quantify the deficiencies before I verify.")
     assert report.status == "returned"
     holders, link = services.report_holders(report)
-    assert holders == [people.team_lead]  # back to the person who submitted
+    assert holders == [people.desk_officer]  # back to the person who submitted
     assert link.task.comments.filter(is_pinned=True, body__icontains="Quantify").exists()
     # The Team Lead fixes and resubmits: the chain starts again at the Division Head.
-    report = services.save_report(report, user=people.team_lead,
+    report = services.save_report(report, user=people.desk_officer,
                                   summary=demo.DEMO_SUMMARY + " Two benches and one HOD post are short.")
-    report = services.submit_report(report, user=people.team_lead)
+    report = services.submit_report(report, user=people.desk_officer)
     assert report.status == "submitted" and report.version == 2
     for _ in range(3):
         report = demo.endorse_once(report)
@@ -153,7 +368,7 @@ def test_stage_12_advances_only_when_every_report_is_director_endorsed(p5_visit)
     _complete(p5_visit)
     eee = _eee_report(p5_visit)
     demo.write_and_submit(eee, p5_visit.people.team_lead)
-    for _ in range(3):
+    while eee.status != "director_endorsed":
         eee = demo.endorse_once(eee)
     p5_visit.case.refresh_from_db()
     assert "post_visit_report" in cs.current_stages(p5_visit.case)  # the CS report is still open
@@ -231,7 +446,7 @@ def test_override_can_add_an_unplanned_attendee(p5_visit):
 
 def test_ssq_review_completion_writes_a_service_row(p5):
     from accreditation.models import SSQ
-    from inspection import services
+    from inspection import demo, services
     from inspection.models import ServiceRecord, SSQReviewAssignment
 
     ssq = SSQ.unscoped.filter(qa_request_programme=p5.eee).first()
@@ -243,21 +458,29 @@ def test_ssq_review_completion_writes_a_service_row(p5):
 
 
 # ---------------------------------------------------------------------------
-# Screens: the Team Lead submits, the Deputy returns with an inline error
+# Screens: attendees submit, the Team Lead compiles, the Deputy can return it
 # ---------------------------------------------------------------------------
-def test_report_screens_submit_endorse_and_return(p5_visit):
-    from inspection import services
+def test_report_screens_submit_endorse_and_return(p5_visit, department_mode):
+    # v2.1 X1 note: in the deployed department privacy mode the endorsing
+    # division/deputy/director roles see the case via their department. A fresh
+    # install defaults to assignment mode, where case-stage steps grant
+    # visibility; the report screens' direct endorsement chain relies on the
+    # case scope, so this screen test runs the deployed mode.
+    from inspection import demo, services
     from qa_core.tests.phase4_fixtures import staff_client
 
     _complete(p5_visit)
     people = p5_visit.people
+    p5_visit.inspection.team_lead = people.desk_officer
+    p5_visit.inspection.save(update_fields=["team_lead"])
     report = _eee_report(p5_visit)
-    lead = staff_client(people.team_lead)
+    lead = staff_client(people.desk_officer)
     url = f"/qa/inspection/reports/{report.pk}/"
     assert lead.get(url).status_code == 200
     r = lead.post(url + "save/", {"op": "submit", "summary": "short", "recommendation": ""},
                   HTTP_HX_REQUEST="true")
     assert r.status_code == 422 and "at least 20 characters" in r.content.decode()
+    demo.prepare_attendee_reports(report)
     data = {"op": "submit", "f_facilities": "Seen", "summary": "All facilities in the SSQ were seen and verified.",
             "recommendation": "accredit"}
     r = lead.post(url + "save/", data, HTTP_HX_REQUEST="true")
@@ -275,7 +498,49 @@ def test_report_screens_submit_endorse_and_return(p5_visit):
     report.refresh_from_db()
     assert report.status == "returned"
     assert "Quantify the deficiencies" in lead.get(url).content.decode()  # pinned remark shown
-    assert services.can_write(report, people.team_lead)[0]
+    assert services.can_write(report, people.desk_officer)[0]
+
+
+def test_director_can_preview_or_download_compiled_report_before_approval(p5_visit, department_mode):
+    from inspection import demo
+    from qa_core.tests.phase4_fixtures import staff_client
+
+    _complete(p5_visit)
+    p5_visit.inspection.team_lead = p5_visit.people.desk_officer
+    p5_visit.inspection.save(update_fields=["team_lead"])
+    report = _eee_report(p5_visit)
+    demo.drive_reports(p5_visit.case, until="deputy_verified")
+    report.refresh_from_db()
+    assert report.status == "deputy_verified"
+
+    url = f"/qa/inspection/reports/{report.pk}/compiled.pdf"
+    director = staff_client(p5_visit.people.director)
+    preview = director.get(url)
+    assert preview.status_code == 200
+    assert preview["Content-Type"] == "application/pdf"
+    assert preview["Content-Disposition"].startswith("inline;")
+    assert preview["Cache-Control"] == "private, no-store"
+    assert preview.content.startswith(b"%PDF")
+
+    report_page = director.get(f"/qa/inspection/reports/{report.pk}/").content.decode()
+    assert "Preview compiled PDF" in report_page
+    assert "Download compiled PDF" in report_page
+
+    download = director.get(url + "?download=1")
+    assert download.status_code == 200
+    assert download["Content-Disposition"].startswith("attachment;")
+
+    # A previous layer is not permitted to fetch the Director's review copy.
+    assert staff_client(p5_visit.people.deputy_director).get(url).status_code == 404
+
+
+def test_compiled_report_pdf_is_not_available_before_director_stage(p5_visit, department_mode):
+    from qa_core.tests.phase4_fixtures import staff_client
+
+    report = _eee_report(p5_visit)
+    response = staff_client(p5_visit.people.director).get(
+        f"/qa/inspection/reports/{report.pk}/compiled.pdf")
+    assert response.status_code == 404
 
 
 def test_list_screens_have_search_filters_and_pagination(p5_visit):
@@ -328,6 +593,15 @@ def test_resource_person_portal_findings_feed_the_report(p5_visit, portal_host):
     assert r.status_code == 200
     report = _eee_report(p5_visit)
     assert any("electrical machines" in m.findings for m in services.rp_findings_for(report))
+    r = c.post("/engagements/", {
+        "action": "member_report", "mapping": mapping.pk, "op": "submit",
+        "summary": "I checked the electrical machines laboratory and recorded equipment quantities.",
+        "recommendation": "accredit", "f_facilities": "The machines and workshop tools were inspected.",
+    })
+    assert r.status_code == 200, r.content.decode()[:2000]
+    contribution = services.member_report_for_user(report, rp.user)
+    assert contribution is not None and contribution.status == "submitted"
+    assert contribution.findings["facilities"] == "The machines and workshop tools were inspected."
     assert c.get("/service-history/").status_code == 200 and c.get("/profile/").status_code == 200
     # Institution accounts see their inspections read-only; resource persons do not.
     assert c.get("/inspections/").status_code == 404

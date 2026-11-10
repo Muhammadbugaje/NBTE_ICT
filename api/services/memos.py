@@ -55,6 +55,7 @@ def memo_row_json(memo, user, receipts=None):
         "acknowledged": bool(receipt and receipt.acknowledged_at),
         "current_step": step.name if step else None,
         "attachment_count": memo.attachments.count(),
+        "kind": memo.kind,
     }
 
 
@@ -139,12 +140,25 @@ def memo_detail_json(memo, user):
         "is_sender": state["is_sender"],
         "actions": state["actions"],
         "stats": stats,
+        "institutions": None if not memo.is_outbound else {
+            "scope": memo.institution_scope,
+            "label": _institutions_label(memo),
+            "signed_as": memo.signed_as,
+            "delivered": memo.institution_recipients.count(),
+            "read": memo.institution_recipients.filter(read_at__isnull=False).count(),
+            "acknowledged": memo.institution_recipients.filter(acknowledged_at__isnull=False).count(),
+        },
         "documents": None if not can_doc else {
             "pdf_path": reverse("api:memos_pdf", args=[memo.pk]),
             "docx_path": reverse("api:memos_docx", args=[memo.pk]),
             "watermarked": memo.status != Memo.PUBLISHED,
         },
     }
+
+
+def _institutions_label(memo):
+    from messaging.memo_documents import institutions_label
+    return institutions_label(memo)
 
 
 def compose_options(user):
@@ -155,7 +169,8 @@ def compose_options(user):
     kinds = memo_service.allowed_target_kinds_for(user)
     labels = dict(Memo.VISIBILITY_CHOICES)
     return {
-        "visibility": [{"value": k, "label": labels[k]} for k, _ in Memo.VISIBILITY_CHOICES if k in kinds],
+        "visibility": [{"value": k, "label": labels[k]} for k, _ in Memo.VISIBILITY_CHOICES
+                       if k in kinds and k != Memo.NO_STAFF],
         "priorities": [{"value": v, "label": label} for v, label in Memo.PRIORITY_CHOICES],
         "departments": [{"id": d.pk, "name": d.name} for d in
                         Department.objects.filter(is_active=True).order_by("sort_order", "name")]
@@ -164,4 +179,16 @@ def compose_options(user):
         if Memo.ROLE in kinds else [],
         "can_broadcast": memo_service.can_broadcast_memo(user),
         "attachments_total_bytes": 5 * 1024 * 1024,
+        "kinds": [{"value": v, "label": label} for v, label in Memo.KIND_CHOICES
+                  if v in memo_service.allowed_memo_kinds(user)],
+        "can_send_external": memo_service.can_send_external_memo(user),
+        "institution_filter_options": _filter_options(user),
     }
+
+
+def _filter_options(user):
+    if not memo_service.can_initiate_external_memo(user):
+        return {}
+    from messaging.memo_audience import institution_filter_options
+    o = institution_filter_options()
+    return {k: [list(x) for x in v] if isinstance(v, list) else v for k, v in o.items()}

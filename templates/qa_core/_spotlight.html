@@ -1,0 +1,101 @@
+{% comment %}v2.2: New institutions spotlight + ICT tracker. Context: spotlight (qa_core.spotlight.new_institutions), tracked.{% endcomment %}
+{% if spotlight.rows %}
+<section class="sp" aria-labelledby="sp-h" data-spotlight>
+  <header class="sp-head">
+    <div class="sp-head__text">
+      <span class="sp-eyebrow"><span class="sp-pulse" aria-hidden="true"></span> New on the QA portal</span>
+      <h2 id="sp-h">{% if spotlight.unassigned %}{{ spotlight.unassigned }} new institution{{ spotlight.unassigned|pluralize }} need{{ spotlight.unassigned|pluralize:"s," }} an ICT officer{% else %}New institutions{% endif %}</h2>
+      <p>{% if spotlight.kind == "handling" %}Institutions your department handles that registered in the last {{ spotlight.days }} days.{% else %}Every institution that registered in the last {{ spotlight.days }} days, and any still without an ICT officer to oversee it.{% endif %}{% if spotlight.can_assign %} Assign an officer to track each one to the end.{% endif %}</p>
+    </div>
+    <a class="sp-all" href="{% url 'qa_inst:list' %}?status=proposed">All new institutions →</a>
+  </header>
+  <div class="sp-grid">
+  {% for r in spotlight.rows %}
+    <article class="sp-card{% if not r.supervisor %} is-unassigned{% endif %}" aria-label="{{ r.inst.name }}">
+      <div class="sp-card__top">
+        <span class="sp-badge {% if r.is_new %}is-new{% endif %}">{% if r.age_days == 0 %}Registered today{% elif r.age_days == 1 %}Yesterday{% else %}{{ r.age_days }} days ago{% endif %}</span>
+        {% if r.supervisor %}<span class="sp-badge is-ok">Tracked</span>{% else %}<span class="sp-badge is-warn">No ICT officer yet</span>{% endif %}
+      </div>
+      <h3><a href="{% url 'qa_inst:detail' r.inst.code %}">{{ r.inst.name }}</a></h3>
+      <p class="sp-meta">{{ r.inst.category.name|default:r.inst.institution_type.name|default:"—" }}{% if r.inst.ownership %} · {{ r.inst.ownership.name }}{% endif %}{% if r.inst.state %} · {{ r.inst.state.name|title }}{% endif %}{% if r.inst.handling_department %} · {{ r.inst.handling_department.name }}{% endif %}</p>
+      <div class="sp-progress" aria-label="Progress {{ r.progress.pct }}%">
+        <div class="sp-progress__bar"><i style="width:{{ r.progress.pct }}%"></i></div>
+        <ol class="sp-steps">{% for s in r.progress.steps %}<li class="is-{{ s.state }}" title="{{ s.label }}{% if s.note %} — {{ s.note }}{% endif %}"><span></span></li>{% endfor %}</ol>
+        <p class="sp-now">{% if r.progress.case %}{{ r.progress.case }}{% elif r.progress.current %}Now: <strong>{{ r.progress.current }}</strong>{% else %}All onboarding steps done{% endif %}</p>
+      </div>
+      {% if r.supervisor %}
+        <p class="sp-owner">ICT officer: <strong>{{ r.supervisor.get_full_name|default:r.supervisor.email }}</strong></p>
+      {% elif spotlight.can_assign %}
+        <form class="sp-assign" method="post" action="{% url 'qa_inst:assign_oversight' r.inst.code %}">{% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <label class="sr-only" for="sp-a-{{ r.inst.pk }}">ICT officer for {{ r.inst.name }}</label>
+          <select class="input" id="sp-a-{{ r.inst.pk }}" name="assignee" required>
+            <option value="">Choose an ICT officer…</option>
+            {% for c in spotlight.candidates %}<option value="{{ c.pk }}" {% if c.pk == r.suggestion %}selected{% endif %}>{{ c.get_full_name|default:c.email }}{% if c.pk == r.suggestion %} — suggested next{% endif %}</option>{% endfor %}
+          </select>
+          <button class="btn btn-primary btn-sm" type="submit">Assign</button>
+        </form>
+      {% else %}
+        <p class="sp-owner qa-muted">Waiting for the Director of ICT to assign an officer.</p>
+      {% endif %}
+    </article>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% if tracked %}
+<section class="sp sp--tracked" aria-labelledby="sp-t-h">
+  <header class="sp-head"><div class="sp-head__text"><span class="sp-eyebrow">You are the ICT officer</span><h2 id="sp-t-h">Institutions you are tracking</h2><p>Watch each one move from registration to the final decision. You can see every stage; only the responsible officers act.</p></div></header>
+  <div class="sp-grid">
+  {% for t in tracked %}
+    <article class="sp-card is-tracked">
+      {% if t.to_accept %}<div class="sp-card__top"><span class="sp-badge is-warn">New for you — accept it in My work</span></div>{% endif %}
+      <h3><a href="{% url 'qa_inst:detail' t.inst.code %}">{{ t.inst.name }}</a></h3>
+      <p class="sp-meta">{{ t.inst.category.name|default:"—" }}{% if t.inst.state %} · {{ t.inst.state.name|title }}{% endif %} · {{ t.inst.get_status_display }}</p>
+      <div class="sp-progress"><div class="sp-progress__bar"><i style="width:{{ t.progress.pct }}%"></i></div>
+        <ol class="sp-steps">{% for s in t.progress.steps %}<li class="is-{{ s.state }}" title="{{ s.label }}"><span></span></li>{% endfor %}</ol>
+        <p class="sp-now">{% if t.progress.case %}{{ t.progress.case }}{% elif t.progress.current %}Now: <strong>{{ t.progress.current }}</strong>{% else %}Onboarding complete{% endif %}</p></div>
+      <p class="sp-owner">{% if t.to_accept %}<a href="{% url 'assignments:my_work' %}"><strong>Accept in My work →</strong></a> · {% endif %}<a href="{% url 'qa_inst:detail' t.inst.code %}?tab=timeline">Timeline →</a> · <a href="{% url 'qa_inst:detail' t.inst.code %}?tab=users">People &amp; contacts →</a></p>
+    </article>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+<style>
+.sp{position:relative;margin:0 0 1.5rem;padding:1.25rem;border-radius:20px;background:linear-gradient(135deg,rgba(16,122,64,.10),rgba(16,122,64,.02) 55%,rgba(234,179,8,.08));border:1px solid rgba(16,122,64,.25);overflow:hidden}
+.sp::before{content:"";position:absolute;inset:-40% -10% auto auto;width:320px;height:320px;border-radius:50%;background:radial-gradient(circle,rgba(16,122,64,.18),transparent 70%);pointer-events:none}
+.sp--tracked{background:linear-gradient(135deg,rgba(37,99,235,.08),rgba(37,99,235,.02));border-color:rgba(37,99,235,.25)}
+.sp-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;position:relative}
+.sp-head h2{font-size:1.35rem;margin:.2rem 0 .3rem;letter-spacing:-.01em}
+.sp-head p{margin:0;opacity:.8;max-width:62ch}
+.sp-eyebrow{display:inline-flex;align-items:center;gap:.45rem;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--brand,#107a40)}
+.sp-pulse{width:9px;height:9px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 0 rgba(22,163,74,.6);animation:sp-pulse 1.8s infinite}
+@keyframes sp-pulse{70%{box-shadow:0 0 0 10px rgba(22,163,74,0)}100%{box-shadow:0 0 0 0 rgba(22,163,74,0)}}
+.sp-all{font-weight:600;white-space:nowrap}
+.sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.9rem;position:relative}
+.sp-card{background:var(--surface,#fff);border-radius:16px;padding:1rem 1.1rem;border:1px solid var(--border,rgba(0,0,0,.08));box-shadow:0 6px 18px rgba(0,0,0,.05);display:flex;flex-direction:column;gap:.55rem;transition:transform .2s,box-shadow .2s}
+.sp-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,0,0,.08)}
+.sp-card.is-unassigned{border-color:rgba(217,119,6,.55);box-shadow:0 0 0 3px rgba(217,119,6,.12),0 6px 18px rgba(0,0,0,.05)}
+.sp-card h3{margin:0;font-size:1.05rem;line-height:1.25}
+.sp-card h3 a{color:inherit;text-decoration:none}
+.sp-card h3 a:hover{text-decoration:underline}
+.sp-card__top{display:flex;gap:.4rem;flex-wrap:wrap}
+.sp-badge{font-size:.7rem;font-weight:700;padding:.2rem .55rem;border-radius:999px;background:rgba(0,0,0,.06)}
+.sp-badge.is-new{background:#16a34a;color:#fff}
+.sp-badge.is-warn{background:rgba(217,119,6,.15);color:#b45309}
+.sp-badge.is-ok{background:rgba(37,99,235,.12);color:#1d4ed8}
+.sp-meta{margin:0;font-size:.82rem;opacity:.75}
+.sp-progress__bar{height:6px;border-radius:999px;background:rgba(0,0,0,.07);overflow:hidden}
+.sp-progress__bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#16a34a,#22c55e);transition:width .6s ease}
+.sp-steps{display:flex;gap:4px;list-style:none;margin:.45rem 0 .25rem;padding:0}
+.sp-steps li{flex:1}
+.sp-steps li span{display:block;height:4px;border-radius:4px;background:rgba(0,0,0,.1)}
+.sp-steps li.is-done span{background:#16a34a}
+.sp-steps li.is-current span{background:#f59e0b}
+.sp-now{margin:0;font-size:.8rem}
+.sp-owner{margin:0;font-size:.85rem}
+.sp-assign{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.4rem;align-items:center;margin-top:auto}
+.sp-assign select{width:100%;min-width:0;max-width:100%}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .sp-card{background:var(--surface,#111827)}}
+@media (prefers-reduced-motion:reduce){.sp-pulse{animation:none}.sp-card{transition:none}}
+</style>

@@ -1,0 +1,60 @@
+{% extends base_template %}
+{% load qa_tags static %}
+{% block title %}Refunds · {{ portal_name }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
+<div class="qa-portal-page" id="qa-refunds">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:payments' %}" hx-get="{% url 'qa_portal:payments' %}" hx-target="#qa-main" hx-push-url="true">Payments</a><span aria-hidden="true">/</span><span aria-current="page">Refunds</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "rotate" 14 "2.2" %} Payments</span>
+    <h1 data-qa-focus>Refunds</h1>
+    <p>Money coming back to you after a cancelled QA request or application. <a href="{% url 'qa_portal:refund_policy' %}" hx-get="{% url 'qa_portal:refund_policy' %}" hx-target="#qa-main" hx-push-url="true">See the refund policy</a>.</p>
+  </header>
+  {% if ok %}<div class="qa-callout qa-callout--success" role="status">{% icon "check" 18 "2.4" %}<div><strong>{{ ok.title }}</strong><p>{{ ok.message }}</p></div></div>{% endif %}
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Bank details not saved" message=error %}{% endif %}
+
+  {% for rr in rows %}
+  <section class="qa-card rf-card" aria-labelledby="rf-{{ rr.pk }}">
+    <header class="qa-card__head"><div><h2 id="rf-{{ rr.pk }}">{{ rr.cancellation.get_kind_display }} {{ rr.cancellation.subject_reference }}</h2><p><span class="qa-mono">{{ rr.reference }}</span> · {% if rr.cancellation.by_nbte %}withdrawn by NBTE{% else %}cancelled{% endif %} on {{ rr.created_at|date:"j M Y" }}</p></div><span class="qa-chip {{ rr.tone }}">{% if rr.status == "awaiting_approval" %}Awaiting approval{% else %}{{ rr.get_status_display }}{% endif %}</span></header>
+    <div class="qa-card__body">
+      <ol class="ib-track ib-track--compact{% if rr.status == 'rejected' %} is-rejected{% elif rr.status == 'lapsed' %} is-withdrawn{% endif %}" aria-label="Refund progress">
+        <li class="{% if rr.details_at %}is-done{% elif rr.status == 'awaiting_details' %}is-now{% endif %}"><span aria-hidden="true">1</span><div><b>Your bank details</b></div></li>
+        <li class="{% if rr.verified_at %}is-done{% elif rr.status == 'awaiting_finance' %}is-now{% endif %}"><span aria-hidden="true">2</span><div><b>NBTE Finance checks</b></div></li>
+        <li class="{% if rr.status == 'approved' or rr.status == 'refunded' %}is-done{% elif rr.status == 'awaiting_approval' %}is-now{% endif %}"><span aria-hidden="true">3</span><div><b>Approved</b></div></li>
+        <li class="{% if rr.status == 'refunded' %}is-done{% elif rr.status == 'approved' %}is-now{% endif %}"><span aria-hidden="true">4</span><div><b>Paid to you</b></div></li>
+      </ol>
+      <div class="qa-bill-line"><span>You paid</span><span class="qa-num">{{ rr.paid_amount|naira }}</span></div>
+      <div class="qa-bill-line"><span>Admin fee kept</span><span class="qa-num">− {{ rr.admin_fee|naira }}</span></div>
+      <div class="ib-sum-total"><span>Refund ({{ rr.percent|floatformat:0 }}%)</span><strong class="qa-num">{{ rr.refund_amount|naira }}</strong></div>
+      <p class="qa-small qa-muted">{{ rr.rule_label }}.</p>
+      {% if rr.status == "refunded" %}<p class="qa-row qa-gap-sm">{% icon "check" 16 %} Paid on {{ rr.paid_at|date:"j M Y" }} to the account ending {{ rr.account_number|slice:"6:" }} — bank reference <span class="qa-mono">{{ rr.paid_reference }}</span>.</p>{% endif %}
+      {% if rr.status == "rejected" %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not approved" message=rr.decision_remark %}{% endif %}
+      {% if rr.status == "lapsed" %}{% include "qa_core/partials/_callout.html" with title="Lapsed" message="No bank details were given within the refund window. Contact NBTE Finance if you think this is wrong." %}{% endif %}
+      {% if rr.account_number and rr.status != "awaiting_details" and rr.status != "refunded" %}<p class="qa-small">To: {{ rr.bank_name }} · {{ rr.account_name }} · <span class="qa-mono">{{ rr.masked_account }}</span></p>{% endif %}
+      {% if rr.status == "awaiting_details" %}
+        {% if rr.finance_note %}{% include "qa_core/partials/_callout.html" with kind="danger" title="NBTE Finance asks you to check your bank details" message=rr.finance_note %}{% endif %}
+        {% if can_manage %}
+        <form class="qa-form qa-stack rf-bank" method="post" action="{% url 'qa_portal:refund_bank_details' rr.pk %}" hx-post="{% url 'qa_portal:refund_bank_details' rr.pk %}" hx-target="#qa-main">{% csrf_token %}
+          <p class="qa-small"><strong>Add the account to pay the refund into</strong>{% if rr.expires_at %} — before {{ rr.expires_at|date:"j M Y" }}{% endif %}.</p>
+          <div class="rf-bank__grid">
+            <div class="qa-field"><label for="bk-{{ rr.pk }}">Bank</label><input class="input" id="bk-{{ rr.pk }}" name="bank_name" required maxlength="120" value="{% if error_for == rr.pk %}{{ form.bank_name }}{% else %}{{ rr.bank_name }}{% endif %}"></div>
+            <div class="qa-field"><label for="an-{{ rr.pk }}">Account name</label><input class="input" id="an-{{ rr.pk }}" name="account_name" required maxlength="200" value="{% if error_for == rr.pk %}{{ form.account_name }}{% else %}{{ rr.account_name }}{% endif %}"></div>
+            <div class="qa-field"><label for="nu-{{ rr.pk }}">Account number (NUBAN)</label><input class="input qa-mono" id="nu-{{ rr.pk }}" name="account_number" required inputmode="numeric" pattern="[0-9]{10}" maxlength="10" value="{% if error_for == rr.pk %}{{ form.account_number }}{% else %}{{ rr.account_number }}{% endif %}"></div>
+          </div>
+          <div class="qa-form-actions"><button class="btn btn-primary" type="submit"{% if request.is_impersonating %} disabled{% endif %}>{% icon "bank" 16 %} Send bank details</button></div>
+        </form>
+        {% else %}<p class="qa-small qa-muted">Only the Chief Executive can add the refund bank details.</p>{% endif %}
+      {% endif %}
+    </div>
+  </section>
+  {% empty %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "rotate" 28 %}</span><h3 class="nbte-empty-state__title">No refunds</h3><p class="nbte-empty-state__body">If you cancel a QA request or your application after paying, the refund appears here.</p></div>
+  {% endfor %}
+
+  {% if cancelled %}
+  <section class="qa-card" aria-labelledby="rf-none"><header class="qa-card__head"><div><h2 id="rf-none">Cancelled without a refund</h2><p>Nothing had been paid, or the policy gives nothing back at that stage.</p></div></header>
+    <ul class="qa-rowlist" role="list">{% for c in cancelled %}<li class="qa-rowlink qa-rowlink--static"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ c.get_kind_display }} {{ c.subject_reference }}</span><span class="qa-rowlink__meta"><span>{{ c.created_at|date:"j M Y" }}</span><span>· {{ c.stage_label }}</span>{% if c.voided_obligations %}<span>· unpaid bill{{ c.voided_obligations|length|pluralize }} cancelled</span>{% endif %}</span></span><span class="qa-rowlink__side"><span class="qa-chip qa-tone-neutral">{% if c.by_nbte %}Withdrawn by NBTE{% else %}Cancelled{% endif %}</span></span></li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import bulk_views, chat_views, memos_views, views
+from . import bulk_views, chat_views, group_views, memos_views, views
 
 app_name = "messaging"
 
@@ -39,6 +39,21 @@ urlpatterns = [
     path("<int:pk>/message/<int:message_pk>/info/", chat_views.message_info, name="message_info"),
     path("<int:pk>/message/<int:message_pk>/task/", chat_views.make_task, name="make_task"),
     path("<int:pk>/message/<int:message_pk>/memo/", chat_views.make_memo, name="make_memo"),
+    # ---- v2.1 Phase E: groups, invite links, in-chat pins, reminders ----
+    path("<int:pk>/info/", group_views.group_info, name="group_info"),
+    path("<int:pk>/info/edit/", group_views.group_edit, name="group_edit"),
+    path("<int:pk>/settings/", group_views.group_settings, name="group_settings"),
+    path("<int:pk>/photo/", group_views.group_photo, name="group_photo"),
+    path("<int:pk>/members/candidates/", group_views.member_candidates, name="member_candidates"),
+    path("<int:pk>/members/add/", group_views.members_add, name="members_add"),
+    path("<int:pk>/members/<int:user_pk>/remove/", group_views.member_remove, name="member_remove"),
+    path("<int:pk>/members/<int:user_pk>/role/", group_views.member_role, name="member_role"),
+    path("<int:pk>/leave/", group_views.leave, name="leave"),
+    path("<int:pk>/invites/", group_views.invite_create, name="invite_create"),
+    path("<int:pk>/invites/<int:invite_pk>/revoke/", group_views.invite_revoke, name="invite_revoke"),
+    path("join/<str:token>/", group_views.join, name="join"),
+    path("<int:pk>/message/<int:message_pk>/pin/", group_views.pin_message, name="pin_message"),
+    path("<int:pk>/message/<int:message_pk>/remind/", group_views.remind, name="remind"),
     path("voice/<int:voice_pk>/audio/", chat_views.voice_audio, name="voice_audio"),
     path("voice/<int:voice_pk>/played/", chat_views.voice_played, name="voice_played"),
     path("voice/<int:voice_pk>/transcript/", chat_views.voice_transcript,
@@ -48,6 +63,8 @@ urlpatterns = [
     path("memos/", memos_views.memo_list, name="memo_list"),
     path("memos/bulk/", bulk_views.bulk_memos, name="memo_bulk"),
     path("memos/new/", memos_views.memo_create, name="memo_create"),
+    path("memos/institution-count/", memos_views.memo_institution_count, name="memo_institution_count"),
+    path("memos/staff-count/", memos_views.memo_staff_count, name="memo_staff_count"),
     path("memos/<int:pk>/", memos_views.memo_detail, name="memo_detail"),
     path("memos/<int:pk>/edit/", memos_views.memo_update, name="memo_update"),
 

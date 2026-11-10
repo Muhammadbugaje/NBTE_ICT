@@ -1,0 +1,38 @@
+{% extends base_template|default:"base.html" %}
+{% load static profile_tabs qa_tags %}
+{% block title %}My bank details · {{ portal_name|default:SITE_NAME }}{% endblock %}
+{% block page_title %}Profile{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/profile.css' %}">
+  {% if is_qa_portal %}<link rel="stylesheet" href="{% static 'css/qa.css' %}">{% endif %}
+  {# v21-platform.css: in the finish bundle #}
+{% endblock %}
+{% block content %}
+<div class="profile-page pf-page">
+  <header class="qa-hero nbte-hero pf-qa-hero" data-qa-area="profile">
+    <div>
+      <span class="qa-eyebrow">{% icon "bank" 14 "2.2" %} My profile · Payments</span>
+      <h1>Bank details</h1>
+      <p>The account NBTE pays your SSQ reviews, visits and other payments into.</p>
+      <div class="qa-hero__actions"><span class="pf-chip pf-chip--info" title="Only you can change them. The Director of Finance, the ES and super admins can view them when paying you; every view is logged.">{% icon "lock" 13 "2.2" %} Only you can change this</span></div>
+    </div>
+  </header>
+  {% if not is_qa_portal %}{% profile_tabs "bank" %}{% endif %}
+  <div class="pf-grid">
+    {% include "honoraria/_bank_panel.html" %}
+    <aside class="pf-side">
+      <div class="pf-card pf-card--quiet">
+        <h3 class="pf-side__title">How your bank details are protected</h3>
+        <ul class="pf-list">
+          <li>Encrypted when stored. Everywhere else you see only the last four digits.</li>
+          <li>Only you can change them — not HR, not administrators, not anyone “acting as” you.</li>
+          <li>To pay you, the Director of Finance, the Executive Secretary and super admins can view them. Every view is recorded in your bank-details history.</li>
+          <li>Every change needs your password and is e-mailed to you.</li>
+          <li>Finance receives the full number only inside a payment schedule, and that is logged here.</li>
+          <li>We ask you to confirm they are still correct every {{ reconfirm_days }} days.</li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+</div>
+{% endblock %}

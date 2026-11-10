@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% load qa_tags %}
+{% block title %}Check the import · Facilities &amp; equipment · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Facilities &amp; equipment{% endblock %}
+{% block content %}
+<div class="fx">
+  <a class="fx-back" href="{% url 'facilities:smart_import' %}">{% icon "back" 14 %} Upload another file</a>
+  <header class="qa-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Smart Excel import · {{ file_name }}</span>
+      <h1 data-qa-focus>Check the import</h1>
+      <p>{{ p.rows }} rows read: {{ p.programmes|length }} programmes, {{ p.facility_count }} facilities, {{ p.item_count }} items. Nothing has been saved yet.{% if decide %} <strong>{{ decide|length }} programme{{ decide|length|pluralize }} need{{ decide|length|pluralize:"s," }} your decision</strong> before you import.{% endif %}</p>
+      <div class="qa-hero__actions">
+        <a class="btn btn-subtle" href="#fx-confirm">{% icon "check" 16 %} Go to confirm</a>
+        <a class="btn btn-subtle" href="{% url 'facilities:smart_import' %}">{% icon "x" 16 %} Cancel</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--success"><strong>{{ p.totals.items_new }}</strong><span>Items to add</span></div>
+      <div class="qa-stat qa-stat--info"><strong>{{ p.totals.items_updated }}</strong><span>Items to update</span></div>
+      <div class="qa-stat"><strong>{{ p.totals.items_unchanged }}</strong><span>Unchanged</span></div>
+      <div class="qa-stat {% if decide %}qa-stat--warn{% endif %}"><strong>{{ decide|length }}</strong><span>To decide</span></div>
+    </div>
+  </header>
+
+  <ol class="fx-steps" aria-label="Steps"><li><b>1</b> Upload</li><li class="is-on" aria-current="step"><b>2</b> Check &amp; decide</li><li><b>3</b> Done</li></ol>
+
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+  {% for m in messages %}<div class="alert alert-{{ m.tags }}">{{ m }}</div>{% endfor %}
+
+  <section class="fx-kpis" aria-label="Totals">
+    <div class="fx-kpi is-new"><span>New programmes (register)</span><strong>{{ p.totals.programmes_new }}</strong></div>
+    <div class="fx-kpi"><span>Programmes already there</span><strong>{{ p.totals.programmes_existing }}</strong></div>
+    <div class="fx-kpi is-new"><span>Facilities to add</span><strong>{{ p.totals.facilities_new }}</strong></div>
+    <div class="fx-kpi"><span>Facilities already there</span><strong>{{ p.totals.facilities_existing }}</strong></div>
+    <div class="fx-kpi {% if p.totals.items_not_in_file %}is-warn{% endif %}"><span>Items in the register, not in the file</span><strong>{{ p.totals.items_not_in_file }}</strong></div>
+  </section>
+
+  {% if p.skipped or p.merged or p.warnings %}
+  <details class="card fx-card" {% if p.skipped %}open{% endif %}>
+    <summary><strong>{{ p.skipped|length }} row{{ p.skipped|length|pluralize }} skipped · {{ p.merged|length }} duplicate{{ p.merged|length|pluralize }} · {{ p.warnings|length }} warning{{ p.warnings|length|pluralize }}</strong></summary>
+    <ul class="fx-list">
+      {% for r, why in p.skipped|slice:":50" %}<li>Row {{ r }} skipped: {{ why }}</li>{% endfor %}
+      {% for w in p.warnings|slice:":30" %}<li>{{ w }}</li>{% endfor %}
+      {% for m in p.merged|slice:":60" %}<li>{{ m }}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  <form method="post" class="fx" id="fx-form">{% csrf_token %}
+    {% if decide %}
+    <section class="card fx-card" aria-labelledby="fx-decide">
+      <h2 id="fx-decide">{% icon "alert" 16 %} Programmes not on the national programme list</h2>
+      <p class="fx-muted">Each programme's facilities are attached to a programme on the master list (the list institutions choose from). Decide for each one below.</p>
+      <div class="fx-ask">
+        {% for row in decide %}
+        <fieldset class="fx-q">
+          <legend class="sr-only">{{ row.name }}</legend>
+          <p class="fx-q__title">The programme “{{ row.name }}” ({{ row.levels }}) does not exist on the system. Create it?</p>
+          {% if row.match.candidate_label %}<p class="fx-q__hint">Closest existing programme: <strong>{{ row.match.candidate_label }}</strong> ({% widthratio row.match.score 1 100 %}% similar).</p>{% elif row.match.candidates %}<p class="fx-q__hint">Nothing close on the list (best: {{ row.match.candidates.0.label }}).</p>{% else %}<p class="fx-q__hint">Nothing similar is on the list.</p>{% endif %}
+          <p class="fx-q__hint">{{ row.facilities }} facilit{{ row.facilities|pluralize:"y,ies" }}, {{ row.items }} item{{ row.items|pluralize }}.</p>
+          <div class="fx-opts">
+            <label><input type="radio" name="d-{{ row.idx }}" value="create" {% if row.default == "create" %}checked{% endif %}> <strong>Yes</strong> — create it ({{ row.levels }})</label>
+            <label><input type="radio" name="d-{{ row.idx }}" value="map" {% if row.default_map %}checked{% endif %}> Map to existing:</label>
+            <label class="sr-only" for="m-{{ row.idx }}">Existing programme for {{ row.name }}</label>
+            <select class="input qa-select" id="m-{{ row.idx }}" name="m-{{ row.idx }}" data-fx-map="d-{{ row.idx }}">
+              <option value="">Choose a programme…</option>
+              {% if row.match.candidates %}<optgroup label="Closest matches">{% for c in row.match.candidates %}<option value="{{ c.id }}" {% if c.id == row.match.candidate_id %}selected{% endif %}>{{ c.label }} — {% widthratio c.score 1 100 %}%</option>{% endfor %}</optgroup>{% endif %}
+              <optgroup label="All programmes">{% for id, label in masters %}<option value="{{ id }}">{{ label }}</option>{% endfor %}</optgroup>
+            </select>
+            <label><input type="radio" name="d-{{ row.idx }}" value="none"> No — import unlinked</label>
+            <label><input type="radio" name="d-{{ row.idx }}" value="skip"> No — skip this programme</label>
+          </div>
+        </fieldset>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="card fx-card" aria-labelledby="fx-prog">
+      <div class="fe-card__head--row"><h2 id="fx-prog">Per programme</h2>
+        <div class="fx-filter" role="group" aria-label="Show">
+          <button class="btn btn-sm btn-subtle" type="button" data-fx-show="all">All</button>
+          <button class="btn btn-sm btn-subtle" type="button" data-fx-show="new">New</button>
+          <button class="btn btn-sm btn-subtle" type="button" data-fx-show="change">Changes</button>
+          <button class="btn btn-sm btn-subtle" type="button" data-fx-show="same">Unchanged</button>
+          <button class="btn btn-sm btn-subtle" type="button" data-fx-show="decide">To decide</button>
+        </div>
+      </div>
+      <div class="fx-table-wrap">
+        <table class="fx-table">
+          <thead><tr><th>Programme</th><th>Levels</th><th>Programme list</th><th class="num">Facilities new / existing</th><th class="num">Items new</th><th class="num">Updated</th><th class="num">Unchanged</th><th class="num">Not in file</th><th>Leave out</th></tr></thead>
+          <tbody>
+          {% for row in p.programmes %}
+          <tr class="is-{{ row.action }}" data-fx-row="{{ row.action }}{% if row.needs_decision %} decide{% endif %}">
+            <td><strong>{{ row.name }}</strong>
+              {% if row.action == "new" %}<span class="fx-pill fx-pill--new">New</span>{% elif row.action == "change" %}<span class="fx-pill fx-pill--change">Changes</span>{% else %}<span class="fx-pill fx-pill--same">Unchanged</span>{% endif %}
+              {% if not row.items %}<div class="fx-muted">No equipment listed in the curricula{% if row.facilities %} ({{ row.facilities }} facilit{{ row.facilities|pluralize:"y,ies" }} only){% endif %}</div>{% endif %}
+              {% if row.examples %}<ul class="fx-ex">{% for e in row.examples %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+            </td>
+            <td>{{ row.levels }}</td>
+            <td>{% if row.match.status == "linked" %}<span class="fx-pill fx-pill--ok">Linked</span> {{ row.match.master_label }}
+                {% elif row.match.status == "exact" %}<span class="fx-pill fx-pill--ok">Found</span> {{ row.match.master_label }}
+                {% else %}<span class="fx-pill fx-pill--warn">Not on the list</span>{% endif %}</td>
+            <td class="num">{{ row.facilities_new }} / {{ row.facilities_existing }}</td>
+            <td class="num">{{ row.items_new }}</td>
+            <td class="num">{{ row.items_updated }}</td>
+            <td class="num">{{ row.items_unchanged }}</td>
+            <td class="num">{{ row.items_not_in_file }}</td>
+            <td>{% if row.needs_decision %}<span class="fx-muted">see above</span>{% else %}<label><input type="checkbox" name="skip-{{ row.idx }}" value="1"><span class="sr-only">Leave out {{ row.name }}</span></label>{% endif %}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="fx-bar" id="fx-confirm">
+      <label><input type="checkbox" name="deactivate_missing" value="1"> Mark the {{ p.totals.items_not_in_file }} item{{ p.totals.items_not_in_file|pluralize }} that are in the register but not in this file as inactive</label>
+      <div class="fx-opts">
+        <a class="btn btn-subtle" href="{% url 'facilities:smart_import' %}">Cancel</a>
+        <button class="btn btn-primary" type="submit" data-fx-submit>{% icon "check" 16 %} Import {{ p.programmes|length }} programme{{ p.programmes|length|pluralize }}</button>
+      </div>
+    </div>
+  </form>
+</div>
+<script>
+(function () {
+  var form = document.getElementById("fx-form");
+  if (!form) return;
+  // Choosing a programme in a dropdown selects "Map to existing" for that question.
+  form.querySelectorAll("select[data-fx-map]").forEach(function (sel) {
+    sel.addEventListener("change", function () {
+      var r = form.querySelector('input[name="' + sel.dataset.fxMap + '"][value="map"]');
+      if (r && sel.value) r.checked = true;
+    });
+  });
+  document.querySelectorAll("[data-fx-show]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var what = b.dataset.fxShow;
+      document.querySelectorAll("[data-fx-row]").forEach(function (tr) {
+        tr.hidden = !(what === "all" || tr.dataset.fxRow.split(" ").indexOf(what) !== -1);
+      });
+    });
+  });
+  form.addEventListener("submit", function () {
+    var btn = form.querySelector("[data-fx-submit]");
+    if (btn) { btn.disabled = true; btn.textContent = "Importing… this can take a minute"; }
+  });
+})();
+</script>
+{% include "facilities/_styles.html" %}
+{% include "facilities/_smart_styles.html" %}
+{% endblock %}

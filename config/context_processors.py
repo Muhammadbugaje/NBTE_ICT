@@ -29,4 +29,32 @@ def site_info(request):
     for key, default in _DEFAULTS.items():  # a blank value falls back to the default
         if not str(info.get(key) or "").strip() and default:
             info[key] = default
+    # v2.1 X52: spacing between buttons in a .btn-group (Settings → appearance.button_gap).
+    try:
+        gap = int(config.get("appearance.button_gap", 8))
+    except (TypeError, ValueError):
+        gap = 8
+    info["button_gap"] = gap if 6 <= gap <= 24 else 8
     return {"site_info": info}
+
+
+def appearance(request):
+    """v2.1 A9/A10: site appearance (appearance.* settings) and the resolved
+    preferences that theme-init.js applies before the first paint.
+
+    * `appearance`        site defaults (palette, scene, motion, density, …)
+    * `nbte_prefs`        printed with json_script as #nbte-prefs
+    * `appearance_custom` validated custom pair, or None
+    * `appearance_own`    the signed-in user's own saved choices
+    """
+    from .appearance import resolve
+
+    try:
+        r = resolve(request)
+    except Exception:  # never break a page over appearance
+        from .appearance import SITE_DEFAULTS
+
+        return {"appearance": dict(SITE_DEFAULTS, legacy_css=False), "nbte_prefs": {"palette": "green"},
+                "appearance_custom": None, "appearance_own": {}}
+    return {"appearance": r["site"], "nbte_prefs": r["prefs"], "appearance_custom": r["custom"],
+            "appearance_own": r["own"]}

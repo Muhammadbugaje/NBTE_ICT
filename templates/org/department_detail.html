@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ dept.name }}{% endblock %}
+{% block page_title %}{{ dept.name }}{% endblock %}
+{% block extra_css %}{% include "org/_head.html" %}{% endblock %}
+{% block content %}
+<div class="org-page">
+  <a class="org-back" href="{% url 'org:departments' %}">← Departments</a>
+  <header class="org-hero">
+    <span class="org-eyebrow">Department · {{ dept.code }}</span>
+    <h1>{{ dept.name }}</h1>
+    <p>{% if director %}Director: <strong>{{ director.get_full_name|default:director.email }}</strong>{% else %}The director seat is empty.{% endif %}</p>
+  </header>
+  <nav class="org-tabs" aria-label="Department sections">
+    <a href="?tab=overview" hx-get="?tab=overview" hx-target="#org-tab" hx-push-url="true" {% if tab == "overview" %}aria-current="page"{% endif %}>Overview</a>
+    <a href="?tab=divisions" hx-get="?tab=divisions" hx-target="#org-tab" hx-push-url="true" {% if tab == "divisions" %}aria-current="page"{% endif %}>Divisions</a>
+    {% if can_manage_access %}<a href="?tab=access" hx-get="?tab=access" hx-target="#org-tab" hx-push-url="true" {% if tab == "access" %}aria-current="page"{% endif %}>Manage access</a>{% endif %}
+  </nav>
+  <div id="org-tab">{% include "org/_tab_"|add:tab|add:".html" %}</div>
+</div>
+<script>
+document.addEventListener("htmx:afterSwap", function (e) {
+  if (e.detail.target.id !== "org-tab") return;
+  var tab = (new URLSearchParams(location.search)).get("tab") || "overview";
+  document.querySelectorAll(".org-tabs a").forEach(function (a) {
+    if (a.getAttribute("href") === "?tab=" + tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  });
+});
+</script>
+{% endblock %}

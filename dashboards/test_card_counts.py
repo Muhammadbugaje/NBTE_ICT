@@ -147,8 +147,10 @@ class LeadershipCardTests(CardFixture):
         self.client.force_login(self.admin)
         html = self.client.get(reverse("dashboards:superadmin")).content.decode()
         staff = Staff.objects.count()
-        self.assertIn(f'<div class="dash-kpi-num">{staff}</div>', html)
-        self.assertIn('<div class="dash-kpi-num">5</div>', html)
+        import re
+        nums = re.findall(r'<div class="dash-kpi-num"[^>]*>\s*([0-9,]+)\s*</div>', html)
+        self.assertIn(str(staff), nums)
+        self.assertIn("5", nums)
 
 
 class PersonalCardTests(CardFixture):

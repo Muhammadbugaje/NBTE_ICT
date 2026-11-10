@@ -6,29 +6,43 @@
   ActionPolicy rows), Applications (SOP-01) and Finance (QA).
 {% endcomment %}
 {% if qa_nav.show %}
+  {# v2.1 N1: the QA home (widgets by role and office) #}
+  <a data-tone="green" href="{% url 'qa:home' %}" class="app-nav-item {% if ns == 'qa' and un == 'home' %}active{% endif %}"{% if ns == 'qa' and un == 'home' %} aria-current="page"{% endif %}>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
+    <span>QA home</span>
+  </a>
+  <a data-tone="mint" href="{% url 'honoraria_earnings:list' %}" class="app-nav-item {% if ns == 'honoraria_earnings' %}active{% endif %}"{% if ns == 'honoraria_earnings' %} aria-current="page"{% endif %}>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h3"/></svg>
+    <span>My earnings</span>
+  </a>
   {% if qa_nav.menus %}{% for g in qa_nav.menus %}
   <div class="app-nav-group {% if ns == 'qa_inst' %}is-open{% endif %}" data-group="qa-{{ g.group|slugify }}">
     <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa_inst' %}true{% else %}false{% endif %}">
-      {% if forloop.first %}<span class="qa-nav-tile" style="background:var(--qa-tile-blue)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></span>{% else %}<span class="qa-nav-tile" style="background:var(--qa-tile-teal)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>{% endif %}
+      {% if forloop.first %}<span class="qa-nav-tile" data-tone="blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></span>{% else %}<span class="qa-nav-tile" data-tone="teal" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>{% endif %}
       <span class="app-nav-group-title">{{ g.group }}</span>
       <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="app-nav-group-body">
       {% if forloop.first %}
-        <a href="{% url 'qa_inst:list' %}" class="app-nav-item {% if ns == 'qa_inst' and un == 'list' %}active{% endif %}">
+        <a data-tone="blue" href="{% url 'qa_inst:list' %}" class="app-nav-item {% if ns == 'qa_inst' and un == 'list' %}active{% endif %}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
           <span>Institutions</span>
+        </a>
+        {# v2.1 Phase P (P.6): my assignments #}
+        <a data-tone="amber" href="{% url 'assignments:my_work' %}" class="app-nav-item {% if ns == 'assignments' and un == 'my_work' %}active{% endif %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>My work</span>
         </a>
       {% endif %}
       {% for item in g.items %}
         {% if item.enabled and item.can_start or item.confirm and item.enabled %}
-          <a href="{{ item.url }}" class="app-nav-item{% if item.confirm %} app-nav-item--sub{% endif %}"{% if item.confirm %} style="padding-inline-start:2.4rem;font-size:.86em"{% endif %}>
+          <a data-tone="{% cycle "sky" "violet" "mint" "amber" "coral" "magenta" "teal" "indigo" "lime" "pink" %}" href="{{ item.url }}" class="app-nav-item{% if item.confirm %} app-nav-item--sub{% endif %}"{% if item.confirm %} style="padding-inline-start:2.4rem;font-size:.86em"{% endif %}>
             {% if not item.confirm %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>{% endif %}
             <span>{{ item.label }}</span>
             {% if item.count %}<span class="app-nav-badge">{{ item.count }}</span>{% endif %}
           </a>
         {% elif not item.enabled and not item.confirm %}
-          <span class="app-nav-item" aria-disabled="true" title="{{ item.reason }}" style="opacity:.5;cursor:not-allowed">
+          <span data-tone="{% cycle "sky" "violet" "mint" "amber" "coral" "magenta" "teal" "indigo" "lime" "pink" %}" class="app-nav-item" aria-disabled="true" title="{{ item.reason }}" style="opacity:.5;cursor:not-allowed">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <span>{{ item.label }}</span>
           </span>
@@ -41,17 +55,25 @@
   {% if qa_nav.applications %}
   <div class="app-nav-group {% if ns == 'qa_app' %}is-open{% endif %}" data-group="qa-applications">
     <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa_app' %}true{% else %}false{% endif %}">
-      <span class="qa-nav-tile" style="background:var(--qa-tile-green)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+      <span class="qa-nav-tile" data-tone="green" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
       <span class="app-nav-group-title">Applications (SOP-01)</span>
       {% if qa_nav.clearance_waiting %}<span class="app-nav-badge">{{ qa_nav.clearance_waiting }}</span>{% endif %}
       <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="app-nav-group-body">
-      <a href="{% url 'qa_app:clearance' %}" class="app-nav-item {% if ns == 'qa_app' and un == 'clearance' %}active{% endif %}">
+      <a data-tone="amber" href="{% url 'qa_app:clearance' %}" class="app-nav-item {% if ns == 'qa_app' and un == 'clearance' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
         <span>Departmental clearance</span>{% if qa_nav.clearance_waiting %}<span class="app-nav-badge">{{ qa_nav.clearance_waiting }}</span>{% endif %}
       </a>
-      <a href="{% url 'qa_app:list' %}" class="app-nav-item {% if ns == 'qa_app' and un == 'list' %}active{% endif %}">
+      <a data-tone="teal" href="{% url 'qa_app:docrev_queue' %}" class="app-nav-item {% if ns == 'qa_app' and un == 'docrev_queue' or ns == 'qa_app' and un == 'docrev_detail' %}active{% endif %}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="m9 15 2 2 4-4"/></svg>
+        <span>Document review</span>
+      </a>
+      <a data-tone="blue" href="{% url 'qa_app:programmes' %}" class="app-nav-item {% if ns == 'qa_app' and un == 'programmes' %}active{% endif %}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg>
+        <span>Programme clearance</span>
+      </a>
+      <a data-tone="green" href="{% url 'qa_app:list' %}" class="app-nav-item {% if ns == 'qa_app' and un == 'list' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>All applications</span>
       </a>
@@ -62,21 +84,21 @@
   {% if qa_nav.qa_requests %}
   <div class="app-nav-group {% if ns == 'qa_req' %}is-open{% endif %}" data-group="qa-requests">
     <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa_req' %}true{% else %}false{% endif %}">
-      <span class="qa-nav-tile" style="background:var(--qa-tile-indigo)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+      <span class="qa-nav-tile" data-tone="indigo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
       <span class="app-nav-group-title">QA requests (SOP-02)</span>
       {% if qa_nav.ssq_waiting %}<span class="app-nav-badge">{{ qa_nav.ssq_waiting }}</span>{% endif %}
       <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="app-nav-group-body">
-      <a href="{% url 'qa_req:list' %}" class="app-nav-item {% if ns == 'qa_req' and un == 'list' or ns == 'qa_req' and un == 'detail' %}active{% endif %}">
+      <a data-tone="indigo" href="{% url 'qa_req:list' %}" class="app-nav-item {% if ns == 'qa_req' and un == 'list' or ns == 'qa_req' and un == 'detail' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         <span>QA requests</span>
       </a>
-      <a href="{% url 'qa_req:ssq_queue' %}" class="app-nav-item {% if ns == 'qa_req' and 'ssq' in un %}active{% endif %}">
+      <a data-tone="violet" href="{% url 'qa_req:ssq_queue' %}" class="app-nav-item {% if ns == 'qa_req' and 'ssq' in un %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
         <span>SSQ review queue</span>{% if qa_nav.ssq_waiting %}<span class="app-nav-badge">{{ qa_nav.ssq_waiting }}</span>{% endif %}
       </a>
-      <a href="{% url 'qa_req:queries' %}" class="app-nav-item {% if ns == 'qa_req' and 'quer' in un %}active{% endif %}">
+      <a data-tone="sky" href="{% url 'qa_req:queries' %}" class="app-nav-item {% if ns == 'qa_req' and 'quer' in un %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span>Queries</span>
       </a>
@@ -87,21 +109,21 @@
   {% if qa_nav.qa_cases %}
   <div class="app-nav-group {% if ns == 'qa_case' %}is-open{% endif %}" data-group="qa-cases">
     <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa_case' %}true{% else %}false{% endif %}">
-      <span class="qa-nav-tile" style="background:var(--qa-tile-purple)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/></svg></span>
+      <span class="qa-nav-tile" data-tone="purple" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/></svg></span>
       <span class="app-nav-group-title">QA cases (SOP-03)</span>
       {% if qa_nav.qa_cases_mine %}<span class="app-nav-badge">{{ qa_nav.qa_cases_mine }}</span>{% endif %}
       <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="app-nav-group-body">
-      <a href="{% url 'qa_case:board' %}" class="app-nav-item {% if ns == 'qa_case' and un == 'board' or ns == 'qa_case' and un == 'detail' %}active{% endif %}">
+      <a data-tone="purple" href="{% url 'qa_case:board' %}" class="app-nav-item {% if ns == 'qa_case' and un == 'board' or ns == 'qa_case' and un == 'detail' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="11" rx="1"/></svg>
         <span>Case Board</span>
       </a>
-      <a href="{% url 'qa_case:queue' %}" class="app-nav-item {% if ns == 'qa_case' and un == 'queue' %}active{% endif %}">
+      <a data-tone="amber" href="{% url 'qa_case:queue' %}" class="app-nav-item {% if ns == 'qa_case' and un == 'queue' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         <span>My stage work</span>{% if qa_nav.qa_cases_mine %}<span class="app-nav-badge">{{ qa_nav.qa_cases_mine }}</span>{% endif %}
       </a>
-      {% if qa_nav.qa_drift %}<a href="{% url 'qa_case:drift' %}" class="app-nav-item {% if ns == 'qa_case' and 'drift' in un %}active{% endif %}">
+      {% if qa_nav.qa_drift %}<a data-tone="coral" href="{% url 'qa_case:drift' %}" class="app-nav-item {% if ns == 'qa_case' and 'drift' in un %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
         <span>Task-link drift</span>
       </a>{% endif %}
@@ -112,17 +134,17 @@
   {% if qa_nav.complaints %}
   <div class="app-nav-group {% if ns == 'qa_complaints' %}is-open{% endif %}" data-group="qa-complaints">
     <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa_complaints' %}true{% else %}false{% endif %}">
-      <span class="qa-nav-tile" style="background:var(--qa-tile-orange)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+      <span class="qa-nav-tile" data-tone="orange" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
       <span class="app-nav-group-title">Complaints</span>
       {% if qa_nav.complaints_mine %}<span class="app-nav-badge">{{ qa_nav.complaints_mine }}</span>{% endif %}
       <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="app-nav-group-body">
-      <a href="{% url 'qa_complaints:queue' %}" class="app-nav-item {% if ns == 'qa_complaints' and un == 'queue' or ns == 'qa_complaints' and un == 'detail' %}active{% endif %}">
+      <a data-tone="orange" href="{% url 'qa_complaints:queue' %}" class="app-nav-item {% if ns == 'qa_complaints' and un == 'queue' or ns == 'qa_complaints' and un == 'detail' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span>Complaint queue</span>{% if qa_nav.complaints_mine %}<span class="app-nav-badge">{{ qa_nav.complaints_mine }}</span>{% endif %}
       </a>
-      {% if qa_nav.complaints_reports %}<a href="{% url 'qa_complaints:dashboard' %}" class="app-nav-item {% if ns == 'qa_complaints' and un == 'dashboard' %}active{% endif %}">
+      {% if qa_nav.complaints_reports %}<a data-tone="red" href="{% url 'qa_complaints:dashboard' %}" class="app-nav-item {% if ns == 'qa_complaints' and un == 'dashboard' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         <span>SLA dashboard</span>
       </a>{% endif %}
@@ -133,36 +155,36 @@
   {% if qa_nav.inspection %}
   <div class="app-nav-group {% if ns == 'qa_insp' %}is-open{% endif %}" data-group="qa-inspection">
     <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa_insp' %}true{% else %}false{% endif %}">
-      <span class="qa-nav-tile" style="background:var(--qa-tile-teal)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
-      <span class="app-nav-group-title">Inspection (§9)</span>
+      <span class="qa-nav-tile" data-tone="teal" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+      <span class="app-nav-group-title">Inspection</span>
       {% if qa_nav.inspection_endorse %}<span class="app-nav-badge">{{ qa_nav.inspection_endorse }}</span>{% endif %}
       <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="app-nav-group-body">
       {% if qa_nav.inspection_people %}
-      <a href="{% url 'qa_insp:rp_list' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'rp_list' or ns == 'qa_insp' and un == 'rp_detail' or ns == 'qa_insp' and un == 'nominations' %}active{% endif %}">
+      <a data-tone="teal" href="{% url 'qa_insp:rp_list' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'rp_list' or ns == 'qa_insp' and un == 'rp_detail' or ns == 'qa_insp' and un == 'nominations' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
         <span>Resource persons</span>
       </a>
-      <a href="{% url 'qa_insp:finder' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'finder' or ns == 'qa_insp' and un == 'mappings' or ns == 'qa_insp' and un == 'personnel' %}active{% endif %}">
+      <a data-tone="cyan" href="{% url 'qa_insp:finder' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'finder' or ns == 'qa_insp' and un == 'mappings' or ns == 'qa_insp' and un == 'personnel' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         <span>Availability finder</span>
       </a>
-      <a href="{% url 'qa_insp:inspections' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'inspections' or ns == 'qa_insp' and un == 'inspection' %}active{% endif %}">
+      <a data-tone="blue" href="{% url 'qa_insp:inspections' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'inspections' or ns == 'qa_insp' and un == 'inspection' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         <span>Inspections</span>
       </a>
-      <a href="{% url 'qa_insp:calendar' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'calendar' %}active{% endif %}">
+      <a data-tone="red" href="{% url 'qa_insp:calendar' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'calendar' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         <span>Visit calendar</span>
       </a>
-      <a href="{% url 'qa_insp:endorsements' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'endorsements' or ns == 'qa_insp' and un == 'report' %}active{% endif %}">
+      <a data-tone="green" href="{% url 'qa_insp:endorsements' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'endorsements' or ns == 'qa_insp' and un == 'report' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg>
         <span>Endorsements</span>{% if qa_nav.inspection_endorse %}<span class="app-nav-badge">{{ qa_nav.inspection_endorse }}</span>{% endif %}
       </a>
       {% endif %}
       {% if qa_nav.inspection_service %}
-      <a href="{% url 'qa_insp:service' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'service' %}active{% endif %}">
+      <a data-tone="brown" href="{% url 'qa_insp:service' %}" class="app-nav-item {% if ns == 'qa_insp' and un == 'service' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
         <span>Service history</span>
       </a>
@@ -174,21 +196,21 @@
   {% if qa_nav.professional_bodies %}
   <div class="app-nav-group {% if ns == 'qa_pb' %}is-open{% endif %}" data-group="qa-professional-bodies">
     <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa_pb' %}true{% else %}false{% endif %}">
-      <span class="qa-nav-tile" style="background:var(--qa-tile-pink)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+      <span class="qa-nav-tile" data-tone="pink" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
       <span class="app-nav-group-title">Professional bodies</span>
       <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="app-nav-group-body">
-      <a href="{% url 'qa_pb:list' %}" class="app-nav-item {% if ns == 'qa_pb' and un == 'list' or ns == 'qa_pb' and 'body' in un %}active{% endif %}"{% if ns == 'qa_pb' and un == 'list' %} aria-current="page"{% endif %}>
+      <a data-tone="pink" href="{% url 'qa_pb:list' %}" class="app-nav-item {% if ns == 'qa_pb' and un == 'list' or ns == 'qa_pb' and 'body' in un %}active{% endif %}"{% if ns == 'qa_pb' and un == 'list' %} aria-current="page"{% endif %}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V10l7-5 7 5v11"/><path d="M9 21v-5h6v5"/></svg>
         <span>Bodies</span>
       </a>
-      <a href="{% url 'qa_pb:mappings' %}" class="app-nav-item {% if ns == 'qa_pb' and 'mapping' in un %}active{% endif %}"{% if ns == 'qa_pb' and 'mapping' in un %} aria-current="page"{% endif %}>
+      <a data-tone="violet" href="{% url 'qa_pb:mappings' %}" class="app-nav-item {% if ns == 'qa_pb' and 'mapping' in un %}active{% endif %}"{% if ns == 'qa_pb' and 'mapping' in un %} aria-current="page"{% endif %}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         <span>Programme mappings</span>
       </a>
       {% if qa_nav.professional_bodies_manage %}
-      <a href="{% url 'qa_pb:import' %}" class="app-nav-item {% if ns == 'qa_pb' and 'import' in un %}active{% endif %}"{% if ns == 'qa_pb' and 'import' in un %} aria-current="page"{% endif %}>
+      <a data-tone="green" href="{% url 'qa_pb:import' %}" class="app-nav-item {% if ns == 'qa_pb' and 'import' in un %}active{% endif %}"{% if ns == 'qa_pb' and 'import' in un %} aria-current="page"{% endif %}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <span>Import from Excel</span>
       </a>
@@ -197,36 +219,65 @@
   </div>
   {% endif %}
 
+  {% if qa_nav.programmes %}{# v2.1 Part 5: programme set-up #}
+  <div class="app-nav-group {% if ns == 'qa_programmes' %}is-open{% endif %}" data-group="qa-programmes">
+    <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa_programmes' %}true{% else %}false{% endif %}">
+      <span class="qa-nav-tile" data-tone="violet" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M9 5V3M15 5V3M9 13h6M9 17h4"/></svg></span>
+      <span class="app-nav-group-title">Programmes</span>
+      {% if qa_nav.programmes_pending %}<span class="app-nav-badge">{{ qa_nav.programmes_pending }}</span>{% endif %}
+      <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="app-nav-group-body">
+      <a data-tone="violet" href="{% url 'qa_programmes:home' %}" class="app-nav-item {% if ns == 'qa_programmes' and un == 'home' %}active{% endif %}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        <span>Overview</span>
+      </a>
+      <a data-tone="pink" href="{% url 'qa_programmes:requests' %}" class="app-nav-item {% if ns == 'qa_programmes' and 'request' in un %}active{% endif %}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="11"/><line x1="12" y1="14" x2="12.01" y2="14"/></svg>
+        <span>Body requests</span>{% if qa_nav.programmes_pending %}<span class="app-nav-badge">{{ qa_nav.programmes_pending }}</span>{% endif %}
+      </a>
+      <a data-tone="teal" href="{% url 'qa_programmes:requirements' %}" class="app-nav-item {% if ns == 'qa_programmes' and 'requirement' in un %}active{% endif %}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span>Curriculum requirements</span>
+      </a>
+      <a data-tone="green" href="{% url 'qa_pb:master' %}" class="app-nav-item">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        <span>Programme master list</span>
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
   {% if qa_nav.finance %}
   <div class="app-nav-group {% if ns == 'qa_fin' %}is-open{% endif %}" data-group="qa-finance">
     <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa_fin' %}true{% else %}false{% endif %}">
-      <span class="qa-nav-tile" style="background:var(--qa-tile-green)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M3 10h18"/><path d="M5 6l7-3 7 3"/><path d="M4 10v11"/><path d="M20 10v11"/></svg></span>
+      <span class="qa-nav-tile" data-tone="mint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M3 10h18"/><path d="M5 6l7-3 7 3"/><path d="M4 10v11"/><path d="M20 10v11"/></svg></span>
       <span class="app-nav-group-title">Finance (QA)</span>
       {% if qa_nav.finance_open %}<span class="app-nav-badge">{{ qa_nav.finance_open }}</span>{% endif %}
       <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="app-nav-group-body">
-      <a href="{% url 'qa_fin:queue' %}" class="app-nav-item {% if ns == 'qa_fin' and un == 'queue' or ns == 'qa_fin' and un == 'item' or ns == 'qa_fin' and un == 'index' %}active{% endif %}">
+      <a data-tone="green" href="{% url 'qa_fin:queue' %}" class="app-nav-item {% if ns == 'qa_fin' and un == 'queue' or ns == 'qa_fin' and un == 'item' or ns == 'qa_fin' and un == 'index' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
         <span>Verification queue</span>{% if qa_nav.finance_open %}<span class="app-nav-badge">{{ qa_nav.finance_open }}</span>{% endif %}
       </a>
-      <a href="{% url 'qa_fin:obligations' %}" class="app-nav-item {% if ns == 'qa_fin' and 'obligation' in un %}active{% endif %}">
+      <a data-tone="amber" href="{% url 'qa_fin:obligations' %}" class="app-nav-item {% if ns == 'qa_fin' and 'obligation' in un %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
         <span>Bills</span>
       </a>
-      <a href="{% url 'qa_fin:statements' %}" class="app-nav-item {% if ns == 'qa_fin' and 'statement' in un %}active{% endif %}">
+      <a data-tone="sky" href="{% url 'qa_fin:statements' %}" class="app-nav-item {% if ns == 'qa_fin' and 'statement' in un %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
         <span>Statement import</span>
       </a>
-      <a href="{% url 'qa_fin:unmatched' %}" class="app-nav-item {% if ns == 'qa_fin' and un == 'unmatched' or ns == 'qa_fin' and un == 'line_match' %}active{% endif %}">
+      <a data-tone="red" href="{% url 'qa_fin:unmatched' %}" class="app-nav-item {% if ns == 'qa_fin' and un == 'unmatched' or ns == 'qa_fin' and un == 'line_match' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         <span>Unmatched lines</span>
       </a>
-      <a href="{% url 'qa_fin:waivers' %}" class="app-nav-item {% if ns == 'qa_fin' and un == 'waivers' %}active{% endif %}">
+      <a data-tone="violet" href="{% url 'qa_fin:waivers' %}" class="app-nav-item {% if ns == 'qa_fin' and un == 'waivers' %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
         <span>Waivers</span>
       </a>
-      <a href="{% url 'qa_fin:refunds' %}" class="app-nav-item {% if ns == 'qa_fin' and 'refund' in un %}active{% endif %}">
+      <a data-tone="teal" href="{% url 'qa_fin:refunds' %}" class="app-nav-item {% if ns == 'qa_fin' and 'refund' in un %}active{% endif %}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
         <span>Refunds</span>
       </a>
@@ -234,30 +285,62 @@
   </div>
   {% endif %}
 
+  {% if qa_nav.rotation %}{# Rotation: directors (own department) and the ES only #}
+  <a data-tone="orange" href="{% url 'rotation:board' %}" class="app-nav-item {% if ns == 'rotation' %}active{% endif %}">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>
+    <span>Rotation</span>
+  </a>
+  {% endif %}
+
+  {% if qa_nav.documents_register %}{# v2.1 Phase F (X24-X26) #}
+  <a data-tone="teal" href="{% url 'documents_register:list' %}" class="app-nav-item {% if ns == 'documents_register' and 'official_letter' not in un %}active{% endif %}">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
+    <span>Issued documents</span>
+  </a>
+  {% endif %}
+  {% if qa_nav.official_letters %}{# Official letters: provisional -> signed official copy #}
+  <a data-tone="amber" href="{% url 'documents_register:official_letters' %}" class="app-nav-item {% if ns == 'documents_register' and 'official_letter' in un %}active{% endif %}">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 6 12 13 2 6"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg>
+    <span>Official letters</span>{% if qa_nav.official_letters_count %}<span class="app-nav-badge">{{ qa_nav.official_letters_count }}</span>{% endif %}
+  </a>
+  {% endif %}
+  <a data-tone="indigo" href="{% url 'facilities:index' %}" class="app-nav-item {% if ns == 'facilities' %}active{% endif %}">{# v2.2 #}
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg>
+    <span>Facilities &amp; equipment</span>
+  </a>
+  <a data-tone="green" href="{% url 'qa:staff_guides' %}" class="app-nav-item {% if 'guide' in un %}active{% endif %}">{# v2.2 #}
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+    <span>Guides</span>
+  </a>
+  <a data-tone="slate" href="{% url 'scan:page' %}" class="app-nav-item {% if ns == 'scan' %}active{% endif %}"{% if ns == 'scan' %} aria-current="page"{% endif %}>{# v2.1 Phase F (X26) #}
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+    <span>Scan</span>
+  </a>
+
   {% if qa_nav.pending or qa_nav.settings or qa_nav.outbox %}
   <div class="app-nav-group {% if ns == 'qa' or ns == 'qa_set' %}is-open{% endif %}" data-group="quality-assurance">
     <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'qa' or ns == 'qa_set' %}true{% else %}false{% endif %}">
-      <span class="qa-nav-tile" style="background:var(--qa-tile-slate)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+      <span class="qa-nav-tile" data-tone="slate" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
       <span class="app-nav-group-title">Quality Assurance</span>
       {% if qa_nav.awaiting %}<span class="app-nav-badge" aria-label="{{ qa_nav.awaiting }} awaiting your confirmation">{{ qa_nav.awaiting }}</span>{% endif %}
       <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="app-nav-group-body">
       {% if qa_nav.pending %}
-        <a href="{% url 'qa:pending_list' %}" class="app-nav-item {% if ns == 'qa' and 'pending' in un %}active{% endif %}"{% if ns == 'qa' and 'pending' in un %} aria-current="page"{% endif %}>
+        <a data-tone="amber" href="{% url 'qa:pending_list' %}" class="app-nav-item {% if ns == 'qa' and 'pending' in un %}active{% endif %}"{% if ns == 'qa' and 'pending' in un %} aria-current="page"{% endif %}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><circle cx="18" cy="5" r="0"/></svg>
           <span>Pending confirmations</span>
           {% if qa_nav.awaiting %}<span class="app-nav-badge">{{ qa_nav.awaiting }}</span>{% endif %}
         </a>
       {% endif %}
       {% if qa_nav.settings %}
-        <a href="{% url 'qa:settings' %}" class="app-nav-item {% if ns == 'qa_set' or ns == 'qa' and 'setting' in un or ns == 'qa' and 'formula' in un or ns == 'qa' and 'reference' in un or ns == 'qa' and 'workflow' in un or ns == 'qa' and 'template' in un %}active{% endif %}">
+        <a data-tone="graphite" href="{% url 'qa:settings' %}" class="app-nav-item {% if ns == 'qa_set' or ns == 'qa' and 'setting' in un or ns == 'qa' and 'formula' in un or ns == 'qa' and 'reference' in un or ns == 'qa' and 'workflow' in un or ns == 'qa' and 'template' in un %}active{% endif %}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
           <span>QA settings</span>
         </a>
       {% endif %}
       {% if qa_nav.outbox %}
-        <a href="{% url 'qa:outbox' %}" class="app-nav-item {% if ns == 'qa' and un == 'outbox' %}active{% endif %}">
+        <a data-tone="blue" href="{% url 'qa:outbox' %}" class="app-nav-item {% if ns == 'qa' and un == 'outbox' %}active{% endif %}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           <span>QA e-mail outbox</span>
         </a>

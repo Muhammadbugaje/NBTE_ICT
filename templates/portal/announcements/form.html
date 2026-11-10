@@ -1,17 +1,16 @@
 {% extends "portal/_layout.html" %}
+{% load qa_tags %}
 {% block title %}{% if mode == "create" %}New announcement{% else %}Edit announcement{% endif %} · {{ SITE_NAME }}{% endblock %}
 
 {% block content %}
 <div class="portal-page portal-page-narrow">
 
-  <header class="portal-head">
+  <header class="qa-hero nbte-hero portal-qa-hero" data-qa-area="portal">
     <div>
-      <a href="{% url 'portal:announcement_list' %}" class="portal-back">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        Announcements
-      </a>
+      <a class="nbte-hero__back" href="{% url 'portal:announcement_list' %}">{% icon "back" 14 "2.4" %} Announcements</a>
+      <span class="qa-eyebrow">{% icon "edit" 14 "2.2" %} Portal · Announcements</span>
       <h1>{% if mode == "create" %}New announcement{% else %}Edit announcement{% endif %}</h1>
-      <p class="muted">Publish now, schedule for later, or save as draft.</p>
+      <p>Publish now, schedule for later, or save as draft.</p>
     </div>
   </header>
 
@@ -50,7 +49,7 @@
              data-portal-image-preview
              {% if announcement.image %}data-has-image="1"{% endif %}>
           {% if announcement and announcement.image %}
-            <img src="{{ announcement.image_thumb_url|default:announcement.image.url }}"
+            <img loading="lazy" decoding="async" src="{{ announcement.image_thumb_url|default:announcement.image.url }}"
                  data-fallback-src="{{ announcement.image.url }}"
                  alt="">
           {% else %}

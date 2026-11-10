@@ -1,0 +1,533 @@
+/* ==========================================================================
+   NBTE QA — live page layer (v2.8)
+
+   Loaded unlayered AFTER the shared bundles (and after qa-portal-ui.css on
+   the portal), so it can add the live-refresh chrome and the remaining
+   mobile ergonomics without rebuilding a bundle.
+
+   Sections
+     1. Request progress + live pill + swap animation
+     2. Phone ergonomics: forms, fields, tap targets
+     3. Tables, tabs and long content inside their own panel
+     4. SOP-03 capacity form layout
+     5. Safe areas, dialogs and reduced motion
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- 1. live */
+.qa-progress {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 10000;
+  height: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease;
+}
+
+/* ------------------------------------------------ 4. SOP-03 capacity forms */
+.c3-page .c3-body .qa-cap__kind > summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 12px;
+  align-items: center;
+  padding: 14px 18px 14px 40px;
+}
+
+.c3-page .c3-body .qa-cap__kind > summary::before {
+  position: absolute;
+  inset-inline-start: 18px;
+}
+
+.c3-page .c3-body .qa-cap__summary-title {
+  min-width: 0;
+  color: var(--text);
+  font-size: .98rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.c3-page .c3-body .qa-cap__kind > summary > .qa-chip {
+  justify-self: end;
+}
+
+.c3-page .c3-body .qa-cap__summary-detail {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+.c3-page .c3-body .qa-cap__form {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.c3-page .c3-body .qa-cap__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.c3-page .c3-body .qa-cap__fields > .qa-field {
+  display: grid;
+  grid-template-rows: none;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2, var(--bg-subtle));
+}
+
+.c3-page .c3-body .qa-cap__fields > .qa-field > label {
+  display: block;
+  min-height: 0;
+  color: var(--text);
+  font-size: .9rem;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.c3-page .c3-body .qa-cap__field-help {
+  display: block;
+  min-height: 0;
+  margin: -2px 0 2px;
+  color: var(--text-muted);
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
+.c3-page .c3-body .qa-cap__fields > .qa-field > .input,
+.c3-page .c3-body .qa-cap__room .input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.c3-page .c3-body .qa-cap__rooms {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.c3-page .c3-body .qa-cap__rooms-head {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.c3-page .c3-body .qa-cap__rooms-head > h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.c3-page .c3-body .qa-cap__rooms-head > p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: .77rem;
+  font-weight: 400;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.c3-page .c3-body .qa-cap__room-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.c3-page .c3-body .qa-cap__room {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(130px, 1fr));
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2, var(--bg-subtle));
+}
+
+.c3-page .c3-body .qa-cap__room > .qa-field {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.c3-page .c3-body .qa-cap__room > .qa-field > label {
+  display: block;
+  min-height: 0;
+  color: var(--text);
+  font-size: .82rem;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.c3-page .c3-body .qa-cap__add-room {
+  justify-self: start;
+  min-height: 40px;
+}
+
+@media (max-width: 680px) {
+  .c3-page .c3-body .qa-cap__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .c3-page .c3-body .qa-cap__room {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .c3-page .c3-body .qa-cap__room > .qa-field:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 420px) {
+  .c3-page .c3-body .qa-cap__kind > summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .c3-page .c3-body .qa-cap__kind > summary > .qa-chip {
+    justify-self: start;
+  }
+}
+
+.qa-progress.is-active { opacity: 1; }
+
+.qa-progress > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary, #0d6b4f), var(--success, #157f56));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--primary, #0d6b4f) 65%, transparent);
+  transition: width .35s cubic-bezier(.22, .8, .3, 1);
+}
+
+.qa-live-pill {
+  position: fixed;
+  z-index: 80;
+  inset-inline-end: max(14px, env(safe-area-inset-right, 0px));
+  inset-block-end: max(16px, env(safe-area-inset-bottom, 0px));
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 28px);
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border, #dfe5e1);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface, #fff) 88%, transparent);
+  color: var(--text-muted, #64736b);
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -.01em;
+  box-shadow: 0 10px 28px rgba(12, 20, 16, .14), inset 0 1px 0 rgba(255, 255, 255, .55);
+  -webkit-backdrop-filter: saturate(170%) blur(18px);
+  backdrop-filter: saturate(170%) blur(18px);
+  cursor: default;
+  opacity: .88;
+  transition: opacity .18s ease, transform .18s ease, background-color .18s ease, color .18s ease, border-color .18s ease;
+}
+
+.qa-live-pill:disabled {
+  opacity: .82;
+  cursor: default;
+}
+
+.qa-live-pill[data-state="available"] {
+  border-color: color-mix(in srgb, var(--primary, #0d6b4f) 32%, transparent);
+  background: var(--surface, #fff);
+  color: var(--primary, #0d6b4f);
+  opacity: 1;
+  cursor: pointer;
+}
+
+.qa-live-pill[data-state="available"]:hover { transform: translateY(-1px); }
+.qa-live-pill[data-state="available"]:active { transform: scale(.98); }
+
+.qa-live-pill[data-state="updating"] { color: var(--text, #1d2a24); opacity: 1; }
+
+.qa-live-pill[data-state="offline"] {
+  border-color: color-mix(in srgb, var(--warning, #b7791f) 34%, transparent);
+  color: var(--warning-fg, var(--warning, #b7791f));
+  opacity: 1;
+  cursor: pointer;
+}
+
+.qa-live-pill__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--success, #157f56);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success, #157f56) 18%, transparent);
+}
+
+.qa-live-pill[data-state="available"] .qa-live-pill__dot,
+.qa-live-pill[data-state="updating"] .qa-live-pill__dot {
+  background: var(--primary, #0d6b4f);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary, #0d6b4f) 18%, transparent);
+  animation: qa-live-pulse 1.5s ease-in-out infinite;
+}
+
+.qa-live-pill[data-state="offline"] .qa-live-pill__dot {
+  background: var(--warning, #b7791f);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning, #b7791f) 18%, transparent);
+  animation: none;
+}
+
+.qa-live-pill__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qa-swap-in { animation: qa-swap-in .34s cubic-bezier(.22, .8, .3, 1) both; }
+
+@keyframes qa-live-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: .55; }
+}
+
+@keyframes qa-swap-in {
+  from { opacity: .45; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Keep the pill clear of the phone tab bars. */
+@media (max-width: 767px) {
+  .qa-live-pill { inset-block-end: calc(92px + env(safe-area-inset-bottom, 0px)); }
+  .qa-portal .qa-live-pill { inset-block-end: calc(96px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ------------------------------------------------------- 2. phone ergonomics */
+@media (max-width: 767px) {
+  html { -webkit-text-size-adjust: 100%; }
+
+  .qa-main,
+  .qa-page,
+  .c3-page,
+  .pp-frame,
+  .app-content {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: break-word;
+  }
+
+  /* One column for every QA form grid. */
+  .qa-page .qa-fields,
+  .qa-page .qa-fields--3,
+  .c3-page .qa-fields,
+  .c3-page .c3-form--grid,
+  .c3-page .c3-form__row,
+  .qa-portal .qa-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qa-page .qa-field,
+  .c3-page .qa-field,
+  .qa-portal .qa-field {
+    min-width: 0;
+  }
+
+  .qa-page .qa-field :is(input, select, textarea),
+  .c3-page .qa-field :is(input, select, textarea),
+  .qa-portal .qa-field :is(input, select, textarea) {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* 16px keeps iOS from zooming the page when a field is focused. */
+  .qa-page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
+  .qa-page select,
+  .qa-page textarea,
+  .c3-page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
+  .c3-page select,
+  .c3-page textarea,
+  .qa-portal input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
+  .qa-portal select,
+  .qa-portal textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .qa-page input[type="file"],
+  .c3-page input[type="file"],
+  .qa-portal input[type="file"] {
+    max-width: 100%;
+    font-size: .9rem;
+  }
+
+  .qa-page :is(.btn, .qa-btn),
+  .c3-page :is(.btn, .qa-btn),
+  .qa-portal :is(.btn, .qa-btn) {
+    min-height: 44px;
+    white-space: normal;
+  }
+
+  .qa-page :is(.qa-icon-btn, .btn-icon),
+  .c3-page :is(.qa-icon-btn, .btn-icon),
+  .qa-portal :is(.qa-icon-btn, .btn-icon) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .qa-page :is(.qa-hero__actions, .qa-form-actions, .qa-toolbar, .qa-filterbar, .c3-form__row, .c3-change__actions),
+  .c3-page :is(.qa-hero__actions, .qa-form-actions, .qa-toolbar, .c3-form__row, .c3-change__actions) {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .qa-page :is(.qa-hero__actions, .qa-form-actions, .c3-change__actions) .btn,
+  .c3-page :is(.qa-hero__actions, .qa-form-actions, .c3-change__actions) .btn {
+    max-width: 100%;
+  }
+
+  .qa-page .qa-field > label,
+  .qa-page .qa-field > .qa-field__label,
+  .c3-page .qa-field > label,
+  .c3-page .qa-field > .qa-field__label {
+    font-size: .92rem;
+    line-height: 1.35;
+  }
+
+  .qa-page .qa-field small,
+  .qa-page .qa-field__hint,
+  .c3-page .qa-field small,
+  .c3-page .qa-field__hint {
+    line-height: 1.45;
+  }
+
+  .qa-page fieldset,
+  .c3-page fieldset { min-width: 0; }
+
+  /* The sticky submit bar keeps its buttons reachable above the tab bar. */
+  .qa-form-actions--sticky,
+  .c3-page .qa-form-actions--sticky {
+    inset-block-end: calc(84px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 20px);
+  }
+}
+
+/* --------------------------------------- 3. tables, tabs and long content */
+.qa-page .qa-table-wrap,
+.c3-page .qa-table-wrap,
+.qa-portal .qa-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.qa-page .qa-table--scroll,
+.c3-page .qa-table--scroll,
+.qa-portal .qa-table--scroll {
+  outline-offset: 2px;
+}
+
+.qa-page .qa-table-wrap:focus-within,
+.c3-page .qa-table-wrap:focus-within {
+  border-color: color-mix(in srgb, var(--primary, #0d6b4f) 34%, transparent);
+}
+
+.qa-page .qa-table,
+.c3-page .qa-table { max-width: 100%; }
+
+.qa-page :is(.c3-tabs, .qa-insp-nav, .qa-tabs, .qa-chip-row, .qa-segmented),
+.c3-page :is(.c3-tabs, .qa-insp-nav, .qa-tabs, .qa-chip-row, .qa-segmented) {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.qa-page :is(.c3-tabs, .qa-insp-nav, .qa-tabs)::-webkit-scrollbar,
+.c3-page :is(.c3-tabs, .qa-insp-nav, .qa-tabs)::-webkit-scrollbar { display: none; }
+
+.c3-page :is(.c3-code, .qa-mono, .c3-hero__meta, .c3-ccard__ref, .c3-ccard__no),
+.qa-page :is(.qa-mono, .qa-ref) {
+  overflow-wrap: anywhere;
+}
+
+.c3-page .c3-hero__meta { flex-wrap: wrap; }
+
+.qa-page :is(pre, code),
+.c3-page :is(pre, code) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.qa-page :is(img, video, iframe, svg),
+.c3-page :is(img, video, iframe, svg) { max-width: 100%; }
+
+.qa-page .qa-table-wrap > table,
+.c3-page .qa-table-wrap > table { margin: 0; }
+
+/* ------------------------------------------------- 4. safe areas + dialogs */
+.qa-portal .qa-topbar,
+.app-topbar { padding-top: env(safe-area-inset-top, 0px); }
+
+.qa-portal .qa-footer,
+.app-footer { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+.qa-portal .qa-notif,
+.qa-portal .qa-user .dropdown,
+.qa-portal .dropdown {
+  max-width: calc(100vw - 20px);
+}
+
+.qa-page dialog,
+.c3-page dialog,
+[role="dialog"] {
+  max-width: calc(100vw - 24px);
+}
+
+@media (max-width: 767px) {
+  .qa-portal .qa-notif,
+  .qa-portal .qa-user .dropdown,
+  .qa-portal .dropdown {
+    max-height: min(72vh, 560px);
+    overflow-y: auto;
+  }
+
+  .qa-portal .pp-side { width: min(88vw, 360px); }
+
+  .c3-page .c3-hero__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .c3-page .c3-hero__stats > * { min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qa-progress,
+  .qa-progress > span,
+  .qa-live-pill,
+  .qa-swap-in { animation: none !important; transition: none !important; }
+  .qa-live-pill__dot { animation: none !important; }
+}

@@ -7,7 +7,7 @@ from django.core.management import CommandError, call_command
 
 from accounts.models import Role, User
 from config.models import ConfigEntry
-from qa_core.models import ActionPolicy, DemoTag, FlowDefinition, NotificationTemplate, ReferenceFormat
+from qa_core.models import ActionPolicy, DemoTag, FlowDefinition, FlowTransition, NotificationTemplate, ReferenceFormat
 from qa_core.settings_catalogue import SETTING_KEYS
 
 DEMO_EMAILS = {
@@ -39,11 +39,13 @@ def test_first_run_creates_everything(base):
                 "qa.stage.default_sla_hours", "qa.stage.reminder_at_percent",
                 "qa.institution.admin_required_department", "qa.resource_person.max_visits_per_year",
                 "qa.ui.max_show_all_rows", "qa.ui.request_timeout_seconds",
-                "qa.payment.final_approver_role", "qa.payment.receipt_required_for_provider_payments",
+                "qa.payment.finance_department", "qa.payment.receipt_required_for_provider_payments",
                 "qa.payment.provider_confirmation_is_evidence_only", "qa.fee.programme_processing"):
         assert ConfigEntry.objects.filter(key=key).exists(), key
     assert ConfigEntry.objects.get(key="qa.fee.programme_processing").dual_control
-    for code in ("qa-finance-officer", "qa-finance-director", "ict-qa-monitor", "qa-settings-admin",
+    from accounts.models import Role as _R
+    assert not _R.objects.filter(code="qa-finance-director").exists()  # Phase B (B2): no "director of X" roles
+    for code in ("qa-finance-officer", "ict-qa-monitor", "qa-settings-admin",
                  "inst-chief-executive", "inst-admin", "inst-academic-dept", "resource-person"):
         assert Role.objects.filter(code=code).exists(), code
     assert ReferenceFormat.objects.count() == 10  # Phase 3 adds "query" (was 9)
@@ -80,6 +82,24 @@ def test_admin_edits_are_never_overwritten(base):
     ConfigEntry.objects.filter(key="qa.stage.default_sla_hours").update(value="12")
     run()
     assert ConfigEntry.objects.get(key="qa.stage.default_sla_hours").value == "12"
+
+
+def test_startup_repairs_missing_direct_report_submission_routes(base):
+    run()
+    flow = FlowDefinition.objects.get(code="post_visit_report")
+    FlowTransition.objects.filter(flow=flow, from_stage__code="draft",
+                                  action_code="submit_to_director").delete()
+    FlowTransition.objects.filter(flow=flow, from_stage__code="returned",
+                                  action_code="resubmit_to_director").delete()
+
+    run()
+
+    assert FlowTransition.objects.filter(
+        flow=flow, from_stage__code="draft", action_code="submit_to_director",
+        to_stage__code="deputy_verified").exists()
+    assert FlowTransition.objects.filter(
+        flow=flow, from_stage__code="returned", action_code="resubmit_to_director",
+        to_stage__code="deputy_verified").exists()
 
 
 def test_dry_run_rolls_back(base):

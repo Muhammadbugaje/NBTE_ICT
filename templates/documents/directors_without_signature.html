@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Missing signatures · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Signatures{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/profile.css' %}">
+{% endblock %}
+{% block content %}
+<div class="profile-page pf-page">
+  <header class="profile-page-head">
+    <div>
+      <h1>Missing signatures</h1>
+      <p>Active staff at or above rank {{ min_rank }} who have not set up a signature yet. Names only — nobody's signature is shown here.</p>
+    </div>
+  </header>
+  <div class="pf-card">
+    {% if people %}
+      <p class="muted">{{ people|length }} {{ people|length|pluralize:"person,people" }} still need{{ people|length|pluralize:"s," }} to add a signature.</p>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Name</th><th>Role</th><th>Department</th></tr></thead>
+          <tbody>
+            {% for u in people %}
+              <tr>
+                <td data-label="Name"><strong>{{ u.get_full_name|default:u.email }}</strong></td>
+                <td data-label="Role">{{ u.role.name|default:"—" }}</td>
+                <td data-label="Department">{{ u.department.name|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">Everyone who must sign has a signature on file.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

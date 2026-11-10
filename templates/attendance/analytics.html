@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load static qa_tags %}
+{% block title %}Attendance analytics · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Attendance analytics{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/hr-leave.css' %}">{% endblock %}
+{% block content %}
+<main class="hrd-page" id="att-analytics">
+  <header class="qa-hero nbte-hero att-qa-hero" data-qa-area="attendance">
+    <div>
+      <a class="nbte-hero__back hrd-noprint" href="{% url 'attendance:home' %}">{% icon "back" 14 "2.4" %} Attendance</a>
+      <span class="qa-eyebrow">{% icon "chart" 14 "2.2" %} Attendance · {% if scope == "all" %}All departments{% else %}{{ request.user.department.name }}{% endif %}</span>
+      <h1>Attendance analytics</h1>
+      <p>Who comes early, who is often late or absent, and how the weeks compare, so you can reach out and help. Leave, holidays and official QA visits are credited, never counted against anyone.</p>
+      <div class="qa-hero__actions hrd-noprint">
+        <a class="btn btn-subtle" href="{% url 'attendance:analytics_export' %}?{{ request.GET.urlencode }}">{% icon "download" 15 "2.2" %} Export Excel</a>
+        <button class="btn btn-subtle" type="button" onclick="window.print()">{% icon "print" 15 "2.2" %} Print</button>
+      </div>
+    </div>
+  </header>
+
+  <form class="hrd-card hrd-filters" method="get" hx-get="{% url 'attendance:analytics' %}" hx-target="#an-body" hx-swap="innerHTML" hx-push-url="true" hx-trigger="change, submit">
+    <div class="field"><label for="an-from">From</label><input class="input" id="an-from" type="date" name="from" value="{{ first|date:'Y-m-d' }}"></div>
+    <div class="field"><label for="an-to">To</label><input class="input" id="an-to" type="date" name="to" value="{{ last|date:'Y-m-d' }}"></div>
+    {% if scope == "all" %}
+      <div class="field"><label for="an-dept">Department</label>
+        <select class="input" id="an-dept" name="department">
+          <option value="">All departments</option>
+          {% for d in departments %}<option value="{{ d.pk }}" {% if d.pk == department_id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+        </select></div>
+    {% endif %}
+    <div class="field"><label for="an-q">Person</label><input class="input" id="an-q" type="search" name="q" value="{{ q }}" placeholder="Name or email"></div>
+    <div class="field"><label for="an-sort">Sort by</label>
+      <select class="input" id="an-sort" name="sort">
+        <option value="name" {% if sort == "name" %}selected{% endif %}>Name</option>
+        <option value="arrival" {% if sort == "arrival" %}selected{% endif %}>Earliest arrival</option>
+        <option value="late" {% if sort == "late" %}selected{% endif %}>Most late</option>
+        <option value="absent" {% if sort == "absent" %}selected{% endif %}>Most absent</option>
+        <option value="missing" {% if sort == "missing" %}selected{% endif %}>Missing check-outs</option>
+        <option value="attendance" {% if sort == "attendance" %}selected{% endif %}>Lowest attendance</option>
+      </select></div>
+    <div class="btn-group"><button class="btn btn-primary btn-sm" type="submit">Show</button></div>
+  </form>
+
+  <div id="an-body">{% include "attendance/_analytics_body.html" %}</div>
+
+  <dialog id="an-person" class="hrd-card" aria-label="Person drill-down"></dialog>
+</main>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'vendor/chart-4.4.1.umd.js' %}" defer></script>
+<script src="{% static 'js/attendance-analytics.js' %}" defer></script>
+{% endblock %}

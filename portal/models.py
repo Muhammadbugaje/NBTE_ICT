@@ -812,10 +812,8 @@ class Document(SoftDeleteModel):
             from core import audit
             note = "file downloaded"
             if request is not None:
-                ip = (
-                    request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
-                    or request.META.get("REMOTE_ADDR", "")
-                )
+                from core.ratelimit import client_ip
+                ip = client_ip(request)
                 if ip:
                     note += f"; ip={ip}"
                 ua = (request.META.get("HTTP_USER_AGENT") or "")[:180]
@@ -1032,11 +1030,8 @@ class ScopedVisibilityMixin:
             from core import audit
             note_parts = []
             if request is not None:
-                ip = (
-                    request.META.get("HTTP_X_FORWARDED_FOR", "")
-                    .split(",")[0].strip()
-                    or request.META.get("REMOTE_ADDR", "")
-                )
+                from core.ratelimit import client_ip
+                ip = client_ip(request)
                 if ip:
                     note_parts.append(f"ip={ip}")
                 ua = (request.META.get("HTTP_USER_AGENT") or "")[:180]
@@ -1288,6 +1283,10 @@ class Holiday(TimeStampedModel):
                                         related_name="scoped_holidays")
 
     is_active = models.BooleanField(default=True)
+    # v2.1 Phase D (F7): movable (Islamic) dates are seeded as estimates
+    # until the Federal Government declares them.
+    to_confirm = models.BooleanField(
+        default=False, help_text="The date is an estimate until the Federal Government declares it.")
 
     class Meta:
         ordering = ["date_start", "name"]

@@ -5,7 +5,7 @@
 {% block page_title %}{{ dashboard_title }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -28,13 +28,16 @@
     </div>
   </header>
 
-  <div class="dash-kpis">
+  {# v2.1 Phase E (L10): announcements on every staff dashboard #}
+  {% load announcement_tags %}{% announcements_panel %}
+
+  <div class="dash-kpis m-stagger">
     <div class="dash-kpi">
       <div class="dash-kpi-icon dash-kpi-primary">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ kpis.staff_total }}</div>
+        <div class="dash-kpi-num" data-count="{{ kpis.staff_total }}">{{ kpis.staff_total }}</div>
         <div class="dash-kpi-lbl">Active staff</div>
       </div>
     </div>
@@ -43,7 +46,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ kpis.users_total }}</div>
+        <div class="dash-kpi-num" data-count="{{ kpis.users_total }}">{{ kpis.users_total }}</div>
         <div class="dash-kpi-lbl">User accounts</div>
       </div>
     </div>
@@ -52,7 +55,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ kpis.in_flight }}</div>
+        <div class="dash-kpi-num" data-count="{{ kpis.in_flight }}">{{ kpis.in_flight }}</div>
         <div class="dash-kpi-lbl">Requests in flight</div>
       </div>
     </div>
@@ -79,13 +82,13 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ kpis.pending }}</div>
+        <div class="dash-kpi-num" data-count="{{ kpis.pending }}">{{ kpis.pending }}</div>
         <div class="dash-kpi-lbl">Pending approvals</div>
       </div>
     </div>
   </div>
 
-  <div class="dash-grid dash-grid-2-1">
+  <div class="dash-grid dash-grid-2-1 m-stagger">
     <section class="dash-card">
       <header class="dash-card-head">
         <div><h2>Request activity — last 30 days</h2><p>Opened vs completed, institutional view</p></div>
@@ -142,7 +145,7 @@
 
   {% include "dashboards/_attendance_section.html" %}
 
-  <div class="dash-grid dash-grid-2-1">
+  <div class="dash-grid dash-grid-2-1 m-stagger">
     <section class="dash-card">
       <header class="dash-card-head">
         <div><h2>Departments at a glance</h2><p>Headcount by department</p></div>
@@ -199,5 +202,5 @@
 
 {% block extra_js %}
   <script src="{% static 'vendor/chart-4.4.1.umd.js' %}"></script>
-  <script src="{% static 'js/charts.js' %}?v=1"></script>
+  <script src="{% static 'js/charts.js' %}"></script>
 {% endblock %}

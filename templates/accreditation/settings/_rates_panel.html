@@ -7,15 +7,15 @@
     <p>The allowances SOP-03 cost sheets are built from. A department row overrides the shared row with the same code. Changing a rate never changes a cost line already priced.</p></div>
     <form hx-get="{% url 'qa_set:rates' %}" hx-target="#qa-panel" hx-push-url="true" hx-trigger="change"><select class="input qa-select" name="show" aria-label="Show"><option value="active"{% if show == "active" %} selected{% endif %}>Active rates</option><option value="all"{% if show == "all" %} selected{% endif %}>Include retired</option></select></form></header>
   <div class="qa-table-wrap"><table class="qa-table">
-    <thead><tr><th scope="col">Code</th><th scope="col">For</th><th scope="col">Allowance</th><th scope="col">Department</th><th scope="col" class="num">Amount</th>{% if editable %}<th scope="col"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+    <thead><tr><th scope="col">Code</th><th scope="col">For</th><th scope="col">Allowance</th><th scope="col">Department</th><th scope="col">State</th><th scope="col" class="num">Amount</th>{% if editable %}<th scope="col"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
     <tbody>{% for r in rates %}
       <tr class="{% if not r.is_active %}is-muted{% endif %}">
-        <td class="qa-mono">{{ r.code }}</td><td>{{ r.role }}</td><td>{{ r.get_allowance_type_display }}<br><span class="qa-small qa-muted">{{ r.get_unit_display }}</span></td><td>{{ r.department.name|default:"Shared" }}</td>
+        <td class="qa-mono">{{ r.code }}</td><td>{{ r.role }}</td><td>{{ r.get_allowance_type_display }}<br><span class="qa-small qa-muted">{{ r.get_unit_display }}</span></td><td>{{ r.department.name|default:"Shared" }}</td><td>{{ r.state.name|default:"All states" }}</td>
         <td class="num">{% if editable %}<input class="input" form="rate-{{ r.pk }}" name="amount" value="{{ r.amount|floatformat:2 }}" inputmode="decimal" aria-label="Amount for {{ r.role }}" style="max-width:140px">{% else %}{{ r.amount|naira }}{% endif %}</td>
         {% if editable %}<td><form id="rate-{{ r.pk }}" class="qa-line-actions" method="post" action="{% url 'qa_set:rate_edit' r.pk %}" hx-post="{% url 'qa_set:rate_edit' r.pk %}" hx-target="#qa-panel">{% csrf_token %}
           <button class="btn btn-xs btn-subtle" type="submit" name="op" value="save">Save</button>
           <button class="btn btn-xs btn-subtle" type="submit" name="op" value="toggle">{% if r.is_active %}Retire{% else %}Restore{% endif %}</button></form></td>{% endif %}
-      </tr>{% empty %}<tr><td colspan="6" class="qa-muted">No rates. Run <span class="qa-mono">manage.py seed_startup</span>.</td></tr>{% endfor %}</tbody>
+      </tr>{% empty %}<tr><td colspan="7" class="qa-muted">No rates. Run <span class="qa-mono">manage.py seed_startup</span>.</td></tr>{% endfor %}</tbody>
   </table></div>
 </section>
 {% if editable %}
@@ -30,6 +30,7 @@
         <div class="qa-field"><label for="rt-unit">Unit</label><select class="input" id="rt-unit" name="unit">{% for v, l in units %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
         <div class="qa-field"><label for="rt-amt">Amount (₦)</label><input class="input" id="rt-amt" name="amount" inputmode="decimal" required value="{{ values.amount|default:'' }}"></div>
         <div class="qa-field"><label for="rt-dept">Department</label><select class="input" id="rt-dept" name="department"><option value="">Shared (every department)</option>{% for d in departments %}<option value="{{ d.pk }}">{{ d.name }}</option>{% endfor %}</select></div>
+        <div class="qa-field"><label for="rt-state">State</label><select class="input" id="rt-state" name="state"><option value="">All states</option>{% for s in states %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}</select><p class="qa-hint">A state row overrides the all-state row of the same kind for visits there (X39).</p></div>
       </div>
       <div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add rate</button></div>
     </form>

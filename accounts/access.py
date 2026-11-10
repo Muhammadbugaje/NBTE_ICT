@@ -27,27 +27,20 @@ EXECUTIVE_SECRETARY_ROLE = "executive-secretary"
 
 
 def is_super_admin(user):
-    """Superuser flag, or the `super-admin` role. Always passes every check."""
-    if not getattr(user, "is_authenticated", False):
-        return False
-    if user.is_superuser:
-        return True
-    return bool(user.role_id and user.role.code in SUPER_ROLE_CODES)
+    """Superuser flag, or the `super-admin` role. Always passes every check.
+    (Phase B: delegates to org.)"""
+    import org
+    return org.is_super_admin(user)
 
 
 def is_executive_secretary(user):
-    return bool(
-        getattr(user, "is_authenticated", False)
-        and user.role_id
-        and user.role.code == EXECUTIVE_SECRETARY_ROLE
-    )
+    import org
+    return bool(getattr(user, "is_authenticated", False) and org.has_role(user, EXECUTIVE_SECRETARY_ROLE))
 
 
 def is_department_lead(user):
-    """Director-level post (director, deputy, office head) inside a department."""
-    return bool(
-        getattr(user, "is_authenticated", False)
-        and user.department_id
-        and user.role_id
-        and user.role.code in DEPARTMENT_LEAD_ROLE_CODES
-    )
+    """Director-level post (director seat, deputy, office head) inside a department.
+    (Phase B: delegates to org.is_department_lead.)"""
+    import org
+    return bool(getattr(user, "is_authenticated", False) and user.department_id
+                and org.is_department_lead(user, user.department_id))

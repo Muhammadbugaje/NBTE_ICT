@@ -162,15 +162,10 @@ def build_phase2_demo(stats, make_user):
                              payer_name="Demo Polytechnic", paid_on=timezone.localdate(),
                              amount_claimed=paid.amount, bank_name="Demo Bank", teller_number="TLR-DEMO-0001")
             item = PaymentVerification.unscoped.filter(obligation=paid, is_open=True).first()
-            # The demo needs a confirmed bill: system-run first pass + final decision with the
-            # demo officers' identities (the same rule as everywhere: two different people).
+            # Provider evidence and bank proofs both go directly to the Finance Director.
             director_ok = pay.is_final_approver(director)
-            if item is not None and officer.has_perm("payments.verify_payment") and director_ok:
-                pay.first_pass(item, user=officer, decision="approved", amount=paid.amount,
-                               reason="Teller matches the statement (demo).")
-                item.refresh_from_db()
-                if pay.ready_for_final(item)[0]:
-                    pay.final_decision(item, user=director, decision="confirmed", reason="Demo confirmation")
+            if item is not None and director_ok and pay.ready_for_final(item)[0]:
+                pay.final_decision(item, user=director, decision="confirmed", reason="Demo confirmation")
         result["obligations"] += 1
         pay.issue_obligation(dmp, "institutional_processing", actor=officer,
                              description="Institutional processing fee (demo, pending)")

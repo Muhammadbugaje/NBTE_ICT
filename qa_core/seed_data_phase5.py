@@ -41,9 +41,11 @@ REPORT_FLOW = {
     "code": "post_visit_report",
     "name": "Post-visit report (B14 endorsement)",
     "subject_model": "inspection.PostVisitReport",
-    "description": "One report per programme. Written by someone who attended (B17), then endorsed by the "
-                   "Division Head → Deputy Director → Director (B14). Any layer can add content or return it "
-                   "with a remark; a return goes back to the person who submitted it.",
+    "description": "Each eligible attendee submits an individual report for their programme. The Team Lead "
+                   "accepts or returns each contribution, then submits one compiled report per programme for "
+                   "endorsement by the next required, active department approver. A Division Head or Deputy "
+                   "Director stage is skipped when that seat is vacant or already represented by the Team Lead; "
+                   "the Director's approval remains explicit (B14, B17).",
     "stages": [
         ("draft", "Write the post-visit report", "Report in preparation", "start", "specific_user",
          {**TASK, "form_key": "team_lead", "sla_hours": 120}),
@@ -60,7 +62,13 @@ REPORT_FLOW = {
     ],
     "transitions": [
         ("draft", "submitted", "submit", "Submit the report", {**SUBMIT, "effects": ["report_submitted"]}),
+        ("draft", "division_endorsed", "submit_to_deputy", "Submit directly to Deputy Director",
+         {**SUBMIT, "effects": ["report_submitted"]}),
+        ("draft", "deputy_verified", "submit_to_director", "Submit directly to Director",
+         {**SUBMIT, "effects": ["report_submitted"]}),
         ("submitted", "division_endorsed", "endorse", "Endorse (Division Head)", ENDORSE),
+        ("submitted", "deputy_verified", "endorse_to_director", "Skip vacant Deputy Director",
+         {**ENDORSE}),
         ("submitted", "returned", "return", "Return with remark", RET),
         ("division_endorsed", "deputy_verified", "endorse", "Verify (Deputy Director)", ENDORSE),
         ("division_endorsed", "returned", "return", "Return with remark", RET),
@@ -68,6 +76,10 @@ REPORT_FLOW = {
          {**ENDORSE, "effects": ["report_director_endorsed"]}),
         ("deputy_verified", "returned", "return", "Return with remark", RET),
         ("returned", "submitted", "resubmit", "Re-submit the report", {**SUBMIT, "effects": ["report_submitted"]}),
+        ("returned", "division_endorsed", "resubmit_to_deputy", "Re-submit directly to Deputy Director",
+         {**SUBMIT, "effects": ["report_submitted"]}),
+        ("returned", "deputy_verified", "resubmit_to_director", "Re-submit directly to Director",
+         {**SUBMIT, "effects": ["report_submitted"]}),
     ],
 }
 FLOWS = [INSPECTION_FLOW, REPORT_FLOW]
@@ -132,13 +144,14 @@ RULES = [
 # key, email, first, last, role code, department, grade level, designation code
 # ---------------------------------------------------------------------------
 DEMO_ACCOUNTS = [
-    ("team_lead", "qa.team_lead@demo.nbte.local", "Sadiq", "Team Lead (Demo)", "director", "dpap", "17",
+    # Part 1a: one director per department — the demo team lead and verifier are deputy directors.
+    ("team_lead", "qa.team_lead@demo.nbte.local", "Sadiq", "Team Lead (Demo)", "deputy-director", "dpap", "17",
      "director"),
     ("division_head", "qa.division_head@demo.nbte.local", "Tani", "Division Head (Demo)", "division-head", "dpap",
      "14", ""),
     ("deputy_director", "qa.deputy_director@demo.nbte.local", "Usman", "Deputy Director (Demo)", "deputy-director",
      "dpap", "16", "deputy-director"),
-    ("qa_officer2", "qa.verifier@demo.nbte.local", "Victoria", "QA Verifier (Demo)", "director", "dpap", "17",
+    ("qa_officer2", "qa.verifier@demo.nbte.local", "Victoria", "QA Verifier (Demo)", "deputy-director", "dpap", "17",
      "director"),
 ]
 # Designations for the Phase 4 demo directors (so they qualify as QA personnel).

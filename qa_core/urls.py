@@ -9,6 +9,10 @@ from . import views, workspace
 app_name = "qa"
 
 urlpatterns = [
+    # v2.1 N1: the QA home (widgets by role and office, need-to-know)
+    path("", views.qa_home, name="home"),
+    path("guides/", views.staff_guides, name="staff_guides"),  # v2.2
+    path("guides/<slug:slug>/", views.staff_guides, name="staff_guide"),
     # Phase 6: the workspace switcher (main system ↔ QA sidebar)
     path("workspace/", workspace.switch, name="workspace"),
     # Settings → QA

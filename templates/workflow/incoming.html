@@ -1,17 +1,26 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load list_tags %}
 
 {% block title %}Incoming · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Incoming{% endblock %}
 
 {% block content %}
-<div class="wf-page-head">
+<div class="wk-page" data-qa-area="requests">
+<header class="qa-hero nbte-hero wk-hero" data-qa-area="requests">
   <div>
+    <span class="qa-eyebrow">{% icon "download" 14 "2.2" %} Requests · Incoming</span>
     <h1>Incoming</h1>
-    <p>Requests routed to {{ department.name }}.</p>
+    <p>Open requests routed to {{ department.name|default:"your office" }} for receipt, assignment and fulfilment.</p>
+    <div class="qa-hero__actions">
+      <a href="{% url 'workflow:office_requests' %}" class="btn btn-subtle">{% icon "building" 16 "2.2" %} Office requests</a>
+      <a href="{% url 'workflow:awaiting_action' %}" class="btn btn-subtle">{% icon "clock" 16 "2.2" %} Awaiting my action</a>
+    </div>
   </div>
-</div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <div class="qa-stat qa-stat--info"><strong>{{ page.paginator.count|default:0 }}</strong><span>Open incoming</span></div>
+  </div>
+</header>
 
 <form method="get"
       class="wf-filters"
@@ -89,5 +98,6 @@
       <p>{% if q %}Try a different search.{% else %}Requests routed to your office appear here.{% endif %}</p>
     </div>
   {% endif %}
+</div>
 </div>
 {% endblock %}

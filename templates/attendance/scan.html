@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Office QR · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Office QR{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/hr-leave.css' %}">{% endblock %}
+{% block content %}
+<main class="hrd-page">
+  <section class="hrd-card scan-card">
+    <span class="hrd-eyebrow">Attendance · {{ today|date:"D j M" }}</span>
+    {% if action == "done" %}
+      <h1>You're checked out</h1>
+      <p class="hrd-sub">Checked in {{ record.check_in_at|time:"H:i" }}, checked out {{ record.check_out_at|time:"H:i" }}. Nothing more to do today.</p>
+    {% elif error %}
+      <h1>{% if action == "check_out" %}Check-out{% else %}Check-in{% endif %} not recorded</h1>
+      <div class="att-out-msg is-error" role="alert">{{ error }}</div>
+    {% else %}
+      <h1>{% if action == "check_out" %}Check out at {{ location.name }}?{% else %}Check in at {{ location.name }}?{% endif %}</h1>
+      <p class="hrd-sub">{% if action == "check_out" %}You checked in at {{ record.check_in_at|time:"H:i" }}. Confirm to record when you left.{% else %}The office QR proves you're at the office. Confirm to record your attendance.{% endif %}</p>
+    {% endif %}
+    <div class="btn-group hrd-mt">
+      <a class="btn btn-ghost" href="{% url 'attendance:home' %}">My attendance</a>
+      {% if action != "done" and not error %}
+        <form method="post">{% csrf_token %}
+          <button class="btn btn-primary" type="submit">{% if action == "check_out" %}Check out now{% else %}Check in now{% endif %}</button>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -26,7 +26,7 @@ from django.utils import timezone
 import config
 from qa_core import timeline
 
-ACTIVE_STATUSES = ("accredited", "interim", "approval_to_commence")
+ACTIVE_STATUSES = ("accredited", "interim", "approval_to_commence", "approved_pending_body_letter")
 
 
 def reminder_days():

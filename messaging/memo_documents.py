@@ -53,23 +53,9 @@ def _site_brand():
 
 
 def _find_logo():
-    candidates = [
-        getattr(settings, "PDF_LOGO_PATH", None),
-        Path(settings.BASE_DIR) / "static" / "img"      / "NBTE_logo.png",
-        Path(settings.BASE_DIR) / "static" / "images"   / "NBTE_logo.png",
-        Path(settings.BASE_DIR) / "static" / "branding" / "NBTE_logo.png",
-        Path(settings.BASE_DIR) / "static" / "logo.png",
-    ]
-    for c in candidates:
-        if not c:
-            continue
-        try:
-            p = Path(c)
-            if p.is_file():
-                return p
-        except (TypeError, OSError):
-            continue
-    return None
+    # v2.1 A5: the formal brand slot (PNG rendered from the SVG crest).
+    from config.branding import pdf_logo_path
+    return pdf_logo_path("formal")
 
 
 def _memo_date(memo):
@@ -85,6 +71,13 @@ def _memo_recipients_label(memo):
     printing an em-dash when the kind is something new.
     """
     vis = (memo.visibility or "").strip()
+
+    if vis == "staff_filter":
+        from .memo_audience import describe_staff_filter
+        return describe_staff_filter(memo.staff_filter)
+
+    if vis == "no_staff" or getattr(memo, "kind", "internal") == "external":
+        return institutions_label(memo)
 
     if vis == "all_staff":
         return "All Staff"
@@ -122,6 +115,28 @@ def _memo_recipients_label(memo):
     if total > len(names):
         names.append(f"+{total - len(names)} more")
     return ", ".join(names) if names else "—"
+
+
+def institutions_label(memo):
+    """'All institutions' / 'Polytechnics with more than 5 programmes' /
+    'Demo Polytechnic, Kaduna' / '3 selected institutions'."""
+    scope = getattr(memo, "institution_scope", "")
+    if scope == "all":
+        return "All institutions"
+    if scope == "filter":
+        from .memo_audience import describe_institution_filter
+        return describe_institution_filter(memo.institution_filter)
+    if scope == "selected" and memo.pk:
+        from institutions.models import Institution
+
+        from .memo_audience import target_institution_ids
+        ids = target_institution_ids(memo)
+        names = list(Institution.unscoped.filter(pk__in=ids).order_by("name").values_list("name", flat=True)[:4])
+        total = len(ids)
+        if total <= 3:
+            return ", ".join(names) or "Selected institutions"
+        return f"{total} selected institutions"
+    return "Institutions"
 
 
 def _sender_signature_lines(memo):
@@ -182,13 +197,274 @@ def _memo_status_banner(memo):
 # ===========================================================================
 # PDF
 # ===========================================================================
-def render_memo_pdf(memo, request=None):
+# ===========================================================================
+# v2.1 Phase E (M8): external letter - the Executive Secretary's letterhead
+# ===========================================================================
+def external_letterhead():
+    """Letterhead text for memos that leave NBTE (Settings -> Memos)."""
+    return {
+        "org": str(_cfg("memo.external.organisation", "NATIONAL BOARD FOR TECHNICAL EDUCATION")),
+        "address": str(_cfg("memo.external.address", "Plot B, Bida Road, P.M.B. 2239, Kaduna, Nigeria.")),
+        "email": str(_cfg("memo.external.email", "es@nbte.gov.ng")),
+        "phone": str(_cfg("memo.external.phone", "")),
+        "postnominals": str(_cfg("memo.external.es_postnominals", "")),
+        "reference_prefix": str(_cfg("memo.external.reference_prefix", "NBTE/ES")),
+    }
+
+
+def _es_for_letter(memo, viewer=None):
+    """The ES whose name heads and signs the letter: the signatory once
+    signed; before that the viewer when they hold the ES's authority (they
+    are the one about to sign), else whoever holds the post now."""
+    if memo.es_signatory_id:
+        return memo.es_signatory
+    if viewer is not None and getattr(viewer, "is_authenticated", False):
+        from .memos import can_send_external_memo
+        if can_send_external_memo(viewer):
+            return viewer
+    from .routing import find_es
+    return find_es()
+
+
+def _person_name(user):
+    return (user.get_full_name() or user.email) if user is not None else ""
+
+
+def verification_for(memo, institution=None):
+    """Hook for the QR verification code (v2.1 X22/X24). Returns
+    ``{"url": ..., "code": ...}`` once the generated-document registry
+    exists (``documents.issue.verification(kind, obj, **extra)``, Phase F),
+    else None and the letter prints its reference without a QR."""
+    if memo.status != "published":
+        return None
+    try:
+        from documents import issue as _issue  # noqa: F401  (Phase F)
+    except ImportError:
+        return None
+    fn = getattr(_issue, "verification", None)
+    if fn is None:
+        return None
+    try:
+        return fn("memo", memo, institution=institution)
+    except Exception:
+        logger.exception("Could not register memo %s for verification", memo.reference)
+        return None
+
+
+def _qr_png(url):
+    try:
+        import qrcode
+    except ImportError:
+        return None
+    img = qrcode.make(url, border=1)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def external_reference(memo):
+    return f"{external_letterhead()['reference_prefix']}/{memo.reference}"
+
+
+def _addressee_lines(memo, institution=None):
+    if institution is not None:
+        lines = ["The Head of Institution,", institution.name + ","]
+        state = getattr(institution, "state_name", "")
+        if state:
+            lines.append(f"{state} State.")
+        return lines
+    label = institutions_label(memo)
+    if memo.kind == "general":
+        return ["All NBTE staff and", label + "."]
+    return [label + "."]
+
+
+def _signature_caption(memo):
+    if memo.signed_as == "from":
+        return "From the Executive Secretary"
+    if memo.signed_as == "approved":
+        return "Approved by the Executive Secretary"
+    return "For the Executive Secretary's approval"
+
+
+def render_external_pdf(memo, institution=None, viewer=None):
+    """The external letter: NBTE letterhead with the ES's name and the
+    Board's address, the addressee (personalised for an institution's own
+    copy), the subject, the body and the ES's signature (X23 image, as it
+    was when they signed) with "From / Approved by the Executive Secretary".
+    """
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import (HRFlowable, Image as RLImage, KeepTogether, Paragraph,
+                                    SimpleDocTemplate, Spacer, Table, TableStyle)
+    from xml.sax.saxutils import escape
+
+    head = external_letterhead()
+    logo_path = _find_logo()
+    watermark_label = _memo_watermark_label(memo)
+    es = _es_for_letter(memo, viewer)
+    es_name = _person_name(es) or "Executive Secretary"
+    GREEN, INK, MUTED, LINE = "#1F6B3E", "#0F172A", "#475569", "#D9DCE0"
+    PAGE_W, PAGE_H = A4
+    MARGIN = 2.2 * cm
+    HEAD_H = 5.2 * cm
+    CONTENT_W = PAGE_W - 2 * MARGIN - 12  # the frame's own 6 pt padding each side
+
+    ss = getSampleStyleSheet()
+    body = ParagraphStyle("XBody", parent=ss["Normal"], fontName="Helvetica", fontSize=11, leading=16,
+                          textColor=HexColor(INK), alignment=TA_JUSTIFY, spaceAfter=9)
+    small = ParagraphStyle("XSmall", parent=body, fontSize=9.5, leading=13, alignment=TA_LEFT, spaceAfter=0)
+    right = ParagraphStyle("XRight", parent=small, alignment=TA_RIGHT)
+    subject = ParagraphStyle("XSubject", parent=body, fontName="Helvetica-Bold", alignment=TA_CENTER,
+                             spaceBefore=6, spaceAfter=12)
+    banner = ParagraphStyle("XBanner", parent=small, fontName="Helvetica-Bold", textColor=HexColor("#B45309"),
+                            alignment=TA_CENTER, spaceAfter=8)
+    caption = ParagraphStyle("XCaption", parent=small, fontName="Helvetica-Oblique", textColor=HexColor(MUTED))
+
+    verification = verification_for(memo, institution)
+    qr = _qr_png(verification["url"]) if verification and verification.get("url") else None
+
+    def _page(canvas, doc):
+        canvas.saveState()
+        w, h = doc.pagesize
+        if watermark_label:
+            canvas.saveState()
+            try:
+                canvas.setFillAlpha(0.10)
+            except Exception:
+                pass
+            canvas.setFillColor(HexColor("#DCEBE1"))  # pale even where alpha is not honoured
+            canvas.setFont("Helvetica-Bold", 64)
+            canvas.translate(w / 2.0, h / 2.0)
+            canvas.rotate(45)
+            canvas.drawCentredString(0, 0, watermark_label)
+            canvas.restoreState()
+        top = h - 0.9 * cm
+        logo = 2.0 * cm
+        if logo_path:
+            try:
+                canvas.drawImage(ImageReader(str(logo_path)), (w - logo) / 2, top - logo, width=logo, height=logo,
+                                 preserveAspectRatio=True, anchor="c", mask="auto")
+            except Exception:
+                logger.exception("Could not draw the logo on the external memo")
+        canvas.setFillColor(HexColor(GREEN))
+        canvas.setFont("Helvetica-Bold", 15)
+        canvas.drawCentredString(w / 2, top - logo - 0.55 * cm, head["org"].upper())
+        y = top - logo - 1.15 * cm
+        canvas.setFillColor(HexColor(INK))
+        canvas.setFont("Helvetica-Bold", 8.5)
+        canvas.drawString(MARGIN, y, "Executive Secretary:")
+        canvas.setFont("Helvetica", 8.5)
+        canvas.drawString(MARGIN, y - 0.38 * cm, (es_name + (", " + head["postnominals"]
+                                                              if head["postnominals"] else ""))[:70])
+        lines = [("ADDRESS: ", head["address"])]
+        if head["email"]:
+            lines.append(("Email: ", head["email"]))
+        if head["phone"]:
+            lines.append(("Tel: ", head["phone"]))
+        ry = y
+        for label, value in lines:
+            canvas.setFont("Helvetica", 8.5)
+            vw = canvas.stringWidth(value, "Helvetica", 8.5)
+            canvas.drawRightString(w - MARGIN, ry, value)
+            canvas.setFont("Helvetica-Bold", 8.5)
+            canvas.drawRightString(w - MARGIN - vw, ry, label)
+            ry -= 0.38 * cm
+        rule = min(ry, y - 0.38 * cm) - 0.25 * cm
+        canvas.setStrokeColor(HexColor(GREEN))
+        canvas.setLineWidth(1.6)
+        canvas.line(MARGIN, rule, w - MARGIN, rule)
+        canvas.setLineWidth(0.5)
+        canvas.line(MARGIN, rule - 0.09 * cm, w - MARGIN, rule - 0.09 * cm)
+        # footer
+        canvas.setStrokeColor(HexColor(LINE))
+        canvas.setLineWidth(0.3)
+        canvas.line(MARGIN, 1.5 * cm, w - MARGIN, 1.5 * cm)
+        canvas.setFillColor(HexColor(MUTED))
+        canvas.setFont("Helvetica", 7.5)
+        foot = f"{external_reference(memo)} · {'General memo' if memo.kind == 'general' else 'External memo'}"
+        if not verification:
+            foot += " · Quote this reference in any reply"
+        canvas.drawString(MARGIN, 1.1 * cm, foot)
+        canvas.drawRightString(w - MARGIN, 1.1 * cm, f"Page {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    story = []
+    status_banner = _memo_status_banner(memo)
+    if status_banner:
+        story.append(Paragraph(escape(status_banner), banner))
+    ref_tbl = Table([[Paragraph(f"<b>Ref:</b> {escape(external_reference(memo))}", small),
+                      Paragraph(escape(_memo_date(memo)), right)]], colWidths=[CONTENT_W * 0.6, CONTENT_W * 0.4])
+    ref_tbl.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    story += [ref_tbl, Spacer(1, 12)]
+    for line in _addressee_lines(memo, institution):
+        story.append(Paragraph(escape(line), small))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(f"<u>{escape(memo.subject.upper())}</u>", subject))
+    for block in (memo.body or "").strip().split("\n\n"):
+        block = block.strip()
+        if block:
+            story.append(Paragraph(escape(block).replace("\n", "<br/>"), body))
+
+    sig_flow = [Spacer(1, 14), Paragraph(escape(_signature_caption(memo)), caption), Spacer(1, 4)]
+    png = None
+    if memo.es_signatory_id:
+        try:
+            from documents.signature import png_for
+            png = png_for(memo.es_signatory, memo.es_signed_at)
+        except Exception:
+            logger.exception("Could not load the ES signature for %s", memo.reference)
+    if png:
+        img = RLImage(io.BytesIO(png))
+        ratio = img.imageHeight / float(img.imageWidth or 1)
+        img.drawWidth, img.drawHeight = 4.6 * cm, 4.6 * cm * ratio
+        img.hAlign = "LEFT"
+        sig_flow.append(img)
+    else:
+        sig_flow.append(Spacer(1, 1.2 * cm))
+    sig_flow.append(HRFlowable(width=6.2 * cm, thickness=0.6, color=HexColor(INK), hAlign="LEFT",
+                               spaceBefore=2, spaceAfter=3))
+    sig_flow.append(Paragraph(f"<b>{escape(es_name.upper())}</b>", small))
+    sig_flow.append(Paragraph("Executive Secretary", small))
+    if memo.signed_as != "from":
+        sname, sdesig, _sd = _sender_signature_lines(memo)
+        sig_flow += [Spacer(1, 6), Paragraph(escape(f"Initiated by {sname}" + (f", {sdesig}" if sdesig else "")),
+                                             caption)]
+    if qr:
+        qr_img = RLImage(io.BytesIO(qr), width=2.6 * cm, height=2.6 * cm)
+        left = Table([[f] for f in sig_flow], colWidths=[CONTENT_W - 3.2 * cm])
+        left.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                  ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+        code = verification.get("code") or ""
+        qr_cell = [qr_img, Paragraph(escape(f"Scan to verify {code}".strip()), caption)]
+        tbl = Table([[left, qr_cell]], colWidths=[CONTENT_W - 3.2 * cm, 3.2 * cm])
+        tbl.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
+        story.append(KeepTogether([tbl]))
+    else:
+        story.append(KeepTogether(sig_flow))
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=HEAD_H,
+                            bottomMargin=2.2 * cm, title=f"{memo.reference} — {memo.subject}",
+                            author=head["org"], subject="External memo")
+    doc.build(story, onFirstPage=_page, onLaterPages=_page)
+    return buf.getvalue()
+
+
+def render_memo_pdf(memo, request=None, institution=None):
     """Return the memo as a PDF (bytes).
 
     Signature block is drawn directly on the canvas and pinned to the
     bottom-left of the *last* page. Two-pass build: pass 1 counts total
     pages, pass 2 draws the signature only on the last page.
     """
+    if getattr(memo, "is_outbound", False):
+        return render_external_pdf(memo, institution=institution,
+                                   viewer=getattr(request, "user", None) if request is not None else None)
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.units import cm
@@ -532,12 +808,135 @@ def _add_docx_watermark(doc, text):
         p._p.append(copy.deepcopy(run_elem))
 
 
-def render_memo_docx(memo, request=None):
+def render_external_docx(memo, institution=None, viewer=None):
+    """The external letter as Word (same content as the PDF)."""
+    from docx import Document
+    from docx.enum.table import WD_ALIGN_VERTICAL
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Cm, Pt, RGBColor
+
+    head = external_letterhead()
+    es = _es_for_letter(memo, viewer)
+    es_name = _person_name(es) or "Executive Secretary"
+    GREEN, INK, MUTED = RGBColor(0x1F, 0x6B, 0x3E), RGBColor(0x0F, 0x17, 0x2A), RGBColor(0x47, 0x55, 0x69)
+
+    doc = Document()
+    for section in doc.sections:
+        section.top_margin, section.bottom_margin = Cm(1.2), Cm(2)
+        section.left_margin = section.right_margin = Cm(2.2)
+    wm = _memo_watermark_label(memo)
+    if wm:
+        _add_docx_watermark(doc, wm)
+    doc.styles["Normal"].font.name = "Times New Roman"
+    doc.styles["Normal"].font.size = Pt(12)
+
+    def para(text="", *, bold=False, size=None, color=None, align=None, italic=False, after=0):
+        p = doc.add_paragraph()
+        if align is not None:
+            p.alignment = align
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(after)
+        if text:
+            r = p.add_run(text)
+            r.bold, r.italic = bold, italic
+            if size:
+                r.font.size = Pt(size)
+            if color is not None:
+                r.font.color.rgb = color
+        return p
+
+    logo_path = _find_logo()
+    if logo_path:
+        try:
+            p = para(align=WD_ALIGN_PARAGRAPH.CENTER)
+            p.add_run().add_picture(str(logo_path), width=Cm(2.0))
+        except Exception:
+            logger.exception("Could not embed the logo in the external memo")
+    para(head["org"].upper(), bold=True, size=16, color=GREEN, align=WD_ALIGN_PARAGRAPH.CENTER, after=6)
+
+    band = doc.add_table(rows=1, cols=2)
+    band.autofit = False
+    left, rightc = band.cell(0, 0), band.cell(0, 1)
+    left.width = rightc.width = Cm(8.3)
+    lp = left.paragraphs[0]
+    r = lp.add_run("Executive Secretary:\n")
+    r.bold, r.font.size = True, Pt(9)
+    r = lp.add_run(es_name + (", " + head["postnominals"] if head["postnominals"] else ""))
+    r.font.size = Pt(9)
+    rp = rightc.paragraphs[0]
+    rp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    for label, value in (("ADDRESS: ", head["address"]), ("Email: ", head["email"]), ("Tel: ", head["phone"])):
+        if not value:
+            continue
+        r = rp.add_run(label)
+        r.bold, r.font.size = True, Pt(9)
+        r = rp.add_run(value + "\n")
+        r.font.size = Pt(9)
+
+    rule = para(after=10)
+    pPr = rule._p.get_or_add_pPr()
+    pBdr = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    for k, v in (("w:val", "double"), ("w:sz", "12"), ("w:space", "1"), ("w:color", "1F6B3E")):
+        bottom.set(qn(k), v)
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+
+    banner = _memo_status_banner(memo)
+    if banner:
+        para(banner, bold=True, size=10, color=RGBColor(0xB4, 0x53, 0x09), align=WD_ALIGN_PARAGRAPH.CENTER, after=6)
+    ref = doc.add_table(rows=1, cols=2)
+    ref.cell(0, 0).paragraphs[0].add_run(f"Ref: {external_reference(memo)}").font.size = Pt(10)
+    dp = ref.cell(0, 1).paragraphs[0]
+    dp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    dp.add_run(_memo_date(memo)).font.size = Pt(10)
+    para(after=4)
+    for line in _addressee_lines(memo, institution):
+        para(line, size=11)
+    para(after=6)
+    p = para(memo.subject.upper(), bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, after=10)
+    p.runs[0].underline = True
+    for block in (memo.body or "").strip().split("\n\n"):
+        block = block.strip()
+        if block:
+            bp = para(block, after=8)
+            bp.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+
+    para(_signature_caption(memo), italic=True, size=9.5, color=MUTED, after=2)
+    png = None
+    if memo.es_signatory_id:
+        try:
+            from documents.signature import png_for
+            png = png_for(memo.es_signatory, memo.es_signed_at)
+        except Exception:
+            png = None
+    if png:
+        para().add_run().add_picture(io.BytesIO(png), width=Cm(4.6))
+    else:
+        para(after=18)
+    para("____________________________", size=10)
+    para(es_name.upper(), bold=True, size=10.5)
+    para("Executive Secretary", size=10)
+    if memo.signed_as != "from":
+        sname, sdesig, _sd = _sender_signature_lines(memo)
+        para(f"Initiated by {sname}" + (f", {sdesig}" if sdesig else ""), italic=True, size=9, color=MUTED)
+    _ = WD_ALIGN_VERTICAL  # (kept for parity with the internal layout)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def render_memo_docx(memo, request=None, institution=None):
     """Return the memo as a .docx Word document (bytes).
 
     Word has no canvas, so the signature is placed as a bottom-anchored
     block via an invisible spacer table with vertical alignment.
     """
+    if getattr(memo, "is_outbound", False):
+        return render_external_docx(memo, institution=institution,
+                                    viewer=getattr(request, "user", None) if request is not None else None)
     try:
         from docx import Document
         from docx.shared import Pt, Cm, RGBColor

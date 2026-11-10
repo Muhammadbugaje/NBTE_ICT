@@ -7,10 +7,10 @@
 {% block page_title %}My workspace{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=4">
-  <link rel="stylesheet" href="{% static 'css/dashboards-self-service.css' %}?v=2">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=5">
-  <link rel="stylesheet" href="{% static 'css/account-security.css' %}?v=1">{# Phase 9: insights charts #}
+  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}">
+  <link rel="stylesheet" href="{% static 'css/dashboards-self-service.css' %}">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}">
+  <link rel="stylesheet" href="{% static 'css/account-security.css' %}">{# Phase 9: insights charts #}
 {% endblock %}
 
 {% block content %}
@@ -20,7 +20,7 @@
     <div class="ss-hero-identity">
       <div class="ss-hero-avatar">
         {% if staff_profile and staff_profile.photo %}
-          <img src="{{ staff_profile.photo_thumb_url }}" alt="">
+          <img loading="lazy" decoding="async" src="{{ staff_profile.photo_thumb_url }}" alt="">
         {% else %}
           <span>{{ request.user.first_name|slice:":1"|upper }}{{ request.user.last_name|slice:":1"|upper }}</span>
         {% endif %}
@@ -52,8 +52,14 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New request
       </a>
+      <a href="{% url 'honoraria_earnings:list' %}" class="btn btn-ghost">My earnings</a>
     </div>
   </header>
+
+  {% if work_rows %}<div class="ux-mb">{% include "partials/_work_inbox.html" %}</div>{% endif %}{# v2.3: your work, one click to each task #}
+  {# v2.1 Phase E (L10): announcements on every staff dashboard #}
+  {% load announcement_tags %}{% announcements_panel %}
+  {% include "qa_core/_spotlight.html" %}
 
   {% if pending_approvals %}
     <section class="ss-section ss-approvals" aria-labelledby="ss-approvals-title">

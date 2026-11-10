@@ -6,6 +6,7 @@ from __future__ import annotations
 from django import forms
 
 from accounts.models import Role, User
+from accounts.selectors import staff_users
 from staff.models import Department
 
 from .models import (
@@ -69,7 +70,7 @@ class ApprovalStepForm(forms.ModelForm):
         self.chain = chain
         self.fields["approver_role"].queryset = Role.objects.order_by("-rank", "name")
         self.fields["approver_user"].queryset = (
-            User.objects.filter(is_active=True)
+            staff_users()  # Phase 0 (T-SEC-2)
             .order_by("first_name", "last_name")
         )
 

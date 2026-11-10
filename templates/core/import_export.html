@@ -5,7 +5,7 @@
 {% block page_title %}Import / Export{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/wizard.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/wizard.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -15,6 +15,17 @@
     <p class="muted">Move data in and out of the system with a guided, no-surprises workflow.</p>
   </div>
 </div>
+
+{% if request.user.is_superuser %}
+<link rel="stylesheet" href="{% static 'css/datahub.css' %}">
+<div class="dh-entry">
+  <div>
+    <strong>Moving to a new database?</strong>
+    <span>The Data Hub exports every setting, workflow chain, memo route, leave type, office, role, institution, facility and user in one workbook, and imports it with a preview.</span>
+  </div>
+  <a class="btn btn-primary" href="{% url 'core:datahub' %}">Open the Data Hub</a>
+</div>
+{% endif %}
 
 <div class="wizard-layout">
   {# ---------- Left: module list ---------- #}
@@ -78,5 +89,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/wizard.js' %}?v=1" defer></script>
+  <script src="{% static 'js/wizard.js' %}" defer></script>
 {% endblock %}

@@ -1,0 +1,23 @@
+<script>
+/* Print button; and the PDF is built on first download, so say so while it comes. */
+(function () {
+  document.querySelectorAll("[data-gd-print]").forEach(function (b) {
+    b.addEventListener("click", function () { window.print(); });
+  });
+  document.querySelectorAll("[data-gd-download]").forEach(function (a) {
+    a.addEventListener("click", function () {
+      var label = a.querySelector("[data-gd-label]");
+      if (!label || a.classList.contains("is-busy")) return;
+      var text = label.textContent;
+      a.classList.add("is-busy");
+      a.setAttribute("aria-busy", "true");
+      label.textContent = "Preparing PDF…";
+      window.setTimeout(function () {
+        a.classList.remove("is-busy");
+        a.removeAttribute("aria-busy");
+        label.textContent = text;
+      }, 4000);
+    });
+  });
+})();
+</script>

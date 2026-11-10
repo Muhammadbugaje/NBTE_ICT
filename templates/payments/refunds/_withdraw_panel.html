@@ -1,0 +1,28 @@
+{% load qa_tags static %}
+<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
+{% with rf_title="Withdraw "|add:subject.reference rf_lead="Withdrawing on NBTE's side stops the workflow, closes open tasks, voids unpaid bills and refunds everything paid (the NBTE-withdrawal band)." %}{% include "payments/refunds/_hero.html" %}{% endwith %}
+{% include "payments/_fin_nav.html" %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{{ back_url }}">{{ subject.reference }}</a><span aria-hidden="true">/</span><span aria-current="page">Withdraw</span></nav>
+{% if flash %}{% include "qa_core/partials/_callout.html" with kind=flash.kind title=flash.title message=flash.message %}{% endif %}
+<div class="ib-detail">
+  <section class="qa-card" aria-labelledby="wd-h">
+    <header class="qa-card__head"><div><h2 id="wd-h">{{ subject.institution.name }} — {{ subject.reference }}</h2><p>Now: {{ quote.stage_label }}.</p></div></header>
+    <div class="qa-card__body">
+      <div class="qa-bill-line"><span>Paid so far</span><span class="qa-num">{{ quote.paid|naira }}</span></div>
+      <div class="ib-sum-total"><span>Refund ({{ quote.percent }}%)</span><strong class="qa-num">{{ quote.refund_amount|naira }}</strong></div>
+      {% if quote.pending and quote.pending != "0.00" %}<p class="qa-small qa-muted">{{ quote.pending|naira }} is claimed but not yet confirmed by Finance; if it is confirmed later it is added to the refund.</p>{% endif %}
+      {% if done %}
+        <p class="qa-row qa-gap-sm" style="margin-top:16px">{% icon "check" 16 %} {% if done.by_nbte %}Withdrawn by NBTE{% else %}Cancelled by the institution{% endif %} on {{ done.created_at|date:"j M Y" }}: “{{ done.reason }}”.{% if done.refund_request %} <a href="{% url 'qa_fin:refund_request' done.refund_request.pk %}">Refund {{ done.refund_request.reference }}</a>{% endif %}</p>
+      {% elif not quote.cancellable %}
+        {% include "qa_core/partials/_callout.html" with title="Cannot be withdrawn" message="It is already decided, closed or withdrawn." %}
+      {% else %}
+      <form method="post" action="{% url 'qa_fin:withdraw' kind subject.pk %}" hx-post="{% url 'qa_fin:withdraw' kind subject.pk %}" hx-target="#qa-panel" class="qa-stack" style="margin-top:16px" data-qa-confirm="The workflow stops and the institution is told why. {{ quote.refund_amount|naira }} will be refunded." data-qa-confirm-title="Withdraw {{ subject.reference }}?" data-qa-confirm-label="Withdraw" data-qa-confirm-tone="danger" hx-trigger="qa:confirmed">{% csrf_token %}
+        <label class="qa-field"><span class="qa-label">Reason (the institution sees it)</span><textarea class="input" name="reason" rows="3" minlength="10" required></textarea></label>
+        <label class="qa-field--check"><input type="checkbox" name="declaration" required> I confirm NBTE is withdrawing this for reasons on NBTE's side.</label>
+        <button class="btn btn-danger" type="submit">{% icon "ban" 16 %} Withdraw and refund {{ quote.refund_amount|naira }}</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+  <aside class="ib-detail__side"><section class="qa-card"><header class="qa-card__head"><h2>Refund policy</h2></header><div class="qa-card__body">{% include "payments/refunds/_policy_table.html" with current=quote.band staff=True %}</div></section></aside>
+</div>

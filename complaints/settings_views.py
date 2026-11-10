@@ -59,7 +59,8 @@ class LayerForm(_Form):
 
     class Meta:
         model = ComplaintLayer
-        fields = ["name", "code", "parent", "description", "default_priority", "flow", "is_active", "sort_order"]
+        fields = ["name", "code", "parent", "description", "handling_department", "default_priority", "flow",
+                  "is_active", "sort_order"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -72,6 +73,12 @@ class LayerForm(_Form):
         self.fields["flow"].queryset = FlowDefinition.objects.filter(
             subject_model="complaints.complaint", published_at__isnull=False).order_by("code", "-version")
         self.fields["flow"].help_text = "Blank = the default complaint flow. Build new flows under Workflows."
+        from staff.models import Department
+        self.fields["handling_department"].queryset = Department.objects.order_by("name")
+        self.fields["handling_department"].empty_label = "By routing rules (e.g. the institution's handling department)"
+        self.fields["handling_department"].help_text = (
+            "The department whose director receives and assigns this kind of complaint. A matching routing "
+            "rule still wins; blank = the routing rules, then the general triage queue.")
         if self.instance.pk:
             self.initial["applies_to"] = self.instance.applies_to_user_types or []
             self.initial["custom_fields_json"] = json.dumps(self.instance.custom_fields or [], indent=1)
@@ -204,7 +211,8 @@ MODELS = {"layers": ComplaintLayer, "routing": RoutingRule, "escalation": Escala
 
 def _rows(section):
     if section == "layers":
-        return list(ComplaintLayer.objects.select_related("parent", "flow").order_by("sort_order", "name"))
+        return list(ComplaintLayer.objects.select_related("parent", "flow", "handling_department")
+                    .order_by("sort_order", "name"))
     if section == "routing":
         return list(RoutingRule.objects.select_related("layer", "target_department", "target_role", "target_user")
                     .order_by("order", "id"))

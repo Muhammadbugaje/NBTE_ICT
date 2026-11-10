@@ -1,20 +1,27 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags audience_tags %}
 
 {% block title %}{% if role %}{{ role.name }} · {% endif %}Roles · User management · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Roles{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="gp-page">
-  <header class="page-header">
+  <header class="qa-hero nbte-hero">
     <div>
-      <p class="gp-eyebrow">User management</p>
+      <span class="qa-eyebrow">{% icon "key" 14 "2.2" %} User management · Roles</span>
       <h1>Roles &amp; groups</h1>
-      <p class="muted">Pick a role, then choose the groups everyone holding it should get.</p>
+      <p>Pick a role, then choose the groups everyone holding it should get. Each role is for one kind of account: NBTE internal roles are only ever given to NBTE staff, institution roles only to institution users.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'accounts:groups:matrix' %}" class="btn btn-subtle">{% icon "sheet" 16 "2.2" %} Permission matrix</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats um-tiles" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ roles|length }}</strong><span>Roles</span></div>
+      {% if role %}<div class="qa-stat qa-stat--info"><strong>{{ grant_total }}</strong><span>Permissions in this role</span></div>{% endif %}
     </div>
   </header>
 
@@ -29,7 +36,7 @@
         {% for r in roles %}
           <li>
             <a class="gp-role-link" href="{% url 'accounts:groups:role_groups' r.pk %}"{% if r.pk == role.pk %} aria-current="page"{% endif %}>
-              <span>{{ r.name }}</span>
+              <span>{{ r.name }} {% audience_badge r %}</span>
               <span class="gp-role-rank">rank {{ r.rank }} · {{ r.group_count }} group{{ r.group_count|pluralize }}</span>
             </a>
           </li>
@@ -41,7 +48,7 @@
       <section class="card" aria-labelledby="rg-title">
         <div class="gp-card-title-row">
           <h2 id="rg-title">{{ role.name }}</h2>
-          <span class="badge">Rank {{ role.rank }}</span>
+          <span class="um-badges"><span class="badge">Rank {{ role.rank }}</span> {% audience_badge role %}</span>
         </div>
         {% if not can_edit_role %}
           <div class="alert alert-warn" role="note"><div class="alert-body">This role is ranked above yours, so you can view it but not change it.</div></div>
@@ -110,5 +117,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+  <script src="{% static 'js/groups.js' %}" defer></script>
 {% endblock %}

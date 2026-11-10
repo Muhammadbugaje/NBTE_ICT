@@ -1,0 +1,29 @@
+{# Compact journey of one QA request (portal_journey.request_journey). Plain words only. #}
+{% if j %}{% with c=j.current %}
+<section class="lj lj--compact" aria-labelledby="ljc-h">
+  <div class="lj__head">
+    <div class="lj-ring lj-ring--sm" role="img" aria-label="{{ j.pct }}% of this request is done">
+      <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false"><circle class="lj-ring__bg" cx="60" cy="60" r="52"/><circle class="lj-ring__fg" cx="60" cy="60" r="52" pathLength="100" style="stroke-dasharray:{{ j.pct }} 100"/></svg>
+      <span><b>{{ j.pct }}%</b></span>
+    </div>
+    <div class="lj__intro">
+      <p class="lj__eyebrow">This request{% if not j.complete %} · <b>step {{ j.position }} of {{ j.total }}</b>{% endif %}</p>
+      <h2 id="ljc-h">{{ j.headline }}</h2>
+      {% if c %}<p class="lj__who"><span class="lj-who{% if c.state == 'action' %} lj-who--you{% endif %}"><i aria-hidden="true">{% if c.state == "action" %}✓{% else %}N{% endif %}</i>{% if c.state == "action" %}Your turn · {{ c.holder|default:"You" }}{% else %}With {{ c.holder|default:"NBTE" }}{% endif %}</span></p>{% endif %}
+    </div>
+    <div class="lj-compact__do">
+      {% if c.todo and c.todo.cta_url %}<a class="btn btn-primary" href="{{ c.todo.cta_url }}">{{ c.todo.cta_label }} <span aria-hidden="true">→</span></a>
+      {% elif j.complete %}<span class="lj-pill lj-pill--done">All done</span>
+      {% else %}<span class="lj-pill">Nothing to do now — we'll notify you</span>{% endif %}
+    </div>
+  </div>
+  <ol class="lj-track" aria-label="Steps of this request">
+    {% for st in j.steps %}
+    <li class="lj-step is-{{ st.state }}"{% if c and st.n == c.n %} aria-current="step"{% endif %}>
+      <span class="lj-step__dot" aria-hidden="true">{% if st.state == "done" %}✓{% elif st.state == "action" %}!{% else %}{{ st.n }}{% endif %}</span>
+      <span class="lj-step__text"><strong>{{ st.label }}</strong><small>{% if st.state == "done" %}Done{% elif st.state == "action" %}Needs your action{% elif st.state == "current" %}In progress{% else %}Coming up{% endif %}</small></span>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endwith %}{% endif %}

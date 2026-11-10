@@ -69,6 +69,7 @@ class MemoListView(APIView):
 
         if not memo_service.can_compose_memo(request.user):
             raise PermissionDenied
+        # (kind / institution rules: messaging.memos.validate_kind_and_targets via submit_memo_form)
         ser = s.MemoCreateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
@@ -81,6 +82,21 @@ class MemoListView(APIView):
         }
         if d.get("requires_acknowledgment"):
             data["requires_acknowledgment"] = "on"
+        # v2.1 Phase E: memo type, institutions and staff filters, in the form's field names.
+        from django.http import QueryDict
+        qd = QueryDict(mutable=True)
+        for k, v in data.items():
+            qd.setlist(k, [str(x) for x in v]) if isinstance(v, list) else qd.__setitem__(k, v)
+        qd["kind"] = d.get("kind") or "internal"
+        qd["institution_scope"] = d.get("institution_scope") or ""
+        qd.setlist("target_institutions", [str(x) for x in d.get("target_institutions") or []])
+        for key, val in (d.get("institution_filter") or {}).items():
+            vals = val if isinstance(val, list) else [val]
+            qd.setlist(f"if_{key}", ["1" if v is True else str(v) for v in vals if v not in (None, False, "")])
+        for key, val in (d.get("staff_filter") or {}).items():
+            vals = val if isinstance(val, list) else [val]
+            qd.setlist(f"sf_{key}", [str(v) for v in vals if v not in (None, "")])
+        data = qd
         files = _MultiFiles({"attachments": d.get("attachments") or []})
         form = MemoForm(data, files, user=request.user,
                         allowed_kinds=memo_service.allowed_target_kinds_for(request.user))

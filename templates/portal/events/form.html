@@ -1,17 +1,16 @@
 {% extends "portal/_layout.html" %}
+{% load qa_tags %}
 {% block title %}{% if mode == "create" %}New event{% else %}Edit event{% endif %} · {{ SITE_NAME }}{% endblock %}
 
 {% block content %}
 <div class="portal-page portal-page-narrow">
 
-  <header class="portal-head">
+  <header class="qa-hero nbte-hero portal-qa-hero" data-qa-area="portal">
     <div>
-      <a href="{% url 'portal:event_list' %}" class="portal-back">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        Events
-      </a>
+      <a class="nbte-hero__back" href="{% url 'portal:event_list' %}">{% icon "back" 14 "2.4" %} Events</a>
+      <span class="qa-eyebrow">{% icon "calendar" 14 "2.2" %} Portal · Events</span>
       <h1>{% if mode == "create" %}New event{% else %}Edit event{% endif %}</h1>
-      <p class="muted">Set a time, location, and who should see it.</p>
+      <p>Set a time, location, and who should see it.</p>
     </div>
   </header>
 
@@ -45,7 +44,7 @@
              data-portal-image-preview
              {% if event.image %}data-has-image="1"{% endif %}>
           {% if event and event.image %}
-            <img src="{{ event.image_thumb_url|default:event.image.url }}"
+            <img loading="lazy" decoding="async" src="{{ event.image_thumb_url|default:event.image.url }}"
                  data-fallback-src="{{ event.image.url }}"
                  alt="">
           {% else %}

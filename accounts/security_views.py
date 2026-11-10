@@ -283,9 +283,20 @@ def my_staff_id(request):
     user = request.user
     if not staff_id.is_eligible(user):
         raise Http404("Staff ID cards are for NBTE staff accounts.")
+    from staff import staff_id_styles
+
+    staff = getattr(user, "staff_profile", None) if hasattr(user, "staff_profile") else None
+    card = staff_id_styles.cards_for([staff], request)[0] if staff is not None else None
+    if card is None:                     # an account without a staff record
+        d = staff_id.card_details(user)
+        cs = staff_id_styles.card_settings()
+        from datetime import date
+        card = {**d, **cs, "qr_svg": "", "valid_until": date(date.today().year + cs["valid_years"] - 1, 12, 31)}
+    qr = _qr_payload(request, user)
+    qr["url"] = reverse("accounts:staff_id_qr")
     return render(request, "accounts/staff_id.html", {
-        "card": staff_id.card_details(user),
-        "qr": _qr_payload(request, user),
+        "card": card, "qr": qr, "staff": staff, "own": True,
+        "styles": staff_id_styles.STYLES,
     })
 
 

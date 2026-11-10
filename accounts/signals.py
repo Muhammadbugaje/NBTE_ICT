@@ -45,6 +45,10 @@ def _unique_employee_no(seed_pk):
 def create_staff_profile(sender, instance, created, **kwargs):
     if not created:
         return
+    # Staff directory records are for NBTE staff only: institution users,
+    # resource persons and professional-body accounts never get one.
+    if getattr(instance, "user_type", "staff") != "staff":
+        return
 
     try:
         from staff.models import Staff

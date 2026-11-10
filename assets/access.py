@@ -17,6 +17,10 @@ and the attachment download check, so the rules can never drift apart.
                                - its `owner_department` is that department, or
                                - it is currently held (custodian / open
                                  assignment) by someone in that department.
+    Whole department ....... (K1) an asset assigned to a department is seen by
+                             every member of that department.
+    Temporary grant ........ (X5) a live AccessGrant of scope "asset" (the
+                             assignee of an open ticket on the asset).
     Everyone else .......... only the assets currently assigned to them
                              personally (they are the custodian or the holder
                              on the open assignment). Not other assets of their
@@ -69,16 +73,9 @@ def _base():
     )
 
 
-def visible_assets_queryset(user):
-    """Every asset this user is permitted to see. Fails closed: anonymous or
-    inactive users get nothing."""
-    from .models import Asset, AssetAssignment
-
-    if not getattr(user, "is_authenticated", False) or not user.is_active:
-        return Asset.objects.none()
-    base = _base()
-    if can_view_all_assets(user):
-        return base
+def _native_q(user):
+    """The Q of assets the user sees by their own rights (no grants)."""
+    from .models import AssetAssignment
 
     held_by_me = Exists(
         AssetAssignment.objects.filter(
@@ -86,6 +83,11 @@ def visible_assets_queryset(user):
         )
     )
     q = Q(current_custodian=user) | Q(held_by_me)
+    if user.department_id:
+        # K1: an asset assigned to the whole department is seen by all its members.
+        q |= Q(Exists(AssetAssignment.objects.filter(
+            asset=OuterRef("pk"), returned_at__isnull=True, assigned_to__isnull=True,
+            department_id=user.department_id)))
 
     if is_department_asset_viewer(user):
         dept_id = user.department_id
@@ -100,7 +102,53 @@ def visible_assets_queryset(user):
             | Q(current_custodian__department_id=dept_id)
             | Q(held_in_dept)
         )
+    return q
+
+
+def native_assets_queryset(user):
+    """Assets the user may see by their own rights (no temporary grants)."""
+    from .models import Asset
+
+    if not getattr(user, "is_authenticated", False) or not user.is_active:
+        return Asset.objects.none()
+    base = _base()
+    if can_view_all_assets(user):
+        return base
+    return base.filter(_native_q(user))
+
+
+def visible_assets_queryset(user):
+    """Every asset this user is permitted to see: their own rights plus live
+    AccessGrants of scope ``asset`` (X5: a ticket assignee reads the linked
+    asset while the ticket is open). Fails closed: anonymous or inactive
+    users get nothing."""
+    from .models import Asset
+
+    if not getattr(user, "is_authenticated", False) or not user.is_active:
+        return Asset.objects.none()
+    base = _base()
+    if can_view_all_assets(user):
+        return base
+    q = _native_q(user)
+    granted = granted_asset_ids(user)
+    if granted:
+        q |= Q(pk__in=granted)
     return base.filter(q)
+
+
+def granted_asset_ids(user):
+    try:
+        from assignments.grants import granted_ids
+        from .models import Asset
+        return [int(x) for x in granted_ids(user, Asset, "asset") if str(x).isdigit()]
+    except Exception:
+        return []
+
+
+def can_view_asset_natively(user, asset):
+    if asset is None or not getattr(user, "is_authenticated", False):
+        return False
+    return native_assets_queryset(user).filter(pk=asset.pk).exists()
 
 
 def can_view_asset(user, asset):
@@ -124,11 +172,31 @@ def can_manage_asset(user, asset):
         return True
     if not user.has_perm(PERM_CHANGE):
         return False
-    if not can_view_asset(user, asset):
+    if not can_view_asset_natively(user, asset):  # a temporary grant never gives write access
         return False
     if can_view_all_assets(user):
         return True
     return bool(user.department_id) and asset.owner_department_id == user.department_id
+
+
+def can_export_assets(user):
+    """May download the whole asset register as a Data Hub workbook (assets list page).
+
+    Only people who already see AND may edit every asset: super admin, or
+    `assets.view_all_assets` together with `assets.change_asset`. A department-
+    scoped manager does not get it: the workbook holds every department's assets.
+    Importing is not covered here: it stays in the Data Hub (superusers only)."""
+    if not getattr(user, "is_authenticated", False) or not user.is_active:
+        return False
+    if is_super_admin(user):
+        return True
+    return can_view_all_assets(user) and user.has_perm(PERM_CHANGE)
+
+
+def can_import_assets(user):
+    """The import itself runs in the Data Hub, which is for superusers only."""
+    from core.datahub.views import can_use_hub
+    return can_use_hub(user)
 
 
 def can_view_all_departments_filter(user):

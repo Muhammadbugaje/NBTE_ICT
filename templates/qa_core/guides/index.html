@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% load qa_tags %}
+{% block title %}Guides · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Guides{% endblock %}
+{% block content %}
+<div class="gx" data-gx-index>
+  <header class="ux-hero gx-hero">
+    <div>
+      <span class="ux-hero__eyebrow">Help centre · NBTE staff</span>
+      <h1>How can we help you today?</h1>
+      <p>Short, practical guides to the Digital QA system — who does what, where to click and what happens next. Read online, print, or save as PDF. Institutions have their own guides on the QA portal.</p>
+      <label class="gx-search">
+        <span class="sr-only">Search the guides</span>
+        {% icon "search" 18 "2.2" %}
+        <input type="search" placeholder="Search guides — e.g. fees, documents, Chief Executive" autocomplete="off" data-gx-search>
+      </label>
+    </div>
+    <div class="gx-hero__facts" aria-label="At a glance">
+      <div><b>{{ items|length }}</b><span>guides</span></div>
+      <div><b>{{ total_minutes }}</b><span>minutes in all</span></div>
+      <div><b>{{ audiences|length }}</b><span>teams covered</span></div>
+    </div>
+  </header>
+
+  {% if start_here %}
+  <section class="gx-path" aria-labelledby="gx-path-h">
+    <div class="gx-path__head">
+      <span class="ux-kicker">New to the QA system?</span>
+      <h2 id="gx-path-h">Start here — {{ start_here|length }} guides, about {{ start_minutes }} minutes</h2>
+    </div>
+    <ol class="gx-path__list">
+      {% for g in start_here %}
+      <li>
+        <a class="gx-path__step gx-tone--{{ g.tone }}" href="{% url 'qa:staff_guide' g.slug %}">
+          <span class="gx-path__no">{{ forloop.counter }}</span>
+          <span class="gx-path__text"><strong>{{ g.title }}</strong><small>{{ g.minutes }} min · {{ g.kicker }}</small></span>
+          <span class="gx-path__go" aria-hidden="true">→</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  <div class="gx-toolbar">
+    <div class="ux-filters" role="group" aria-label="Show guides for">
+      <button type="button" class="ux-filter is-active" aria-pressed="true" data-gx-filter="">All guides <b>{{ items|length }}</b></button>
+      {% for a in audiences %}<button type="button" class="ux-filter" aria-pressed="false" data-gx-filter="{{ a.code }}">{{ a.label }} <b>{{ a.count }}</b></button>{% endfor %}
+    </div>
+    <span class="ux-muted gx-count" data-gx-count aria-live="polite">{{ items|length }} guide{{ items|length|pluralize }}</span>
+  </div>
+
+  <div class="gx-grid">
+    {% for g in items %}
+    <a class="gx-card gx-tone--{{ g.tone }}" href="{% url 'qa:staff_guide' g.slug %}" data-gx-card data-tags="{{ g.tags|join:' ' }}" data-text="{{ g.title|lower }} {{ g.summary|lower }} {{ g.audience|lower }} {{ g.subtitle|lower }}">
+      <span class="gx-card__band" aria-hidden="true"></span>
+      <span class="gx-card__icon" aria-hidden="true">{% icon g.icon 22 "2" %}</span>
+      <span class="gx-card__kicker">{{ g.kicker }}</span>
+      <strong class="gx-card__title">{{ g.title }}</strong>
+      <span class="gx-card__summary">{{ g.summary }}</span>
+      <span class="gx-card__meta">
+        <span>{% icon "clock" 13 %} {{ g.minutes }} min read</span>
+        <span>{% icon "layers" 13 %} {{ g.parts }} part{{ g.parts|pluralize }}</span>
+      </span>
+      <span class="gx-card__who">{% icon "users" 13 %} {{ g.audience }}</span>
+      <span class="gx-card__cta">Read the guide <span aria-hidden="true">→</span></span>
+    </a>
+    {% endfor %}
+  </div>
+  <div class="ux-empty gx-none" data-gx-empty hidden><div class="ux-empty__art">?</div><strong>No guide matches</strong><span>Try another word, or show all guides.</span></div>
+
+  <section class="gx-help" aria-labelledby="gx-help-h">
+    <span class="gx-help__icon" aria-hidden="true">{% icon "help" 22 %}</span>
+    <div><h2 id="gx-help-h">Still stuck?</h2><p>Raise a ticket with NBTE ICT support or ask your director. Tell us the page and what you expected to happen — a screenshot helps.</p></div>
+    <a class="btn btn-primary" href="{% url 'qa:home' %}">Back to QA home</a>
+  </section>
+</div>
+<script>
+(function () {
+  var root = document.querySelector("[data-gx-index]");
+  if (!root || root.dataset.ready) return; root.dataset.ready = "1";
+  var input = root.querySelector("[data-gx-search]"), tag = "";
+  var cards = [].slice.call(root.querySelectorAll("[data-gx-card]"));
+  function apply() {
+    var q = (input.value || "").trim().toLowerCase(), shown = 0;
+    cards.forEach(function (c) {
+      var ok = (!tag || (" " + c.dataset.tags + " ").indexOf(" " + tag + " ") > -1) &&
+               (!q || c.dataset.text.indexOf(q) > -1);
+      c.hidden = !ok; if (ok) shown++;
+    });
+    root.querySelector("[data-gx-count]").textContent = shown + " guide" + (shown === 1 ? "" : "s");
+    root.querySelector("[data-gx-empty]").hidden = shown > 0;
+  }
+  input.addEventListener("input", apply);
+  root.querySelectorAll("[data-gx-filter]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      tag = b.dataset.gxFilter;
+      root.querySelectorAll("[data-gx-filter]").forEach(function (x) {
+        var on = x === b; x.classList.toggle("is-active", on); x.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      apply();
+    });
+  });
+})();
+</script>
+{% endblock %}

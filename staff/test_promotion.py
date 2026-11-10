@@ -39,28 +39,36 @@ def people(ladder):
     }
 
 
+# Phase B v2.1 (D2): promotions are one step at a time, so the targets below
+# are the next step (po2 -> po1); skipping a level now needs the ES override.
+@pytest.fixture
+def es():
+    return user_with_perms("es@x.org", "staff.promote_staff", "staff.override_promotion_step",
+                           "staff.rollback_promotion")
+
+
 def test_promote_one(ladder, people):
     approver = user_with_perms("hr@x.org", "staff.promote_staff")
-    plan = plan_promotion([people["a"]], ladder["spo"])
+    plan = plan_promotion([people["a"]], ladder["po1"])
     res = apply_promotion(plan, effective_date=date(2026, 10, 1), reason="exercise", approver=approver)
     p = res.promotions[0]
-    assert (p.from_designation, p.to_designation) == (ladder["po2"], ladder["spo"])
-    assert (p.from_grade_level, p.to_grade_level) == ("7", "9")
+    assert (p.from_designation, p.to_designation) == (ladder["po2"], ladder["po1"])
+    assert (p.from_grade_level, p.to_grade_level) == ("7", "8")
     a = Staff.objects.get(pk=people["a"].pk)
-    assert a.designation == ladder["spo"]
-    assert a.grade_level == "9"                                 # auto-filled from contediss_min
+    assert a.designation == ladder["po1"]
+    assert a.grade_level == "8"                                 # auto-filled from contediss_min
     assert a.date_present_appointment == date(2026, 10, 1)
 
 
-def test_grade_unchanged_without_range(ladder, people):
-    plan = plan_promotion([people["a"]], ladder["norange"])
+def test_grade_unchanged_without_range(ladder, people, es):
+    plan = plan_promotion([people["a"]], ladder["norange"], actor=es, override_reason="Board decision")
     assert any("Grade level unchanged" in w for w in plan.warnings)
-    apply_promotion(plan, effective_date=date(2026, 10, 1), reason="", approver=None)
+    apply_promotion(plan, effective_date=date(2026, 10, 1), reason="", approver=es)
     assert Staff.objects.get(pk=people["a"].pk).grade_level == "7"
 
 
 def test_cascade_later_date_same_department_one_step(ladder, people):
-    plan = plan_promotion([people["a"]], ladder["spo"], cascade=True, scope=Staff.objects.all())
+    plan = plan_promotion([people["a"]], ladder["po1"], cascade=True, scope=Staff.objects.all())
     assert [c.staff.employee_no for c in plan.cascaded] == ["B"]
     assert plan.cascaded[0].to_designation == ladder["po1"]     # one step only
     res = apply_promotion(plan, effective_date=date(2026, 10, 1), reason="", approver=None)
@@ -73,19 +81,19 @@ def test_cascade_later_date_same_department_one_step(ladder, people):
     assert len(res.promotions) == 2
 
 
-def test_rollback_restores_and_compensates(ladder, people):
-    plan = plan_promotion([people["a"]], ladder["spo"])
+def test_rollback_restores_and_compensates(ladder, people, es):
+    plan = plan_promotion([people["a"]], ladder["po1"])
     promo = apply_promotion(plan, effective_date=date(2026, 10, 1), reason="", approver=None).promotions[0]
     with pytest.raises(PromotionError):
-        rollback_promotion(promo, reason="", approver=None)      # reason required
-    rev = rollback_promotion(promo, reason="entered in error", approver=None)
+        rollback_promotion(promo, reason="", approver=es)        # reason required
+    rev = rollback_promotion(promo, reason="entered in error", approver=es)
     a = Staff.objects.get(pk=people["a"].pk)
     assert a.designation == ladder["po2"] and a.grade_level == "7"
     assert a.date_present_appointment == date(2020, 1, 1)
     assert rev.reverses == promo and rev.to_designation == ladder["po2"]
     assert Promotion.objects.filter(staff=a).count() == 2       # original kept
     with pytest.raises(PromotionError):
-        rollback_promotion(promo, reason="again", approver=None)
+        rollback_promotion(promo, reason="again", approver=es)
 
 
 def test_views_require_permission(client, ladder, people):

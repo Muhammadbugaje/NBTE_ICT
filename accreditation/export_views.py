@@ -36,7 +36,7 @@ def case_summary_pdf(request, pk):
 
     inst = case.institution
     stages = cs.stage_objects(case)
-    rows = list(QARequestProgramme.unscoped.filter(qa_request=case.qa_request)
+    rows = list(QARequestProgramme.objects.for_user(request.user).filter(qa_request=case.qa_request)
                 .select_related("programme", "programme__level"))
     bundle = cs.case_bundle(case)
     rep = Report("QA case summary", subject=f"{case.reference} — {inst.name}", generated_by=request.user,
@@ -96,5 +96,8 @@ def case_summary_pdf(request, pk):
                 r.get_recommendation_display(), r.recommendation_note] for r in reports],
               widths=[0.3, 0.18, 0.17, 0.35], empty="No post-visit reports.")
     audit.log("other", case, actor=request.user, note="downloaded the case summary (PDF)")
-    return pdf_response(f"{case.reference.replace('/', '-')}-summary-{timezone.localdate().isoformat()}.pdf",
-                        rep.build())
+    response = pdf_response(f"{case.reference.replace('/', '-')}-summary-{timezone.localdate().isoformat()}.pdf",
+                            rep.build(), inline=request.GET.get("download") != "1")
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response

@@ -122,6 +122,8 @@ class MessageSerializer(serializers.Serializer):
     linked_memo = LinkedRefSerializer(allow_null=True)
     can_edit = serializers.BooleanField()
     can_delete_for_everyone = serializers.BooleanField()
+    pinned_at = serializers.DateTimeField(allow_null=True, help_text="Pinned in the chat (v2.1 L6).")
+    my_reminder_at = serializers.DateTimeField(allow_null=True, help_text="Your pending reminder (v2.1 L7).")
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +248,9 @@ class UpdatesQuerySerializer(serializers.Serializer):
     after = serializers.IntegerField(required=False, min_value=0, default=0)
     since = serializers.CharField(required=False, allow_blank=True)
     visible = serializers.BooleanField(required=False, default=True)
+    v = serializers.CharField(required=False, allow_blank=True, max_length=40,
+                              help_text="The `v` of your last answer: when nothing changed the answer is "
+                                        "`unchanged: true` with empty lists (v2.1 L9).")
 
 
 class TypingPersonSerializer(serializers.Serializer):
@@ -261,6 +266,8 @@ class UpdatesSerializer(serializers.Serializer):
     changed = MessageSerializer(many=True)
     receipts = serializers.DictField(child=ReceiptSerializer(), help_text="Keyed by message id (string).")
     typing = TypingPersonSerializer(many=True)
+    v = serializers.CharField(help_text="Version token: send it back as ?v= on the next poll.")
+    unchanged = serializers.BooleanField(help_text="True when nothing changed since `v`; keep your state.")
 
 
 class SendMessageSerializer(serializers.Serializer):
@@ -407,3 +414,118 @@ class VoiceUploadSerializer(serializers.Serializer):
 
 class TranscriptSerializer(serializers.Serializer):
     text = serializers.CharField(allow_blank=True, max_length=10000, trim_whitespace=True)
+
+
+
+# ---------------------------------------------------------------------------
+# v2.1 Phase E: groups (L3), invite links (L4), pins (L6), reminders (L7)
+# ---------------------------------------------------------------------------
+def _policy():
+    return serializers.ChoiceField(choices=["all", "admins"], required=False)
+
+
+class GroupPermissionsSerializer(serializers.Serializer):
+    is_admin = serializers.BooleanField()
+    is_owner = serializers.BooleanField()
+    can_send = serializers.BooleanField()
+    can_edit_info = serializers.BooleanField()
+    can_change_settings = serializers.BooleanField()
+    can_add_members = serializers.BooleanField()
+    can_invite = serializers.BooleanField()
+    can_manage_members = serializers.BooleanField()
+    can_leave = serializers.BooleanField()
+    can_pin = serializers.BooleanField()
+    read_only = serializers.BooleanField()
+    auto_managed = serializers.BooleanField()
+
+
+class GroupMemberSerializer(PersonSerializer):
+    role = serializers.ChoiceField(choices=["owner", "admin", "member"])
+    joined_at = serializers.DateTimeField()
+
+
+class PinnedRowSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    preview = serializers.CharField(allow_blank=True)
+    pinned_at = serializers.DateTimeField()
+    sender = PersonSerializer(allow_null=True)
+
+
+class GroupSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    is_group = serializers.BooleanField()
+    title = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    photo_path = serializers.CharField(allow_null=True)
+    send_policy = serializers.CharField()
+    edit_info_policy = serializers.CharField()
+    add_members_policy = serializers.CharField()
+    auto_managed = serializers.BooleanField()
+    purpose = serializers.CharField(allow_blank=True)
+    archived_at = serializers.DateTimeField(allow_null=True)
+    member_count = serializers.IntegerField()
+    admin_count = serializers.IntegerField()
+    my_role = serializers.CharField()
+    permissions = GroupPermissionsSerializer()
+    members = GroupMemberSerializer(many=True)
+    pinned = PinnedRowSerializer(many=True)
+
+
+class GroupUpdateSerializer(serializers.Serializer):
+    title = serializers.CharField(required=False, max_length=120)
+    description = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    photo = serializers.FileField(required=False)
+    remove_photo = serializers.BooleanField(required=False, default=False)
+    send_policy = _policy()
+    edit_info_policy = _policy()
+    add_members_policy = _policy()
+
+
+class MembersAddSerializer(serializers.Serializer):
+    users = serializers.ListField(child=serializers.IntegerField(), min_length=1, max_length=100)
+
+
+class RoleSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=["admin", "member"])
+
+
+class InviteCreateSerializer(serializers.Serializer):
+    days = serializers.IntegerField(required=False, min_value=1, max_value=30)
+    max_uses = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=500)
+
+
+class InviteSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    token = serializers.CharField()
+    url = serializers.CharField(help_text="Website join page (staff sign-in).")
+    expires_at = serializers.DateTimeField()
+    max_uses = serializers.IntegerField(allow_null=True)
+    use_count = serializers.IntegerField()
+    revoked = serializers.BooleanField()
+    usable = serializers.BooleanField()
+
+
+class JoinStatusSerializer(serializers.Serializer):
+    state = serializers.ChoiceField(choices=["ok", "member", "expired", "not_staff", "closed"])
+    thread_id = serializers.IntegerField()
+    title = serializers.CharField(allow_blank=True)
+    member_count = serializers.IntegerField()
+
+
+class MessagePinSerializer(serializers.Serializer):
+    pinned = serializers.BooleanField(default=True)
+
+
+class ReminderSetSerializer(serializers.Serializer):
+    remind_at = serializers.DateTimeField(required=False)
+    preset = serializers.ChoiceField(choices=["1h", "3h", "tomorrow", "1w"], required=False)
+    note = serializers.CharField(required=False, allow_blank=True, max_length=200)
+
+
+class ReminderSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    message_id = serializers.IntegerField()
+    thread_id = serializers.IntegerField()
+    remind_at = serializers.DateTimeField()
+    note = serializers.CharField(allow_blank=True)
+    preview = serializers.CharField(allow_blank=True)

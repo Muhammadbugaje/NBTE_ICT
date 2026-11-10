@@ -53,8 +53,9 @@ class ThreadFeatureTests(TestCase):
 
         self.assertContains(response, 'data-confirm-title="Remove this chat?"')
         self.assertContains(response, 'data-confirm-action="Delete for everyone"')
-        self.assertContains(response, "js/messaging.js?v=4")
-        self.assertContains(response, "js/dialog.js?v=1")
+        # v2.1 V7: hand-edited ?v= strings are gone (hashed names in production).
+        self.assertContains(response, "js/messaging.js")
+        self.assertContains(response, "js/dialog.js")
 
     def test_thread_messages_do_not_become_global_toasts(self):
         self.client.force_login(self.sender)

@@ -1,0 +1,43 @@
+{% include "org/_alerts.html" %}
+<nav class="org-hero__meta btn-group" aria-label="Filter by kind" style="margin-bottom:1rem">
+  <a class="btn {% if not kind %}btn-primary{% else %}btn-ghost{% endif %}" hx-get="{% url 'org:offices' %}" hx-target="#org-offices" href="{% url 'org:offices' %}">All</a>
+  {% for k, label in kinds %}<a class="btn {% if kind == k %}btn-primary{% else %}btn-ghost{% endif %}" hx-get="{% url 'org:offices' %}?kind={{ k }}" hx-target="#org-offices" href="{% url 'org:offices' %}?kind={{ k }}">{{ label }}s</a>{% endfor %}
+</nav>
+<div class="org-grid">
+  <section class="org-card" aria-labelledby="newoff-h">
+    <h2 id="newoff-h">New department or unit</h2>
+    <form class="org-form" hx-post="{% url 'org:office_create' %}" hx-target="#org-offices" method="post" action="{% url 'org:office_create' %}">
+      {% csrf_token %}
+      <label class="org-field">Name<input name="name" required maxlength="100" placeholder="e.g. JAMB Desk"></label>
+      <label class="org-field">Kind<select name="kind">{% for k, label in kinds %}<option value="{{ k }}" {% if k == "unit" %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="org-field">Sits under (optional)<select name="parent"><option value="">— None —</option>{% for p in parents %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}</select></label>
+      <label class="org-field">What it does<input name="description" maxlength="255"></label>
+      <fieldset class="org-field"><legend>Permission groups every member gets</legend>
+        <div class="org-checks">{% for g in groups %}<label><input type="checkbox" name="groups" value="{{ g.pk }}"> {{ g.name }}</label>{% endfor %}</div>
+      </fieldset>
+      <div class="btn-group"><button class="btn btn-primary" type="submit">Create</button></div>
+    </form>
+  </section>
+  {% for o in units %}
+  <article class="org-card" aria-label="{{ o.name }}">
+    <h3>{{ o.name }} <span class="org-chip">{{ o.kind_label }}</span></h3>
+    <p class="org-muted">{{ o.description|default:"No description." }} · {{ o.n_staff }} staff{% if o.parent %} · under {{ o.parent.name }}{% endif %}{% if o.director %} · director: {{ o.director.get_full_name }}{% endif %}</p>
+    <div class="org-hero__meta">{% for g in o.member_groups.all %}<span class="org-chip">{{ g.name }}</span>{% endfor %}{% if not o.is_active %}<span class="org-chip is-off">Inactive</span>{% endif %}
+      <a class="org-chip" href="{% url 'org:department' o.code %}">Open →</a></div>
+    <details class="org-more" {% if open_pk == o.pk %}open{% endif %}><summary>Edit</summary>
+      <form class="org-form" hx-post="{% url 'org:office_save' o.pk %}" hx-target="#org-offices" method="post" action="{% url 'org:office_save' o.pk %}">
+        {% csrf_token %}
+        <label class="org-field">Name<input name="name" value="{{ o.name }}" required maxlength="100"></label>
+        <label class="org-field">Kind<select name="kind">{% for k, label in kinds %}<option value="{{ k }}" {% if k == o.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label class="org-field">Sits under<select name="parent"><option value="">— None —</option>{% for p in parents %}{% if p.pk != o.pk %}<option value="{{ p.pk }}" {% if o.parent_id == p.pk %}selected{% endif %}>{{ p.name }}</option>{% endif %}{% endfor %}</select></label>
+        <label class="org-field">What it does<input name="description" value="{{ o.description }}" maxlength="255"></label>
+        <fieldset class="org-field"><legend>Permission groups every member gets</legend>
+          <div class="org-checks">{% for g in groups %}<label><input type="checkbox" name="groups" value="{{ g.pk }}" {% if g in o.member_groups.all %}checked{% endif %}> {{ g.name }}</label>{% endfor %}</div>
+        </fieldset>
+        <label class="org-check"><input type="checkbox" name="is_active" {% if o.is_active %}checked{% endif %}> Active</label>
+        <div class="btn-group"><button class="btn btn-primary" type="submit">Save</button></div>
+      </form>
+    </details>
+  </article>
+  {% endfor %}
+</div>

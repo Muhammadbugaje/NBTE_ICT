@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% load static %}{% load icon from qa_tags %}
+{% load tasks_tags %}
+{% block title %}Division queue · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Division queue{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}" defer></script>{% endblock %}
+
+{% block content %}
+<div class="tsk-page tsk-v21 wk-page" data-qa-area="tasks">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tasks">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'tasks:list' %}">{% icon "back" 14 "2.4" %} Tasks</a>
+      <span class="qa-eyebrow">{% icon "users" 14 "2.2" %} Tasks · Division queue</span>
+      <h1>Division queue</h1>
+      <p>Group tasks routed to a division. The head accepts first; the team is then added automatically, up to each division's capacity.</p>
+      <div class="qa-hero__actions">
+        <a class="btn btn-subtle" href="{% url 'tasks:performance' %}">{% icon "chart" 16 "2.2" %} Performance</a>
+        <a class="btn btn-subtle" href="{% url 'tasks:list' %}?kind=group">{% icon "list" 16 "2.2" %} All group tasks</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ queues|length }}</strong><span>Division{{ queues|length|pluralize }}</span></div>
+      <div class="qa-stat{% if pending_total %} qa-stat--warn{% endif %}"><strong>{{ pending_total|default:0 }}</strong><span>Waiting for a head</span></div>
+    </div>
+  </header>
+
+  {% if not queues %}<section class="tsk-panel"><p class="tsk-empty-note">Your department has no divisions yet. Create them on the department page (Organisation → Divisions).</p></section>{% endif %}
+  {% for q in queues %}
+    <section class="tsk-panel" id="division-{{ q.division.pk }}">
+      <div class="tsk-panel-head">
+        <span class="tsk-tile tsk-tile-brand" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+        <div class="tsk-min0">
+          <h2 class="tsk-panel-title">{{ q.division.name }}</h2>
+          <div class="tsk-panel-sub">{{ q.division.department.name }} · head {% if q.division.head %}{{ q.division.head.get_full_name|default:q.division.head.email }}{% else %}not appointed{% endif %} · {{ q.members|length }} member{{ q.members|length|pluralize }}</div>
+        </div>
+        <span class="tsk-spacer"></span>
+        <span class="tsk-load {% if not q.has_capacity %}tsk-load-full{% elif q.max and q.open|add:2 >= q.max %}tsk-load-mid{% else %}tsk-load-ok{% endif %}">{% if not q.has_capacity %}Full {{ q.open }}/{{ q.max }}{% else %}{{ q.open }}/{{ q.max }} open{% endif %}</span>
+      </div>
+      <div class="tsk-capbar{% if not q.has_capacity %} is-full{% elif q.max and q.open|add:2 >= q.max %} is-mid{% endif %}" role="img" aria-label="{{ q.open }} of {{ q.max }} group tasks open"><span style="transform:scaleX({% if q.max %}{% widthratio q.open q.max 1 %}{% else %}0{% endif %})" data-cap="{{ q.open }}/{{ q.max }}"></span></div>
+
+      <div class="tsk-kpis mt-3">
+        <a class="tsk-kpi" href="{% url 'tasks:list' %}?division={{ q.division.pk }}&state=active"><b>{{ q.open }}</b><span>Open group tasks</span></a>
+        <div class="tsk-kpi"><b>{{ q.pending|length }}</b><span>Waiting for the head</span></div>
+        <a class="tsk-kpi" href="{% url 'tasks:list' %}?division={{ q.division.pk }}&state=completed"><b>{{ q.done_month }}</b><span>Completed this month</span></a>
+      </div>
+
+      {% if q.pending %}
+        <h3 class="tsk-field-label mt-4">Waiting for {% if q.is_head %}you{% else %}the head{% endif %}</h3>
+        {% for t in q.pending %}
+          <div class="tsk-qrow">
+            <div class="tsk-min0">
+              <a class="tsk-sub-title" href="{% url 'tasks:detail' t.pk %}">{{ t.reference }} · {{ t.title }}</a>
+              <div class="tsk-sub-meta">Routed by {% if t.division_routed_by %}{{ t.division_routed_by.get_full_name|default:t.division_routed_by.email }}{% endif %} {{ t.division_routed_at|timesince }} ago{% if t.due_date %} · due {{ t.due_date|date:"D j M" }}{% endif %}{% if t.division_note %} · “{{ t.division_note }}”{% endif %}</div>
+            </div>
+            {% if q.is_head %}
+              <div class="btn-group">
+                <form method="post" action="{% url 'tasks:division_accept' t.pk %}">{% csrf_token %}<input type="hidden" name="next" value="queue">
+                  <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-sm">Accept and add team</button></form>
+                <a class="tsk-btn tsk-btn-ghost tsk-btn-sm" href="{% url 'tasks:detail' t.pk %}#division">Choose people or decline</a>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
+
+      <h3 class="tsk-field-label mt-4">In progress</h3>
+      {% for t in q.active %}
+        <div class="tsk-qrow">
+          <div class="tsk-min0">
+            <a class="tsk-sub-title" href="{% url 'tasks:detail' t.pk %}">{{ t.reference }} · {{ t.title }}</a>
+            <div class="tsk-sub-meta">{% for r in t.assignee_rows.all %}{{ r.user.get_full_name|default:r.user.email }}{% if not forloop.last %}, {% endif %}{% empty %}No one yet{% endfor %} · {{ t.progress_percent }}% done{% if t.due_date %} · due {{ t.due_date|date:"D j M" }}{% endif %}</div>
+          </div>
+          {% if q.is_head %}
+            <form method="post" action="{% url 'tasks:division_complete' t.pk %}">{% csrf_token %}<input type="hidden" name="next" value="queue">
+              <button type="submit" class="tsk-btn tsk-btn-soft tsk-btn-sm">Mark group complete</button></form>
+          {% else %}
+            <span class="tsk-chip tsk-chip-xs {{ t.state|state_chip_class }}">{{ t.get_state_display }}</span>
+          {% endif %}
+        </div>
+      {% empty %}
+        <p class="tsk-empty-note">No group tasks in progress.</p>
+      {% endfor %}
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}

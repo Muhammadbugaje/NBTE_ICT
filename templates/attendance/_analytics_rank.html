@@ -1,0 +1,9 @@
+{% if rows %}
+<ol class="hrd-rank">
+  {% for p in rows %}<li>
+    <span class="n">{{ forloop.counter }}</span>
+    <a class="who" href="{% url 'attendance:analytics_person' p.user.pk %}?from={{ first|date:'Y-m-d' }}&amp;to={{ last|date:'Y-m-d' }}" data-person>{{ p.name }}<small>{{ p.department.name|default:"" }}</small></a>
+    <span class="v">{% if metric == "arrival" %}{{ p.avg_arrival_label }}{% elif metric == "late" %}{{ p.late }}{% elif metric == "absent" %}{{ p.absent }}{% else %}{{ p.missing_checkout }}{% endif %}</span>
+  </li>{% endfor %}
+</ol>
+{% else %}<p class="hrd-sub">{{ empty }}</p>{% endif %}

@@ -1,0 +1,75 @@
+{% load static qa_tags %}{% comment %}
+  Scan widget (design 27): camera (BarcodeDetector, else vendored jsQR 1.4.0), image upload
+  (decoded in the browser on a canvas) or a typed code. Every lookup goes to /scan/lookup/,
+  which is rate-limited and logged. The camera starts only when the person presses Start.
+{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/scan.css' %}">
+<div class="sv-page" data-scan-root>
+  {% if staff_hero %}
+  <header class="qa-hero dr-hero" data-qa-area="documents_register">
+    <div>
+      <span class="qa-eyebrow">{% icon "shield" 14 "2.4" %} Official verification</span>
+      <h1 data-qa-focus>Scan and verify</h1>
+      <p>Point the camera at the QR on any NBTE receipt, invoice, payment slip or letter. Everything NBTE knows about it appears {% if card %}below{% else %}beside the camera{% endif %}.</p>
+      {% if can_register %}<div class="qa-hero__actions"><a class="btn btn-subtle" href="{% url 'documents_register:list' %}">{% icon "file" 16 "2.2" %} Issued documents</a></div>{% endif %}
+    </div>
+  </header>
+  {% else %}
+  <header class="sv-head">
+    <span class="sv-eyebrow">{% icon "shield" 14 "2.4" %} Official verification</span>
+    <h1 data-qa-focus>Scan and verify</h1>
+    <p>Point the camera at the QR on any NBTE receipt, invoice, payment slip or letter. Everything NBTE knows about it appears {% if card %}below{% else %}beside the camera{% endif %}.</p>
+  </header>
+  {% endif %}
+  <div class="sv-grid">
+    <section class="sv-cam" aria-label="Scanner" data-scan data-lookup="{{ scan_lookup_url }}"
+             data-jsqr-src="{% static 'vendor/jsqr/jsQR-1.4.0.js' %}">
+      <div class="sv-view" data-scan-view data-state="idle">
+        <video playsinline muted aria-hidden="true" data-scan-video></video>
+        <canvas hidden data-scan-canvas></canvas>
+        <div class="sv-frame" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="sv-line"></span></div>
+        <div class="sv-top">
+          <span class="sv-pill">{% icon "qr" 14 "2.2" %} NBTE codes only</span>
+          <span class="sv-pill" data-scan-camname>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Back camera</span>
+        </div>
+        <div class="sv-idle" data-scan-idle>
+          <button type="button" class="btn btn-primary" data-scan-start>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Start camera</button>
+          <p>Your browser asks once before the camera is used. Nothing is recorded; only the code is sent to NBTE.</p>
+        </div>
+        <div class="sv-toast" data-scan-toast hidden role="status"><b>{% icon "check" 14 "3" %}</b> Code found. Checking with NBTE</div>
+      </div>
+      <div class="sv-modes">
+        <div class="sv-seg" role="tablist" aria-label="How to check">
+          <button type="button" role="tab" aria-selected="true" data-scan-mode="camera">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Camera</button>
+          <button type="button" role="tab" aria-selected="false" data-scan-mode="upload">{% icon "upload" 16 "2.2" %} Upload image</button>
+          <button type="button" role="tab" aria-selected="false" data-scan-mode="code">{% icon "edit" 16 "2.2" %} Enter code</button>
+        </div>
+      </div>
+      <div class="sv-pane" data-scan-pane="upload" hidden>
+        <p>A photo or screenshot of the QR works. The picture is read in your browser; only the code is sent.</p>
+        <div class="btn-group"><label class="btn btn-ghost sv-file">{% icon "upload" 16 "2.2" %} Choose an image<input type="file" accept="image/*" data-scan-file></label></div>
+      </div>
+      <form class="sv-pane" data-scan-pane="code" hidden method="post" action="{{ scan_lookup_url }}"
+            hx-post="{{ scan_lookup_url }}" hx-target="#scan-result" hx-swap="innerHTML">
+        {% csrf_token %}<input type="hidden" name="via" value="code">
+        <label for="scan-code"><p>Type the code printed under the QR, for example NBTE-7K2P-9QXM.</p></label>
+        <div class="sv-code">
+          <input id="scan-code" name="raw" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false"
+                 maxlength="80" placeholder="NBTE-XXXX-XXXX" required>
+          <button class="btn btn-primary" type="submit">{% icon "search" 16 "2.2" %} Check</button>
+        </div>
+      </form>
+      <p class="sv-msg" data-scan-msg role="status" aria-live="polite"></p>
+    </section>
+    <section id="scan-result" class="sv-result" aria-live="polite" aria-label="Result">
+      {% if card %}{% include "documents/scan/_result.html" %}{% else %}{% include "documents/scan/_empty.html" %}{% endif %}
+    </section>
+  </div>
+</div>
+<script src="{% static 'js/scan.js' %}" defer></script>

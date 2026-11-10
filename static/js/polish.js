@@ -7,7 +7,7 @@
    Respects prefers-reduced-motion and re-runs after every HTMX swap. */
 (function () {
   "use strict";
-  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var reduce = (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) || /^(reduce|reduced|off)$/.test(document.documentElement.getAttribute("data-motion") || "");
   var root = document.documentElement;
   if (!reduce && "IntersectionObserver" in window) root.classList.add("reveal-ready");
 

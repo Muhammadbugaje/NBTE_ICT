@@ -102,9 +102,53 @@ def can_broadcast_memo(user):
     if user.has_perm("messaging.send_memo_broadcast"):
         return True
     # The ES and Super Admin always have it.
-    if user.role_id and user.role.code in {"super-admin", "executive-secretary"}:
+    import org
+    if org.has_role(user, "super-admin", "executive-secretary"):
         return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# v2.1 Phase E: memo kinds (M1, M2, M3, M7)
+# ---------------------------------------------------------------------------
+def can_send_external_memo(user):
+    """Only the Executive Secretary sends a memo to institutions (M2). The
+    permission messaging.send_external_memo lets a named acting ES do it;
+    being a superuser is not enough."""
+    if not user or not getattr(user, "is_authenticated", False) or not user.is_active:
+        return False
+    import org
+    if org.is_es(user):
+        return True
+    if user.is_superuser:
+        return False
+    return user.has_perm("messaging.send_external_memo")
+
+
+def can_initiate_external_memo(user):
+    """Who may draft an external or general memo for the ES to approve (M3):
+    the ES, an administrator, and directors (the director seat, the director
+    role, or a director-rank designation)."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if can_send_external_memo(user):
+        return True
+    import org
+    if org.is_super_admin(user):
+        return True
+    if org.is_director(user) or org.has_role(user, "director"):
+        return True
+    from . import routing
+    return routing._rank_of(user) >= routing._role_rank("director", 100)
+
+
+def allowed_memo_kinds(user):
+    """The memo types this user may pick (M7). Everyone writes internal memos."""
+    from .models import Memo
+    kinds = [Memo.INTERNAL]
+    if can_initiate_external_memo(user):
+        kinds += [Memo.EXTERNAL, Memo.GENERAL]
+    return kinds
 
 
 def can_manage_memo(memo, user):
@@ -138,6 +182,9 @@ def can_view_memo(memo, user):
         if step is not None:
             actor = routing.resolve_memo_approver(step, memo)
             if actor and actor.pk == user.pk:
+                return True
+            # v2.1 M2: any holder of the ES's external-memo authority acts on the ES gate.
+            if routing.can_act_on_memo(memo, user, admin_override=False):
                 return True
 
     # Past approvers on this memo.
@@ -282,18 +329,26 @@ def create_memo(*, sender, subject, body, visibility,
                 target_user=None, department=None, roles=None, recipients=None,
                 priority="normal",
                 requires_acknowledgment=False, expires_at=None,
-                is_draft=True):
+                is_draft=True, kind="internal", institution_scope="", institution_filter=None,
+                target_institutions=None, staff_filter=None):
     from .models import Memo
 
     subject = (subject or "").strip()
     body = (body or "").strip()
+    kind = kind or Memo.INTERNAL
 
     if len(subject) < 3:
         raise ValidationError("Subject must be at least 3 characters.")
     if len(body) < 3:
         raise ValidationError("Memo body must be at least 3 characters.")
+    if kind == Memo.EXTERNAL:
+        visibility = Memo.NO_STAFF  # M1: an external memo reaches institutions only
     if visibility not in dict(Memo.VISIBILITY_CHOICES):
         raise ValidationError("Pick a valid target.")
+    institution_filter, staff_filter = validate_kind_and_targets(
+        sender, kind=kind, visibility=visibility, institution_scope=institution_scope,
+        institution_filter=institution_filter, target_institutions=target_institutions,
+        staff_filter=staff_filter)
 
     # Target-specific validation.
     if visibility == Memo.SPECIFIC_USER:
@@ -311,8 +366,9 @@ def create_memo(*, sender, subject, body, visibility,
     if visibility == Memo.INDIVIDUALS and not (recipients or []):
         raise ValidationError("Pick at least one person.")
 
-    # Broadcast gate.
-    if visibility in (Memo.ALL_STAFF, Memo.ALL_DIRECTORS, Memo.DEPARTMENT):
+    # Broadcast gate. (A general memo is gated by the ES's approval instead.)
+    if visibility in (Memo.ALL_STAFF, Memo.ALL_DIRECTORS, Memo.DEPARTMENT, Memo.STAFF_FILTER) \
+            and kind != Memo.GENERAL:
         if not can_broadcast_memo(sender):
             raise PermissionDenied(
                 "You don't have permission to address a memo this broadly."
@@ -338,6 +394,10 @@ def create_memo(*, sender, subject, body, visibility,
                     expires_at=expires_at,
                     status=Memo.DRAFT if is_draft else Memo.AWAITING,
                     is_draft=is_draft,
+                    kind=kind,
+                    institution_scope=institution_scope if kind != Memo.INTERNAL else "",
+                    institution_filter=institution_filter if kind != Memo.INTERNAL else {},
+                    staff_filter=staff_filter if visibility == Memo.STAFF_FILTER else {},
                 )
             break
         except IntegrityError as exc:
@@ -352,8 +412,48 @@ def create_memo(*, sender, subject, body, visibility,
         memo.roles.set(roles)
     if visibility == Memo.INDIVIDUALS and recipients:
         memo.recipients.set(recipients)
+    if kind != Memo.INTERNAL and institution_scope == Memo.INST_SELECTED:
+        from .memo_audience import set_target_institutions
+        set_target_institutions(memo, target_institutions)
 
     return memo
+
+
+def validate_kind_and_targets(sender, *, kind, visibility, institution_scope="", institution_filter=None,
+                              target_institutions=None, staff_filter=None):
+    """The v2.1 Phase E rules shared by create and edit. Returns the cleaned
+    (institution_filter, staff_filter). Raises ValidationError /
+    PermissionDenied."""
+    from .memo_audience import institutions_matching, staff_matching
+    from .models import Memo
+
+    if kind not in dict(Memo.KIND_CHOICES):
+        raise ValidationError("Pick a valid memo type.")
+    if kind not in allowed_memo_kinds(sender):
+        raise PermissionDenied("Only the Executive Secretary, administrators and directors can write a "
+                               "memo to institutions.")
+    institution_filter = dict(institution_filter or {})
+    staff_filter = dict(staff_filter or {})
+    if kind == Memo.INTERNAL:
+        if visibility == Memo.NO_STAFF:
+            raise ValidationError("An internal memo needs staff recipients.")
+        institution_filter = {}
+    else:
+        if institution_scope not in (Memo.INST_ALL, Memo.INST_SELECTED, Memo.INST_FILTER):
+            raise ValidationError("Choose which institutions receive this memo.")
+        if institution_scope == Memo.INST_SELECTED and not list(target_institutions or []):
+            raise ValidationError("Pick at least one institution.")
+        if institution_scope == Memo.INST_FILTER and not institutions_matching(institution_filter).exists():
+            raise ValidationError("No institution matches these filters. Widen the filters or pick "
+                                  "institutions by name.")
+        if institution_scope != Memo.INST_FILTER:
+            institution_filter = {}
+    if visibility == Memo.STAFF_FILTER:
+        if not staff_matching(staff_filter, exclude=sender).exists():
+            raise ValidationError("No staff member matches these filters.")
+    else:
+        staff_filter = {}
+    return institution_filter, staff_filter
 
 
 @transaction.atomic
@@ -375,7 +475,8 @@ def update_memo(memo, actor, **fields):
     # they never saw. To change them, an approver returns the memo first
     # (RETURNED memos are editable again and walk the chain afresh).
     if memo.status == memo.AWAITING and memo.approvals.exists():
-        frozen = {"subject", "body", "visibility", "department", "target_user"}
+        frozen = {"subject", "body", "visibility", "department", "target_user", "kind",
+                  "institution_scope", "institution_filter", "staff_filter"}
         changed = sorted(
             k for k in frozen & set(fields)
             if getattr(memo, k) != fields[k]
@@ -534,7 +635,10 @@ def allowed_target_kinds_for(user):
             Memo.ALL_DIRECTORS,
             Memo.DEPARTMENT,
             Memo.ROLE,
+            Memo.STAFF_FILTER,
         ])
+    if can_initiate_external_memo(user):
+        base.append(Memo.NO_STAFF)  # the staff side of an external memo
     return base
 
 # ===========================================================================
@@ -627,7 +731,12 @@ def can_download_document(memo, user):
 
     if memo.status == Memo.PUBLISHED:
         return True
-    return can_manage_memo(memo, user)
+    if can_manage_memo(memo, user):
+        return True
+    # v2.1 M3: the ES previews the letter they are asked to sign.
+    from . import routing
+    return (memo.is_outbound and memo.status == Memo.AWAITING
+            and routing.can_act_on_memo(memo, user, admin_override=False))
 
 
 def memo_detail_state(memo, user):
@@ -708,6 +817,11 @@ def submit_memo_form(user, cleaned, *, publish=False, from_message=None):
         priority=cleaned.get("priority") or Memo.NORMAL,
         requires_acknowledgment=cleaned.get("requires_acknowledgment", False),
         expires_at=cleaned.get("expires_at"),
+        kind=cleaned.get("kind") or Memo.INTERNAL,
+        institution_scope=cleaned.get("institution_scope") or "",
+        institution_filter=cleaned.get("institution_filter") or {},
+        target_institutions=list(cleaned.get("target_institutions") or []),
+        staff_filter=cleaned.get("staff_filter") or {},
         # Always a draft first: publish_memo() only starts the chain from
         # DRAFT/RETURNED (creating it as AWAITING made "Send" fail with
         # "already entered the pipeline" and left the memo stuck).
@@ -734,8 +848,85 @@ def submit_memo_form(user, cleaned, *, publish=False, from_message=None):
         msgs = getattr(exc, "messages", None) or [str(exc)]
         notes.append(("warning", "Draft saved, but the chain could not start: " + "; ".join(msgs)))
         return memo, notes
-    if memo.status == Memo.PUBLISHED:
-        notes.append(("success", f"Memo {memo.reference} published to {memo.recipient_count} recipient(s)."))
-    else:
-        notes.append(("success", f"Memo {memo.reference} sent for approval."))
+    notes.append(("success", publish_notice(memo)))
     return memo, notes
+
+
+def publish_notice(memo):
+    """What the sender is told after "Send"."""
+    from .models import Memo
+    if memo.status == Memo.PUBLISHED and not memo.is_outbound:
+        return f"Memo {memo.reference} published to {memo.recipient_count} recipient(s)."
+    if memo.status == Memo.PUBLISHED:
+        parts = []
+        if memo.recipient_count or not memo.is_outbound:
+            parts.append(f"{memo.recipient_count} staff recipient(s)")
+        if memo.is_outbound:
+            parts.append(f"{memo.institution_recipients.count()} institution(s)")
+        return f"Memo {memo.reference} published to " + " and ".join(parts) + "."
+    if memo.is_outbound:
+        return f"Memo {memo.reference} sent to the Executive Secretary for approval."
+    return f"Memo {memo.reference} sent for approval."
+
+
+# ===========================================================================
+# v2.1 Phase E (M4): the institution side - portal Memos inbox
+# ===========================================================================
+def institution_memos_for(institution):
+    """Published memos delivered to ``institution`` (newest first), with the
+    institution's receipt as ``receipt_*`` annotations via the queryset of
+    MemoInstitutionRecipient."""
+    from .models import Memo, MemoInstitutionRecipient
+
+    if institution is None:
+        return MemoInstitutionRecipient.objects.none()
+    return (MemoInstitutionRecipient.objects
+            .filter(institution=institution, memo__status=Memo.PUBLISHED)
+            .select_related("memo", "memo__sender", "memo__es_signatory")
+            .order_by("-memo__published_at", "-pk"))
+
+
+def unread_institution_memo_count(institution):
+    return institution_memos_for(institution).filter(read_at__isnull=True).count()
+
+
+def get_institution_receipt(institution, pk):
+    """The institution's copy of memo ``pk``, else Http404 (never leaks)."""
+    from django.http import Http404
+
+    receipt = institution_memos_for(institution).filter(memo_id=pk).first()
+    if receipt is None:
+        raise Http404("Memo not found.")
+    return receipt
+
+
+def open_institution_memo(receipt, user, *, impersonating=False):
+    """First open by any of the institution's users marks it read (an NBTE
+    officer viewing the portal as the institution does not)."""
+    if receipt.read_at is None and getattr(user, "user_type", "") == "institution" and not impersonating:
+        receipt.read_at = timezone.now()
+        receipt.read_by = user
+        receipt.save(update_fields=["read_at", "read_by"])
+    return receipt
+
+
+@transaction.atomic
+def acknowledge_institution_memo(receipt, user):
+    if getattr(user, "user_type", "") != "institution":
+        raise PermissionDenied("Only the institution acknowledges its memo.")
+    if receipt.acknowledged_at is None:
+        now = timezone.now()
+        receipt.acknowledged_at = now
+        receipt.acknowledged_by = user
+        if receipt.read_at is None:
+            receipt.read_at, receipt.read_by = now, user
+        receipt.save(update_fields=["acknowledged_at", "acknowledged_by", "read_at", "read_by"])
+    return receipt
+
+
+def selected_institutions(ids):
+    """Institutions picked by pk for an external memo (not delisted). v2.1
+    P.3: the view never calls ``.unscoped`` itself; only ES-level senders
+    reach this (``can_initiate_external_memo``)."""
+    from institutions.models import Institution
+    return Institution.unscoped.exclude(status=Institution.DELISTED).filter(pk__in=ids).order_by("name")

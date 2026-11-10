@@ -52,13 +52,11 @@ def _cfg_codes():
 
 
 def is_director(user):
-    """Director-level post (director, deputy, office head) inside a department."""
-    return bool(
-        user.is_authenticated
-        and user.department_id
-        and user.role_id
-        and user.role.code in DIRECTOR_ROLE_CODES
-    )
+    """Director-level post (director seat, deputy, office head) inside a department.
+    (Phase B: org.is_department_lead.)"""
+    import org
+    return bool(user.is_authenticated and user.department_id
+                and org.is_department_lead(user, user.department_id))
 
 
 def _in_all_access_department(user):
@@ -75,7 +73,8 @@ def can_view_all_attendance(user):
         return False
     if user.is_superuser:
         return True
-    if user.role_id and user.role.code in SUPER_ROLE_CODES:
+    import org
+    if org.has_role(user, *SUPER_ROLE_CODES):
         return True
     if user.has_perm(PERM_ALL):
         return True

@@ -1,0 +1,14 @@
+{% load qa_tags %}
+{% if page.rows %}
+<div class="qa-table-wrap"><table class="qa-table">
+  <thead><tr><th scope="col">Programme</th><th scope="col">Level</th><th scope="col">Professional body</th><th scope="col" class="qa-num">Institutions</th><th scope="col">Code</th></tr></thead>
+  <tbody>{% for m in page.rows %}<tr>
+    <td><strong>{{ m.name }}</strong>{% if m.aliases %}<br><span class="qa-small qa-muted">Also: {{ m.aliases|linebreaksbr }}</span>{% endif %}{% if m.to_confirm %} <span class="qa-chip qa-tone-warn qa-small">To confirm</span>{% endif %}</td>
+    <td>{{ m.level.code|upper }}</td>
+    <td>{% if m.professional_body %}{{ m.professional_body.acronym|default:m.professional_body.name }}{% else %}<span class="qa-muted">None</span>{% endif %}</td>
+    <td class="qa-num">{{ m.used }}</td>
+    <td><span class="qa-small qa-muted">{{ m.code }}</span></td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
+{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "search" 28 %}</span><h3 class="nbte-empty-state__title">No master-list programmes match</h3><p class="nbte-empty-state__body">Import the master list from Excel.</p></div>{% endif %}

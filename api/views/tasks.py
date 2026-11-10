@@ -149,6 +149,32 @@ def _only_completed(task):
         raise serializers.ValidationError({"non_field_errors": ["Only completed tasks can be reopened."]})
 
 
+def _division():
+    from tasks import division
+    return division
+
+
+def _part_user(task, data):
+    from rest_framework.exceptions import NotFound
+
+    row = task.assignee_rows.select_related("user").filter(user_id=data["user"]).first()
+    if row is None:
+        raise NotFound("That person is not on this task.")
+    return row.user
+
+
+def _route_division(task, user, data):
+    from accounts.selectors import staff_users
+    from org.models import Division
+    from rest_framework.exceptions import NotFound
+
+    div = Division.objects.filter(pk=data["division"]).first()
+    if div is None:
+        raise NotFound("Division not found.")
+    members = list(staff_users().filter(pk__in=data.get("members") or []))
+    return _division().route_to_division(task, user, div, members=members, note=data.get("note", ""))
+
+
 def _build_actions():
     from tasks import forms as f
     from tasks import services as ts
@@ -188,6 +214,29 @@ def _build_actions():
         "delete": _action_view("delete", s.RequiredReasonSerializer, f.DeleteForm,
                                lambda t, u, d: ts.delete_task(t, u, reason=d["reason"]),
                                doc="Delete the task (reason required).", no_content=True),
+        # ---- Phase C (H12, H14, H15, H23, H24): same services as the website ----
+        "accept-start": _action_view("accept-start", None, None, lambda t, u, d: ts.accept_and_start(t, u),
+                                     doc="Accept and start: my row goes in progress and my timer starts."),
+        "confirm-part": _action_view("confirm-part", s.TaskPartSerializer, None,
+                                     lambda t, u, d: ts.confirm_assignee_part(t, u, _part_user(t, d)),
+                                     doc="Creator / reviewer confirms one person's finished part."),
+        "return-part": _action_view("return-part", s.TaskPartSerializer, None,
+                                    lambda t, u, d: ts.return_assignee_part(t, u, _part_user(t, d), d.get("reason", "")),
+                                    doc="Creator / reviewer returns one person's part (reason required)."),
+        "confirm-all": _action_view("confirm-all", s.NoteSerializer, None,
+                                    lambda t, u, d: ts.confirm_all_parts(t, u, notes=d.get("note", "")),
+                                    doc="Confirm everyone's work together (the task completes)."),
+        "division/route": _action_view("division/route", s.TaskDivisionRouteSerializer, None, _route_division,
+                                       doc="Route the task to a division of its department (capacity enforced)."),
+        "division/accept": _action_view("division/accept", None, None,
+                                        lambda t, u, d: _division().accept_division_task(t, u),
+                                        doc="Division head accepts; the division's members are added."),
+        "division/decline": _action_view("division/decline", s.RequiredReasonSerializer, None,
+                                         lambda t, u, d: _division().decline_division_task(t, u, d.get("reason", "")),
+                                         doc="Division head declines with a reason."),
+        "division/complete": _action_view("division/complete", s.NoteSerializer, None,
+                                          lambda t, u, d: _division().complete_division_task(t, u, d.get("note", "")),
+                                          doc="Division head marks the group task complete."),
         "timer/start": _action_view("timer/start", None, None, lambda t, u, d: ts.start_timer(t, u),
                                     doc="Start my timer on this task."),
         "timer/stop": _action_view("timer/stop", None, None, lambda t, u, d: ts.stop_timer(t, u),

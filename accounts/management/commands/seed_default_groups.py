@@ -33,6 +33,9 @@ _VIEW_STAFF = ["staff.view_staff"]
 _VIEW_HISTORY = ["staff.view_staffstatushistory"]
 _AUDIT_READ = ["core.view_auditlogentry"]
 _CROSS_DEPARTMENT = ["accounts.access_all_departments"]
+# Phase B (B10/T-SEC-3): explicit "see everything" rights. Only the ES and the
+# super admin hold them (and _CROSS_DEPARTMENT); directors see their own department.
+_SEE_ALL = ["tasks.view_all_tasks", "accounts.view_all_users", "inspection.view_all_ssq"]
 _POWER = ["accounts.view_analytics_dashboard"]
 _ASSETS_VIEW = ["assets.view_asset"]
 _ASSETS_MANAGE = ["assets.view_asset", "assets.add_asset", "assets.change_asset"]
@@ -55,13 +58,13 @@ DEFAULT_GROUPS = [
      _ASSETS_VIEW,
      ["staff", "officer", "admin-staff"]),
     ("Director",
-     "Department director: staff records, audit read, cross-department view, asset management, approvals.",
-     _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
+     "Department director: staff records, audit read, asset management, approvals (own department).",
+     _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _POWER
      + _ASSETS_MANAGE + _ASSETS_DEPT + _WORKFLOW_DEPT + _WORKFLOW_APPROVE + _ATT_DEPT,
      ["director"]),
     ("Deputy Director",
-     "Deputy director: staff records, cross-department view, analytics, approvals.",
-     _VIEW_STAFF + _VIEW_HISTORY + _CROSS_DEPARTMENT + _POWER + _ASSETS_VIEW + _ASSETS_DEPT + _WORKFLOW_DEPT
+     "Deputy director: staff records, analytics, approvals (own department).",
+     _VIEW_STAFF + _VIEW_HISTORY + _POWER + _ASSETS_VIEW + _ASSETS_DEPT + _WORKFLOW_DEPT
      + _WORKFLOW_APPROVE + _ATT_DEPT,
      ["deputy-director"]),
     ("Office Head",
@@ -70,7 +73,7 @@ DEFAULT_GROUPS = [
      ["office-head-ts", "office-head-dev", "office-head-admin"]),
     ("Executive Secretary",
      "Executive Secretary: everything a director sees, across the whole Board.",
-     _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
+     _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _SEE_ALL + _POWER
      + _ASSETS_MANAGE + _ASSETS_ALL + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE + _ATT_ALL,
      ["executive-secretary"]),
     ("Chairman",
@@ -85,7 +88,7 @@ DEFAULT_GROUPS = [
       "notifications.view_emaillog",
       "staff.view_staff", "staff.add_staff", "staff.change_staff",
       "staff.change_staff_state", "staff.view_staffstatushistory"]
-     + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER + _ASSETS_MANAGE + _ASSETS_ALL
+     + _AUDIT_READ + _CROSS_DEPARTMENT + _SEE_ALL + _POWER + _ASSETS_MANAGE + _ASSETS_ALL
      + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE + _GROUP_ADMIN + _ATT_ALL,
      ["super-admin"]),
 ]

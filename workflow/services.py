@@ -131,14 +131,16 @@ def _find_department_head(department):
     # and the rest follow. Including `executive-secretary` here means
     # an ES's own line-head approval step resolves to the ES themselves,
     # which the self-approval guard then skips cleanly.
+    import org
     for role_code in ("executive-secretary", "director", "deputy-director",
                       "office-head-admin", "office-head-ts", "office-head-dev",
                       "division-head"):
-        user = (
-            User.objects.filter(
-                is_active=True, department=department, role__code=role_code,
-            ).order_by("pk").first()
-        )
+        if role_code == "director":
+            # Phase B: the department's one director (seat), not a role search.
+            user = org.director_of(department)
+        else:
+            user = (User.objects.filter(org.role_q(role_code), is_active=True, department=department)
+                    .order_by("pk").first())
         if user is not None:
             return user
     return None
@@ -154,6 +156,13 @@ def resolve_approver(step, request):
 
     if kind == ApprovalStep.APPROVER_ROLE:
         department = _department_for_scope(step, request)
+        import org
+        if org.role_is(step.approver_role, org.DIRECTOR_ROLE) and department is not None:
+            # Phase B one-director rule: the department's director seat, not the
+            # first account holding the role (Finance / Audit / HR gates, I8).
+            seat = org.director_of(department)
+            if seat is not None:
+                return seat
         return _find_user_with_role_in_department(step.approver_role, department)
 
     if kind == ApprovalStep.APPROVER_REQUESTER_HEAD:
@@ -162,46 +171,25 @@ def resolve_approver(step, request):
     if kind == ApprovalStep.APPROVER_REQUESTER_DEPUTY:
         if request.requester.department is None:
             return None
-        return (
-            User.objects.filter(
-                is_active=True,
-                department=request.requester.department,
-                role__code="deputy-director",
-            ).order_by("pk").first()
-        )
+        import org
+        return (User.objects.filter(org.role_q("deputy-director"), is_active=True,
+                                    department=request.requester.department).order_by("pk").first())
 
     if kind == ApprovalStep.APPROVER_REQUESTER_DIRECTOR:
         if request.requester.department is None:
             return None
-        return (
-            User.objects.filter(
-                is_active=True,
-                department=request.requester.department,
-                role__code="director",
-            ).order_by("pk").first()
-        )
+        import org
+        return org.director_of(request.requester.department)
 
     if kind == ApprovalStep.APPROVER_RECEIVING_DIRECTOR:
         if request.receiving_department is None:
             return None
-        return (
-            User.objects.filter(
-                is_active=True,
-                department=request.receiving_department,
-                role__code="director",
-            ).order_by("pk").first()
-        )
+        import org
+        return org.director_of(request.receiving_department)
 
     if kind == ApprovalStep.APPROVER_ES:
-        from accounts.models import User
-        return (
-            User.objects.filter(
-                is_active=True,
-                role__code="executive-secretary",
-            )
-            .order_by("pk")
-            .first()
-        )
+        import org
+        return org.users_with_role("executive-secretary").order_by("pk").first()
 
     return None
 
@@ -720,8 +708,8 @@ def candidate_requests_for(user, queryset=None):
     qs = qs.exclude(status__in=Request.CLOSED_STATUSES)
     if user.is_superuser:
         return qs
-    role_code = user.role.code if user.role_id else ""
-    if role_code == "executive-secretary":
+    import org
+    if org.has_role(user, "executive-secretary"):
         return qs
 
     q = (
@@ -1143,6 +1131,7 @@ def reject_step(request, user, comment=""):
         logger.exception("Workflow rejection email failed for %s", request.reference)
     # Review M16: nothing was repaired, so the asset keeps its damaged state.
     _close_linked_asset_issues(request, user, note="Request rejected.", restore_state=None)
+    _linked_tickets_hook(request)
     return request
 
 
@@ -1163,6 +1152,37 @@ def cancel_request(request, user, comment=""):
         message=comment or "Cancelled by requester.",
     )
     _close_linked_asset_issues(request, user, note="Request cancelled.", restore_state=None)
+    _linked_tickets_hook(request)
+    return request
+
+
+def _linked_tickets_hook(request):
+    """v2.1 I8: a funds request raised from a ticket hands the ticket back
+    to its handler when it completes, is rejected or cancelled."""
+    try:
+        from tickets.bridge import on_request_closed
+        on_request_closed(request)
+    except Exception:
+        logger.exception("Could not update the ticket linked to %s", request.reference)
+
+
+@transaction.atomic
+def close_as_converted(request, actor, ticket):
+    """v2.1 I9: the request continues as a ticket. It closes (status
+    cancelled, reason 'converted') with a link both ways; the requester is
+    told where to follow it."""
+    refuse_if_closed(request)
+    request.status = Request.CANCELLED
+    request.closed_at = timezone.now()
+    request.metadata = {**(request.metadata or {}), "converted_to_ticket": ticket.pk,
+                        "converted_to_ticket_reference": ticket.reference}
+    request.save(update_fields=["status", "closed_at", "metadata", "updated_at"])
+    log_activity(request, "converted", actor=actor,
+                 message=f"Converted to ticket {ticket.reference}; the work continues there.",
+                 metadata={"ticket_id": ticket.pk, "ticket_reference": ticket.reference})
+    notify(recipient=request.requester, title=f"{request.reference} continues as ticket {ticket.reference}",
+           body=request.subject, url=f"/tickets/{ticket.pk}/", category=Notification.REQUEST,
+           level=Notification.INFO, actor=actor)
     return request
 
 
@@ -1192,13 +1212,10 @@ def delete_request(request, user, reason=""):
         if current_actor is not None:
             notify_targets.add(current_actor.pk)
     if request.receiving_department_id:
-        from accounts.models import User as _User
-        directors = _User.objects.filter(
-            is_active=True,
-            department_id=request.receiving_department_id,
-            role__code="director",
-        ).values_list("pk", flat=True)
-        notify_targets.update(directors)
+        import org
+        director = org.director_of(request.receiving_department_id)
+        if director is not None:
+            notify_targets.add(director.pk)
     if request.assigned_to_id:
         notify_targets.add(request.assigned_to_id)
     notify_targets.discard(user.pk)
@@ -1232,7 +1249,18 @@ def delete_request(request, user, reason=""):
 # ===========================================================================
 # Comments, attachments
 # ===========================================================================
+CLOSED_REQUEST_MESSAGE = "This request is closed. It is a read-only record now: download the report (PDF)."
+
+
+def refuse_if_closed(request):
+    """J1 / T-CONS-6: a closed request (completed, rejected, cancelled) takes
+    no new comments or files and loses none, from the website or the API."""
+    if request.is_closed:
+        raise ValidationError(CLOSED_REQUEST_MESSAGE)
+
+
 def add_comment(request, user, body, internal=False):
+    refuse_if_closed(request)
     # Review M2: internal notes are hidden from the requester, so a
     # requester cannot write one, and the timeline never carries their text.
     if internal and request.requester_id == user.pk:
@@ -1249,6 +1277,7 @@ def add_comment(request, user, body, internal=False):
 
 
 def add_attachment(request, user, file, description=""):
+    refuse_if_closed(request)
     attachment = RequestAttachment.objects.create(
         request=request, uploaded_by=user, file=file,        # ← uploaded_by, not user
         original_name=getattr(file, "name", "") or "",
@@ -1301,6 +1330,7 @@ def _finalise(request, actor=None, note=""):
         workflow_emails.send_request_completed_email(request)
     except Exception:
         logger.exception("Workflow completion email failed for %s", request.reference)
+    _linked_tickets_hook(request)
     return request
 
 
@@ -1343,14 +1373,8 @@ def _notify_handoff(request):
     """Notify the receiving department's director that a request has arrived."""
     if request.receiving_department_id is None:
         return
-    from accounts.models import User
-    director = (
-        User.objects.filter(
-            is_active=True,
-            department_id=request.receiving_department_id,
-            role__code="director",
-        ).order_by("pk").first()
-    )
+    import org
+    director = org.director_of(request.receiving_department_id)
     if director is None:
         return
     notify(
@@ -1428,16 +1452,16 @@ def _can_delete_content(actor, owner):
         return True
     if actor.pk == owner.pk:
         return True
-    if (actor.department_id
-            and actor.department_id == owner.department_id
-            and actor.role_id
-            and actor.role.code == "director"):
+    import org
+    if actor.department_id and actor.department_id == owner.department_id \
+            and org.is_director(actor, owner.department_id):
         return True
     return False
 
 def delete_comment(request, user, comment):
     """Delete a comment. Author, the author's department director, or
     a superuser. Logged before deletion so the audit trail survives."""
+    refuse_if_closed(request)
     if not _can_delete_content(user, comment.author):
         raise PermissionDenied("You cannot delete this comment.")
     log_activity(
@@ -1456,6 +1480,7 @@ def delete_comment(request, user, comment):
 def delete_attachment(request, user, attachment):
     """Delete an attachment. Uploader, the uploader's department director,
     or a superuser. The file is removed from storage too."""
+    refuse_if_closed(request)
     if not _can_delete_content(user, attachment.uploaded_by):
         raise PermissionDenied("You cannot delete this attachment.")
     log_activity(

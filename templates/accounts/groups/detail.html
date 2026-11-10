@@ -1,28 +1,32 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags audience_tags %}
 
 {% block title %}{{ group.name }} · Groups · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Group{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="gp-page">
   <a class="gp-back" href="{% url 'accounts:groups:list' %}">← All groups</a>
-  <header class="page-header">
+  <header class="qa-hero nbte-hero">
     <div>
-      <p class="gp-eyebrow">Group</p>
+      <a class="nbte-hero__back" href="{% url 'accounts:groups:list' %}">{% icon "back" 14 "2.4" %} Groups</a>
+      <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} User management · Groups</span>
       <h1>{{ group.name }}</h1>
-      {% if group.profile.description %}<p class="muted">{{ group.profile.description }}</p>{% endif %}
+      <p>{% if group.profile.description %}{{ group.profile.description }}{% else %}A named bundle of permissions, given through roles or directly to people.{% endif %}</p>
+      <div class="qa-hero__actions">
+        {% if can_change %}<a href="{% url 'accounts:groups:update' group.pk %}" class="btn btn-primary">{% icon "edit" 16 "2.2" %} Edit group</a>{% endif %}
+        {% if can_delete %}<a href="{% url 'accounts:groups:delete' group.pk %}" class="btn btn-ghost btn-danger"
+           data-group-delete data-delete-url="{% url 'accounts:groups:delete' group.pk %}" data-delete-name="{{ group.name }}">{% icon "trash" 16 "2.2" %} Delete</a>{% endif %}
+      </div>
     </div>
-    <div class="header-actions">
-      {% if can_change %}<a href="{% url 'accounts:groups:update' group.pk %}" class="btn btn-primary">Edit group</a>{% endif %}
-      {% if can_delete %}
-        <a href="{% url 'accounts:groups:delete' group.pk %}" class="btn btn-ghost btn-danger"
-           data-group-delete data-delete-url="{% url 'accounts:groups:delete' group.pk %}" data-delete-name="{{ group.name }}">Delete</a>
-      {% endif %}
+    <div class="qa-hero__stats um-tiles" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong>{{ perm_total }}</strong><span>Permissions</span></div>
+      <div class="qa-stat"><strong>{{ roles|length }}</strong><span>Roles</span></div>
+      <div class="qa-stat"><strong>{{ direct_members|length|add:via_role.count }}</strong><span>Members</span></div>
     </div>
   </header>
 
@@ -117,5 +121,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+  <script src="{% static 'js/groups.js' %}" defer></script>
 {% endblock %}

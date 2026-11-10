@@ -1,0 +1,102 @@
+{% comment %}
+  Promotions list region (#promo-list), swapped by HTMX for tab changes,
+  filters and paging; rendered inside index.html on a normal request.
+{% endcomment %}
+<div id="promo-list" class="hr-region" data-tab="{{ tab }}">
+  <nav class="hr-tabs" aria-label="Promotion lists">
+    {% for key, label in tabs %}
+      {% if key == "history" %}
+        <a href="{% url 'staff:promotion_history' %}">{{ label }}</a>
+      {% else %}
+        <a href="{% url 'staff:promotions' %}?tab={{ key }}" hx-get="{% url 'staff:promotions' %}" hx-vals='{"tab": "{{ key }}"}'
+           hx-include="#promo-filters [name]:not([name=tab])" hx-target="#promo-list" hx-swap="outerHTML" hx-push-url="true"
+           {% if tab == key %}class="is-active" aria-current="page"{% endif %}>
+          {{ label }}{% for k, n in counts.items %}{% if k == key %} <span class="hr-tabs__n">{{ n }}</span>{% endif %}{% endfor %}
+        </a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+
+  {% if tab == "eligible" %}
+    <p class="hr-hint">Staff whose time in their present grade has reached {{ min_years }} year{{ min_years|pluralize }} and who have a level above them. Each person can only move to their own next step.</p>
+  {% elif tab == "overdue" %}
+    <p class="hr-hint">Eligible for more than {{ grace_days }} days without a promotion. HR and the Executive Secretary get this list every Monday.</p>
+  {% endif %}
+
+  {% if id_filter %}
+    <div class="hr-idfilter" role="status">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span>Filtered by <strong>{{ id_filter.name }}</strong>: {{ id_filter.ids|length }} ID{{ id_filter.ids|length|pluralize }}{% if id_unmatched %}, <strong>{{ id_unmatched|length }} not found</strong> <span class="hr-idfilter__miss">({{ id_unmatched|slice:":8"|join:", " }}{% if id_unmatched|length > 8 %}…{% endif %})</span>{% endif %}.</span>
+      <form method="post" action="{% url 'staff:promotion_id_filter' %}">
+        {% csrf_token %}<input type="hidden" name="clear" value="1"><input type="hidden" name="tab" value="{{ tab }}">
+        <button type="submit" class="btn btn-ghost btn-sm">Remove</button>
+      </form>
+    </div>
+  {% endif %}
+
+  {% if page.rows %}
+    <div class="promo-selectbar" data-promo-bar>
+      <label class="check promo-select-all">
+        <input type="checkbox" data-promo-all aria-label="Select every staff member shown">
+        <span>Select all shown</span>
+      </label>
+      <span class="promo-selected" aria-live="polite"><strong data-promo-count>0</strong> selected</span>
+      <span class="hr-spacer"></span>
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary" data-modal-open="promo-modal" data-promo-open disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
+          Preview promotions
+        </button>
+      </div>
+    </div>
+
+    <div class="hr-table-wrap" tabindex="0" role="region" aria-label="Staff to promote">
+      <table class="hr-table promo-table">
+        <thead>
+          <tr>
+            <th scope="col" class="hr-check-col"><span class="sr-only">Select</span></th>
+            <th scope="col">File no.</th>
+            <th scope="col">Name</th>
+            <th scope="col">Department</th>
+            <th scope="col">Now</th>
+            <th scope="col">Next step</th>
+            <th scope="col">In grade since</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in page.rows %}
+            <tr>
+              <td class="hr-check-col">
+                <label class="check">
+                  <input type="checkbox" name="ids" value="{{ s.pk }}" form="promo-form" data-promo-pick
+                         data-name="{{ s.full_name }}" aria-label="Select {{ s.full_name }}">
+                </label>
+              </td>
+              <td data-label="File no." class="nbr-mono">{{ s.employee_no }}</td>
+              <td data-label="Name"><a href="{% url 'staff:detail' s.pk %}" class="promo-name">{{ s.last_name }} {{ s.first_name }}</a></td>
+              <td data-label="Department">{{ s.department.name|default:"—" }}</td>
+              <td data-label="Now">{{ s.designation.name|default:"—" }}{% if s.grade_level %} <span class="hr-muted">· GL {{ s.grade_level }}</span>{% endif %}</td>
+              <td data-label="Next step">{% if s.elig.next_step %}<strong>{{ s.elig.next_step.designation.name }}</strong>{% if s.elig.next_step.grade %} <span class="hr-muted">· GL {{ s.elig.next_step.grade }}</span>{% endif %}{% else %}<span class="hr-muted">Top of ladder</span>{% endif %}</td>
+              <td data-label="In grade since">{{ s.date_present_appointment|date:"j M Y"|default:"—" }}{% if s.years_in_post is not None %} <span class="hr-muted">· {{ s.years_in_post }} yr{{ s.years_in_post|pluralize }}</span>{% endif %}</td>
+              <td data-label="Status">
+                {% if s.elig.overdue %}<span class="hr-chip hr-chip--danger">Overdue</span>
+                {% elif s.elig.eligible %}<span class="hr-chip hr-chip--ok">Eligible</span>
+                {% elif s.elig.due_on %}<span class="hr-chip">Due {{ s.elig.due_on|date:"M Y" }}</span>
+                {% else %}<span class="hr-chip hr-chip--muted">No date</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% include "qa_core/partials/_pagination.html" with page=page target="#promo-list" swap="outerHTML" %}
+  {% elif filters_active or id_filter %}
+    {% url 'staff:promotions' as clear_url %}
+    {% include "partials/empty_state.html" with variant="filtered" title="No staff match" body="Try another tab, department, designation or search." action_url=clear_url action_label="Clear filters" action_class="btn-ghost" only %}
+  {% elif tab == "all" %}
+    {% include "partials/empty_state.html" with title="No staff yet" body="Import the nominal roll first — People → Nominal roll." only %}
+  {% else %}
+    {% include "partials/empty_state.html" with title="Nobody here" body="No one in your scope is in this list today. The All tab shows everyone." only %}
+  {% endif %}
+</div>

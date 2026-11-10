@@ -11,6 +11,7 @@ Run every command from the **project folder** (the one with `manage.py`), with y
 | `walkthroughs/phase4_walk.py` | Playwright walkthrough of SOP-03: Case Board → cost sheet → Audit task → *Open in QA* → audit → ES return / approve → tasks close and open. Saves screenshots. |
 | `walkthroughs/phase3_walk_a.py`, `_b.py`, `_c.py` | The Phase 3 (SOP-02 / SSQ) walkthroughs. They expect the Phase 3 demo state (`qa_phase3_demo.sqlite3`). |
 | `walkthroughs/lib.py` | Shared helpers (sign-in, screenshots). |
+| `make_share_zip.sh` | Builds a shareable zip from `git ls-files` only (no databases, `media/`, `protected_media/`, `.env`). `--with-db` adds a migrated `db.sqlite3` (demo data only); `-o FILE` sets the output. See SETUP.md → Sharing a copy. |
 
 ## 1. Seed a demo database
 

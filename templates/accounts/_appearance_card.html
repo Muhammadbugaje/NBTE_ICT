@@ -1,0 +1,73 @@
+{% comment %}
+  v2.1 Phase A (A10): personal Appearance card on My profile. Saved on the
+  account (User.preferences) through POST /me/preferences/, so the choice
+  follows the person to every device. With JavaScript each pick applies at
+  once (NBTE.Theme.set) and HTMX saves it; without, the Save button posts.
+{% endcomment %}
+<div class="side-card pap-card" id="profile-appearance">
+  <h4 class="side-card-title">Appearance</h4>
+  <form class="pap" method="post" action="{% url 'my_preferences' %}"
+        hx-post="{% url 'my_preferences' %}" hx-trigger="change" hx-target="#profile-appearance" hx-swap="outerHTML"
+        data-pap-form>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+
+    <fieldset class="pap-group">
+      <legend>Light or dark</legend>
+      <div class="apx-seg" role="radiogroup">
+        {% for code, name in ap_themes %}
+          <label class="apx-seg__opt">
+            <input type="radio" name="theme" value="{{ code }}" data-pap-key="theme"{% if ap_own.theme == code or not ap_own.theme and code == "system" %} checked{% endif %}>
+            <span>{% if code == "system" %}Device{% else %}{{ name }}{% endif %}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    {% if ap_site.allow_user_palette %}
+      <fieldset class="pap-group">
+        <legend>Palette</legend>
+        <div class="pap-dots">
+          <label class="pap-dot pap-dot--site" title="Site default">
+            <input type="radio" name="palette" value="" data-pap-key="palette"{% if not ap_own.palette %} checked{% endif %}>
+            <span>Site</span>
+          </label>
+          {% for code, name, note, c1, c2 in ap_palettes %}
+            <label class="pap-dot" title="{{ name }}">
+              <input type="radio" name="palette" value="{{ code }}" data-pap-key="palette" aria-label="{{ name }}"{% if ap_own.palette == code %} checked{% endif %}>
+              <span style="--sw-a: {{ c1 }};"></span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="pap-group">
+        <legend>Motion</legend>
+        <div class="apx-seg" role="radiogroup">
+          <label class="apx-seg__opt"><input type="radio" name="motion" value="system" data-pap-key="motion"{% if not ap_own.motion %} checked{% endif %}><span>Site</span></label>
+          {% for code, name, note in ap_motion_levels %}
+            <label class="apx-seg__opt" title="{{ note }}"><input type="radio" name="motion" value="{{ code }}" data-pap-key="motion"{% if ap_own.motion == code %} checked{% endif %}><span>{{ name }}</span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="pap-group">
+        <legend>Density</legend>
+        <div class="apx-seg" role="radiogroup">
+          <label class="apx-seg__opt"><input type="radio" name="density" value="" data-pap-key="density"{% if not ap_own.density %} checked{% endif %}><span>Site</span></label>
+          <label class="apx-seg__opt"><input type="radio" name="density" value="comfortable" data-pap-key="density"{% if ap_own.density == "comfortable" %} checked{% endif %}><span>Roomy</span></label>
+          <label class="apx-seg__opt"><input type="radio" name="density" value="compact" data-pap-key="density"{% if ap_own.density == "compact" %} checked{% endif %}><span>Compact</span></label>
+        </div>
+      </fieldset>
+    {% else %}
+      <p class="pap-foot">The site uses one palette for everyone.</p>
+    {% endif %}
+
+    <div class="pap-foot">
+      {% if ap_error %}<span class="pap-error" role="alert">{{ ap_error }}</span>
+      {% elif ap_saved %}<span class="pap-status m-popin" role="status"><svg class="m-check" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" pathLength="1"/><path d="M20 33l8 8 16-17" pathLength="1"/></svg>Saved to your account</span>
+      {% else %}<span>Follows you to every device.</span>{% endif %}
+      <button type="submit" class="btn btn-primary btn-sm pap-save">Save</button>
+    </div>
+  </form>
+</div>

@@ -16,9 +16,18 @@
   }
 
   // ---- Brand palette ------------------------------------------------
+  function brandHex() {
+    var v = (getComputedStyle(document.documentElement).getPropertyValue("--primary-solid") || "").trim();
+    return /^#[0-9a-f]{6}$/i.test(v) ? v : "#1F6B3E";
+  }
+  function hexA(hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return "rgba(" + (n >> 16 & 255) + ", " + (n >> 8 & 255) + ", " + (n & 255) + ", " + a + ")";
+  }
   const PALETTE = {
-    primary:  "#1F6B3E",
-    primarySoft: "rgba(31, 107, 62, 0.18)",
+    // A9: follows the palette (--primary-solid); green is the fallback.
+    primary:  brandHex(),
+    primarySoft: hexA(brandHex(), 0.18),
     green:    "#10B981",
     greenSoft: "rgba(16, 185, 129, 0.18)",
     blue:     "#0369A1",

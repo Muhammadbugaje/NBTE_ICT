@@ -1,0 +1,69 @@
+{% extends "qa_core/_shell.html" %}
+{% load static qa_tags %}
+{% block qa_title %}{{ doc.reference }} · Issued documents{% endblock %}
+{% block qa_page_title %}Issued documents{% endblock %}
+{% block panel %}<link rel="stylesheet" href="{% static 'css/scan.css' %}">
+<div class="sv-page dr-page" data-qa-area="documents_register">
+  <header class="qa-hero dr-hero dr-hero--detail">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'documents_register:list' %}">{% icon "back" 14 "2.4" %} Issued documents</a>
+      <span class="qa-eyebrow">{% icon "file" 14 "2.2" %} {{ doc.kind_label }}</span>
+      <h1 data-qa-focus>{{ doc.title }}</h1>
+      <p>{% if doc.institution %}{{ doc.institution.name }} · {% endif %}issued {{ doc.issued_at|date:"j M Y, H:i" }}{% if doc.issued_by %} by {{ doc.issued_by.get_full_name|default:doc.issued_by.email }}{% endif %}{% if doc.event_code %} · <span class="sv-mono">{{ doc.event_code }}</span>{% endif %}</p>
+      <div class="dr-hero__chips">
+        <span class="sv-chip sv-chip--plain sv-mono">{{ doc.reference }}</span>
+        {% if doc.short_code %}<span class="sv-chip sv-chip--plain sv-mono">{% icon "qr" 13 "2.2" %} {{ doc.short_code }}</span>{% endif %}
+        <span class="sv-chip {% if doc.status == 'valid' %}sv-chip--ok{% elif doc.status == 'revoked' %}sv-chip--bad{% else %}sv-chip--warn{% endif %}">{{ doc.get_status_display }}</span>
+        {% if doc.provisional %}{% if copies %}<span class="sv-chip sv-chip--info">Official copy issued</span>{% else %}<span class="sv-chip sv-chip--warn">Provisional</span>{% endif %}{% endif %}
+      </div>
+      <div class="qa-hero__actions">
+        {% if doc.file %}<a class="btn btn-primary" href="{{ doc.download_url }}">{% icon "download" 16 "2.2" %} Generated PDF{% if doc.provisional %} (provisional){% endif %}</a>{% endif %}
+        {% if can_upload %}<a class="btn btn-subtle" href="#dr-upload">{% icon "upload" 16 "2.2" %} Upload official copy</a>{% endif %}
+        {% if can_revoke %}<a class="btn btn-subtle" href="#dr-revoke">{% icon "ban" 16 "2.2" %} Revoke</a>{% endif %}
+      </div>
+    </div>
+  </header>
+  <div class="sv-detail">
+    <section class="sv-result" aria-label="What a scan shows">{% include "documents/scan/_result.html" %}</section>
+    <div class="sv-page">
+      <section class="sv-card" aria-label="Files">
+        <h2>Files</h2>
+        <div class="btn-group">
+          {% if doc.file %}<a class="btn btn-ghost btn-sm" href="{{ doc.download_url }}">{% icon "download" 14 %} Generated PDF{% if doc.provisional %} (provisional){% endif %}</a>{% endif %}
+          {% for c in copies %}<a class="btn btn-ghost btn-sm" href="{{ c.download_url }}">{% icon "download" 14 %} Official copy · {{ c.uploaded_at|date:"j M Y" }}</a>{% endfor %}
+        </div>
+        {% if not doc.file and not copies %}<p class="sv-note">This entry registers a document drawn elsewhere (e.g. an external memo); its QR verifies here.</p>{% endif %}
+      </section>
+      {% if can_upload %}
+      <section class="sv-card" id="dr-upload" aria-label="Upload the official copy">
+        <h2>Upload the signed official copy</h2>
+        <p class="sv-note">The institution is told, and the verify page then shows “Official copy issued”.</p>
+        <form class="sv-form" method="post" enctype="multipart/form-data" action="{% url 'documents_register:upload_official' doc.pk %}">{% csrf_token %}
+          <input type="file" name="file" accept="application/pdf" required aria-label="Signed PDF">
+          <input type="text" name="note" maxlength="300" placeholder="Note (optional)" aria-label="Note">
+          <div class="btn-group"><button class="btn btn-primary" type="submit">{% icon "upload" 16 "2.2" %} Upload official copy</button></div>
+        </form>
+      </section>
+      {% endif %}
+      {% if can_revoke %}
+      <section class="sv-card" id="dr-revoke" aria-label="Revoke">
+        <h2>Revoke this document</h2>
+        <p class="sv-note">Anyone who scans it afterwards sees “Revoked”. The institution and ICT are told.</p>
+        <form class="sv-form" method="post" action="{% url 'documents_register:revoke' doc.pk %}">{% csrf_token %}
+          <textarea name="reason" rows="2" minlength="5" maxlength="500" required placeholder="Why is it revoked?" aria-label="Reason"></textarea>
+          <div class="btn-group"><button class="btn btn-danger" type="submit">{% icon "ban" 16 "2.2" %} Revoke</button></div>
+        </form>
+      </section>
+      {% endif %}
+      {% if can_log %}
+      <section class="sv-card" aria-label="Verification history">
+        <h2>Verification history</h2>
+        {% if log %}<div class="sv-tablewrap"><table class="sv-table"><thead><tr><th>When</th><th>How</th><th>Result</th><th>Where</th></tr></thead><tbody>
+          {% for v in log %}<tr><td>{{ v.at|date:"j M Y, H:i" }}</td><td>{{ v.get_via_display }}</td><td>{{ v.get_result_display }}</td><td>{{ v.host|default:"—" }}{% if v.user %} · signed in{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div>{% else %}<p class="sv-note">Nobody has checked it yet.</p>{% endif %}
+      </section>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

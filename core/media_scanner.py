@@ -6,22 +6,25 @@ A file is an *orphan* only when ALL of these hold:
    with a file field is walked (not just the cleanup registry), through a
    plain QuerySet that bypasses every manager — so soft-deleted, archived and
    institution-scoped rows (whose default managers refuse unscoped reads)
-   all count — plus the ``_base_manager`` / ``unscoped`` / ``all_objects``
-   managers as a belt-and-braces second read.
+   all count. Storage paths are resolved against both media roots, including
+   FileSystemStorage instances rooted in a media subdirectory.
 2. No text, char or JSON value anywhere in the database mentions its file
    name (paths stored as strings, e.g. in JSON snapshots, HTML bodies or
    import sessions). Matching is by file name, so it errs on the side of
    keeping a file.
-3. It is not a generated image variant (``<name>_w<size>.jpg``) of a
+3. It is not mentioned in configured static assets, templates or guide source
+   files, nor a generated image variant (``<name>_w<size>.jpg``) of a
    referenced file.
 4. It is not inside a protected folder (``MEDIA_SCAN_PROTECTED_FOLDERS`` in
    settings plus the ``files.orphan_protected_folders`` setting): generated
-   or served assets such as the institution guides (``qa/guides``),
+   or served assets such as institution guides, static files, fixtures,
    showcase images and import scratch folders.
-5. It is older than the age threshold (``files.orphan_purge_min_age_days``).
+5. Reference discovery completed successfully and the file is older than the
+   age threshold (``files.orphan_purge_min_age_days``).
 
-Nothing is ever deleted straight away: ``quarantine_paths`` re-checks every
-file against a FRESH reference index and then moves it to
+Scanning is read-only. Nothing is deleted by ``scan`` or ``scan_stream``.
+Explicit quarantine requests re-check every file against a FRESH reference
+index and then move it to
 ``<root>/.quarantine/<YYYY-MM-DD>/<original path>`` with a ``manifest.csv``.
 ``purge_quarantine`` removes quarantine days older than the retention period
 (``files.quarantine_retention_days``) and ``restore_quarantine`` puts a
@@ -65,10 +68,26 @@ DEFAULT_PROTECTED_FOLDERS = (
     "guides",
     "docs",
     "user-guides",
+    "static",
+    "staticfiles",
+    "fixtures",
+    "fixture",
+    "system",
+    "__pycache__",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".git",
     "showcase",             # login showcase / gallery images
     "import-tmp",           # import previews (own hourly sweep)
     "staff/imports",        # nominal-roll uploads kept in the session
 )
+_NON_MEDIA_DIR_NAMES = {
+    "static", "staticfiles", "fixtures", "fixture", "system", "__pycache__",
+    "node_modules", ".venv", "venv", ".git",
+}
+_ASSET_TEXT_SUFFIXES = {".css", ".htm", ".html", ".js", ".json", ".md", ".py", ".svg", ".txt", ".xml"}
+_MAX_ASSET_SOURCE_BYTES = 5 * 1024 * 1024
 
 
 # ===========================================================================
@@ -125,8 +144,9 @@ def protected_folders():
     """[(kind or None, prefix), ...] — folders never treated as orphans.
 
     Entries are ``"prefix"`` (both roots) or ``"public:prefix"`` /
-    ``"protected:prefix"``. Settings and the config entry are combined."""
-    raw = list(getattr(settings, "MEDIA_SCAN_PROTECTED_FOLDERS", DEFAULT_PROTECTED_FOLDERS) or [])
+    ``"protected:prefix"``. Safety defaults, settings and the config entry
+    are combined; application settings cannot accidentally remove the defaults."""
+    raw = [*DEFAULT_PROTECTED_FOLDERS, *(getattr(settings, "MEDIA_SCAN_PROTECTED_FOLDERS", []) or [])]
     try:
         import config
         extra = config.get("files.orphan_protected_folders", "") or ""
@@ -161,6 +181,72 @@ def protected_folder_of(kind, rel, folders=None):
     return None
 
 
+def _configured_paths(setting_name):
+    values = getattr(settings, setting_name, ()) or ()
+    if isinstance(values, (str, Path)):
+        values = [values]
+    paths = []
+    for value in values:
+        if isinstance(value, (tuple, list)) and len(value) == 2:
+            value = value[1]  # STATICFILES_DIRS supports (prefix, path).
+        try:
+            paths.append(Path(value).resolve())
+        except (TypeError, ValueError, OSError):
+            continue
+    return paths
+
+
+def _non_media_roots():
+    """Configured static/fixture roots and the project's guide source assets."""
+    base = Path(settings.BASE_DIR).resolve()
+    candidates = [
+        *_configured_paths("STATICFILES_DIRS"),
+        *_configured_paths("FIXTURE_DIRS"),
+        *_configured_paths("STATIC_ROOT"),
+        base / "static",
+        base / "staticfiles",
+        base / "fixtures",
+        base / "docs" / "guides" / "images",
+    ]
+    out = []
+    for path in candidates:
+        try:
+            resolved = Path(path).resolve()
+        except (TypeError, ValueError, OSError):
+            continue
+        if resolved not in out:
+            out.append(resolved)
+    return out
+
+
+def _path_is_within(path, root):
+    try:
+        Path(path).resolve().relative_to(Path(root).resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _asset_source_roots():
+    """Text sources that can name media assets without a database row."""
+    base = Path(settings.BASE_DIR).resolve()
+    candidates = [
+        *_configured_paths("STATICFILES_DIRS"),
+        *_configured_paths("STATIC_ROOT"),
+        base / "templates",
+        base / "docs" / "guides",
+    ]
+    out = []
+    for path in candidates:
+        try:
+            resolved = Path(path).resolve()
+        except (TypeError, ValueError, OSError):
+            continue
+        if resolved.is_dir() and resolved not in out:
+            out.append(resolved)
+    return out
+
+
 # ===========================================================================
 # Roots — with a BASE_DIR safety guard
 # ===========================================================================
@@ -193,16 +279,34 @@ def _kind_for_storage(storage):
         loc = Path(str(getattr(storage, "location", "") or "")).resolve()
     except Exception:
         return KIND_PUBLIC
-    protected_root = getattr(settings, "PROTECTED_MEDIA_ROOT", "") or ""
-    if protected_root:
-        try:
-            if loc == Path(protected_root).resolve():
-                return KIND_PROTECTED
-        except Exception:
-            pass
-        if str(protected_root) in str(loc):
-            return KIND_PROTECTED
+    matches = [(len(str(root)), kind) for kind, root in _roots() if _path_is_within(loc, root)]
+    if matches:
+        return max(matches)[1]
     return KIND_PUBLIC
+
+
+def _storage_reference(storage, name):
+    """Return a scanned-root-relative path for a FieldFile's storage/name.
+
+    Storage roots can be nested below MEDIA_ROOT or PROTECTED_MEDIA_ROOT.
+    For non-local storage backends, keep a basename fallback so a same-named
+    local file is retained rather than incorrectly declared orphaned.
+    """
+    fallback_kind = _kind_for_storage(storage)
+    try:
+        stored_path = Path(storage.path(name)).resolve()
+        for kind, root in sorted(_roots(), key=lambda item: len(str(item[1])), reverse=True):
+            try:
+                return kind, stored_path.relative_to(root).as_posix()
+            except ValueError:
+                continue
+    except Exception:
+        pass
+
+    normalized = PurePosixPath(str(name).replace("\\", "/"))
+    if normalized.is_absolute() or ".." in normalized.parts:
+        return fallback_kind, None
+    return fallback_kind, normalized.as_posix()
 
 
 # ===========================================================================
@@ -220,6 +324,8 @@ class ReferenceIndex:
     folders: list = field(default_factory=list)
     file_rows: int = 0
     text_values: int = 0
+    complete: bool = True
+    errors: list = field(default_factory=list)
 
     def total(self):
         return len(self.exact[KIND_PUBLIC]) + len(self.exact[KIND_PROTECTED]) + len(self.names)
@@ -365,23 +471,40 @@ def build_reference_map(include_text=True):
         for fname in fnames:
             try:
                 fld = model._meta.get_field(fname)
-            except Exception:
+            except Exception as exc:
+                index.complete = False
+                index.errors.append(f"Could not inspect {label}.{fname}: {exc}")
                 continue
-            kind = _kind_for_storage(fld.storage)
-            target = index.exact[kind]
             for qs in all_row_querysets(model):
                 try:
                     rows = (qs.exclude(**{fname: ""}).exclude(**{f"{fname}__isnull": True})
                             .values_list("pk", fname).iterator(chunk_size=2000))
                     for pk, name in rows:
-                        if not name or name in target:
+                        if not name:
                             continue
-                        index.file_rows += 1
                         source = f"referenced by {label} #{pk} ({fname})"
-                        target[name] = source
+                        kind, rel = _storage_reference(fld.storage, name)
+                        if rel:
+                            target = index.exact[kind]
+                            if rel not in target:
+                                index.file_rows += 1
+                                target[rel] = source
+                            basename = PurePosixPath(rel).name
+                        else:
+                            basename = PurePosixPath(str(name).replace("\\", "/")).name
+                        index.names.setdefault(basename, source)
                         for variant in _variant_names(name, sizes):
-                            target.setdefault(variant, f"image variant of a file {source}")
-                except Exception:
+                            variant_kind, variant_rel = _storage_reference(fld.storage, variant)
+                            variant_source = f"image variant of a file {source}"
+                            if variant_rel:
+                                index.exact[variant_kind].setdefault(variant_rel, variant_source)
+                                variant_basename = PurePosixPath(variant_rel).name
+                            else:
+                                variant_basename = PurePosixPath(str(variant).replace("\\", "/")).name
+                            index.names.setdefault(variant_basename, variant_source)
+                except Exception as exc:
+                    index.complete = False
+                    index.errors.append(f"Could not scan {label}.{fname}: {exc}")
                     logger.exception("media_scanner: query failed for %s.%s", label, fname)
 
     if include_text:
@@ -408,8 +531,30 @@ def build_reference_map(include_text=True):
                                         index.names.setdefault(
                                             PurePosixPath(variant).name,
                                             f"image variant of a file named in {meta.label} #{pk} ({fname})")
-            except Exception:
+            except Exception as exc:
+                index.complete = False
+                index.errors.append(f"Could not scan text in {meta.label}: {exc}")
                 logger.exception("media_scanner: text scan failed for %s", meta.label)
+
+    for root in _asset_source_roots():
+        for dirpath, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d.lower() not in _NON_MEDIA_DIR_NAMES]
+            for filename in files:
+                path = Path(dirpath) / filename
+                if path.suffix.lower() not in _ASSET_TEXT_SUFFIXES:
+                    continue
+                try:
+                    if path.stat().st_size > _MAX_ASSET_SOURCE_BYTES:
+                        raise OSError(f"asset source exceeds {_MAX_ASSET_SOURCE_BYTES} bytes")
+                    text = path.read_text(encoding="utf-8", errors="ignore")
+                except OSError as exc:
+                    index.complete = False
+                    index.errors.append(f"Could not inspect asset source {path}: {exc}")
+                    logger.warning("media_scanner: could not inspect asset source %s: %s", path, exc)
+                    continue
+                source = f"referenced in static/guide asset {path.name}"
+                for name in file_names_in(text):
+                    index.names.setdefault(name, source)
 
     return index
 
@@ -434,15 +579,23 @@ class FileEntry:
 
 def walk_storage(limit=None):
     """Yield FileEntry for every file under both roots (skips dot-folders
-    such as the quarantine)."""
+    such as the quarantine, plus known static/fixture/system trees)."""
+    excluded_roots = _non_media_roots()
     count = 0
     for kind, root in _roots():
         if not root.is_dir():
             continue
         for dirpath, dirs, files in os.walk(root):
-            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            dirs[:] = [
+                d for d in dirs
+                if not d.startswith(".")
+                and d.lower() not in _NON_MEDIA_DIR_NAMES
+                and not any(_path_is_within(Path(dirpath) / d, excluded) for excluded in excluded_roots)
+            ]
             for fname in files:
                 if fname.startswith("."):
+                    continue
+                if fname.lower() in {"desktop.ini", "thumbs.db"}:
                     continue
                 abs_path = Path(dirpath) / fname
                 try:
@@ -473,6 +626,8 @@ def classify(entry, index, now=None, min_age_days=None):
     """(is_orphan, reason) for one file on disk."""
     now = now if now is not None else timezone.now().timestamp()
     min_age_days = purge_min_age_days() if min_age_days is None else min_age_days
+    if not index.complete:
+        return False, "Reference discovery incomplete; kept for safety."
     in_use = index.reference_for(entry.kind, entry.rel)
     if in_use:
         return False, f"In use: {in_use}."
@@ -497,6 +652,8 @@ class ScanResult:
     truncated: bool = False
     min_age_days: int = 0
     scanned_at: datetime = None
+    reference_index_complete: bool = True
+    reference_errors: list = field(default_factory=list)
 
     def to_dict(self):
         keys = ("kind", "rel", "size", "mtime", "age_days", "is_variant", "reason")
@@ -508,6 +665,8 @@ class ScanResult:
             "orphan_bytes": self.orphan_bytes,
             "truncated": self.truncated,
             "min_age_days": self.min_age_days,
+            "reference_index_complete": self.reference_index_complete,
+            "reference_errors": self.reference_errors,
             "scanned_at": (self.scanned_at or timezone.now()).isoformat(),
         }
 
@@ -534,7 +693,8 @@ def _orphan_dict(entry, now, reason):
 def scan(limit=None, min_age_days=None):
     index = build_reference_map()
     min_age_days = purge_min_age_days() if min_age_days is None else min_age_days
-    result = ScanResult(scanned_at=timezone.now(), min_age_days=min_age_days)
+    result = ScanResult(scanned_at=timezone.now(), min_age_days=min_age_days,
+                        reference_index_complete=index.complete, reference_errors=index.errors)
     now = timezone.now().timestamp()
     limit = limit or max_files()
 
@@ -567,7 +727,8 @@ def scan_stream(limit=None):
 
         yield {"type": "phase", "phase": "indexing"}
         index = build_reference_map()
-        yield {"type": "indexed", "refs": index.total()}
+        yield {"type": "indexed", "refs": index.total(), "complete": index.complete,
+               "errors": index.errors}
 
         yield {"type": "phase", "phase": "scanning"}
         min_age_days = purge_min_age_days()
@@ -603,6 +764,8 @@ def scan_stream(limit=None):
                 "orphan_bytes": result.orphan_bytes,
                 "orphan_bytes_h": human_size(result.orphan_bytes),
                 "truncated": result.truncated,
+                "reference_index_complete": index.complete,
+                "reference_errors": index.errors,
             },
         }
     except Exception as exc:
@@ -664,6 +827,7 @@ class DeleteResult:
     skipped_young: int = 0
     skipped_missing: int = 0
     skipped_in_use: int = 0
+    skipped_unverified: int = 0
     errors: list = field(default_factory=list)
     quarantine_day: str = ""
 
@@ -704,6 +868,11 @@ def quarantine_paths(paths, min_age_days=None, actor=None, index=None):
     now = timezone.now().timestamp()
     day = timezone.localdate().isoformat()
     result = DeleteResult(quarantine_day=day)
+    if not index.complete:
+        result.skipped_unverified = len(paths)
+        logger.error("media_scanner: quarantine refused because reference discovery was incomplete: %s",
+                     "; ".join(index.errors))
+        return result
 
     for path in paths:
         kind = path.get("kind")

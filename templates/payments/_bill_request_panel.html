@@ -1,0 +1,76 @@
+{% load qa_tags static %}
+<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
+{% with fin_tab="approvals" fin_title=br.reference fin_lead=br.institution.name|add:" — "|add:br.description %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
+<nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_fin:bill_requests' %}" hx-get="{% url 'qa_fin:bill_requests' %}" hx-target="#qa-panel" hx-push-url="true">Bill approvals</a><span aria-hidden="true">/</span><span aria-current="page" class="qa-mono">{{ br.reference }}</span></nav>
+
+{% if flash %}{% include "qa_core/partials/_callout.html" with kind=flash.kind title=flash.title message=flash.message %}{% endif %}
+
+<ol class="ib-track{% if br.status == 'rejected' %} is-rejected{% elif br.status == 'withdrawn' %} is-withdrawn{% endif %}" aria-label="Status">
+  {% for s in steps %}<li class="{% if s.done %}is-done{% endif %}{% if s.now %} is-now{% endif %}{% if s.code == 'rejected' %} is-bad{% endif %}"><span aria-hidden="true">{% if s.code == 'rejected' %}{% icon "x" 14 "2.6" %}{% elif s.done %}{% icon "check" 14 "2.6" %}{% else %}{{ forloop.counter }}{% endif %}</span><div><b>{{ s.label }}</b>{% if s.when and s.done or s.when and s.now %}<small>{{ s.when|date:"j M Y, H:i" }}</small>{% endif %}</div></li>{% endfor %}
+</ol>
+{% if br.status == "withdrawn" %}{% include "qa_core/partials/_callout.html" with title="Withdrawn" message="This bill was withdrawn before approval. Nothing was sent to the institution." %}{% endif %}
+{% if br.status == "rejected" %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Rejected by the Executive Secretary" message=br.decision_remark %}{% endif %}
+{% if br.status == "approved" and br.obligation %}<div class="qa-callout qa-callout--success" role="status">{% icon "check" 18 "2.4" %}<div><strong>Approved &amp; sent</strong><p>Issued as <a class="qa-mono" href="{% url 'qa_fin:obligation' br.obligation.pk %}">{{ br.obligation.reference }}</a> on {{ br.decided_at|date:"j M Y" }}. {{ br.institution.name }} can see and pay it on the portal.{% if br.decision_remark %} ES remark: {{ br.decision_remark }}{% endif %}</p></div></div>{% endif %}
+
+<div class="ib-detail">
+  <section class="qa-card" aria-labelledby="br-lines-h">
+    <header class="qa-card__head"><div><h2 id="br-lines-h">Bill lines</h2><p>Priced by the fee rules when the bill was {% if br.submitted_at %}sent for approval{% else %}saved{% endif %}. The institution sees these lines.</p></div>
+      <span class="qa-chip {{ br.tone }}">{{ br.get_status_display }}</span></header>
+    <div class="qa-card__body">
+      {% for g in groups %}
+      <div class="ib-sum-group">
+        <div class="ib-sum-group__head"><b>{{ g.title }}</b><span class="qa-num qa-small">{{ g.subtotal|naira }}</span></div>
+        {% for l in g.lines %}<div class="qa-bill-line"><span>{{ l.label }}{% if l.description %}<small>{{ l.description }}</small>{% endif %}</span><span class="qa-num">{{ l.amount|naira }}</span></div>{% endfor %}
+      </div>
+      {% empty %}<p class="qa-muted">No lines.</p>{% endfor %}
+      <div class="ib-sum-total"><span>Total</span><strong class="qa-num">{{ br.total|naira }}</strong></div>
+    </div>
+  </section>
+
+  <aside class="ib-detail__side">
+    <section class="qa-card" aria-labelledby="br-facts-h">
+      <header class="qa-card__head"><div><h2 id="br-facts-h">Details</h2></div></header>
+      <div class="qa-card__body">
+        <dl class="ib-facts">
+          <div><dt>Institution</dt><dd>{{ br.institution.name }} <span class="qa-mono qa-muted">{{ br.institution.code }}</span></dd></div>
+          <div><dt>Items</dt><dd><ul class="ib-items">{% for i in br.items %}<li><span class="ib-flag {% if i.kind == 'reacc' %}ib-flag--has{% else %}ib-flag--new{% endif %}">{% if i.kind == "reacc" %}Re-accreditation{% elif i.kind == "new" %}New programme{% else %}Fee{% endif %}</span> {{ i.label }}{% if i.streams and i.streams > 1 %} · {{ i.streams }} streams{% endif %}</li>{% endfor %}</ul></dd></div>
+          <div><dt>Prepared by</dt><dd>{{ br.created_by.get_full_name|default:br.created_by.email|default:"—" }} · {{ br.created_at|date:"j M Y" }}</dd></div>
+          <div><dt>Reason</dt><dd>{{ br.reason|default:"—" }}</dd></div>
+          {% if br.decided_by %}<div><dt>Decided by</dt><dd>{{ br.decided_by.get_full_name|default:br.decided_by.email }} · {{ br.decided_at|date:"j M Y, H:i" }}</dd></div>{% endif %}
+        </dl>
+      </div>
+    </section>
+
+    {% if br.status == "awaiting_es" %}
+    <section class="qa-card ib-decide" aria-labelledby="br-decide-h">
+      <header class="qa-card__head"><div><h2 id="br-decide-h">{% icon "shield" 18 %} Executive Secretary's decision</h2><p>{% if can_decide %}Approving issues the bill, makes the payment slip and notifies {{ br.institution.name }}.{% else %}{{ decide_why }}{% endif %}</p></div></header>
+      {% if can_decide %}
+      <div class="qa-card__body qa-stack">
+        <form method="post" action="{% url 'qa_fin:bill_request_action' br.pk 'approve' %}" hx-post="{% url 'qa_fin:bill_request_action' br.pk 'approve' %}" hx-target="#qa-panel" class="qa-stack">{% csrf_token %}
+          <label class="qa-field"><span class="qa-label">Remark <span class="qa-muted">(optional)</span></span><input class="input" name="remark" maxlength="500"></label>
+          <button class="btn btn-primary" type="submit">{% icon "check" 16 "2.4" %} Approve &amp; send {{ br.total|naira }}</button>
+        </form>
+        <details class="ib-reject"><summary class="btn btn-subtle">{% icon "x" 16 %} Reject…</summary>
+          <form method="post" action="{% url 'qa_fin:bill_request_action' br.pk 'reject' %}" hx-post="{% url 'qa_fin:bill_request_action' br.pk 'reject' %}" hx-target="#qa-panel" class="qa-stack">{% csrf_token %}
+            <label class="qa-field"><span class="qa-label">Reason (the officer sees it)</span><textarea class="input" name="remark" rows="3" minlength="5" required></textarea></label>
+            <button class="btn btn-danger" type="submit">Reject bill</button>
+          </form></details>
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if br.status == "draft" or br.status == "awaiting_es" %}{% if is_mine or request.user.is_superuser %}
+    <section class="qa-card" aria-label="Your actions">
+      <div class="qa-card__body ib-send__actions">
+        {% if br.status == "draft" %}
+        <form method="post" action="{% url 'qa_fin:bill_request_action' br.pk 'submit' %}" hx-post="{% url 'qa_fin:bill_request_action' br.pk 'submit' %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "shield" 16 %} Send to ES for approval</button></form>
+        <a class="btn btn-subtle" href="{% url 'qa_fin:issue_bill' %}?draft={{ br.pk }}" hx-get="{% url 'qa_fin:issue_bill' %}?draft={{ br.pk }}" hx-target="#qa-panel" hx-push-url="true">{% icon "edit" 16 %} Edit</a>
+        {% endif %}
+        <form method="post" action="{% url 'qa_fin:bill_request_action' br.pk 'withdraw' %}" hx-post="{% url 'qa_fin:bill_request_action' br.pk 'withdraw' %}" hx-target="#qa-panel" hx-confirm="Withdraw {{ br.reference }}? Nothing is sent to the institution.">{% csrf_token %}<button class="btn btn-subtle" type="submit">{% icon "trash" 16 %} Withdraw</button></form>
+      </div>
+    </section>
+    {% endif %}{% endif %}
+  </aside>
+</div>

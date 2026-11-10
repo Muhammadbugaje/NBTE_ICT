@@ -1,55 +1,28 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 
 {% block title %}All requests · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}All requests{% endblock %}
 
 {% block content %}
-<div class="wf-page-head">
+<div class="wk-page" data-qa-area="requests">
+<header class="qa-hero nbte-hero wk-hero" data-qa-area="requests">
   <div>
+    <span class="qa-eyebrow">{% icon "layers" 14 "2.2" %} Requests · All departments</span>
     <h1>All requests</h1>
-    <p>Every request in the system, across all departments.</p>
+    <p>Every staff request in the system, across all departments and approval chains.</p>
+    <div class="qa-hero__actions">
+      <a href="{% url 'workflow:raise' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New request</a>
+      <a href="{% url 'workflow:office_requests' %}" class="btn btn-subtle">{% icon "building" 16 "2.2" %} Office requests</a>
+    </div>
   </div>
-</div>
-
-<div class="wf-kpis">
-  <a href="?status=all&department={{ dept_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}" class="wf-kpi">
-    <div class="wf-kpi-icon">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-    </div>
-    <div class="wf-kpi-body">
-      <div class="wf-kpi-num">{{ counts.all }}</div>
-      <div class="wf-kpi-label">Total</div>
-    </div>
-  </a>
-  <a href="?status=awaiting_approval&department={{ dept_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}" class="wf-kpi wf-kpi-warn">
-    <div class="wf-kpi-icon">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    </div>
-    <div class="wf-kpi-body">
-      <div class="wf-kpi-num">{{ counts.awaiting_approval }}</div>
-      <div class="wf-kpi-label">Awaiting</div>
-    </div>
-  </a>
-  <a href="?status=in_progress&department={{ dept_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}" class="wf-kpi wf-kpi-info">
-    <div class="wf-kpi-icon">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6l3-3"/><path d="M12 2v6l-3-3"/><circle cx="12" cy="14" r="8"/></svg>
-    </div>
-    <div class="wf-kpi-body">
-      <div class="wf-kpi-num">{{ counts.in_progress }}</div>
-      <div class="wf-kpi-label">In progress</div>
-    </div>
-  </a>
-  <a href="?status=completed&department={{ dept_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}" class="wf-kpi wf-kpi-success">
-    <div class="wf-kpi-icon">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-    </div>
-    <div class="wf-kpi-body">
-      <div class="wf-kpi-num">{{ counts.completed }}</div>
-      <div class="wf-kpi-label">Completed</div>
-    </div>
-  </a>
-</div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <a class="qa-stat qa-stat--link" href="?status=all&department={{ dept_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}"><strong>{{ counts.all|default:0 }}</strong><span>Total</span></a>
+    <a class="qa-stat qa-stat--link qa-stat--warn" href="?status=awaiting_approval&department={{ dept_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}"><strong>{{ counts.awaiting_approval|default:0 }}</strong><span>Awaiting</span></a>
+    <a class="qa-stat qa-stat--link qa-stat--info" href="?status=in_progress&department={{ dept_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}"><strong>{{ counts.in_progress|default:0 }}</strong><span>In progress</span></a>
+    <a class="qa-stat qa-stat--link qa-stat--success" href="?status=completed&department={{ dept_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}"><strong>{{ counts.completed|default:0 }}</strong><span>Completed</span></a>
+  </div>
+</header>
 
 <div class="wf-tabs">
   <a class="wf-tab {% if status_filter == 'all' %}active{% endif %}" href="?status=all&department={{ dept_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">
@@ -216,5 +189,6 @@
       {% endif %}
     </div>
   {% endif %}
+</div>
 </div>
 {% endblock %}

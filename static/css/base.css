@@ -48,10 +48,15 @@ body {
     scroll-behavior: auto !important;
   }
 }
-/* Same switch, forced from the in-app setting (html[data-motion="reduce"]) */
-:root[data-motion="reduce"] *,
-:root[data-motion="reduce"] *::before,
-:root[data-motion="reduce"] *::after {
+/* Same switch, forced from the in-app setting (A9: html[data-motion] is
+   full | reduced | off; "reduce" is the v2 value). "reduced" keeps the motion
+   kit's short fades (.m-page / .m-stagger children, motion.css). */
+:root:is([data-motion="off"], [data-motion="reduce"]) *,
+:root:is([data-motion="off"], [data-motion="reduce"]) *::before,
+:root:is([data-motion="off"], [data-motion="reduce"]) *::after,
+:root[data-motion="reduced"] :not(.m-page, .m-stagger > *),
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;

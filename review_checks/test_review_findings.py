@@ -32,6 +32,15 @@ from staff.models import Department, Staff
 
 pytestmark = pytest.mark.django_db
 
+# Phase 0 (T-TEST-1): these 15 reproduce bugs that are FIXED (see the contract
+# above), so they fail by design. strict=True: if one starts passing again the
+# bug is back and the suite goes red.
+OBSOLETE = pytest.mark.xfail(
+    strict=True,
+    reason="T-TEST-1: reproduces a 15 Oct 2026 review bug that has been fixed; "
+           "regression tests live in */test_fix_*.py",
+)
+
 
 @pytest.fixture
 def ict():
@@ -59,6 +68,7 @@ def login(client, u):
 
 
 # 1. Staff form "create account" crashes (auto Staff + OneToOne) -------------
+@OBSOLETE
 def test_staff_create_with_account_crashes(client, ict, roles):
     admin = mk("su@x.org", is_superuser=True, is_staff=True)
     login(client, admin)
@@ -72,6 +82,7 @@ def test_staff_create_with_account_crashes(client, ict, roles):
 
 
 # 2. Staff import: blank optional cell rejects the row; department ignored ----
+@OBSOLETE
 def test_staff_import_blank_phone_rejects_row(ict):
     from staff.imports import StaffImport
     res = StaffImport().run([{"employee_no": "E9", "first_name": "A", "last_name": "B",
@@ -79,6 +90,7 @@ def test_staff_import_blank_phone_rejects_row(ict):
     assert res.created == 0 and len(res.rejected) == 1, res.rejected
 
 
+@OBSOLETE
 def test_staff_import_department_is_dropped(ict):
     from staff.imports import StaffImport
     cols = {c.field: None for c in StaffImport.columns}
@@ -94,6 +106,7 @@ def test_staff_import_department_is_dropped(ict):
 
 
 # 3. Staff can edit their own attendance record ------------------------------
+@OBSOLETE
 def test_staff_can_mark_own_absence_present(client, ict, roles):
     from attendance.models import AttendanceRecord
     u = mk("staff@x.org", ict, roles["staff"])
@@ -106,6 +119,7 @@ def test_staff_can_mark_own_absence_present(client, ict, roles):
 
 
 # 4. Any role-holder in the owning department can edit/reassign assets --------
+@OBSOLETE
 def test_general_staff_can_change_department_asset_state(client, ict, roles):
     from assets.models import Asset, AssetCategory
     cat = AssetCategory.objects.create(name="Laptop", code="laptop")
@@ -119,6 +133,7 @@ def test_general_staff_can_change_department_asset_state(client, ict, roles):
 
 
 # 5. Adding a task dependency crashes (sliced queryset in ModelChoiceField) ---
+@OBSOLETE
 def test_add_dependency_crashes(client, ict, roles):
     from tasks.models import Task
     su = mk("su2@x.org", is_superuser=True)
@@ -130,6 +145,7 @@ def test_add_dependency_crashes(client, ict, roles):
 
 
 # 6. Workflow "internal" comments are shown to the requester ----------------
+@OBSOLETE
 def test_internal_workflow_comment_visible_to_requester(client, ict, roles):
     from workflow.models import ApprovalChain, Request, RequestCategory, RequestComment, RequestType
     req_user = mk("req@x.org", ict, roles["staff"])
@@ -147,6 +163,7 @@ def test_internal_workflow_comment_visible_to_requester(client, ict, roles):
 
 
 # 7. Ticket internal note text leaks to the raiser via the timeline ----------
+@OBSOLETE
 def test_ticket_internal_note_in_raiser_timeline(client, ict, roles):
     from tickets.models import TicketCategory
     from tickets import services as ts
@@ -173,6 +190,7 @@ def test_edit_roles_does_not_change_role(client, roles):
 
 
 # 9. Profile: changing email to an existing one -> server error -------------
+@OBSOLETE
 def test_profile_duplicate_email_500(client):
     mk("taken@x.org")
     u = mk("me@x.org")
@@ -184,6 +202,7 @@ def test_profile_duplicate_email_500(client):
 
 
 # 10. view_all_requests holder sees list but gets 403 on detail -------------
+@OBSOLETE
 def test_view_all_requests_holder_cannot_open_detail(client, ict, roles):
     from workflow.models import ApprovalChain, Request, RequestCategory, RequestType
     fin = Department.objects.create(name="Finance", code="finance")
@@ -201,6 +220,7 @@ def test_view_all_requests_holder_cannot_open_detail(client, ict, roles):
 
 
 # 11. A user with no department can assign themselves one ------------------
+@OBSOLETE
 def test_departmentless_user_can_pick_any_department(client, ict, roles):
     u = mk("nodept@x.org", None, roles["staff"])
     login(client, u)
@@ -213,6 +233,7 @@ def test_departmentless_user_can_pick_any_department(client, ict, roles):
 
 
 # 13. A user with change_user can reset a superuser's password -------------
+@OBSOLETE
 def test_change_user_holder_can_reset_superuser(client, ict, roles):
     from django.contrib.auth.models import Permission
     from accounts.models import UserPermissionOverride
@@ -230,6 +251,7 @@ def test_change_user_holder_can_reset_superuser(client, ict, roles):
 
 
 # 14. Weekly attendance summary can never send (Department has no head) ----
+@OBSOLETE
 def test_weekly_summary_never_sends(ict, roles):
     from attendance.models import AttendanceRecord
     from attendance.services import send_weekly_summary
@@ -242,6 +264,7 @@ def test_weekly_summary_never_sends(ict, roles):
 
 
 # 15. Kanban unexpected-error path references an undefined logger ----------
+@OBSOLETE
 def test_tasks_views_has_no_logger():
     import tasks.views as tv
     assert not hasattr(tv, "logger")
@@ -263,6 +286,7 @@ def test_memo_editable_while_awaiting(ict, roles):
 
 
 # 17. Uploaded .html attachment is served as text/html from our own origin --
+@OBSOLETE
 def test_html_attachment_is_public_text_html(client, ict, roles, settings):
     import mimetypes
     from workflow.models import ApprovalChain, Request, RequestCategory, RequestType

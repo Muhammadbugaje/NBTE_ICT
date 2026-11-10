@@ -1,0 +1,57 @@
+{% extends "email/base_email.html" %}
+{% comment %}SOP-03: invitation to a professional body or an external resource person once the ES approves the visit (accreditation.visit_invitations). kind: sent | resent | amended | reminder.{% endcomment %}
+{% block subject %}{% if kind == "amended" %}Amended invitation{% elif kind == "reminder" %}Reminder{% else %}Invitation{% endif %}: NBTE QA visit to {{ ctx.institution }}{% endblock %}
+{% block preheader %}{{ ctx.dates }} · {{ ctx.institution }}. Please confirm by {{ ctx.confirm_by }}.{% endblock %}
+{% block badge %}
+  <span style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;padding:5px 10px;border-radius:999px;">{% if kind == "amended" %}Dates changed{% elif kind == "reminder" %}Reminder{% else %}Visit invitation{% endif %}</span>
+{% endblock %}
+{% block header_title %}{% if kind == "amended" %}Amended invitation{% else %}QA visit invitation{% endif %}: {{ ctx.institution }}{% endblock %}
+{% block intro %}{% endblock %}
+{% block content %}
+  <tr>
+    <td style="padding:8px 30px 10px;font-size:14px;line-height:1.7;color:#0f172a;">
+      <p>Dear {% if is_body %}{{ inv.body.contact_person|default:"Registrar" }}{% else %}{{ inv.name }}{% endif %},</p>
+      {% if kind == "amended" %}<p><strong>The visit details have changed.</strong> The attached letter replaces our earlier invitation. Please confirm again.</p>{% endif %}
+      {% if kind == "reminder" %}<p>We have not yet received your confirmation for the visit below. Please confirm, or tell us if you cannot attend.</p>{% endif %}
+      {% if is_body %}
+      <p>The National Board for Technical Education will visit <strong>{{ ctx.institution }}</strong> for a joint quality-assurance exercise on programme(s) under {{ inv.name }}. You are invited to nominate a representative to join the NBTE team.</p>
+      {% else %}
+      <p>NBTE invites you to serve as a resource person on its quality-assurance visit to <strong>{{ ctx.institution }}</strong>.</p>
+      {% endif %}
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:0 30px 10px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;font-size:13px;line-height:1.5;color:#0f172a;">
+        <tr><td style="padding:10px 14px;color:#64748b;width:38%;">Dates</td><td style="padding:10px 14px;font-weight:600;">{{ ctx.dates }}</td></tr>
+        <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e2e8f0;">Venue</td><td style="padding:10px 14px;border-top:1px solid #e2e8f0;">{{ ctx.venue }}</td></tr>
+        <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e2e8f0;">Programme(s)</td><td style="padding:10px 14px;border-top:1px solid #e2e8f0;">{{ ctx.programmes }}</td></tr>
+        <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e2e8f0;">Team lead</td><td style="padding:10px 14px;border-top:1px solid #e2e8f0;">{{ ctx.team_lead }}</td></tr>
+        <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e2e8f0;">Please bring</td><td style="padding:10px 14px;border-top:1px solid #e2e8f0;">{{ ctx.what_to_bring|capfirst }}</td></tr>
+        <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e2e8f0;">NBTE contact</td><td style="padding:10px 14px;border-top:1px solid #e2e8f0;">{{ ctx.contact_officer }}{% if ctx.contact_email %}<br><a href="mailto:{{ ctx.contact_email }}" style="color:#0f766e;">{{ ctx.contact_email }}</a>{% endif %}{% if ctx.contact_phone %}<br>{{ ctx.contact_phone }}{% endif %}</td></tr>
+        <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e2e8f0;">Confirm by</td><td style="padding:10px 14px;border-top:1px solid #e2e8f0;font-weight:600;">{{ ctx.confirm_by }}</td></tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding:18px 30px 6px;">
+      <a href="{{ ctx.confirm_url }}" style="display:inline-block;background:#0f766e;color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;padding:12px 26px;border-radius:10px;">Confirm or reply</a>
+      <p style="margin:10px 0 0;font-size:12px;color:#64748b;">No sign-in needed. The link works until the last day of the visit.<br>If the button does not work, open: <a href="{{ ctx.confirm_url }}" style="color:#0f766e;word-break:break-all;">{{ ctx.confirm_url }}</a></p>
+    </td>
+  </tr>
+  {% if not is_body %}
+  <tr>
+    <td align="center" style="padding:8px 30px 14px;">
+      <a href="{{ ctx.portal_login_url }}" style="display:inline-block;background:#ffffff;color:#0f766e;border:1px solid #0f766e;font-weight:700;font-size:14px;text-decoration:none;padding:11px 22px;border-radius:10px;">Sign in to your resource-person portal</a>
+      <p style="margin:10px 0 0;font-size:12px;color:#64748b;">Your registered email is pre-filled. First time signing in? <a href="{{ ctx.portal_password_url }}" style="color:#0f766e;">Set your password securely</a>. Forgot it? Use the same link to request a reset email.</p>
+    </td>
+  </tr>
+  {% endif %}
+  <tr>
+    <td style="padding:14px 30px 26px;font-size:13px;line-height:1.6;color:#334155;">
+      {% if letter %}<p>The signed invitation letter is attached ({{ letter.reference }}). Anyone can check it is genuine by scanning its QR code or entering the code <strong>{{ letter.short_code }}</strong> on NBTE's verification page.</p>{% endif %}
+      <p>You can also answer on the NBTE portal under <strong>Visit invitations</strong>, or reply to {{ ctx.contact_officer }}.</p>
+      <p>NBTE Quality Assurance · case {{ ctx.case_reference }}</p>
+    </td>
+  </tr>
+{% endblock %}

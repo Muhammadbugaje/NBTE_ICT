@@ -5,7 +5,7 @@
 {% block page_title %}{{ dashboard_title }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/dashboards.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -29,15 +29,20 @@
     </div>
   </header>
 
+  {# v2.1 Phase E (L10): announcements on every staff dashboard #}
+  {% if work_rows %}<div class="ux-mb">{% include "partials/_work_inbox.html" %}</div>{% endif %}{# v2.3: your work, one click to each task #}
+  {% load announcement_tags %}{% announcements_panel %}
+
+  {% include "qa_core/_spotlight.html" %}
   {% if qa %}{% include "dashboards/_qa_overview.html" %}{% endif %}
 
-  <div class="dash-kpis">
+  <div class="dash-kpis m-stagger">
     <a href="#es-queue" class="dash-kpi">
       <div class="dash-kpi-icon dash-kpi-teal">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ kpis.es_pending }}</div>
+        <div class="dash-kpi-num" data-count="{{ kpis.es_pending }}">{{ kpis.es_pending }}</div>
         <div class="dash-kpi-lbl">ES sign-off pending</div>
       </div>
     </a>
@@ -46,7 +51,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ kpis.filing_queue }}</div>
+        <div class="dash-kpi-num" data-count="{{ kpis.filing_queue }}">{{ kpis.filing_queue }}</div>
         <div class="dash-kpi-lbl">Awaiting filing</div>
       </div>
     </a>
@@ -55,7 +60,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ kpis.pending }}</div>
+        <div class="dash-kpi-num" data-count="{{ kpis.pending }}">{{ kpis.pending }}</div>
         <div class="dash-kpi-lbl">System-wide pending</div>
       </div>
     </a>
@@ -82,13 +87,13 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </div>
       <div class="dash-kpi-body">
-        <div class="dash-kpi-num">{{ kpis.unread }}</div>
+        <div class="dash-kpi-num" data-count="{{ kpis.unread }}">{{ kpis.unread }}</div>
         <div class="dash-kpi-lbl">Unread for you</div>
       </div>
     </a>
   </div>
 
-  <div class="dash-grid dash-grid-1-1">
+  <div class="dash-grid dash-grid-1-1 m-stagger">
     <section class="dash-card" id="es-queue">
       <header class="dash-card-head">
         <div><h2>Awaiting your sign-off</h2><p>Requests currently on an ES approval step</p></div>
@@ -138,7 +143,7 @@
     </section>
   </div>
 
-  <div class="dash-grid dash-grid-2-1">
+  <div class="dash-grid dash-grid-2-1 m-stagger">
     <section class="dash-card">
       <header class="dash-card-head">
         <div><h2>Request activity — last 30 days</h2><p>Opened vs completed, daily</p></div>
@@ -183,7 +188,7 @@
       <header class="dash-card-head">
         <div><h2>Current leadership</h2><p>Executive positions and current holders</p></div>
       </header>
-      <div class="dash-grid dash-grid-1-1-1">
+      <div class="dash-grid dash-grid-1-1-1 m-stagger">
         {% for row in leadership %}
           <div class="dash-item cursor-default">
             <div class="dash-item-icon dash-item-icon-primary">
@@ -203,7 +208,8 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'vendor/chart-4.4.1.umd.js' %}"></script>
-  <script src="{% static 'js/qa-insights.js' %}?v=2" defer></script>
-  <script src="{% static 'js/charts.js' %}?v=1"></script>
+  {# v2.2: deferred (in order) so the 200 KB chart library never blocks the first paint #}
+  <script src="{% static 'vendor/chart-4.4.1.umd.js' %}" defer></script>
+  <script src="{% static 'js/charts.js' %}" defer></script>
+  <script src="{% static 'js/qa-insights.js' %}" defer></script>
 {% endblock %}

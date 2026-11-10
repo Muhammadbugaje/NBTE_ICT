@@ -1,0 +1,30 @@
+{% extends "qa_core/_shell.html" %}
+{% block qa_title %}Institution change requests{% endblock %}
+{% block qa_page_title %}Institution change requests{% endblock %}
+{% block panel %}
+<header class="qa-hero">
+  <div>
+    <span class="qa-eyebrow">Quality Assurance · Institution records</span>
+    <h1 data-qa-focus>Institution change requests</h1>
+    <p>Review and assign requests to change locked institution users or management records.</p>
+  </div>
+</header>
+<section class="qa-card">
+  <header class="qa-card__head"><div><h2>{% if can_assign %}All requests{% else %}Assigned to me{% endif %}</h2></div></header>
+  {% if requests %}
+  <div class="qa-table-wrap"><table class="qa-table">
+    <thead><tr><th>Reference</th><th>Institution</th><th>Change</th><th>Requested by</th><th>Reviewer</th><th>Status</th></tr></thead>
+    <tbody>{% for row in requests %}
+      <tr>
+        <td><a href="{% url 'qa_inst:change_request_detail' row.pk %}">{{ row.reference }}</a></td>
+        <td><a href="{% url 'qa_inst:detail' row.institution.code %}">{{ row.institution.name }}</a></td>
+        <td>{{ row.get_change_type_display }}</td>
+        <td>{{ row.requested_by.get_full_name|default:row.requested_by.email }}</td>
+        <td>{{ row.assigned_to.get_full_name|default:row.assigned_to.email|default:"Unassigned" }}</td>
+        <td>{{ row.get_status_display }}</td>
+      </tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="qa-empty"><h3>No requests to show</h3><p>New institution requests will appear here.</p></div>{% endif %}
+</section>
+{% endblock %}

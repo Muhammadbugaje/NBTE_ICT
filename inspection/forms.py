@@ -111,8 +111,14 @@ class QAPersonnelForm(QAForm):
 
 
 class CompleteVisitForm(QAForm):
-    actual_start = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), label="First day of the visit")
-    actual_end = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), label="Last day of the visit")
+    actual_start = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date", "readonly": "readonly"}),
+        label="First day of the visit",
+        help_text="Prefilled from the approved schedule. To move it, ask for a date change on the case page.")
+    actual_end = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date", "readonly": "readonly"}),
+        label="Last day of the visit",
+        help_text="Prefilled from the approved schedule (extend it only through an approved change).")
     absent = forms.MultipleChoiceField(required=False, widget=forms.CheckboxSelectMultiple,
                                        label="Did NOT attend", help_text="Tick anyone on the plan who did not go.")
 
@@ -190,6 +196,38 @@ class ReportForm(QAForm):
         return {k: self.cleaned_data.get(f"f_{k}", "") for k, _l, _h in REPORT_SECTIONS}
 
 
+class MemberReportForm(QAForm):
+    summary = forms.CharField(widget=forms.Textarea(attrs={"rows": 4}), required=False,
+                              label="Your findings summary")
+    recommendation = forms.ChoiceField(
+        choices=[("", "—")] + PostVisitReport.RECOMMENDATION_CHOICES, required=False,
+        label="Your recommendation")
+
+    def __init__(self, *args, member_report=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        for key, label, help_text in REPORT_SECTIONS:
+            self.fields[f"f_{key}"] = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), required=False,
+                                                      label=label, help_text=help_text)
+            if member_report is not None and not self.is_bound:
+                self.initial[f"f_{key}"] = (member_report.findings or {}).get(key, "")
+        if member_report is not None and not self.is_bound:
+            self.initial["summary"] = member_report.summary
+            self.initial["recommendation"] = member_report.recommendation
+        self.order_fields([f"f_{key}" for key, _label, _help in REPORT_SECTIONS]
+                          + ["summary", "recommendation"])
+
+    def findings(self):
+        return {key: self.cleaned_data.get(f"f_{key}", "") for key, _label, _help in REPORT_SECTIONS}
+
+
+class MemberReviewForm(QAForm):
+    action = forms.ChoiceField(choices=[("accept", "Accept"), ("return", "Return"), ("skip", "Skip")],
+                               widget=forms.HiddenInput)
+    content = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}), required=False,
+                              label="Team Lead decision note",
+                              help_text="A note is required when returning or skipping this attendee report.")
+
+
 class EndorseForm(QAForm):
     action = forms.ChoiceField(choices=[("endorse", "Endorse"), ("add_content", "Add content"),
                                         ("return", "Return")], widget=forms.HiddenInput)
@@ -199,9 +237,10 @@ class EndorseForm(QAForm):
 
     def clean(self):
         data = super().clean()
-        if data.get("action") in ("add_content", "return") and len((data.get("content") or "").strip()) < 3:
-            self.add_error("content", "Write the content to add." if data["action"] == "add_content"
-                           else "A return needs a remark.")
+        if data.get("action") in ("return", "skip") and len((data.get("content") or "").strip()) < 3:
+            action = data.get("action")
+            self.add_error("content", "A return needs a comment." if action == "return"
+                           else "A skip decision needs a note.")
         return data
 
 

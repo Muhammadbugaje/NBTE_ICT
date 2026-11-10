@@ -1,0 +1,17 @@
+{% if preview %}
+  {% if preview.error %}
+    <div class="lv-preview is-error" role="alert"><p>{{ preview.error }}</p></div>
+  {% else %}
+    <div class="lv-preview is-ok">
+      <dl>
+        <div><dt>First day</dt><dd>{{ preview.check.start_date|date:"D j M Y" }}</dd></div>
+        <div><dt>Last day</dt><dd>{{ preview.check.end_date|date:"D j M Y" }}</dd></div>
+        <div><dt>Counted</dt><dd>{{ preview.check.days }} {{ preview.day_unit }}</dd></div>
+        <div><dt>Back at work</dt><dd>{{ preview.resumption_date|date:"D j M Y" }}</dd></div>
+        {% if preview.balance_after is not None %}<div><dt>Left after this</dt><dd>{{ preview.balance_after|floatformat:"-2" }} days</dd></div>{% endif %}
+      </dl>
+    </div>
+  {% endif %}
+{% else %}
+  <div class="lv-preview"><p class="hrd-sub">Fill in the dates to see the last day, the days counted and when you are back.</p></div>
+{% endif %}

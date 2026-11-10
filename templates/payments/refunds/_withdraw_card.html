@@ -1,0 +1,13 @@
+{% load qa_tags %}
+{% if cancellation %}
+<section class="qa-card" aria-label="Cancellation"><div class="qa-card__body qa-stack">
+  <p class="qa-row qa-gap-sm">{% icon "rotate" 16 %} <strong>{% if cancellation.by_nbte %}Withdrawn by NBTE{% else %}Cancelled by the institution{% endif %}</strong> · {{ cancellation.created_at|date:"j M Y" }}</p>
+  <p class="qa-small">“{{ cancellation.reason }}” — {{ cancellation.stage_label }}</p>
+  {% if refund %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_fin:refund_request' refund.pk %}">Refund {{ refund.reference }} · {{ refund.refund_amount|naira }} · {{ refund.get_status_display }}</a>{% endif %}
+</div></section>
+{% elif can_withdraw %}
+<section class="qa-card" aria-label="Withdraw on NBTE's side"><div class="qa-card__body qa-stack">
+  <p class="qa-small">NBTE can withdraw this for reasons on its side: the workflow stops and {{ quote.refund_amount|naira }} ({{ quote.percent }}%) is refunded.</p>
+  <a class="btn btn-sm btn-subtle qa-btn-reject" href="{% url 'qa_fin:withdraw' kind subject.pk %}">{% icon "ban" 14 %} Withdraw (NBTE)…</a>
+</div></section>
+{% endif %}

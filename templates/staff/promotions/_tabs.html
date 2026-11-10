@@ -1,0 +1,12 @@
+{% comment %}Promotions tabs: Eligible / Overdue / All (one HTMX list) and History (its own page).{% endcomment %}
+<nav class="hr-tabs" aria-label="Promotion lists">
+  {% for key, label in tabs %}
+    {% if key == "history" %}
+      <a href="{% url 'staff:promotion_history' %}"{% if tab == "history" %} class="is-active" aria-current="page"{% endif %}>{{ label }}</a>
+    {% else %}
+      <a href="{% url 'staff:promotions' %}?tab={{ key }}"{% if tab == key %} class="is-active" aria-current="page"{% endif %}>
+        {{ label }}{% if counts %}{% for k, n in counts.items %}{% if k == key %} <span class="hr-tabs__n">{{ n }}</span>{% endif %}{% endfor %}{% endif %}
+      </a>
+    {% endif %}
+  {% endfor %}
+</nav>

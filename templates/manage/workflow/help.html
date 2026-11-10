@@ -4,35 +4,16 @@
 {% block title %}Workflow how-to · Management{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="wf-page wf-page-help">
-  {% include "manage/workflow/_tabs.html" %}
+  {% url 'workflow_manage:chain_create' as new_url %}
+  {% url 'workflow_manage:test' as test_url %}
+  {% include "partials/hero.html" with icon="help" eyebrow="Workflow management · Help" title="Build a workflow in 5 minutes" lede="Everything you need to know to design approval chains that work." action_url=new_url action_label="Start building" action_icon="plus" action2_url=test_url action2_label="Try the tester" action2_icon="search" %}
 
-  {# ==================== HERO ==================== #}
-  <header class="wf-help-hero">
-    <div class="wf-help-hero-inner">
-      <div class="wf-help-hero-icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      </div>
-      <div>
-        <h1>Build a workflow in 5 minutes</h1>
-        <p>Everything you need to know to design approval chains that actually work.</p>
-      </div>
-    </div>
-    <div class="wf-help-hero-actions">
-      <a href="{% url 'workflow_manage:chain_create' %}" class="btn btn-primary">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Start building
-      </a>
-      <a href="{% url 'workflow_manage:test' %}" class="btn btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        Try the tester
-      </a>
-    </div>
-  </header>
+  {% include "manage/workflow/_tabs.html" %}
 
   {# ==================== NAV PILLS ==================== #}
   <nav class="wf-help-pills" aria-label="Sections">

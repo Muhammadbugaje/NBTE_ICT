@@ -232,26 +232,22 @@ class DocumentSearchProvider(BaseSearchProvider):
     icon = "folder"
 
     def search(self, user, query, limit):
-        from portal import services as portal_services
+        # v2.1 Phase E (T-CONS-3): staff announcements live in the
+        # announcements app; the portal keeps public notices for the website.
+        from announcements.models import Announcement
 
-        qs = portal_services.published_documents(user=user).filter(
-            Q(title__icontains=query)
-            | Q(summary__icontains=query)
-            | Q(description__icontains=query)
-        )[:limit]
-
+        qs = (Announcement.objects.visible_to(user)
+              .filter(Q(title__icontains=query) | Q(body__icontains=query))
+              .order_by("-pinned", "-published_at")[:limit])
         out = []
-        for doc in qs:
+        for ann in qs:
             out.append({
-                "id": doc.pk,
-                "title": doc.title,
-                "url": self._url("portal:document_detail", doc.pk),
-                "meta": " · ".join(filter(None, [
-                    doc.category.name if doc.category_id else "",
-                    f"v{doc.current_version_number}" if doc.current_version_number else "",
-                ])),
-                "badge": "",
-                "snippet": self._clip(doc.summary or doc.description),
+                "id": ann.pk,
+                "title": ann.title,
+                "url": self._url("announcements:detail", ann.pk),
+                "meta": ann.published_at.strftime("%b %d, %Y") if ann.published_at else "",
+                "badge": ann.get_kind_display() if ann.kind != Announcement.NOTICE else "",
+                "snippet": self._clip(ann.body),
             })
         return out
 

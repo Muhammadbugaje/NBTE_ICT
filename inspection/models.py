@@ -11,9 +11,11 @@
   (flow ``inspection``).
 * ``PostVisitPersonnel`` — who actually went (*Override Post-Visit
   Personnel*); the ground truth for the service history.
-* ``PostVisitReport`` / ``ReportEndorsement`` — SOP-03 stage 12: one report
-  per programme, Division Head → Deputy Director → Director (flow
-  ``post_visit_report``; B14, B17).
+* ``PostVisitMemberReport`` — each present, eligible attendee's private
+  contribution, reviewed by the Team Lead before compilation.
+* ``PostVisitReport`` / ``ReportEndorsement`` — one Team Lead compilation per
+  programme, routed through the required active approvers without repeating
+  the Team Lead's authority (flow ``post_visit_report``; B14, B17).
 * ``ServiceRecord`` — the derived, append-only service history; corrections
   are compensating rows, never edits.
 
@@ -215,6 +217,12 @@ class QAMapping(InstitutionScopedModelMixin, TimeStampedModel):
     created_via = models.ForeignKey("qa_core.PendingAction", null=True, blank=True, on_delete=models.SET_NULL,
                                     related_name="+")
     released_at = models.DateTimeField(null=True, blank=True)
+    # v2.7: every mapping is visible to the whole case team; the handling
+    # department Director approves (or replaces) it, then the ES confirms.
+    director_approved_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    director_approved_at = models.DateTimeField(null=True, blank=True)
+    es_approved_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    es_approved_at = models.DateTimeField(null=True, blank=True)
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()
@@ -261,6 +269,8 @@ class SSQReviewAssignment(InstitutionScopedModelMixin, TimeStampedModel):
 
     class Meta:
         ordering = ["-assigned_at"]
+        # Phase B (B10/H3): explicit "see every department's SSQs" (ES, super admin).
+        permissions = [("view_all_ssq", "QA: can see SSQs of every department")]
 
     def __str__(self):
         return f"{self.reviewer} · SSQ {self.ssq_id}"
@@ -410,6 +420,19 @@ class PostVisitReport(InstitutionScopedModelMixin, TimeStampedModel):
     submitted_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     submitted_at = models.DateTimeField(null=True, blank=True)
     version = models.PositiveIntegerField(default=1)
+    # v2.1 X40 / v2.2: the structured visit report NBTE/QA/ICT/VVT/001.
+    FORM_REFERENCE = "NBTE/QA/ICT/VVT/001"
+    form_reference = models.CharField(max_length=40, blank=True)
+    sections = models.JSONField(default=dict, blank=True, help_text="Sections A–D of VVT/001.")
+    fines_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    fine_obligation = models.ForeignKey("payments.PaymentObligation", null=True, blank=True,
+                                        on_delete=models.SET_NULL, related_name="+")
+    gps_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    gps_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    gps_accuracy_m = models.PositiveIntegerField(null=True, blank=True)
+    gps_at = models.DateTimeField(null=True, blank=True)
+    gps_distance_km = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    gps_flag = models.BooleanField(default=False, help_text="Written far from the institution's recorded site.")
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()
@@ -429,6 +452,61 @@ class PostVisitReport(InstitutionScopedModelMixin, TimeStampedModel):
     @property
     def institution(self):
         return self.inspection.case.institution
+
+
+class PostVisitMemberReport(InstitutionScopedModelMixin, TimeStampedModel):
+    """One attendee's contribution to a programme's Team Lead compilation."""
+
+    AUDITED = True
+    INSTITUTION_PATH = "report__inspection__case__institution"
+    STATUS_CHOICES = [("draft", "Draft"), ("submitted", "Submitted to Team Lead"),
+                      ("accepted", "Accepted by Team Lead"), ("returned", "Returned for changes"),
+                      ("skipped", "Skipped by Team Lead")]
+
+    report = models.ForeignKey(PostVisitReport, on_delete=models.CASCADE, related_name="member_reports")
+    attendee = models.ForeignKey(PostVisitPersonnel, on_delete=models.CASCADE, related_name="member_reports")
+    author = models.ForeignKey(USER, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    findings = models.JSONField(default=dict, blank=True)
+    summary = models.TextField(blank=True)
+    recommendation = models.CharField(max_length=12, choices=PostVisitReport.RECOMMENDATION_CHOICES, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="draft", db_index=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.TextField(blank=True)
+    version = models.PositiveIntegerField(default=1)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["attendee_id", "pk"]
+        constraints = [models.UniqueConstraint(fields=["report", "attendee"], name="one_member_report_per_attendee")]
+
+    def __str__(self):
+        return f"{self.author} · {self.report}"
+
+
+class PostVisitMemberReview(AppendOnlyMixin, InstitutionScopedModelMixin, models.Model):
+    """Audit trail for each Team Lead accept/return decision."""
+
+    INSTITUTION_PATH = "member_report__report__inspection__case__institution"
+    ACTION_CHOICES = [("accept", "Accepted"), ("return", "Returned"), ("skip", "Skipped")]
+
+    member_report = models.ForeignKey(PostVisitMemberReport, on_delete=models.CASCADE, related_name="reviews")
+    action = models.CharField(max_length=8, choices=ACTION_CHOICES)
+    content = models.TextField(blank=True)
+    actor = models.ForeignKey(USER, null=True, on_delete=models.SET_NULL, related_name="+")
+    at = models.DateTimeField(default=timezone.now)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["at", "pk"]
+
+    def __str__(self):
+        return f"{self.get_action_display()} · {self.member_report}"
 
 
 class ReportEndorsement(AppendOnlyMixin, InstitutionScopedModelMixin, models.Model):

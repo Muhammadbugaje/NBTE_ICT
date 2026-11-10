@@ -4,10 +4,10 @@ Portrait card for leadership. Args: tenure (ExecutiveTenure), featured (bool, op
 <article class="lead-card {% if featured %}lead-card-featured{% endif %}">
   <div class="lead-card-frame">
     {% if tenure.photo_thumb_url %}
-      <img src="{{ tenure.photo_thumb_url }}" alt="{{ tenure.staff.full_name }}">
+      <img loading="lazy" decoding="async" src="{{ tenure.photo_thumb_url }}" alt="{{ tenure.person_name }}">
     {% else %}
       <span class="lead-card-initial">
-        {{ tenure.staff.first_name|slice:":1"|upper }}{{ tenure.staff.last_name|slice:":1"|upper }}
+        {{ tenure.person_initials }}
       </span>
     {% endif %}
 
@@ -19,12 +19,12 @@ Portrait card for leadership. Args: tenure (ExecutiveTenure), featured (bool, op
   </div>
 
   <div class="lead-card-body">
-    <h3 class="lead-card-name">{{ tenure.staff.full_name }}</h3>
+    <h3 class="lead-card-name">{{ tenure.person_name }}</h3>
     <p class="lead-card-role">{{ tenure.position.name }}</p>
 
     {% if tenure.position.department %}
       <p class="lead-card-dept">{{ tenure.position.department.name }}</p>
-    {% elif tenure.staff.department %}
+    {% elif tenure.staff and tenure.staff.department %}
       <p class="lead-card-dept">{{ tenure.staff.department.name }}</p>
     {% endif %}
 

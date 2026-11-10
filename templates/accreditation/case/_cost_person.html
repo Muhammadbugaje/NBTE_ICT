@@ -1,0 +1,7 @@
+{% load qa_tags %}{% comment %}The cost sheet's Person picker, ranked for the chosen rate (accreditation/visit_people.py).
+Re-rendered by qa_case:cost_people (hx-get) when the rate changes.{% endcomment %}
+<div class="c3-cost-add__person" id="cl-person-wrap">
+  {% if cost_external_only %}<p class="c3-hint">{% icon "users" 14 %}<span>{{ cost_rule_text }}</span></p>{% else %}
+  {% include "qa_core/partials/_person_picker.html" with pp_name="staff" pp_id="cl-staff" pp_label="Person (optional)" pp_people=cost_people pp_placeholder="No one in particular" pp_help=cost_rule_text %}{% endif %}
+  {% if cost_people_counts and not cost_external_only %}<p class="c3-cost-tally">{% if cost_people_counts.recommended %}<span class="is-good">{{ cost_people_counts.recommended }} recommended</span>{% endif %}<span>{{ cost_people_counts.available }} available</span>{% if cost_people_counts.busy %}<span class="is-warn">{{ cost_people_counts.busy }} busy</span>{% endif %}{% if cost_people_counts.away %}<span class="is-warn">{{ cost_people_counts.away }} on leave</span>{% endif %}{% if cost_people_counts.locked %}<span class="is-bad">{{ cost_people_counts.locked }} not allowed</span>{% endif %}<span class="c3-cost-tally__busy" aria-hidden="true">Updating…</span></p>{% endif %}
+</div>

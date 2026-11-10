@@ -127,7 +127,8 @@ def detail(task, user, request=None):
     closed = task.state in Task.CLOSED_STATES
 
     data = list_item(task, user, today)
-    comments = task.comments.select_related("author").order_by("created_at")
+    # Phase 0 (H18): internal notes only for the people involved (as on the web).
+    comments = services.visible_comments(task, user).select_related("author").order_by("created_at")
     data.update({
         "description": task.description or "",
         "start_date": task.start_date,
@@ -150,6 +151,7 @@ def detail(task, user, request=None):
             "note": r.note or "", "assigned_by": user_ref(r.assigned_by), "assigned_at": iso(r.assigned_at),
             "accepted_at": iso(r.accepted_at), "started_at": iso(r.started_at),
             "completed_at": iso(r.completed_at),
+            "review_state": r.review_state, "review_note": r.review_note or "",
         } for r in task.assignee_rows.select_related("user", "assigned_by").order_by("assigned_at")],
         "subtasks": [list_item(t, user, today) for t in
                      task.subtasks.select_related("category", "created_by", "owner_department")
@@ -169,13 +171,21 @@ def detail(task, user, request=None):
         "time_entries": [time_entry(e) for e in
                          task.time_entries.select_related("user").order_by("-started_at")[:20]],
         "running_timer": time_entry(running) if running else None,
-        "activity": [activity_ref(a) for a in task.activities.select_related("actor").order_by("created_at")],
+        "activity": [activity_ref(a) for a in services.visible_activities(task, user)
+                     .select_related("actor").order_by("created_at")],
         "qa_link_url": flags["qa_link_url"],
+        "division": ({"id": task.division_id, "name": task.division.name, "state": task.division_state}
+                     if task.division_id else None),
+        "linked_request": ({"id": task.linked_request_id, "reference": task.linked_request.reference}
+                           if task.linked_request_id else None),
     })
     actions = {k: flags[k] for k in (
         "is_creator", "is_assignee", "can_edit", "can_cancel", "can_delete", "can_review", "can_assign",
         "can_accept", "can_start", "can_reopen", "can_start_timer", "can_stop_timer", "can_ask",
-        "can_resume", "can_return", "can_mark_done", "can_resend", "can_comment", "can_attach")}
+        "can_resume", "can_return", "can_mark_done", "can_resend", "can_comment", "can_attach",
+        # Phase C
+        "can_accept_start", "can_confirm_parts", "can_confirm_all", "can_route_division",
+        "can_division_accept", "can_division_complete", "can_download_report")}
     actions["can_open"] = bool(flags["can_edit"] and task.state == Task.DRAFT and not flags["qa_link_url"])
     actions["can_log_time"] = bool(my_row is not None and not closed)
     data["actions"] = actions
@@ -297,12 +307,12 @@ def update(task, user, changes):
 
 def add_assignees(task, user, user_ids):
     """tasks.views.task_assign: add each, report the ones skipped."""
-    from accounts.models import User
+    from accounts.selectors import staff_users
     from tasks import services
 
     added, skipped = [], []
     for uid in dict.fromkeys(user_ids):
-        u = User.objects.filter(pk=uid, is_active=True).first()
+        u = staff_users().filter(pk=uid).first()  # Phase 0 (H22)
         if u is None:
             skipped.append(f"user {uid} not found")
             continue
@@ -348,7 +358,7 @@ def people(user, q="", category_id=None, task=None):
 def person(u):
     from tasks import services
 
-    used, cap, remaining = services.capacity_for_user(u)
+    used, cap, remaining = services.capacity_for_user(u)  # open_load annotation: no query (T-PERF-1)
     ref = user_ref(u)
     return {**ref, "email": u.email or "", "role": u.role.name if u.role_id else "",
             "department": u.department.name if u.department_id else "", "used": used, "max": cap,

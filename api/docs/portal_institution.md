@@ -315,7 +315,9 @@ closed at the moment. The next window will be announced.").
 
 → 200 (as GET). 400 when the declaration is missing or `blockers` is not empty
 (the messages come back in `fields.non_field_errors`). 404 when there is no
-application.
+application. 403 `permission_denied` when the account is not the Chief Executive
+(v2.1 X12: only the Chief Executive submits applications, programmes, QA
+requests and SSQs; `is_chief_executive` in the GET payload says which).
 
 ### Programme selection (only at stage `programme_selection`; else 403)
 
@@ -324,6 +326,13 @@ application.
 * PATCH `application/programmes/<id>/` `{"streams": "3"}` → 200; 400 `fields.streams`.
 * DELETE `application/programmes/<id>/` → 200 (as GET).
 * Only `proposed` programmes can be changed (403 otherwise); another institution's programme → 404.
+* Programmes NBTE has cleared stay locked when a list is returned (403).
+* POST `application/programmes/submit/` (Chief Executive only, else 403) → 200 (as GET): sends the list to
+  the programme-clearance department (NTIRD by default, `qa.onboarding.programme_clearance_department`).
+  `programme_submission` in the GET payload carries `can_submit`, `blockers`, `chief_executive_only`,
+  `count`, `streams`, `department`, `expected_time`, `round` and each programme's `state`
+  (`draft | pending | cleared | returned`, with the `remark` of a returned one). When every programme is
+  cleared, the programme processing fee appears under `fees`.
 
 ---
 
@@ -485,7 +494,7 @@ The whole questionnaire at once (store it for offline drafting):
        "placeholder": "", "width": "full", "validation": {}, "options": [], "value": {"12": "3"},
        "prefilled": false, "edited": false, "multiple": false, "document_kind": "", "columns": null,
        "min_rows": null, "max_rows": null,
-       "items": [{"id": 12, "name": "Oscilloscope", "unit": "no.", "required_quantity": "2.00", "quantity": "3"}],
+       "items": [{"id": 12, "name": "Oscilloscope", "unit": "no.", "quantity": "3"}],
        "evidence": null, "reusable_documents": null},
       {"key": "staff_list", "type": "file", "label": "Staff list", "required": true, "help": "", "placeholder": "",
        "width": "full", "validation": {}, "options": [], "value": null, "prefilled": true, "edited": false,

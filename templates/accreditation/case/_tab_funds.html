@@ -1,6 +1,6 @@
 {% load qa_tags %}
 <section class="qa-card" aria-labelledby="fr-h">
-  <header class="qa-card__head"><div><h2 id="fr-h">Fund release</h2><p>Requested when the ES approves the visit (stage 10). The Pay Officer records the payment voucher and confirms the release (stage 11).</p></div>
+  <header class="qa-card__head"><div><h2 id="fr-h">{% if can_release and focus == "request_fund_release" %}Step 1 · Record fund release{% else %}Fund release{% endif %}</h2><p>Requested when the ES approves the visit (stage 10). The Pay Officer records the payment voucher and confirms the release (stage 11).</p></div>
     {% if release %}<span class="qa-chip {{ release.status|tone }}">{{ release.get_status_display }}</span>{% endif %}</header>
   <div class="qa-card__body qa-stack">
     {% if release %}
@@ -12,9 +12,9 @@
       </dl>
       {% if can_release %}
       <form class="qa-inline-form" method="post" action="{% url 'qa_case:release' case.pk %}" hx-post="{% url 'qa_case:release' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="funds">
-        <div class="qa-field"><label for="fr-ref">Payment / voucher reference</label><input class="input" id="fr-ref" name="reference" value="{{ release.released_reference }}" required maxlength="80"></div>
+        <div class="qa-field"><label for="fr-ref">Payment / voucher reference <span class="qa-muted">(optional — leave blank and the system creates a unique one)</span></label><input class="input" id="fr-ref" name="reference" value="{{ release.released_reference }}" maxlength="80" placeholder="Leave blank to generate, e.g. NBTE/FR/2026/DPAP/00001"></div>
         <div class="qa-field"><label for="fr-remark">Remark <span class="qa-muted">(optional)</span></label><input class="input" id="fr-remark" name="remark" value="{{ release.remark }}"></div>
-        <button class="btn btn-primary" type="submit">Save reference</button>
+        <button class="btn btn-primary" type="submit">Save reference</button><span class="qa-small qa-muted">Then confirm the release in Step 2 below.</span>
       </form>
       {% endif %}
     {% else %}<p class="qa-muted">No release yet — it is requested when the ES approves the visit.</p>{% endif %}

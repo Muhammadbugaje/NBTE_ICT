@@ -1,12 +1,18 @@
 {% extends base_template %}
-{% load static %}
+{% load static qa_tags %}
 {% block title %}Account settings · {{ portal_name }}{% endblock %}
 {% block content %}
 <div class="qa-portal-page qa-portal-page--narrow">
   <header class="qa-page-head">
-    <span class="qa-eyebrow">Your account</span>
+    <span class="qa-eyebrow">{% icon "key" 14 "2.2" %} Your account</span>
     <h1 data-qa-focus>Account settings</h1>
-    <p>Your name, sign-in details and password for the QA portal.</p>
+    <p>Your name, sign-in details, password, notifications and the devices you are signed in on.</p>
+    <nav class="qa-hero__actions pp-actions" aria-label="Jump to">
+      <a class="btn btn-subtle btn-sm" href="#qa-profile-card">{% icon "edit" 14 %} Your name</a>
+      <a class="btn btn-subtle btn-sm" href="#qa-password-card">{% icon "lock" 14 %} Password</a>
+      <a class="btn btn-subtle btn-sm" href="#p9-notifications">{% icon "bell" 14 %} Notifications</a>
+      <a class="btn btn-subtle btn-sm" href="#qa-account-security">{% icon "shield" 14 %} Security</a>
+    </nav>
   </header>
 
   <div class="qa-stack">
@@ -34,7 +40,7 @@
     </div>
 
     {# Phase 9: notification settings, devices, passkeys, account deletion #}
-    <link rel="stylesheet" href="{% static 'css/account-security.css' %}?v=1">
+    <link rel="stylesheet" href="{% static 'css/account-security.css' %}">
     <div id="p9-notifications" class="p9-portal-block">
       <header class="p9-band-head">
         <h2>Notifications</h2>
@@ -43,14 +49,14 @@
       {% url 'qa_portal:account_notifications' as p9_notif_action %}
       {% include "notifications/_p9_preferences_form.html" with form=notification_form action=p9_notif_action disabled=p9_impersonating %}
     </div>
-    <div class="p9-portal-block">
+    <div class="p9-portal-block" id="qa-account-security">
       <header class="p9-band-head">
         <h2>Security &amp; privacy</h2>
         <p>Where you are signed in, passkeys for quick sign-in, and closing your account.</p>
       </header>
       {% include "accounts/_p9_security.html" %}
     </div>
-    <script src="{% static 'js/passkeys.js' %}?v=1" defer></script>
+    <script src="{% static 'js/passkeys.js' %}" defer></script>
   </div>
 </div>
 {% endblock %}

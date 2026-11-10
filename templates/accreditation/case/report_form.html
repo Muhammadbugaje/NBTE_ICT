@@ -1,0 +1,109 @@
+{% extends "qa_core/_shell.html" %}
+{% load qa_tags static %}
+{% block qa_title %}{{ template.name }} · {{ case.reference }}{% endblock %}
+{% block qa_page_title %}QA cases (SOP-03){% endblock %}
+{% block panel %}
+<div class="c3-page c3-rf">
+<nav class="qa-crumbs" aria-label="Breadcrumb">
+  <a href="{% url 'qa_case:detail' case.pk %}">{{ case.reference }}</a><span aria-hidden="true">/</span>
+  <a href="{% url 'qa_insp:report' report.pk %}">Post-visit report · {{ report.qa_request_programme.programme }}</a><span aria-hidden="true">/</span>
+  <span aria-current="page">{{ schema.form|default:template.name }}</span>
+</nav>
+<header class="qa-hero c3-hero c3-rf__hero">
+  <div class="c3-hero__id">
+    <span class="qa-eyebrow">{% icon "file" 14 "2.4" %} SOP-03 stage 12 · {{ schema.form|default:"Visit report" }} · template v{{ template.version }}</span>
+    <h1 data-qa-focus>{{ template.name }}</h1>
+    <div class="c3-hero__meta">
+      {% if can_view_data %}<span class="qa-chip {% if form.status == 'submitted' %}qa-tone-success{% else %}qa-tone-warn{% endif %}">{{ form.get_status_display }}</span>{% else %}<span class="qa-chip qa-tone-pending">Locked</span>{% endif %}
+      <span>{% icon "building" 14 %} {{ case.institution.name }}</span>
+      {% if is_evaluation %}<span>{% icon "layers" 14 %} {{ report.qa_request_programme.programme }}</span>{% else %}<span>{% icon "layers" 14 %} {{ inspection.reference }} · all programmes</span>{% endif %}
+      {% if can_view_data and form.last_saved_at %}<span>{% icon "clock" 14 %} Saved {{ form.last_saved_at|date:"j M Y, H:i" }}</span>{% endif %}
+      {% if not is_evaluation %}<span class="qa-chip {% if ict_assignees %}qa-tone-info{% else %}qa-tone-warn{% endif %}">{% icon "user" 12 %} Assigned ICT officer: {{ assigned_ict }}</span>{% endif %}
+    </div>
+    <div class="qa-hero__actions">
+      <a class="btn btn-subtle" href="{% url 'qa_case:detail' case.pk %}?tab=reports">{% icon "back" 16 %} Back to the case</a>
+      {% if can_view_data %}
+      <a class="btn btn-primary" href="{% url 'qa_case:report_form_pdf' case.pk report.pk kind %}" target="_blank" rel="noopener">{% icon "eye" 16 %} Preview PDF</a>
+      <a class="btn btn-subtle" href="{% url 'qa_case:report_form_pdf' case.pk report.pk kind %}?download=1">{% icon "download" 16 %} Download PDF</a>
+      {% endif %}
+    </div>
+  </div>
+</header>
+{% if saved == "submitted" %}<div class="qa-callout qa-callout--success" role="status"><div><strong>Submitted.</strong>{% if is_evaluation %} The recommendation, findings and summary were written onto the post-visit report; submit it to the Division Head from the report page.{% endif %}</div></div>{% elif saved %}<div class="qa-callout" role="status"><div>Draft saved.</div></div>{% endif %}
+{% if issue_count or general_problem %}<div class="qa-callout qa-callout--warn" role="alert"><div><strong>Not {% if problems %}submitted{% else %}saved{% endif %}.</strong>{% if issue_count %} {{ issue_count }} field(s) need attention — highlighted below.{% endif %}{% if general_problem %} {{ general_problem }}{% endif %}</div></div>{% endif %}
+{% if not can_view_data %}
+<section class="qa-card" aria-labelledby="ict-lock">
+  <header class="qa-card__head"><div><h2 id="ict-lock">ICT verification is locked</h2>
+    <p>Only the assigned ICT officer, the Director of ICT, the Executive Secretary and a super administrator can complete this report. The CQAC member or Chairman may review it while holding the relevant decision stage.</p></div></header>
+  <div class="qa-card__body">
+    <p><strong>Assigned ICT officer:</strong> {{ assigned_ict }}</p>
+    <p class="qa-small qa-text-muted">The form contents and score are hidden from your account.</p>
+  </div>
+</section>
+{% else %}
+{% if schema.intro %}<p class="qa-help">{{ schema.intro }}</p>{% endif %}
+
+<div class="qa-cols c3-rf__cols">
+  <div class="qa-stack">
+    {% if not can_edit %}<div class="qa-callout" role="note"><div>Read-only: {{ edit_why }}</div></div>{% endif %}
+    <form class="qa-form" method="post" enctype="multipart/form-data" action="{% url 'qa_case:report_form' case.pk report.pk kind %}" novalidate>{% csrf_token %}
+      {% for section in sections %}
+      <section class="qa-card" aria-labelledby="rf-{{ section.key }}">
+        <header class="qa-card__head"><div><h2 id="rf-{{ section.key }}">{{ section.title }}</h2>{% if section.description %}<p>{{ section.description }}</p>{% endif %}</div></header>
+        <div class="qa-card__body"><div class="qa-fields">
+          {% for f in section.fields %}{% include "accreditation/case/_report_form_field.html" %}{% endfor %}
+        </div></div>
+      </section>
+      {% endfor %}
+      {% if can_edit %}
+      <div class="qa-form-actions">
+        <button class="btn btn-subtle" type="submit" name="op" value="save">Save draft</button>
+        <button class="btn btn-primary" type="submit" name="op" value="submit">{% icon "check" 16 %} Submit {% if is_evaluation %}and write onto the report{% else %}the ICT report{% endif %}</button>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+  <aside class="qa-stack">
+    {% if not is_evaluation %}
+    <section class="qa-card" aria-labelledby="rf-lock">
+      <header class="qa-card__head"><h2 id="rf-lock">Who may complete this</h2></header>
+      <div class="qa-card__body">
+        <p class="qa-small">This ICT verification is completed by the assigned ICT officer. The Director of ICT, the ES and a super administrator may also open it; the CQAC member or Chairman may review it while holding the relevant decision stage.</p>
+        <p><strong>{{ assigned_ict }}</strong></p>
+        {% if not can_edit %}<p class="qa-small qa-text-muted">{{ edit_why }}</p>{% endif %}
+      </div>
+    </section>
+    {% endif %}
+    <section class="qa-card" aria-labelledby="rf-score"><header class="qa-card__head"><h2 id="rf-score">Score</h2></header>
+      <div class="qa-card__body qa-stack">
+      {% if is_evaluation %}
+        <p><strong class="qa-big">{{ score.score|default:"—" }}{% if score.score %} %{% endif %}</strong><br><span class="qa-chip {% if score.outcome == 'full' %}qa-tone-success{% elif score.outcome == 'interim' %}qa-tone-warn{% elif score.outcome == 'denied' %}qa-tone-danger{% endif %}">{{ score.outcome_label }}</span></p>
+        {% if score.final and score.final != score.outcome %}<p class="qa-small">Panel's recommendation: <strong>{{ score.final_label }}</strong></p>{% endif %}
+        {% if score.report_recommendation %}<p class="qa-small">On the report: <strong>{{ score.report_recommendation|humanize_code }}</strong></p>{% endif %}
+        <div class="qa-table-wrap" role="region" aria-label="Score by section" tabindex="0"><table class="qa-table qa-table--compact qa-table--scroll"><thead><tr><th>Section</th><th class="qa-num">Weight</th><th class="qa-num">%</th></tr></thead><tbody>
+          {% for g in score.groups %}<tr><td>{{ g.label }}</td><td class="qa-num">{{ g.weight }}</td><td class="qa-num">{% if g.below_floor %}<strong class="qa-text-danger">{{ g.score }}</strong>{% else %}{{ g.score }}{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div>
+        {% if score.reasons %}<ul class="qa-small">{% for r in score.reasons %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+        {% if score.unrated %}<p class="qa-small qa-muted">{{ score.unrated|length }} item(s) not rated yet.</p>{% endif %}
+        <p class="qa-small qa-muted">{{ schema.scoring.notes }}</p>
+      {% else %}
+        <p><strong class="qa-big">{{ score.points|default:"0" }} / {{ score.max_points }}</strong> · {{ score.score|default:"—" }}{% if score.score %} %{% endif %}</p>
+        {% if score.band %}<p class="qa-small">{{ score.band }}</p>{% endif %}
+        <dl class="qa-dl">
+          <div><dt>Mandatory items not met</dt><dd>{{ score.mandatory_not_met|length }}</dd></div>
+          <div><dt>Critical / major / minor</dt><dd>{{ score.deficiencies.Critical }} / {{ score.deficiencies.Major }} / {{ score.deficiencies.Minor }}</dd></div>
+          <div><dt>Students per working workstation</dt><dd>{{ score.students_per_workstation|default:"—" }}</dd></div>
+          <div><dt>Units sampled</dt><dd>{{ score.sampled }}{% if score.sample_needed %} of at least {{ score.sample_needed }}{% endif %}</dd></div>
+          <div><dt>Computed N3</dt><dd>{{ score.computed_label }}</dd></div>
+        </dl>
+        {% if score.missing_evidence %}<p class="qa-small qa-text-danger">{{ score.missing_evidence|length }} score(s) without a valid evidence reference.</p>{% endif %}
+        <p class="qa-small qa-muted">{{ schema.scoring.notes }}</p>
+      {% endif %}
+      </div>
+    </section>
+  </aside>
+</div>
+{% endif %}
+</div>
+<script src="{% static 'js/report-form-tables.js' %}" defer></script>
+{% endblock %}

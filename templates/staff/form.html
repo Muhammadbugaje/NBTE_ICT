@@ -1,23 +1,20 @@
 {% extends "base.html" %}
-{% load static nominal_roll_tags %}
+{% load static nominal_roll_tags qa_tags %}
 
 {% block title %}{% if mode == "create" %}Add staff{% else %}Edit {{ staff.full_name }}{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{% if mode == "create" %}Add staff{% else %}Edit staff{% endif %}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/staff.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/staff.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="staff-page staff-page-narrow">
 
-  <a href="{% if staff %}{% url 'staff:detail' staff.pk %}{% else %}{% url 'staff:list' %}{% endif %}" class="staff-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Back
-  </a>
-
-  <header class="staff-hero">
+  <header class="qa-hero nbte-hero">
     <div>
+      <a class="nbte-hero__back" href="{% if staff %}{% url 'staff:detail' staff.pk %}{% else %}{% url 'staff:list' %}{% endif %}">{% icon "back" 14 "2.4" %} {% if staff %}{{ staff.full_name }}{% else %}Staff directory{% endif %}</a>
+      <span class="qa-eyebrow">{% icon "user" 14 "2.2" %} User management · NBTE staff</span>
       <h1>{% if mode == "create" %}Add a staff member{% else %}Edit {{ staff.full_name }}{% endif %}</h1>
       <p>{% if mode == "create" %}Create the directory record and optionally provision a login.{% else %}Update the directory record. State changes use the dedicated “Change state” action.{% endif %}</p>
     </div>
@@ -155,6 +152,16 @@
             {{ form.initial_password.errors }}
           </div>
         </div>
+        {% if form.role %}
+        <div class="staff-row mt-3">
+          <div class="staff-col staff-col-full">
+            {{ form.role.label_tag }}
+            {{ form.role }}
+            <span class="hint">{{ form.role.help_text }}</span>
+            {{ form.role.errors }}
+          </div>
+        </div>
+        {% endif %}
       </section>
     {% endif %}
 

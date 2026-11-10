@@ -47,7 +47,9 @@ def settings_index(request):
     # `editable_by`, dual control and locked keys. They are not listed here.
     entries = list(
         ConfigEntry.objects.exclude(key=ROLE_ENTITLEMENT_CONFIG_KEY)
-        .exclude(key__startswith="qa.")
+        .exclude(key__startswith="qa.").exclude(key__startswith="honoraria.")
+        # v2.1 A9: appearance rows live on Settings → Appearance
+        .exclude(key__startswith="appearance.").exclude(key="ui.legacy_css")
         .order_by("group", "key", "scope")
     )
     qa_settings_count = ConfigEntry.objects.filter(key__startswith="qa.").count()
@@ -172,6 +174,9 @@ def settings_save(request, pk):
     if entry.is_locked:
         messages.error(request, f"{entry.key} is fixed by policy and cannot be changed.")
         return redirect("config:settings")
+    if entry.key.startswith("appearance.") or entry.key == "ui.legacy_css":
+        messages.error(request, f"{entry.key} is managed on Settings → Appearance.")
+        return redirect("config:appearance")
     if entry.dual_control or entry.editable_by or entry.key.startswith("qa."):
         messages.error(request, f"{entry.key} is managed on Settings → QA.")
         return redirect("config:settings")
@@ -244,3 +249,136 @@ def send_test_email(request):
             f"Test email accepted by {provider} for {recipient}. Check the provider's delivery log for final status.",
         )
     return redirect("config:settings")
+
+
+# ---------------------------------------------------------------------------
+# v2.1 Phase A (A5/A6): favicon and Settings → Branding
+# ---------------------------------------------------------------------------
+def favicon(request):
+    """The app-icon slot as the browser icon: the SVG for built-ins (PNG
+    fallbacks 32/180/512 are linked in <head>), or the uploaded image."""
+    from django.http import FileResponse, HttpResponse, HttpResponseRedirect
+
+    from . import branding
+
+    snap = branding.active_logo("app_icon")
+    if snap is not None and snap.light_url and not snap.light_url.endswith(".svg"):
+        return HttpResponseRedirect(snap.light_url)
+    path = branding.BRAND_DIR / "nbte-app-icon.svg"
+    if snap is not None and snap.light_url.endswith(".svg"):
+        name = snap.light_url.rsplit("/", 1)[-1].split("?")[0]
+        candidate = branding.BRAND_DIR / name
+        if candidate.exists():
+            path = candidate
+    resp = HttpResponse(path.read_bytes(), content_type="image/svg+xml")
+    resp["Cache-Control"] = "public, max-age=86400"
+    return resp
+
+
+def favicon_ico(request):
+    from django.http import HttpResponseRedirect
+    from django.templatetags.static import static
+
+    return HttpResponseRedirect(static("img/brand/nbte-icon-32.png"))
+
+
+def _can_brand(user):
+    return user.is_authenticated and (user.has_perm("config.manage_branding")
+                                      or user.has_perm("config.change_configentry"))
+
+
+def _branding_context():
+    from . import branding
+    from .models import BrandLogo
+
+    logos = list(BrandLogo.objects.all())
+    slots = []
+    for code, label, where in branding.SLOTS:
+        slots.append({"code": code, "label": label, "where": where, "current": branding.slot_code(code),
+                      "markup": branding.active_logo_markup(code, 56 if code != "wordmark" else 40)})
+    cards = [{"logo": lg, "markup": branding.logo_markup(branding._snapshot_of(lg), 64 if not lg.is_wordmark else 40)}
+             for lg in logos if lg.image or lg.static_path]
+    return {"slots": slots, "cards": cards}
+
+
+@login_required
+def branding_page(request):
+    from django.core.exceptions import PermissionDenied
+
+    if not _can_brand(request.user):
+        raise PermissionDenied
+    return render(request, "config/branding.html", _branding_context())
+
+
+@login_required
+@require_POST
+def branding_select(request):
+    from django.core.exceptions import PermissionDenied
+
+    from core import audit
+
+    from . import branding
+    from .models import BrandLogo
+    from .registry import invalidate
+
+    if not _can_brand(request.user):
+        raise PermissionDenied
+    slot, code = request.POST.get("slot", ""), request.POST.get("code", "")
+    if slot not in {s[0] for s in branding.SLOTS} or not BrandLogo.objects.filter(code=code).exists():
+        messages.error(request, "Choose a valid logo and place.")
+    else:
+        entry, _ = ConfigEntry.objects.get_or_create(
+            key=f"brand.logo.{slot}", scope="global",
+            defaults={"value": code, "value_type": "str", "group": "Branding"})
+        old = entry.value
+        entry.value = code
+        entry.save()
+        invalidate(entry.key, entry.scope)
+        branding.invalidate()
+        audit.log("update", entry, actor=request.user, changes={"value": [old, code]}, note="brand logo chosen")
+        messages.success(request, f"{dict((s[0], s[1]) for s in branding.SLOTS)[slot]} updated.")
+    if request.headers.get("HX-Request"):
+        return render(request, "config/_branding_slots.html", _branding_context())
+    return redirect("config:branding")
+
+
+@login_required
+@require_POST
+def branding_upload(request):
+    from django.core.exceptions import PermissionDenied
+    from django.utils.text import slugify
+
+    from . import branding
+    from .models import BrandLogo
+
+    if not _can_brand(request.user):
+        raise PermissionDenied
+    name = (request.POST.get("name") or "").strip()[:80]
+    image, image_dark = request.FILES.get("image"), request.FILES.get("image_dark")
+    if not name or not image:
+        messages.error(request, "Give the logo a name and choose an image.")
+        return redirect("config:branding")
+    base = slugify(name)[:30] or "logo"
+    code, n = base, 2
+    while BrandLogo.objects.filter(code=code).exists():
+        code, n = f"{base}-{n}", n + 1
+    logo = BrandLogo(code=code, name=name, image=image, image_dark=image_dark or None,
+                     is_wordmark=bool(request.POST.get("is_wordmark")), order=100)
+    try:
+        from PIL import Image as _Image
+
+        with _Image.open(image) as im:
+            logo.aspect = round(im.width / max(1, im.height), 3)
+        image.seek(0)
+    except Exception:
+        messages.error(request, "That file is not an image we can read.")
+        return redirect("config:branding")
+    try:
+        logo.full_clean()
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+        return redirect("config:branding")
+    logo.save()
+    branding.invalidate()
+    messages.success(request, f"Uploaded {name}. Choose it for a place below.")
+    return redirect("config:branding")

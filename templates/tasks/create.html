@@ -1,21 +1,20 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load tasks_tags %}
 {% block title %}New task · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}New task{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=4">{% endblock %}
-{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=4" defer></script>{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}" defer></script>{% endblock %}
 
 {% block content %}
-<div class="tsk-page">
-  <header class="tsk-page-head">
+<div class="tsk-page wk-page wk-page--narrow" data-qa-area="tasks">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tasks">
     <div>
-      <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost mb-3">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        All tasks
-      </a>
+      <a class="nbte-hero__back" href="{% if locked_category %}{% url 'tasks:create' %}{% else %}{% url 'tasks:list' %}{% endif %}">{% icon "back" 14 "2.4" %} {% if locked_category %}Task categories{% else %}All tasks{% endif %}</a>
+      <span class="qa-eyebrow">{% icon "plus" 14 "2.4" %} Tasks · New task</span>
       <h1>{% if locked_category %}{{ locked_category.name }} task{% else %}New task{% endif %}</h1>
       <p>{% if locked_category %}{{ locked_category.description|default:"Fill in the details below." }}{% else %}Assign work, set priorities, and choose who reviews it. You can split into subtasks after saving.{% endif %}</p>
+      {% if locked_category %}<div class="wk-hero-meta">{% if locked_category.requires_review %}<span class="wk-chip">Review required</span>{% endif %}{% if locked_category.is_reusable %}<span class="wk-chip">Reusable</span>{% endif %}</div>{% endif %}
     </div>
   </header>
 
@@ -97,11 +96,11 @@
         {{ form.requires_review }}
         <span>Requires review before closing.</span>
       </label>
-      <label class="tsk-field mt-4">
+      <div class="tsk-field mt-4">
         <span class="tsk-field-label">Reviewer <span class="muted tsk-label-hint">(optional)</span></span>
-        {{ form.reviewer }}
-        <span class="tsk-field-hint">Leave blank to review it yourself.</span>
-      </label>
+        {% include "tasks/_assignee_picker.html" with picker_name="reviewer" picker_single=True picker_mode="reviewer" picker_initial_ids=form.reviewer.value|default_if_none:"" picker_initial_name="" picker_placeholder="Review it yourself" %}
+        <span class="tsk-field-hint">Search by name; the load badge shows how busy each person is. Leave empty to review it yourself.</span>
+      </div>
     </div>
 
     <div class="tsk-form-section">

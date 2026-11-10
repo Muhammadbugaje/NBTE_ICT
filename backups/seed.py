@@ -35,7 +35,7 @@ def placeholder_path():
 
 def seed():
     """Returns a dict of counts: grants, groups, destinations, directors."""
-    from accounts.models import GroupProfile, Role, User
+    from accounts.models import GroupProfile, Role
     from qa_core.departments import qa_department
 
     from .models import BackupDestination
@@ -64,7 +64,9 @@ def seed():
             out["grants"] += 1
     ict = qa_department("ict")
     if ict is not None:
-        for user in User.objects.filter(role__code="director", department=ict, is_active=True):
+        import org
+        director = org.director_of(ict)
+        for user in ([director] if director is not None else []):
             if not user.groups.filter(pk=group.pk).exists():
                 user.groups.add(group)
                 out["directors"] += 1

@@ -1,115 +1,229 @@
 {% extends base_template %}
-{% load qa_tags %}
+{% load qa_tags brand portal_journey_tags %}
 {% block title %}Dashboard · {{ portal_name }}{% endblock %}
 {% block content %}
-<div class="qa-portal-page">
-  <section class="qa-welcome" aria-labelledby="qa-welcome-title">
-    <div class="qa-welcome__text">
-      <span class="qa-eyebrow qa-welcome__eyebrow"><span class="qa-tile qa-tile--sm qa-tile--green" aria-hidden="true">{% icon "home" 15 "2.3" %}</span>{% if is_resource_person %}Resource person{% else %}Institution dashboard{% endif %}</span>
+<div class="qa-portal-page pp-page pp-dash">
+  {% if institution and not is_resource_person %}{% get_linear_journey institution as lj %}{% endif %}
+  {% include "qa_portal/payments/_welcome.html" %}
+
+  {# ---------- Hero: who you are, where you stand ---------- #}
+  <section class="pp-hero" aria-labelledby="qa-welcome-title">
+    <div class="pp-hero__main">
+      <span class="pp-hero__eyebrow">{% icon "home" 14 "2.3" %}{% if is_resource_person %}Resource person{% else %}Institution dashboard{% endif %}</span>
       <h1 id="qa-welcome-title" data-qa-focus>Welcome{% if request.user.first_name %}, {{ request.user.first_name }}{% endif %}</h1>
       <p>
         {% if is_resource_person %}
-          This is where NBTE will share the QA engagements you are invited to, with dates, programmes and what to submit.
-        {% elif institution.status == "proposed" or institution.status == "under_review" %}
-          Your institution is registering with NBTE. Complete your profile, upload your statutory documents and submit your application — NBTE's departments review it together, then your registration fee becomes payable.
+          This is where NBTE shares the quality assurance engagements you are invited to — dates, programmes and what to submit.
+        {% elif lj and not lj.complete %}
+          {% if lj.mine %}One thing needs you now — it is in the box just below.{% else %}Nothing needs you right now. NBTE is working on your file and will tell you when it is your turn.{% endif %}
+        {% elif next_state or action_items %}
+          {% if next_state.mine or not next_state and action_items %}One thing needs you now — it is just below. Everything else is listed further down.{% else %}Nothing needs you right now. NBTE is working on your file and will notify you when it is your turn.{% endif %}
         {% else %}
           Everything NBTE needs from your institution — and every decision it makes — shows up here in plain language.
         {% endif %}
       </p>
+      {% if institution %}
+      <div class="pp-hero__meta">
+        <span class="pp-tag pp-tag--gold">{{ institution.code }}</span>
+        <span class="pp-tag">{{ institution.status_label }}</span>
+        {% if institution.handling_department and lj.show_departments %}<span class="pp-tag">Handled by <b>{{ institution.handling_department.name }}</b></span>{% endif %}
+        {% if application %}<span class="pp-tag"><a href="{% url 'qa_portal:application' %}" hx-boost="true" hx-target="#qa-main" hx-push-url="true">Application <b>{{ application.reference }}</b></a></span>{% endif %}
+      </div>
+      {% endif %}
     </div>
-    {% if institution %}
-      <dl class="qa-inst-card" aria-label="Your institution">
-        <div class="qa-inst-card__head">
-          <span class="qa-inst-card__code">{{ institution.code }}</span>
-          <span class="qa-chip {{ institution.status|tone }}">{{ institution.status_label }}</span>
-        </div>
-        <dt class="sr-only">Institution</dt>
-        <dd class="qa-inst-card__name">{{ institution.name }}</dd>
-        <dt>Handled by</dt>
-        <dd>{{ institution.handling_department.name }}</dd>
-        {% if application %}<dt>Application</dt><dd><a href="{% url 'qa_portal:application' %}">{{ application.reference }}</a></dd>{% endif %}
-      </dl>
+    {% if lj %}{# the journey card below carries the progress ring #}
+    {% elif journey %}
+      <div class="pp-ring" style="--p:{{ journey.pct }}" role="img" aria-label="{{ journey.pct }}% of your onboarding is done">
+        <span><b>{{ journey.pct }}%</b><small>onboarding<br>done</small></span>
+      </div>
     {% endif %}
   </section>
 
-  <div class="qa-dash-grid">
-    <section class="qa-card qa-dash-action" aria-labelledby="qa-action-title">
-      <header class="qa-card__head">
-        <div><h2 id="qa-action-title">Action required</h2><p>Things waiting for you — an application, a payment, a returned document.</p></div>
-        <span class="qa-chip {% if action_items %}qa-tone-warn{% else %}qa-chip--success{% endif %}">{{ action_items|length }}</span>
-      </header>
-      <div class="qa-card__body">
-        {% if action_items %}
-          <ul class="qa-action-items" role="list">
-            {% for a in action_items %}
-              <li class="qa-ai qa-ai--{{ a.tone }}"><div><strong>{{ a.title }}</strong><p>{{ a.body }}</p></div>
-                <a class="btn btn-sm {% if forloop.first %}btn-primary{% else %}btn-subtle{% endif %}" href="{{ a.url }}" hx-boost="true" hx-target="#qa-main" hx-push-url="true">{{ a.cta }}</a></li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <div class="qa-zero">
-            <span class="qa-zero__icon" aria-hidden="true">{% icon "check" 26 "2.2" %}</span>
-            <div><strong>Nothing needs your attention</strong><p>When NBTE needs something from you, it appears here and you get a notification.</p></div>
-          </div>
-        {% endif %}
+  {# ---------- The one linear journey: where you are and the one next thing ---------- #}
+  {% if lj %}
+  {% include "qa_portal/_journey.html" with j=lj %}
+  {% elif next_state %}{% with s=next_state %}
+  <section class="pp-next pp-next--{{ s.tone }}" aria-labelledby="pp-next-h">
+    <span class="pp-next__icon" aria-hidden="true">{% icon s.icon 26 "2.2" %}</span>
+    <div>
+      <div class="pp-next__kicker">{% if s.mine %}Your next step{% else %}What is happening now{% endif %}
+        <span class="pp-who{% if s.mine %} pp-who--you{% endif %}"><i aria-hidden="true">{% if s.mine %}✓{% else %}N{% endif %}</i>{% if s.mine %}{{ s.who }}{% else %}With {{ s.who }}{% endif %}</span>
+        {% if s.steps %}<span class="ux-muted" style="text-transform:none;letter-spacing:0;font-weight:600">Step {{ s.step }} of {{ s.steps }}</span>{% endif %}
       </div>
+      <h2 id="pp-next-h">{{ s.title }}</h2>
+      <p>{{ s.body }}</p>
+    </div>
+    <div class="pp-next__cta">
+      {% if s.cta_url %}
+        <a class="btn btn-primary btn-lg" href="{{ s.cta_url }}">{% icon s.cta_icon 18 "2.4" %} {{ s.cta_label }}</a>
+      {% else %}
+        <span class="pp-wait">Nothing to do now</span>
+      {% endif %}
+    </div>
+  </section>
+  {% endwith %}{% elif action_items %}{% with a=action_items.0 %}
+  <section class="pp-next pp-next--{% if a.tone == 'danger' %}red{% elif a.tone == 'warn' %}gold{% else %}green{% endif %}" aria-labelledby="pp-next-h">
+    <span class="pp-next__icon" aria-hidden="true">{% if a.tone == "danger" %}{% icon "alert" 26 "2.2" %}{% elif a.tone == "warn" %}{% icon "card" 26 "2.2" %}{% else %}{% icon "flag" 26 "2.2" %}{% endif %}</span>
+    <div>
+      <div class="pp-next__kicker">Your next step <span class="pp-who pp-who--you"><i aria-hidden="true">✓</i>You</span></div>
+      <h2 id="pp-next-h">{{ a.title }}</h2>
+      {% if a.body %}<p>{{ a.body|plain }}</p>{% endif %}
+    </div>
+    <div class="pp-next__cta"><a class="btn btn-primary btn-lg" href="{{ a.url }}">{% icon "arrow" 18 "2.4" %} {{ a.cta }}</a></div>
+  </section>
+  {% endwith %}{% elif institution %}
+  <section class="pp-next pp-next--green" aria-labelledby="pp-next-h">
+    <span class="pp-next__icon" aria-hidden="true">{% icon "check" 26 "2.4" %}</span>
+    <div>
+      <div class="pp-next__kicker">All caught up</div>
+      <h2 id="pp-next-h">Nothing needs you right now</h2>
+      <p>When NBTE needs something from {{ institution.name }}, it appears here first and you get a notification.</p>
+    </div>
+    <div class="pp-next__cta">{% if institution.status == "approved" %}<a class="btn btn-subtle" href="{% url 'qa_portal:qa_request_new' %}">{% icon "plus" 18 "2.4" %} New QA request</a>{% else %}<span class="pp-wait">Nothing to do now</span>{% endif %}</div>
+  </section>
+  {% endif %}
+  {% load memo_portal_tags %}{% portal_memo_callout institution %}
+
+  {# ---------- Journey ---------- #}
+  {% if institution and journey and not lj %}
+  <section class="pp-journey" aria-labelledby="pj-h">
+    <header class="pp-journey__head">
+      <h2 id="pj-h">Your journey with NBTE</h2>
+      <span>{% if journey.public_case %}{{ journey.public_case }}{% elif journey.current %}You are at: <strong>{{ journey.current }}</strong>{% else %}All onboarding steps are complete{% endif %}</span>
+    </header>
+    <ol class="pp-steps">{% for st in journey.steps %}
+      <li class="is-{{ st.state }}"{% if st.state == "current" %} aria-current="step"{% endif %}>
+        <span class="pp-steps__dot" aria-hidden="true">{% if st.state == "done" %}✓{% else %}{{ forloop.counter }}{% endif %}</span>
+        <strong>{{ st.label }}</strong>
+        {% if st.note %}<small>{{ st.note }}</small>{% endif %}
+        {% if st.state == "current" %}<span class="pp-here">You are here</span>{% endif %}
+      </li>{% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  {# ---------- At a glance ---------- #}
+  {% if kpis %}
+  <div class="ux-stats" role="list" aria-label="At a glance">{% for k in kpis %}
+    {% if k.url %}<a role="listitem" href="{{ k.url }}" hx-boost="true" hx-target="#qa-main" hx-push-url="true"{% else %}<div role="listitem"{% endif %}
+       class="ux-stat {% if k.tone == 'danger' %}ux-stat--red{% elif k.tone == 'warn' %}ux-stat--gold{% elif forloop.counter == 1 %}ux-stat--blue{% elif forloop.counter == 2 %}ux-stat--teal{% else %}ux-stat--violet{% endif %}">
+      <span class="ux-stat__label">{% if k.money %}{% icon "card" 15 "2.2" %}{% elif forloop.counter == 1 %}{% icon "layers" 15 "2.2" %}{% elif forloop.counter == 2 %}{% icon "shield" 15 "2.2" %}{% elif k.tone == "danger" or forloop.counter == 4 %}{% icon "alert" 15 "2.2" %}{% else %}{% icon "clock" 15 "2.2" %}{% endif %}{{ k.label }}</span>
+      <span class="ux-stat__value{% if k.money %} pp-money{% endif %}">{% if k.money %}{{ k.value|naira }}{% else %}{{ k.value }}{% endif %}</span>
+      {% if k.url %}<span class="ux-stat__hint">Open →</span>{% endif %}
+    {% if k.url %}</a>{% else %}</div>{% endif %}{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="ux-grid">
+    <section class="ux-card ux-card--accent ux-span-7" aria-labelledby="qa-action-title">
+      <header class="ux-card__head">
+        <div class="ux-card__title"><span class="ux-card__icon" style="background:var(--ux-gold-soft);color:#8a5d00">{% icon "flag" 18 "2.2" %}</span>
+          <div><h2 id="qa-action-title">Things to do</h2><p>Bills, returned documents and requests waiting for you.</p></div></div>
+        <span class="ux-chip {% if action_items %}ux-chip--gold{% else %}ux-chip--green{% endif %}">{{ action_items|length }}</span>
+      </header>
+      {% if action_items %}
+        <ul class="pp-todo" role="list" hx-boost="true" hx-target="#qa-main" hx-push-url="true">
+          {% for a in action_items %}
+            <li class="{% if forloop.first %}is-first{% endif %}">
+              <span class="ux-row__icon {% if a.tone == 'danger' %}ux-row__icon--red{% elif a.tone == 'warn' %}ux-row__icon--gold{% else %}ux-row__icon--blue{% endif %}" aria-hidden="true">{% if a.tone == "danger" %}{% icon "alert" 18 %}{% elif a.tone == "warn" %}{% icon "card" 18 %}{% else %}{% icon "arrow" 18 "2.4" %}{% endif %}</span>
+              <div><strong>{{ a.title }}</strong>{% if a.body %}<p>{{ a.body|plain }}</p>{% endif %}</div>
+              <a class="btn btn-sm {% if forloop.first %}btn-primary{% else %}btn-subtle{% endif %}" href="{{ a.url }}">{{ a.cta }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="pp-empty">
+          <span class="pp-empty__art" aria-hidden="true">{% icon "check" 30 "2.4" %}</span>
+          <strong>You are all caught up</strong>
+          <p>When NBTE needs something from you, it appears here and you get a notification.</p>
+        </div>
+      {% endif %}
     </section>
 
-    <section class="qa-card" aria-labelledby="qa-activity-title">
-      <header class="qa-card__head"><div><h2 id="qa-activity-title">Recent activity</h2><p>Your institution’s record with NBTE.</p></div>
-        {% if institution %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_portal:timeline' %}" hx-boost="true" hx-target="#qa-main" hx-push-url="true">All</a>{% endif %}</header>
-      <div class="qa-card__body">
-        {% if recent_activity %}
-          <ol class="qa-tl">{% for ev in recent_activity %}<li><span class="qa-tl__text">{{ ev.public_text }}</span><small><time datetime="{{ ev.at|date:'c' }}">{{ ev.at|date:"j M Y, H:i" }}</time></small></li>{% endfor %}</ol>
-        {% else %}
-          <p class="qa-muted qa-small">No activity yet. Applications, payments, visits and decisions will be listed here as they happen.</p>
-        {% endif %}
-      </div>
+    <section class="ux-card ux-span-5" aria-labelledby="qa-activity-title">
+      <header class="ux-card__head">
+        <div class="ux-card__title"><span class="ux-card__icon" style="background:color-mix(in srgb,#2f7cf6 12%,var(--surface));color:#1e5fc4">{% icon "clock" 18 "2.2" %}</span>
+          <div><h2 id="qa-activity-title">Recent activity</h2><p>Your record with NBTE, newest first.</p></div></div>
+        {% if institution %}<a class="pp-card-link" href="{% url 'qa_portal:timeline' %}" hx-boost="true" hx-target="#qa-main" hx-push-url="true">See all</a>{% endif %}
+      </header>
+      {% if recent_activity %}
+        <ol class="pp-feed">{% for ev in recent_activity %}<li><span>{{ ev.public_text|plain }}</span><small><time datetime="{{ ev.at|date:'c' }}">{{ ev.at|date:"j M Y, H:i" }}</time></small></li>{% endfor %}</ol>
+      {% else %}
+        <div class="pp-empty"><span class="pp-empty__art" aria-hidden="true">{% icon "clock" 28 %}</span><strong>No activity yet</strong><p>Applications, payments, visits and decisions are listed here as they happen.</p></div>
+      {% endif %}
     </section>
   </div>
 
   {% if institution %}
-  <div class="qa-dash-grid qa-mt">
-    <section class="qa-card" aria-labelledby="qa-prog-title">
-      <header class="qa-card__head"><div><h2 id="qa-prog-title">Programme status board</h2><p>{{ programme_count }} programme{{ programme_count|pluralize }} on NBTE's record.</p></div>
-        {% if institution.status == "approved" %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_portal:programme_board' %}" hx-boost="true" hx-target="#qa-main" hx-push-url="true">Open</a>{% endif %}</header>
-      <div class="qa-card__body">
-        {% if programme_board %}<div class="qa-board">{% for label, n in programme_board %}<div class="qa-board__item"><strong>{{ n }}</strong><span>{{ label }}</span></div>{% endfor %}</div>
-        {% else %}<p class="qa-small qa-muted">No programmes yet{% if institution.status == "proposed" or institution.status == "under_review" %} — you list them after your registration fee is confirmed{% endif %}.</p>{% endif %}
+  <div class="ux-grid">
+    <section class="ux-card ux-span-6" aria-labelledby="qa-prog-title">
+      <header class="ux-card__head">
+        <div class="ux-card__title"><span class="ux-card__icon" style="background:color-mix(in srgb,#7a55f0 12%,var(--surface));color:#5a35d0">{% icon "layers" 18 "2.2" %}</span>
+          <div><h2 id="qa-prog-title">Programmes</h2><p>{{ programme_count }} programme{{ programme_count|pluralize }} on NBTE's record.</p></div></div>
+        {% if institution.status == "approved" %}<a class="pp-card-link" href="{% url 'qa_portal:programme_board' %}" hx-boost="true" hx-target="#qa-main" hx-push-url="true">Open board</a>{% endif %}
+      </header>
+      {% if programme_board %}<div class="pp-board">{% for label, n in programme_board %}<div><strong>{{ n }}</strong><span>{{ label }}</span></div>{% endfor %}</div>
+      {% else %}<div class="pp-empty"><span class="pp-empty__art" aria-hidden="true">{% icon "layers" 28 %}</span><strong>No programmes yet</strong><p>{% if institution.status == "proposed" or institution.status == "under_review" %}You choose your programmes once NBTE has approved all your documents.{% else %}Programmes NBTE approves for you appear here.{% endif %}</p></div>{% endif %}
+    </section>
+    <section class="ux-card ux-span-6" aria-labelledby="qa-exp-title">
+      <header class="ux-card__head">
+        <div class="ux-card__title"><span class="ux-card__icon" style="background:var(--ux-gold-soft);color:#8a5d00">{% icon "clock" 18 "2.2" %}</span>
+          <div><h2 id="qa-exp-title">Upcoming expiries</h2><p>Accreditations ending in the next six months.</p></div></div>
+      </header>
+      {% if expiring %}<ul class="pp-todo" role="list">{% for p in expiring %}<li><span class="ux-row__icon ux-row__icon--gold" aria-hidden="true">{% icon "clock" 18 %}</span><div><strong>{{ p }}</strong><p>Expires {{ p.expiry_date|date:"j M Y" }} ({{ p.expiry_date|timeuntil }})</p></div><a class="btn btn-sm btn-subtle" href="{% url 'qa_portal:programme' p.pk %}">Open</a></li>{% endfor %}</ul>
+      {% else %}<div class="pp-empty"><span class="pp-empty__art" aria-hidden="true">{% icon "check" 28 "2.4" %}</span><strong>Nothing expires soon</strong><p>No accreditation ends in the next six months.</p></div>{% endif %}
+    </section>
+  </div>
+
+  <div class="ux-grid">
+    <section class="ux-card ux-span-6" aria-labelledby="pc-h">
+      <header class="ux-card__head">
+        <div class="ux-card__title"><span class="ux-card__icon">{% icon "building" 18 "2.2" %}</span>
+          <div><h2 id="pc-h">Your contacts at NBTE</h2><p>Who follows your institution.</p></div></div>
+      </header>
+      <div class="pp-contacts">
+        <div><span class="ux-row__icon" aria-hidden="true">{% icon "building" 18 %}</span><span><small>{% if lj.show_departments %}Department handling you{% else %}Who handles you{% endif %}</small><strong>{% if lj.show_departments %}{{ nbte_contacts.handling.name|default:"Being assigned" }}{% else %}NBTE Quality Assurance{% endif %}</strong></span></div>
+        {# NBTE policy (v2.1 X6): institutions never see individual officers' names. #}
+        <div><span class="ux-row__icon ux-row__icon--blue" aria-hidden="true">{% icon "shield" 18 %}</span><span><small>ICT support for your process</small><strong>{% if nbte_contacts.ict_officer %}An ICT officer is following your process{% else %}Being assigned{% endif %}</strong></span></div>
+        <div><span class="ux-row__icon ux-row__icon--gold" aria-hidden="true">{% icon "mail" 18 %}</span><span><small>Support</small><strong><a href="mailto:{{ site_info.email|default:'ict@nbte.gov.ng' }}">{{ site_info.email|default:"ict@nbte.gov.ng" }}</a></strong></span></div>
       </div>
     </section>
-    <section class="qa-card" aria-labelledby="qa-exp-title">
-      <header class="qa-card__head"><div><h2 id="qa-exp-title">Upcoming expiries</h2><p>Accreditations ending in the next six months.</p></div></header>
-      <div class="qa-card__body">
-        {% if expiring %}<ul class="qa-action-items" role="list">{% for p in expiring %}<li class="qa-ai qa-ai--warn"><div><strong><a href="{% url 'qa_portal:programme' p.pk %}">{{ p }}</a></strong><p>Expires {{ p.expiry_date|date:"j M Y" }} ({{ p.expiry_date|timeuntil }})</p></div></li>{% endfor %}</ul>
-        {% else %}<p class="qa-small qa-muted">Nothing expires in the next six months.</p>{% endif %}
-      </div>
+    <section class="ux-card ux-span-6" aria-labelledby="ph-h">
+      <header class="ux-card__head">
+        <div class="ux-card__title"><span class="ux-card__icon" style="background:var(--ux-gold-soft);color:#8a5d00">{% icon "help" 18 "2.2" %}</span>
+          <div><h2 id="ph-h">Help and guides</h2><p>Step-by-step — read online or download.</p></div></div>
+      </header>
+      <ul class="pp-guides">
+        <li><a href="{% url 'qa_portal:guide_read' 'starter' %}"><span aria-hidden="true">{% icon "home" 16 %}</span><span><strong>Starter guide</strong><small>Signing in, your dashboard, your record</small></span></a></li>
+        <li><a href="{% url 'qa_portal:guide_read' 'onboarding' %}"><span aria-hidden="true">{% icon "flag" 16 %}</span><span><strong>Onboarding</strong><small>Registration to approval</small></span></a></li>
+        <li><a href="{% url 'qa_portal:guide_read' 'qa-requests' %}"><span aria-hidden="true">{% icon "check" 16 %}</span><span><strong>QA requests</strong><small>Accreditation, new programmes, capacity</small></span></a></li>
+        <li><a href="{% url 'qa_portal:guide_read' 'payments' %}"><span aria-hidden="true">{% icon "card" 16 %}</span><span><strong>Payments</strong><small>Bills, online payment, receipts</small></span></a></li>
+        <li><a href="{% url 'qa_portal:how_to' %}"><span aria-hidden="true">{% icon "help" 16 %}</span><span><strong>How quality assurance works</strong><small>The public overview of every step</small></span></a></li>
+      </ul>
     </section>
   </div>
   {% endif %}
 
   {% if is_resource_person %}
-  <section aria-labelledby="qa-soon-title" class="qa-soon">
-    <h2 id="qa-soon-title" class="qa-soon__title">What you do here</h2>
-    <ul class="qa-soon__grid" role="list">
-      <li class="qa-soon__card"><span class="qa-soon__icon" aria-hidden="true">{% icon "clock" 22 %}</span><a href="{% url 'qa_portal:rp_engagements' %}" hx-get="{% url 'qa_portal:rp_engagements' %}" hx-target="#qa-main" hx-push-url="true"><strong>My engagements</strong></a><span>Visits and SSQ reviews you are mapped to, with dates.</span></li>
-      <li class="qa-soon__card"><span class="qa-soon__icon" aria-hidden="true">{% icon "file" 22 %}</span><a href="{% url 'qa_portal:rp_engagements' %}?status=released" hx-get="{% url 'qa_portal:rp_engagements' %}?status=released" hx-target="#qa-main" hx-push-url="true"><strong>Submit findings</strong></a><span>Your findings for each visit; the Team Lead folds them into the report.</span></li>
-      <li class="qa-soon__card"><span class="qa-soon__icon" aria-hidden="true">{% icon "sheet" 22 %}</span><a href="{% url 'qa_portal:rp_history' %}" hx-get="{% url 'qa_portal:rp_history' %}" hx-target="#qa-main" hx-push-url="true"><strong>Service history</strong></a><span>Every QA exercise you served on, and when.</span></li>
-    </ul>
-  </section>
+  <div class="pp-section-title"><h2 id="qa-soon-title">What you do here</h2></div>
+  <ul class="pp-tiles" role="list" aria-labelledby="qa-soon-title">
+    <li><a class="pp-tile pp-hue--teal" href="{% url 'qa_portal:rp_engagements' %}" hx-get="{% url 'qa_portal:rp_engagements' %}" hx-target="#qa-main" hx-push-url="true"><span class="pp-tile__ic" aria-hidden="true">{% icon "clock" 22 %}</span><span><strong>My engagements</strong><small>Visits and SSQ reviews you are mapped to, with dates.</small></span></a></li>
+    <li><a class="pp-tile pp-hue--blue" href="{% url 'qa_portal:rp_engagements' %}?status=released" hx-get="{% url 'qa_portal:rp_engagements' %}?status=released" hx-target="#qa-main" hx-push-url="true"><span class="pp-tile__ic" aria-hidden="true">{% icon "file" 22 %}</span><span><strong>Submit findings</strong><small>Your findings for each visit; the Team Lead folds them into the report.</small></span></a></li>
+    <li><a class="pp-tile pp-hue--slate" href="{% url 'qa_portal:rp_history' %}" hx-get="{% url 'qa_portal:rp_history' %}" hx-target="#qa-main" hx-push-url="true"><span class="pp-tile__ic" aria-hidden="true">{% icon "sheet" 22 %}</span><span><strong>Service history</strong><small>Every QA exercise you served on, and when.</small></span></a></li>
+    <li><a class="pp-tile pp-hue--green" href="{% url 'qa_portal:honoraria_earnings:list' %}"><span class="pp-tile__ic" aria-hidden="true">{% icon "card" 22 %}</span><span><strong>My earnings</strong><small>Visit allowances, payment status and receipt confirmations.</small></span></a></li>
+    <li><a class="pp-tile pp-hue--orange" href="{% url 'qa_portal:honoraria:my_bank' %}"><span class="pp-tile__ic" aria-hidden="true">{% icon "bank" 22 %}</span><span><strong>Payment details</strong><small>Add or confirm your own bank details securely.</small></span></a></li>
+  </ul>
   {% else %}
-  <section aria-labelledby="qa-go-title" class="qa-go">
-    <h2 id="qa-go-title" class="qa-go__title">Go to</h2>
-    <ul class="qa-go__grid" role="list" hx-boost="true" hx-target="#qa-main" hx-push-url="true">
-      {% for item in portal_nav %}{% if item.key != "dashboard" and item.key != "account" %}
-        <li><a class="qa-go__link" href="{{ item.url }}">
-          <span class="qa-tile qa-tile--md qa-tile--{{ item.hue }}" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">{{ item.icon|safe }}</svg></span>
-          <span class="qa-go__text"><strong>{{ item.label }}</strong>{% if item.blurb %}<small>{{ item.blurb }}</small>{% endif %}</span>
-          <svg class="qa-go__chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-        </a></li>
-      {% endif %}{% endfor %}
-    </ul>
-  </section>
+  <div class="pp-section-title"><h2 id="qa-go-title">Go to</h2><p>Every part of the portal, one tap away.</p></div>
+  <ul class="pp-tiles" role="list" aria-labelledby="qa-go-title" hx-boost="true" hx-target="#qa-main" hx-push-url="true">
+    {% for item in portal_nav %}{% if item.key != "dashboard" and item.key != "account" %}
+      <li><a class="pp-tile pp-hue--{{ item.hue }}" href="{{ item.url }}">
+        <span class="pp-tile__ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">{{ item.icon|safe }}</svg></span>
+        <span><strong>{{ item.label }}</strong>{% if item.blurb %}<small>{{ item.blurb }}</small>{% endif %}</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+      </a></li>
+    {% endif %}{% endfor %}
+  </ul>
   {% endif %}
 </div>
 {% endblock %}

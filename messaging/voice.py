@@ -187,6 +187,9 @@ def create_voice_note(thread, user, upload, *, duration_ms=None, reply_to_id=Non
     from . import chat_services
 
     participant = chat_services.get_participant(thread, user)
+    from .group_services import ensure_can_send
+
+    ensure_can_send(thread, participant)
     content_type = validate_upload(upload)
     reply_to = chat_services.resolve_reply_to(thread, user, reply_to_id)
     try:

@@ -82,6 +82,26 @@ class PaymentSlipView(APIView):
         return _detail(request, ob)
 
 
+class PaymentMethodView(APIView):
+    @extend_schema(operation_id="portal_payments_method", tags=TAG, request=sp.PaymentMethodSerializer,
+                   responses={200: sp.BillDetailSerializer, **ERR_400_404})
+    def post(self, request, pk):
+        """v2.1 F.4 (P9): choose how to pay (the other methods disappear), or
+        send a blank method to "Change method" (payments.services)."""
+        from payments import services
+
+        ob = _bill(request, pk)
+        if getattr(request._request, "is_impersonating", False):
+            raise Forbidden("Read-only while impersonating.")
+        data = body(sp.PaymentMethodSerializer, request)
+        with website_rules():
+            if data.get("method"):
+                services.choose_method(ob, data["method"], user=request.user)
+            else:
+                services.change_method(ob, user=request.user)
+        return _detail(request, ob)
+
+
 class PaymentOnlineView(APIView):
     @extend_schema(operation_id="portal_payments_online", tags=TAG, request=sp.OnlinePaymentSerializer,
                    responses={201: sp.CheckoutSerializer, **ERR_400_404})

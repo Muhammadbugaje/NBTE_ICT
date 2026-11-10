@@ -1,22 +1,26 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 {% load list_tags %}
 
 {% block title %}My assets · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}My assets{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/assets.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/assets.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="wf-page-head">
+<header class="qa-hero nbte-hero asset-qa-hero" data-qa-area="assets">
   <div>
+    <span class="qa-eyebrow">{% icon "box" 14 "2.2" %} Assets · Mine</span>
     <h1>My assets</h1>
     <p>Equipment currently assigned to you, plus your recent return history.</p>
+    <div class="qa-hero__actions">
+      <a href="{% url 'assets:scan' %}" class="btn btn-subtle">{% icon "qr" 15 "2.2" %} Scan an asset</a>
+      <a href="{% url 'assets:list' %}" class="btn btn-subtle">{% icon "list" 15 "2.2" %} All assets</a>
+    </div>
   </div>
-  <a href="{% url 'assets:list' %}" class="btn btn-ghost">All assets</a>
-</div>
+</header>
 
 {# ---------- Search form (HTMX) ---------- #}
 <form method="get"

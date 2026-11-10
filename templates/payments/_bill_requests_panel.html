@@ -1,0 +1,30 @@
+{% load qa_tags static %}
+<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
+{% with fin_tab="approvals" fin_title="Bill approvals" fin_lead="Bills Finance made by hand. Each waits for the Executive Secretary; only an approved bill is issued and sent to the institution. A rejected bill goes back to the officer with the reason." %}
+{% include "payments/_fin_hero.html" %}{% include "payments/_fin_nav.html" %}{% endwith %}
+{% if hero.is_es and counts.awaiting_es %}{% include "qa_core/partials/_callout.html" with kind="info" title="Waiting for you" message="Open a bill to see its items and lines, then approve or reject it." %}{% endif %}
+<section class="qa-card" aria-label="Bill requests">
+  <nav class="ib-statustabs" aria-label="Status">
+    {% for v, l in tabs %}<a href="?status={{ v }}" hx-get="?status={{ v }}" hx-target="#qa-panel" hx-push-url="true" class="{% if status == v %}is-active{% endif %}"{% if status == v %} aria-current="true"{% endif %}>{{ l }}{% if v == "all" %}{% else %}{% for k, n in counts.items %}{% if k == v %} <b>{{ n }}</b>{% endif %}{% endfor %}{% endif %}</a>{% endfor %}
+  </nav>
+  <form class="qa-toolbar" role="search" method="get" hx-get="{% url 'qa_fin:bill_requests' %}" hx-target="#qa-panel" hx-push-url="true" hx-trigger="input changed delay:400ms from:find input[type=search], submit">
+    <input type="hidden" name="status" value="{{ status }}">
+    <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ q }}" placeholder="Reference, institution name or code" autocomplete="off"></label>
+    {% if status == "awaiting_es" and awaiting_total %}<span class="qa-small qa-muted">Total awaiting approval: <strong>{{ awaiting_total|naira }}</strong></span>{% endif %}
+  </form>
+  {% if page.rows %}
+  <ul class="qa-rowlist" role="list">
+    {% for r in page.rows %}
+    <li><a class="qa-rowlink" href="{% url 'qa_fin:bill_request' r.pk %}" hx-get="{% url 'qa_fin:bill_request' r.pk %}" hx-target="#qa-panel" hx-push-url="true">
+      <span class="qa-rowlink__badge qa-rowlink__badge--money">₦</span>
+      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.institution.name }} — {{ r.description }}</span>
+        <span class="qa-rowlink__meta"><span class="qa-mono">{{ r.reference }}</span><span>· {{ r.lines|length }} line{{ r.lines|length|pluralize }}</span><span>· by {{ r.created_by.get_full_name|default:r.created_by.email|default:"—" }}</span><span>· {% if r.submitted_at %}sent {{ r.submitted_at|date:"j M Y" }}{% else %}saved {{ r.updated_at|date:"j M Y" }}{% endif %}</span>{% if r.obligation %}<span>· issued as <span class="qa-mono">{{ r.obligation.reference }}</span></span>{% endif %}</span></span>
+      <span class="qa-rowlink__side"><span class="qa-rowlink__amount">{{ r.total|naira }}</span><span class="qa-chip {{ r.tone }}">{{ r.get_status_display }}</span>{% if r.status == "awaiting_es" and hero.is_es %}<span class="btn btn-primary btn-sm">Review</span>{% endif %}</span></a></li>
+    {% endfor %}
+  </ul>
+  {% include "qa_core/partials/_pagination.html" with target="#qa-panel" %}
+  {% else %}
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">{% if status == "awaiting_es" %}Nothing is waiting for the Executive Secretary{% else %}No bills here{% endif %}</h3>
+    <p class="nbte-empty-state__body">{% if can_prepare %}<a href="{% url 'qa_fin:issue_bill' %}" hx-get="{% url 'qa_fin:issue_bill' %}" hx-target="#qa-panel" hx-push-url="true">Issue a bill</a> — it appears here when it is sent for approval.{% else %}Bills Finance sends for approval appear here.{% endif %}</p></div>
+  {% endif %}
+</section>

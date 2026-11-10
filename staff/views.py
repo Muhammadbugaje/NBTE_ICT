@@ -12,6 +12,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -60,7 +61,14 @@ def staff_list(request):
 
     page = Paginator(qs, 25).get_page(request.GET.get("page") or 1)
 
+    from . import role_ui, staff_id_styles
+    can_print_ids = request.user.has_perm("staff.print_staff_id")
+    can_manage_roles = role_ui.can_manage_roles(request.user)
     return render(request, "staff/list.html", {
+        "can_print_ids": can_print_ids,
+        "can_manage_roles": can_manage_roles,
+        "quick_actions": can_print_ids or can_manage_roles,
+        "id_styles": staff_id_styles.STYLES,
         "page": page,
         "search": search,
         "total": qs.count(),
@@ -83,9 +91,12 @@ def staff_detail(request, pk):
             "from_state", "to_state", "changed_by"
         )[:20]
 
+    tab = "access" if request.GET.get("tab") == "access" else "profile"
     return render(request, "staff/detail.html", {
         "staff": staff,
         "level": level,
+        "tab": tab,
+        **_role_context(request, staff, with_access=(tab == "access")),
         "history": history,
         "can_view_hr":      permissions.can_view_hr_fields(request.user, staff),
         "can_view_history": permissions.can_view_state_history(request.user, staff),
@@ -96,6 +107,125 @@ def staff_detail(request, pk):
         "can_notify":       permissions.can_notify_staff(request.user, staff),
         **_lifecycle_context(request, staff),
     })
+
+
+def _role_context(request, staff, with_access=False):
+    """B.8 (C1-C3): role chip, Access tab and the Manage role sheet."""
+    from accounts.permissions import can_act_on_user
+
+    from . import role_ui
+
+    user = request.user
+    account = staff.user if staff.user_id else None
+    can_see_access = bool(account) and (
+        permissions.can_view_hr_fields(user, staff) or account.pk == user.pk or role_ui.can_manage_roles(user))
+    can_manage_role = bool(account) and role_ui.can_manage_roles(user) and can_act_on_user(user, account) \
+        and account.pk != user.pk
+    return {
+        "account": account,
+        "can_print_id": bool(user.has_perm("staff.print_staff_id")),
+        "can_see_access": can_see_access,
+        "can_manage_role": can_manage_role,
+        "grantable_roles": role_ui.grantable_roles(user, account) if can_manage_role else [],
+        "access": role_ui.access_summary(account) if (with_access and can_see_access) else None,
+    }
+
+
+@login_required
+def staff_access(request, pk):
+    """The Access tab (read-only role + effective permissions) as an HTMX
+    fragment; a normal request gets the full profile on that tab."""
+    from qa_core import ui
+
+    staff = get_object_or_404(permissions.staff_visible_to(request.user), pk=pk)
+    if not ui.is_htmx(request):
+        return redirect(reverse("staff:detail", args=[pk]) + "?tab=access")
+    ctx = {"staff": staff, **_role_context(request, staff, with_access=True)}
+    if not ctx["can_see_access"]:
+        raise PermissionDenied
+    return render(request, "staff/_access_tab.html", ctx)
+
+
+@login_required
+@require_POST
+def staff_role(request, pk):
+    """Manage role (C2/C3): HTMX save through role_ui.role_assign."""
+    from accounts.models import Role
+    from qa_core import ui
+
+    from . import role_ui
+
+    staff = get_object_or_404(permissions.staff_visible_to(request.user), pk=pk)
+    if not staff.user_id:
+        raise Http404("No account")
+    raw = (request.POST.get("role") or "").strip()
+    role = Role.objects.filter(pk=int(raw)).first() if raw.isdigit() else None
+    error = ""
+    if raw and role is None:
+        error = "Choose a valid role."
+    else:
+        try:
+            role_ui.role_assign(staff.user, role, request.user, reason=request.POST.get("reason", ""))
+        except role_ui.RoleAssignError as exc:
+            error = str(exc)
+    staff.user.refresh_from_db()
+    if not ui.is_htmx(request):
+        (messages.error if error else messages.success)(
+            request, error or f"Role set to {staff.user.role.name if staff.user.role else 'none'}.")
+        return redirect(reverse("staff:detail", args=[pk]) + "?tab=access")
+    ctx = {"staff": staff, "oob_chip": True, **_role_context(request, staff, with_access=True)}
+    resp = render(request, "staff/_access_tab.html", ctx, status=422 if error else 200)
+    if error:
+        return ui.toast(resp, "error", "Role not changed", error)
+    return ui.toast(resp, "success", "Role saved",
+                    f"{staff.full_name} is now {staff.user.role.name if staff.user.role else 'without a role'}.")
+
+
+def _may_print_ids(user, staff_ids):
+    """E4: staff.print_staff_id prints anyone in scope; everyone may print their own."""
+    if user.has_perm("staff.print_staff_id"):
+        return True
+    own = Staff.objects.filter(user_id=user.pk).values_list("pk", flat=True).first()
+    return bool(own) and set(staff_ids) == {own}
+
+
+@login_required
+def staff_id_print(request):
+    """E3/E4: print page for one or many ID cards in a registry style.
+    GET ids=<pk>&ids=<pk>…&style=cr80|a4x8|badge. @page sets the paper size."""
+    from . import staff_id_styles
+
+    ids = [int(i) for i in request.GET.getlist("ids") if str(i).isdigit()][:staff_id_styles.MAX_CARDS]
+    if not ids:
+        raise Http404("Choose staff to print.")
+    if not _may_print_ids(request.user, ids):
+        raise PermissionDenied
+    staff = list(permissions.staff_visible_to(request.user).filter(pk__in=ids).order_by("last_name", "first_name"))
+    if not staff:
+        raise Http404
+    style = staff_id_styles.get_style(request.GET.get("style"))
+    cards = staff_id_styles.cards_for(staff, request)
+    from core import audit
+    for s in staff:
+        if s.user_id != request.user.pk:
+            audit.log("staff_id_print", s, actor=request.user, changes={"style": style.key})
+    resp = render(request, "staff/id_cards/print.html", {
+        "style": style, "cards": cards, "pages": staff_id_styles.pages_for(style, cards)})
+    resp["Cache-Control"] = "private, no-store"
+    return resp
+
+
+@login_required
+def staff_id_card(request, pk):
+    """E4: HR opens a colleague's ID card page (formats and print buttons)."""
+    from . import staff_id_styles
+
+    staff = get_object_or_404(permissions.staff_visible_to(request.user), pk=pk)
+    if not _may_print_ids(request.user, [staff.pk]):
+        raise PermissionDenied
+    card = staff_id_styles.cards_for([staff], request)[0]
+    return render(request, "accounts/staff_id.html", {
+        "card": card, "staff": staff, "own": False, "styles": staff_id_styles.STYLES})
 
 
 def _log_contact(request, staff, channel, subject, body):
@@ -117,6 +247,7 @@ def _lifecycle_context(request, staff):
     from accounts.scoping import scope_to_department
 
     from .models import Designation
+    from .promotions import can_override_step, eligibility, levels
 
     user = request.user
     can_promote = user.has_perm("staff.promote_staff") and scope_to_department(
@@ -134,8 +265,11 @@ def _lifecycle_context(request, staff):
         "show_promotions": show_promotions,
         "promotions": promotions,
         "qualification_list": quals,
-        "promotion_targets": Designation.objects.filter(is_active=True).order_by("-rank", "name")
-                             if can_promote else [],
+        "promotion_targets": (Designation.objects.filter(is_active=True).order_by("-rank", "name")
+                              if can_promote and can_override_step(user) else []),
+        "promotion_next": levels.next_level(staff) if can_promote else None,
+        "promotion_eligibility": eligibility(staff) if show_promotions else None,
+        "can_override_promotion": can_promote and can_override_step(user),
         "today": timezone.localdate(),
         "can_transfer": can_transfer,
         "transfer_departments": _transfer_choices(user, "department") if can_transfer else [],
@@ -185,6 +319,14 @@ def staff_create(request):
                     request, staff,
                     password=form.cleaned_data.get("initial_password") or None,
                 )
+                role = form.cleaned_data.get("role")
+                staff.refresh_from_db()
+                if role is not None and staff.user_id:
+                    from . import role_ui
+                    try:
+                        role_ui.role_assign(staff.user, role, request.user, reason="Set when the staff member was added")
+                    except role_ui.RoleAssignError as exc:
+                        messages.error(request, f"Role not set: {exc}")
 
             messages.success(request, f"{staff.full_name} was added to the directory.")
             return redirect("staff:detail", pk=staff.pk)
@@ -492,20 +634,9 @@ def staff_notify(request, pk):
 # LEADERSHIP (public)
 # ============================================================================
 def public_leadership(request):
-    """Public leadership page — current + full timeline."""
-    from . import services
-
-    current_federal  = services.current_leadership(scope=ExecutivePosition.SCOPE_FEDERAL)
-    current_board    = services.current_leadership(scope=ExecutivePosition.SCOPE_BOARD)
-    current_depts    = services.current_leadership(scope=ExecutivePosition.SCOPE_DEPARTMENTAL)
-    timeline         = services.positions_with_history(public_only=True)
-
-    return render(request, "staff/leadership/public.html", {
-        "current_federal": current_federal,
-        "current_board":   current_board,
-        "current_depts":   current_depts,
-        "timeline":        timeline,
-    })
+    """v2.1 T-CONS-4: the two leadership pages are merged into /leadership/
+    (current leaders first, then every previous holder). Old links redirect."""
+    return redirect("core:leadership_page", permanent=False)
 
 
 def leadership_tenure_detail(request, pk):
@@ -517,7 +648,7 @@ def leadership_tenure_detail(request, pk):
     # Other positions the same person has held
     other_tenures = (
         ExecutiveTenure.objects
-        .filter(staff=tenure.staff, is_public=True)
+        .filter(staff=tenure.staff, is_public=True, staff__isnull=False)
         .exclude(pk=tenure.pk)
         .select_related("position")
         .order_by("-started_on")
@@ -535,6 +666,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -723,7 +855,7 @@ def tenure_create(request):
             tenure = form.save()
             messages.success(
                 request,
-                f"Recorded “{tenure.position.name}” for {tenure.staff.full_name}.",
+                f"Recorded “{tenure.position.name}” for {tenure.person_name}.",
             )
             return redirect("staff:leadership_panel")
         messages.error(request, "Please fix the errors below.")
@@ -795,7 +927,7 @@ def tenure_end_now(request, pk):
     tenure.save(update_fields=["ended_on"])
     messages.success(
         request,
-        f"Ended “{tenure.position.name}” for {tenure.staff.full_name}.",
+        f"Ended “{tenure.position.name}” for {tenure.person_name}.",
     )
     return redirect("staff:leadership_panel")        
         

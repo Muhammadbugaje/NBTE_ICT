@@ -1,17 +1,87 @@
 {% load qa_tags %}
+<div class="c3-page c3-queuepage">
 <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">Case Board</a><span aria-hidden="true">/</span><span aria-current="page">My stage work</span></nav>
-<section class="qa-card" aria-labelledby="q-h">
-  <header class="qa-card__head"><div><h2 id="q-h" data-qa-focus>My stage work</h2><p>SOP-03 stages waiting on you{% if role %} ({{ role }}){% endif %}. The ES sees the cost and visit approvals here; the Pay Officer sees fund releases.</p></div></header>
-  <nav class="qa-tabs" aria-label="Kind of stage">{% for v, l in kinds %}<a href="?kind={{ v }}" hx-get="{% url 'qa_case:queue' %}?kind={{ v }}" hx-target="#qa-panel" hx-push-url="true" class="{% if kind == v %}is-active{% endif %}"{% if kind == v %} aria-current="page"{% endif %}>{{ l }}</a>{% endfor %}</nav>
-  <ul class="qa-rowlist" role="list">
+
+<header class="qa-hero sw-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "layers" 14 "2.2" %} QA cases · SOP-03</span>
+    <h1 data-qa-focus>My stage work</h1>
+    <p>The SOP-03 case work waiting on you{% if role %} as <strong>{{ role }}</strong>{% endif %}, including the desk-officer capacity assignment. The ES sees cost and visit approvals here; the Pay Officer sees fund releases. Open a task to continue in QA — overdue work is listed first.</p>
+    <div class="qa-hero__actions">
+      <a class="btn btn-primary" href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "layers" 16 "2.2" %} Case Board</a>
+      <a class="btn btn-subtle" href="{% url 'qa_case:board' %}?mine=1" hx-get="{% url 'qa_case:board' %}?mine=1" hx-target="#qa-panel" hx-push-url="true">{% icon "users" 16 "2.2" %} Cases I'm on</a>
+    </div>
+  </div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <a class="qa-stat qa-stat--link" href="{% url 'qa_case:queue' %}" hx-get="{% url 'qa_case:queue' %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.all }}</strong><span>Waiting on you</span></a>
+    <div class="qa-stat qa-stat--danger"><strong>{{ counts.overdue }}</strong><span>Overdue</span></div>
+    <div class="qa-stat qa-stat--warn"><strong>{{ counts.soon }}</strong><span>Due in 48 h</span></div>
+    <a class="qa-stat qa-stat--info qa-stat--link" href="{% url 'qa_case:queue' %}?kind=funds" hx-get="{% url 'qa_case:queue' %}?kind=funds" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.funds|default:0 }}</strong><span>Fund releases</span></a>
+  </div>
+</header>
+
+<section class="qa-card sw-card" aria-labelledby="sw-h">
+  <header class="qa-card__head">
+    <div><h2 id="sw-h">Stages</h2><p>Filter by kind of stage or search by institution, case or task reference.</p></div>
+  </header>
+  <form class="sw-toolbar" role="search" method="get" action="{% url 'qa_case:queue' %}"
+        hx-get="{% url 'qa_case:queue' %}" hx-target="#qa-panel" hx-push-url="true"
+        hx-trigger="input changed delay:400ms from:find input[type=search], submit" hx-sync="this:replace" data-qa-no-overlay>
+    <nav class="sw-seg" aria-label="Filter stages">
+      {% for v, l, n in kinds %}
+      <a href="?kind={{ v }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}" hx-get="{% url 'qa_case:queue' %}?kind={{ v }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}" hx-target="#qa-panel" hx-push-url="true"
+         class="sw-seg__item{% if kind == v %} is-active{% endif %}"{% if kind == v %} aria-current="page"{% endif %}>{{ l }} <span class="sw-count">{{ n }}</span></a>
+      {% endfor %}
+    </nav>
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <label class="qa-search sw-search"><span class="sr-only">Search my stages</span>{% icon "search" 16 "2.2" %}
+      <input class="input" type="search" name="q" value="{{ q }}" placeholder="Institution, case or task reference" autocomplete="off"></label>
+    <noscript><button class="btn btn-sm btn-subtle" type="submit">Apply</button></noscript>
+  </form>
+
+  {% if page.rows %}
+  <ul class="sw-list" role="list">
     {% for link in page.rows %}
-    <li><a class="qa-rowlink" href="{% url 'qa_case:detail' link.case.pk %}?stage={{ link.stage_code }}" hx-get="{% url 'qa_case:detail' link.case.pk %}?stage={{ link.stage_code }}" hx-target="#qa-panel" hx-push-url="true">
-      <span class="qa-rowlink__badge">{{ link.stage_no|default:"—" }}</span>
-      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ link.stage_label }}</span>
-        <span class="qa-rowlink__meta"><span>{{ link.case.institution.name }}</span><span>· <span class="qa-mono">{{ link.case.reference }}</span></span><span>· task {{ link.task.reference }}</span></span></span>
-      <span class="qa-rowlink__side">{% if link.overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% elif link.due_at %}<span class="qa-chip">Due {{ link.due_at|date:"j M, H:i" }}</span>{% endif %}</span>
-    </a></li>
-    {% empty %}<li class="qa-card__body qa-muted">Nothing is waiting on you.</li>{% endfor %}
+    {% url 'qa_case:detail' link.case.pk as case_url %}
+    <li class="sw-item{% if link.overdue %} is-overdue{% elif link.due_soon %} is-soon{% endif %}">
+      <span class="sw-item__no" aria-label="Stage {{ link.stage_no|default:'—' }}">{{ link.stage_no|default:"—" }}</span>
+      <div class="sw-item__main">
+        {% if link.stage_code == "capacity_assessment" %}
+        <a class="sw-item__title" href="{{ case_url }}?tab=capacity&amp;stage=post_visit_recommendation" hx-get="{{ case_url }}?tab=capacity&amp;stage=post_visit_recommendation" hx-target="#qa-panel" hx-push-url="true">{{ link.stage_label }}</a>
+        {% else %}
+        <a class="sw-item__title" href="{{ case_url }}?stage={{ link.stage_code }}" hx-get="{{ case_url }}?stage={{ link.stage_code }}" hx-target="#qa-panel" hx-push-url="true">{{ link.stage_label }}</a>
+        {% endif %}
+        <span class="sw-item__inst">{{ link.case.institution.name }}</span>
+        <span class="sw-item__meta"><span class="qa-mono">{{ link.case.reference }}</span>{% if link.task %}<span>Task <span class="qa-mono">{{ link.task.reference }}</span></span>{% endif %}{% if link.opened_at %}<span>With you for {{ link.opened_at|timesince }}</span>{% endif %}</span>
+        {% if link.stage_no %}<span class="c3-ccard__bar sw-item__bar" aria-hidden="true"><span style="width: {% widthratio link.stage_no 17 100 %}%"></span></span>{% endif %}
+      </div>
+      <div class="sw-item__side">
+        {% if link.overdue %}<span class="qa-chip qa-tone-danger">{% icon "alert" 12 "2.4" %} Overdue · {{ link.due_at|timesince }}</span>
+        {% elif link.due_at %}<span class="qa-chip{% if link.due_soon %} qa-tone-warn{% endif %}">{% icon "clock" 12 "2.4" %} Due {{ link.due_at|date:"j M, H:i" }}</span>
+        {% else %}<span class="qa-chip">No deadline</span>{% endif %}
+          {% if link.stage_code == "capacity_assessment" %}
+          <a class="btn btn-sm btn-primary" href="{{ case_url }}?tab=capacity&amp;stage=post_visit_recommendation" hx-get="{{ case_url }}?tab=capacity&amp;stage=post_visit_recommendation" hx-target="#qa-panel" hx-push-url="true">Open Capacity {% icon "arrow" 14 "2.4" %}</a>
+          {% else %}
+          <a class="btn btn-sm btn-primary" href="{{ case_url }}?stage={{ link.stage_code }}" hx-get="{{ case_url }}?stage={{ link.stage_code }}" hx-target="#qa-panel" hx-push-url="true">Open stage {% icon "arrow" 14 "2.4" %}</a>
+          {% endif %}
+        </div>
+    </li>
+    {% endfor %}
   </ul>
   {% include "qa_core/partials/_pagination.html" with page=page target="#qa-panel" %}
+  {% else %}
+  <div class="sw-empty">
+    <span class="qa-tile qa-tile--purple" aria-hidden="true">{% icon "check" 22 "2.4" %}</span>
+    {% if q or kind %}
+      <h3>No stages match</h3>
+      <p>Nothing {% if kind %}of this kind {% endif %}is waiting on you{% if q %} for “{{ q }}”{% endif %}.</p>
+      <a class="btn btn-sm btn-subtle" href="{% url 'qa_case:queue' %}" hx-get="{% url 'qa_case:queue' %}" hx-target="#qa-panel" hx-push-url="true">Show all my stages</a>
+    {% else %}
+      <h3>You're all caught up</h3>
+      <p>No SOP-03 stage is waiting on you. New stages appear here as soon as a case reaches you.</p>
+      <a class="btn btn-sm btn-subtle" href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">Go to the Case Board</a>
+    {% endif %}
+  </div>
+  {% endif %}
 </section>
+</div>

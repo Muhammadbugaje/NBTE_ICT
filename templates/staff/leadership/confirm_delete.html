@@ -4,19 +4,19 @@
 {% block title %}Confirm delete · {{ SITE_NAME }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/leadership.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/leadership.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="lead-page lead-page-narrow">
+  {% url 'staff:leadership_panel' as back_url %}
+  {% if kind == "position" %}
+    {% include "partials/hero.html" with icon="trash" eyebrow="User management · Leadership" title="Delete this position?" lede=position.name back_url=back_url back_label="Leadership panel" %}
+  {% else %}
+    {% include "partials/hero.html" with icon="trash" eyebrow="User management · Leadership" title="Remove this tenure record?" lede=tenure.person_name|add:" — "|add:tenure.position.name back_url=back_url back_label="Leadership panel" %}
+  {% endif %}
   <div class="confirm-page">
-    <div class="confirm-icon confirm-icon-danger">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-    </div>
-
     {% if kind == "position" %}
-      <h2>Delete this position?</h2>
-      <p class="confirm-sub">{{ position.name }}</p>
       <p class="confirm-note">
         This will also delete <strong>{{ position.tenures.count }} tenure record{{ position.tenures.count|pluralize }}</strong> attached to it.
         This action cannot be undone.
@@ -28,8 +28,6 @@
       </form>
 
     {% else %}
-      <h2>Remove this tenure record?</h2>
-      <p class="confirm-sub">{{ tenure.staff.full_name }} — {{ tenure.position.name }}</p>
       <p class="confirm-note">
         {{ tenure.started_on|date:"M j, Y" }}
         {% if tenure.ended_on %} → {{ tenure.ended_on|date:"M j, Y" }}{% else %} — Present{% endif %}.

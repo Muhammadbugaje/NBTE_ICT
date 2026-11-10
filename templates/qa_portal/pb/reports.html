@@ -1,0 +1,67 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Reports · {{ body.acronym|default:body.name }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} Professional body portal</span>
+    <h1 data-qa-focus>Your body's visit reports</h1>
+    <p>Representatives write; the registrar (No.1) approves or returns; approved reports go on to NBTE's case desk. NBTE still makes its own decision — this is your report.</p>
+  </header>
+  {% include "qa_portal/pb/_tabs.html" with section_key="reports" %}
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+
+  {% if review %}
+  <section class="qa-card qa-mt" aria-labelledby="pb-review-h">
+    <header class="qa-card__head"><div><h2 id="pb-review-h">Waiting for the registrar</h2><p>Submitted by your people. Approve to send on, or return with what to correct.</p></div></header>
+    <ul class="qa-rowlist" role="list">{% for r in review %}
+      <li><a class="qa-rowlink" href="{% url 'qa_portal:pb_report' r.pk %}">
+        <span class="qa-rowlink__badge">{% icon "clock" 14 "2.2" %}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.case.institution.name }} · {{ r.case.reference }}</span>
+        <span class="qa-rowlink__meta">{{ r.author.get_full_name|default:r.author.email }} · {{ r.get_status_display }}{% if r.summary %} · {{ r.summary }}{% endif %}</span></span></a></li>
+    {% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  {% if mine %}
+  <section class="qa-card qa-mt" aria-labelledby="pb-mine-h">
+    <header class="qa-card__head"><div><h2 id="pb-mine-h">Your reports</h2></div></header>
+    <ul class="qa-rowlist" role="list">{% for r in mine %}
+      <li><a class="qa-rowlink" href="{% url 'qa_portal:pb_report' r.pk %}">
+        <span class="qa-rowlink__badge">{% if r.status == 'with_nbte' %}{% icon "send" 14 "2.2" %}{% elif r.status == 'draft' %}{% icon "edit" 14 "2.2" %}{% else %}{% icon "clock" 14 "2.2" %}{% endif %}</span>
+        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.case.institution.name }} · {{ r.case.reference }}</span>
+        <span class="qa-rowlink__meta">{{ r.get_status_display }}{% if r.summary %} · {{ r.summary }}{% endif %}</span></span></a></li>
+    {% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  {% if draft_cases %}
+  <section class="qa-card" aria-labelledby="pb-draft-h">
+    <header class="qa-card__head"><div><h2 id="pb-draft-h">Start a report</h2><p>Visits where you are the body's representative and no report exists yet.</p></div></header>
+    <div class="qa-card__body">
+      <form class="qa-form qa-stack" method="post" action="{% url 'qa_portal:pb_report_new' %}" enctype="multipart/form-data">{% csrf_token %}
+        <div class="qa-fields">
+          <div class="qa-field"><label for="pbr-case">Visit</label>
+            <select class="input qa-select" id="pbr-case" name="case" required>
+              {% for case, member_row in draft_cases %}<option value="{{ case.pk }}">{{ case.institution.name }} · {{ case.reference }}</option>{% endfor %}
+            </select></div>
+          <div class="qa-field"><label for="pbr-title" class="sr-only">Title</label>
+            <input class="input" id="pbr-title" name="title" placeholder="Title (optional)"></div>
+          <div class="qa-field"><label for="pbr-rec">Recommendation</label>
+            <select class="input" id="pbr-rec" name="recommendation">{% for code, label in recommendations %}<option value="{{ code }}"{% if code == 'satisfactory' %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+          <div class="qa-field is-wide"><label for="pbr-cont">Findings</label>
+            <textarea class="input" id="pbr-cont" name="content" rows="6" placeholder="What the body's representative saw on the visit"></textarea></div>
+          <div class="qa-field"><label for="pbr-file">Attachment (optional)</label>
+            <input class="input" id="pbr-file" name="file" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+        </div>
+        <div class="qa-form-actions btn-group"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Draft report</button></div>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if not review and not mine and not draft_cases %}
+  <p class="qa-muted qa-small qa-mt">No reports yet. Reports appear here when your registrar assigns a representative to a visit.</p>
+  {% endif %}
+</div>
+{% endblock %}

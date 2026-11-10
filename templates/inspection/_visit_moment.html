@@ -1,0 +1,70 @@
+{% load qa_tags %}{% load nbte_calendar %}
+{% comment %}
+  v2.7: "where the visit stands" strip — a live countdown before the visit,
+  a live countdown during it, and the record/locked state after it. Include
+  with `inspection`; it renders nothing when there is no scheduled visit.
+{% endcomment %}
+{% if inspection and inspection.scheduled_start %}
+<div class="visit-moment" data-visit-moment
+     data-start="{{ inspection.scheduled_start|date:'Y-m-d' }}T09:00:00"
+     data-end="{% if inspection.scheduled_end %}{{ inspection.scheduled_end|date:'Y-m-d' }}{% else %}{{ inspection.scheduled_start|date:'Y-m-d' }}{% endif %}T17:00:00"
+     data-recorded="{% if inspection.status == 'closed' %}1{% else %}0{% endif %}">
+  <div class="visit-moment__icon" aria-hidden="true">{% icon "calendar" 18 "2.2" %}</div>
+  <div class="visit-moment__body">
+    <strong data-visit-label>{% if inspection.status == "closed" %}Visit recorded{% else %}Visit scheduled{% endif %}</strong>
+    <span class="visit-moment__dates">{{ inspection.scheduled_start|date:"j M Y" }}{% if inspection.scheduled_end and inspection.scheduled_end != inspection.scheduled_start %} – {{ inspection.scheduled_end|date:"j M Y" }}{% endif %}</span>
+    <span class="visit-moment__count" data-visit-count>{% if inspection.status == "closed" %}The reports are unlocked.{% else %}Counting down…{% endif %}</span>
+  </div>
+  <div class="visit-moment__side">
+    {% add_to_calendar "inspection" inspection %}
+    <a class="btn btn-sm btn-subtle" href="{% url 'qa_insp:inspection' inspection.pk %}">{% icon "eye" 14 %} {{ inspection.reference }}</a>
+    <a class="btn btn-sm btn-subtle" href="{% url 'qa_insp:calendar' %}">{% icon "calendar" 14 %} Visit calendar</a>
+  </div>
+</div>
+<script>
+  (function () {
+    var box = document.querySelector("[data-visit-moment]");
+    if (!box) return;
+    var start = new Date(box.dataset.start).getTime();
+    var end = new Date(box.dataset.end).getTime();
+    var out = box.querySelector("[data-visit-count]");
+    var label = box.querySelector("[data-visit-label]");
+    var recorded = box.dataset.recorded === "1";
+    if (!start || !out) return;
+    function pad(n) { return String(n).padStart(2, "0"); }
+    function left(ms) {
+      var d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000);
+      var m = Math.floor((ms % 3600000) / 60000), s = Math.floor((ms % 60000) / 1000);
+      return (d ? d + "d " : "") + pad(h) + ":" + pad(m) + ":" + pad(s);
+    }
+    function tick() {
+      var now = Date.now();
+      box.classList.toggle("is-live", now >= start && now < end && !recorded);
+      box.classList.toggle("is-over", now >= end || recorded);
+      if (recorded) { label.textContent = "Visit recorded"; out.textContent = "Post-visit reports are unlocked."; return; }
+      if (now < start) { label.textContent = "Visit starts in"; out.textContent = left(start - now); }
+      else if (now < end) { label.textContent = "Visit is happening — ends in"; out.textContent = left(end - now); }
+      else { label.textContent = "Visit dates have passed"; out.textContent = "Waiting for the Team Lead to record it."; }
+    }
+    tick();
+    var timer = setInterval(tick, 1000);
+  })();
+</script>
+<style>
+  .visit-moment { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 13px; background: var(--surface-2, #f8fafc); }
+  .visit-moment.is-live { border-color: color-mix(in srgb, #129c62 30%, var(--border));
+    background: color-mix(in srgb, #129c62 7%, var(--surface)); }
+  .visit-moment.is-over { border-color: color-mix(in srgb, #0b6bcb 24%, var(--border)); }
+  .visit-moment__icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+    border-radius: 10px; background: color-mix(in srgb, #0b6bcb 12%, transparent); color: #0b6bcb; }
+  .visit-moment.is-live .visit-moment__icon { background: color-mix(in srgb, #129c62 15%, transparent); color: #0f7d4f; }
+  .visit-moment__body { display: grid; gap: 1px; min-width: 0; flex: 1 1 220px; }
+  .visit-moment__body strong { font-size: .9rem; }
+  .visit-moment__dates { font-size: .78rem; color: var(--text-muted); }
+  .visit-moment__count { font-size: .82rem; font-variant-numeric: tabular-nums; }
+  .visit-moment__side { display: flex; flex-wrap: wrap; gap: 6px; }
+  .visit-moment__side > * { margin: 0; }
+  @media (max-width: 560px) { .visit-moment__side { width: 100%; } }
+</style>
+{% endif %}

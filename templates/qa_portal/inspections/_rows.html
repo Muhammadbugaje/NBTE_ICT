@@ -1,10 +1,10 @@
-{% load qa_tags %}
+{% load qa_tags nbte_calendar %}
 {% if page.rows %}
 <ul class="qa-rowlist" role="list">{% for i in page.rows %}
   <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge">
     <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ i.get_kind_display }}</span>
       <span class="qa-rowlink__meta"><span class="qa-mono">{{ i.reference }}</span><span>· {{ i.scheduled_start|date:"j M" }}–{{ i.scheduled_end|date:"j M Y" }}</span>{% if i.actual_start %}<span>· visited {{ i.actual_start|date:"j M" }}–{{ i.actual_end|date:"j M Y" }}</span>{% endif %}</span></span>
-    <span class="qa-rowlink__side"><span class="qa-chip {{ i.status|tone }}">{% if i.status == "closed" %}Visit recorded{% else %}{{ i.status|humanize_code }}{% endif %}</span>{% include "complaints/portal/_raise_link.html" with kind="inspection" pk=i.pk short=True %}</span>
+    <span class="qa-rowlink__side"><span class="qa-chip {{ i.status|tone }}">{% if i.status == "closed" %}Visit recorded{% else %}{{ i.status|humanize_code }}{% endif %}</span>{% add_to_calendar "inspection" i %}{% include "complaints/portal/_raise_link.html" with kind="inspection" pk=i.pk short=True %}</span>
   </li>
 {% endfor %}</ul>
 {% include "qa_core/partials/_pagination.html" with target="#insp-rows" %}

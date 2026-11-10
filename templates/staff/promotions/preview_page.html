@@ -1,27 +1,18 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Promotion preview · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Promotions{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/nominal-roll.css' %}">
 {% endblock %}
 
 {% block content %}
 {% comment %}Shown when the promotion dialog is submitted without JavaScript.{% endcomment %}
 <div class="nbr-page promo-page nbr-page--narrow">
-  <a href="{% url 'staff:promotions' %}" class="nbr-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Promotions
-  </a>
-  <header class="nbte-page-header nbr-header">
-    <div class="nbte-page-header__text">
-      <span class="nbte-page-header__eyebrow">Promotion preview</span>
-      <h1 class="nbte-page-header__title">Before → after</h1>
-      <p class="nbte-page-header__description">Check the list, then confirm. Nothing has been saved yet.</p>
-    </div>
-  </header>
+  {% url 'staff:promotions' as back_url %}
+  {% include "partials/hero.html" with icon="trend" eyebrow="User management · Promotions" title="Before → after" lede="Check the list, then confirm; nothing has been saved yet." back_url=back_url back_label="Promotions" %}
   <div class="card nbr-card">
     {% include "staff/promotions/preview_modal.html" %}
   </div>

@@ -1,37 +1,123 @@
-{% load qa_tags %}
-<div class="qa-cols">
-  <section class="qa-card" aria-labelledby="ov-h">
-    <header class="qa-card__head"><h2 id="ov-h">Case</h2>{% if case.qa_request_id %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_req:detail' case.qa_request_id %}">QA request {{ case.qa_request.reference }}</a>{% endif %}</header>
-    <div class="qa-card__body"><dl class="qa-dl">
-      <div><dt>Reference</dt><dd class="qa-mono">{{ case.reference }}</dd></div>
-      <div><dt>Institution</dt><dd>{{ inst.name }} ({{ inst.code }})</dd></div>
-      <div><dt>QA type</dt><dd>{{ case.qa_request.qa_type.name|default:"—" }}</dd></div>
-      <div><dt>Programmes</dt><dd>{{ case.programme_count }}{% if case.requires_second_ict_officer %} · needs two tracking ICT officers (R-04){% endif %}</dd></div>
-      {% if case.qa_request.is_joint_qa %}<div><dt>Joint QA with</dt><dd>{% for n in case.body_notices.all %}{{ n.body.name }} ({% if n.status == "sent" %}e-mailed {{ n.sent_at|date:"j M" }}{% else %}{{ n.get_status_display|lower }}{% endif %}){% if not forloop.last %}; {% endif %}{% empty %}{% for b in case.qa_request.joint_bodies.all %}{{ b.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endfor %}</dd></div>{% endif %}
-      <div><dt>Owning department</dt><dd>{{ case.owning_department.name|default:"—" }}</dd></div>
-      <div><dt>Started</dt><dd>{{ case.started_at|date:"j M Y, H:i"|default:"Not yet" }}</dd></div>
-      {% if case.completed_at %}<div><dt>SOP-03 complete</dt><dd>{{ case.completed_at|date:"j M Y, H:i" }}</dd></div>{% endif %}
-    </dl></div>
-  </section>
-  <section class="qa-card" aria-labelledby="ov-people">
-    <header class="qa-card__head"><h2 id="ov-people">People on the case</h2></header>
-    <div class="qa-card__body"><dl class="qa-dl">
-      <div><dt>Desk officer</dt><dd>{{ case.desk_officer|who:"Not chosen" }}</dd></div>
-      <div><dt>Supervising Audit officer</dt><dd>{{ case.supervising_audit_officer|who:"Not chosen" }}</dd></div>
-      <div><dt>Supervising Finance officer</dt><dd>{{ case.supervising_finance_officer|who:"Not chosen" }}</dd></div>
-      <div><dt>Tracking ICT officer{{ ict_required|pluralize }}</dt><dd>{% for u in tracking_ict %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% empty %}Not chosen{% endfor %}</dd></div>
-      <div><dt>Team lead</dt><dd>{{ visit.team_lead|default:"Not chosen" }}</dd></div>
-    </dl></div>
-  </section>
+{% load qa_tags %}{% load nbte_calendar %}{# The case cockpit: what is happening now, the whole journey, and everything about the institution and the visit. #}
+<div class="c3-layout">
+  <div class="c3-main">
+    {% if started and actions %}
+    <section class="c3-sec c3-now" aria-labelledby="c3-now-h">
+      <header class="c3-sec__head"><span class="c3-sec__num c3-sec__num--key">{% icon "clock" 14 "2.4" %}</span>
+        <div><h2 id="c3-now-h">Happening now</h2><p>{% if my_turn %}You have {{ my_turn|length }} step{{ my_turn|length|pluralize }} to do here.{% else %}The case is waiting on the people below.{% if can_remind %} You can send them a reminder.{% endif %}{% endif %}</p></div></header>
+      <div class="c3-now__list">{% include "accreditation/case/_stage_actions.html" %}</div>
+    </section>
+    {% elif started and not current %}
+    <section class="c3-sec c3-done" aria-labelledby="c3-done-h">
+      <header class="c3-sec__head"><span class="c3-sec__num c3-sec__num--ok">{% icon "check" 14 "3" %}</span>
+        <div><h2 id="c3-done-h">SOP-03 is complete</h2><p>{% if case.completed_at %}Finished on {{ case.completed_at|date:"j M Y" }}. {% endif %}The programme records are updated and the outcome letters are on the <a href="?tab=letters" hx-get="{% url 'qa_case:detail' case.pk %}?tab=letters" hx-target="#qa-panel" hx-push-url="true">Letters</a> tab.</p></div></header>
+    </section>
+    {% endif %}
+
+    {% if started and earlier_stages %}{% include "accreditation/case/_change_requests.html" with change_kind="rollback" %}{% endif %}
+
+    {% if journey %}
+    <section class="c3-sec" aria-labelledby="c3-jr-h">
+      <header class="c3-sec__head"><span class="c3-sec__num">{% icon "layers" 14 "2.4" %}</span>
+        <div><h2 id="c3-jr-h">The whole journey</h2><p>Every SOP-03 step, who holds it and for how long. Finished steps show who did them and when.</p></div></header>
+      <ol class="c3-journey">
+        {% for st in journey %}
+        <li class="c3-journey__step is-{{ st.state }}{% if st.overdue %} is-overdue{% endif %}"{% if st.state == "current" %} aria-current="step"{% endif %}>
+          <span class="c3-journey__dot" aria-hidden="true">{% if st.state == "done" %}{% icon "check" 13 "3" %}{% elif st.no == 0 %}{% icon "flag" 12 "2.4" %}{% else %}{{ st.no }}{% endif %}</span>
+          <div class="c3-journey__body">
+            <div class="c3-journey__top">
+              <strong>{{ st.label }}</strong>
+              {% if st.state == "current" %}<span class="qa-chip qa-tone-pending">Now</span>{% endif %}
+              {% if st.overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}
+              {% if st.state == "done" and st.done_at %}<span class="c3-journey__when">{{ st.done_at|date:"j M Y" }}</span>{% endif %}
+            </div>
+            {% if st.state != "todo" %}
+            <ul class="c3-journey__parts" role="list">
+              {% for p in st.parts %}
+              <li class="is-{{ p.state }}">
+                {% if st.is_parallel %}<span class="c3-journey__part">{% if p.code == "assign_audit_officer" %}Audit{% elif p.code == "assign_finance_officer" %}Finance{% elif p.code == "assign_ict_officer" %}ICT{% else %}{{ p.label }}{% endif %}</span>{% endif %}
+                {% if p.link %}
+                  <span class="c3-journey__who">{% for u in p.holders %}<span class="c3-person c3-person--sm"><span class="c3-av" aria-hidden="true">{{ u|initials }}</span>{{ u|who }}</span>{% empty %}<span class="qa-chip qa-tone-warn">Department queue</span>{% endfor %}</span>
+                  <span class="c3-muted">{% if p.since %}holding for {{ p.since }}{% endif %}{% if p.due_at %} · {% if p.overdue %}<strong class="c3-late">was due {{ p.due_at|date:"j M" }}</strong>{% else %}due {{ p.due_at|date:"j M" }}{% endif %}{% endif %}</span>
+                  {% if can_remind and p.holders and request.user not in p.holders %}
+                  <form class="c3-remind" method="post" action="{% url 'qa_case:remind' case.pk p.code %}" hx-post="{% url 'qa_case:remind' case.pk p.code %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="overview">
+                    <button class="btn btn-xs btn-subtle" type="submit">{% icon "bell" 12 "2.2" %} Remind</button></form>
+                  {% endif %}
+                {% elif p.done_by %}
+                  <span class="c3-muted">by {% for u in p.done_by %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if p.done_at %} · {{ p.done_at|date:"j M, H:i" }}{% endif %}</span>
+                {% elif p.state == "done" %}<span class="c3-muted">Done</span>
+                {% else %}<span class="c3-muted">{{ p.who }}</span>{% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}<span class="c3-muted c3-journey__next">{{ st.guide.who|default:"" }}</span>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="c3-side" aria-label="Case details">
+    <section class="c3-card" aria-labelledby="c3-inst-h">
+      <h2 id="c3-inst-h" class="c3-card__title">{% icon "building" 15 "2.2" %} Institution</h2>
+      <p class="c3-card__lead"><a href="{% url 'qa_inst:detail' inst.code %}">{{ inst.name }}</a> <span class="c3-code">{{ inst.code }}</span></p>
+      {% for a in inst_card.addresses %}
+        <p class="c3-line">{% icon "pin" 14 "2.2" %}<span>{{ a.one_line }}{% if a.gps %}<br><span class="qa-mono c3-muted">GPS {{ a.gps }}</span>{% endif %}</span></p>
+      {% empty %}<p class="c3-line c3-muted">{% icon "pin" 14 "2.2" %}<span>No address on record</span></p>{% endfor %}
+      {% if inst_card.map_url %}<a class="btn btn-sm btn-subtle c3-block" href="{{ inst_card.map_url }}" target="_blank" rel="noopener">{% icon "map" 14 "2.2" %} Open in maps {% icon "external" 12 "2.2" %}</a>{% endif %}
+      {% if inst_card.contacts %}
+      <ul class="c3-contacts" role="list">
+        {% for c in inst_card.contacts %}<li>{% if "@" in c.value %}{% icon "mail" 14 "2.2" %}{% else %}{% icon "phone" 14 "2.2" %}{% endif %}<span>{% if c.href %}<a href="{{ c.href }}">{{ c.value }}</a>{% else %}{{ c.value }}{% endif %}{% if c.name %}<small>{{ c.name }}</small>{% endif %}</span></li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if inst_card.programmes %}
+      <h3 class="c3-card__sub">Programmes on this case</h3>
+      <ul class="c3-progs" role="list">{% for r in inst_card.programmes %}<li><span>{{ r.programme.name }}</span><small>{{ r.programme.level.name|default:r.programme.level|default:"" }}{% if r.requested_streams %} · {{ r.requested_streams }} stream{{ r.requested_streams|pluralize }}{% endif %}</small></li>{% endfor %}</ul>
+      {% endif %}
+    </section>
+
+    <section class="c3-card" aria-labelledby="c3-people-h">
+      <h2 id="c3-people-h" class="c3-card__title">{% icon "users" 15 "2.2" %} People on the case</h2>
+      <dl class="c3-kv">
+        <div><dt>Desk officer</dt><dd>{{ case.desk_officer|who:"Not chosen" }}</dd></div>
+        <div><dt>Supervising Audit officer</dt><dd>{{ case.supervising_audit_officer|who:"Not chosen" }}</dd></div>
+        <div><dt>Supervising Finance officer</dt><dd>{{ case.supervising_finance_officer|who:"Not chosen" }}</dd></div>
+        <div><dt>Tracking ICT officer{{ ict_required|pluralize }}</dt><dd>{% for u in tracking_ict %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% empty %}Not chosen{% endfor %}</dd></div>
+        <div><dt>Team lead</dt><dd>{{ visit.team_lead|default:"Not chosen" }}</dd></div>
+      </dl>
+    </section>
+
+    <section class="c3-card" aria-labelledby="c3-visit-h">
+      <h2 id="c3-visit-h" class="c3-card__title">{% icon "calendar" 15 "2.2" %} The visit</h2>
+      {% if visit and visit.planned_start %}
+        <p class="c3-visit-dates"><strong>{{ visit.planned_start|date:"j M" }} – {{ visit.planned_end|date:"j M Y" }}</strong>{% if visit_days %}<span>{{ visit_days }} day{{ visit_days|pluralize }}</span>{% endif %}</p>
+        <p class="c3-muted c3-small">{{ visit.get_status_display }}{% if visit.approved_by %} · approved by {{ visit.approved_by|who }}{% endif %}</p>
+        {% if entries %}<p class="c3-small">Team of {{ entries|length }}: {% for e in entries|slice:":4" %}{{ e.staff }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if entries|length > 4 %} and {{ entries|length|add:"-4" }} more{% endif %}.</p>{% endif %}
+        {% if inspection %}<div class="c3-row">{% add_to_calendar "inspection" inspection %}<a class="btn btn-sm btn-subtle" href="{% url 'qa_insp:inspection' inspection.pk %}">{% icon "eye" 14 %} {{ inspection.reference }}</a></div>{% endif %}
+      {% else %}
+        <p class="c3-muted c3-small">Dates are set at stage 8 (visit details){% if entries %}; the team has {{ entries|length }} {{ entries|length|pluralize:"person,people" }}{% endif %}.</p>
+      {% endif %}
+    </section>
+
+    <section class="c3-card" aria-labelledby="c3-facts-h">
+      <h2 id="c3-facts-h" class="c3-card__title">{% icon "file" 15 "2.2" %} Case facts</h2>
+      <dl class="c3-kv">
+        <div><dt>Reference</dt><dd class="qa-mono">{{ case.reference }}</dd></div>
+        <div><dt>QA type</dt><dd>{{ case.qa_request.qa_type.name|default:"—" }}</dd></div>
+        <div><dt>Programmes</dt><dd>{{ case.programme_count }}{% if case.requires_second_ict_officer %} · needs two tracking ICT officers (R-04){% endif %}</dd></div>
+        <div><dt>Owning department</dt><dd>{{ case.owning_department.name|default:"—" }}</dd></div>
+        {% if case.qa_request.is_joint_qa %}<div><dt>Joint QA with</dt><dd>{% for n in body_notices %}{{ n.body.name }} ({% if n.status == "sent" %}e-mailed {{ n.sent_at|date:"j M" }}{% else %}{{ n.get_status_display|lower }}{% endif %}){% if not forloop.last %}; {% endif %}{% empty %}{% for b in case.qa_request.joint_bodies.all %}{{ b.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endfor %}</dd></div>{% endif %}
+        <div><dt>Started</dt><dd>{{ case.started_at|date:"j M Y, H:i"|default:"Not yet" }}</dd></div>
+        {% if case.completed_at %}<div><dt>SOP-03 complete</dt><dd>{{ case.completed_at|date:"j M Y, H:i" }}</dd></div>{% endif %}
+      </dl>
+      <div class="c3-links">
+        {% if case.qa_request_id %}<a href="{% url 'qa_req:detail' case.qa_request_id %}">{% icon "file" 14 %} QA request {{ case.qa_request.reference }}</a>{% endif %}
+        <a href="?tab=tasks" hx-get="{% url 'qa_case:detail' case.pk %}?tab=tasks" hx-target="#qa-panel" hx-push-url="true">{% icon "sheet" 14 %} Stage tasks</a>
+        <a href="?tab=timeline" hx-get="{% url 'qa_case:detail' case.pk %}?tab=timeline" hx-target="#qa-panel" hx-push-url="true">{% icon "clock" 14 %} Timeline</a>
+        <a href="{% url 'qa_case:summary_pdf' case.pk %}" download>{% icon "download" 14 %} Summary PDF</a>
+      </div>
+    </section>
+  </aside>
 </div>
-<section class="qa-card" aria-labelledby="ov-open">
-  <header class="qa-card__head"><div><h2 id="ov-open">Open stage tasks</h2><p>The Tasks inbox shows these with an <strong>Open in QA</strong> button. They close automatically when the stage is approved or returned here.</p></div>
-    <a class="btn btn-sm btn-subtle" href="?tab=tasks" hx-get="{% url 'qa_case:detail' case.pk %}?tab=tasks" hx-target="#qa-panel" hx-push-url="true">All tasks</a></header>
-  <ul class="qa-rowlist" role="list">
-    {% for link in links %}{% if link.closed_at is None %}
-    <li class="qa-rowlink qa-rowlink--static"><span class="qa-rowlink__badge">{% icon "sheet" 14 %}</span>
-      <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ link.stage_label }}</span><span class="qa-rowlink__meta"><span class="qa-mono">{{ link.task.reference }}</span><span>· {% for u in link.holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% empty %}department queue{% endfor %}</span>{% if link.due_at %}<span>· due {{ link.due_at|date:"j M, H:i" }}</span>{% endif %}</span></span>
-      <span class="qa-rowlink__side"><a class="btn btn-xs btn-subtle" href="{% url 'tasks:detail' link.task_id %}">Open task</a></span></li>
-    {% endif %}{% empty %}<li class="qa-card__body qa-muted">No tasks.</li>{% endfor %}
-  </ul>
-</section>

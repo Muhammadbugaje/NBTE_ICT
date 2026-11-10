@@ -101,6 +101,7 @@ def profile_view(request):
     completeness = user.profile_completeness()
 
     from .security_views import security_context  # Phase 9: devices, passkeys, deletion
+    from config.appearance_views import appearance_card_context
 
     return render(request, "accounts/profile.html", {
         "form": form,
@@ -109,6 +110,7 @@ def profile_view(request):
         "is_complete": user.profile_complete,
         "missing": user.missing_profile_items(),
         **security_context(request),
+        **appearance_card_context(request),  # v2.1 A10: personal Appearance card
     })
 
 

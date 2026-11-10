@@ -18,7 +18,7 @@ from decimal import Decimal
 from django.conf import settings
 
 from . import simulator
-from .base import PaymentProvider, ProviderError, VerificationResult, http_json, redact
+from .base import PaymentProvider, ProviderConfigError, ProviderError, VerificationResult, http_json, redact
 
 PAID_STATUSES = ("00", "01")
 
@@ -47,9 +47,10 @@ class RemitaProvider(PaymentProvider):
 
     # -- RRR ----------------------------------------------------------------
     def generate_rrr(self, obligation, payer, amount, order_id):
-        service_type = obligation.fee_schedule.remita_service_type_id or ("4430731" if self.is_simulated() else "")
+        service_type = (obligation.fee_schedule.remita_service_type_id or getattr(settings, "REMITA_SERVICE_TYPE_ID", "")
+                        or ("4430731" if self.is_simulated() else ""))
         if not service_type:
-            raise ProviderError("The fee schedule has no Remita service type ID (Settings → Fees).")
+            raise ProviderConfigError("The fee schedule has no Remita service type ID (Settings → Fees).")
         amount_text = f"{Decimal(amount):.2f}"
         token = sha512(f"{self.merchant()}{service_type}{order_id}{amount_text}{self.api_key()}")
         payload = {"serviceTypeId": service_type, "amount": amount_text, "orderId": order_id,
@@ -97,9 +98,18 @@ class RemitaProvider(PaymentProvider):
         """(caller_allowed, [rrr, …], payload). Remita does not sign its
         notifications, so the status query that follows is what counts."""
         allowed = settings.REMITA_WEBHOOK_ALLOWED_IPS
-        ip = (request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
-              or request.META.get("REMOTE_ADDR", ""))
+        from core.ratelimit import client_ip
+
+        ip = client_ip(request)   # X-Real-IP from nginx or the socket address — never a forgeable XFF
         caller_ok = (not allowed) or ip in allowed
+        token = getattr(settings, "REMITA_WEBHOOK_TOKEN", "")
+        if token:  # v2.1 F.18: shared secret in the registered notification URL
+            import hmac
+
+            given = ""
+            if hasattr(request, "GET"):
+                given = request.GET.get("token", "")
+            caller_ok = caller_ok and bool(given) and hmac.compare_digest(given, token)
         try:
             payload = json.loads((request.body or b"").decode("utf-8") or "[]")
         except ValueError:

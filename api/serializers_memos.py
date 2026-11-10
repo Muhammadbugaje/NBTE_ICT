@@ -35,6 +35,8 @@ class MemoRowSerializer(serializers.Serializer):
     acknowledged = serializers.BooleanField()
     current_step = serializers.CharField(allow_null=True)
     attachment_count = serializers.IntegerField()
+    kind = serializers.ChoiceField(choices=[c for c, _ in Memo.KIND_CHOICES],
+                                   help_text="v2.1 M1: internal | external | general")
 
 
 class MemoCountsSerializer(serializers.Serializer):
@@ -113,6 +115,15 @@ class DepartmentRefSerializer(serializers.Serializer):
     name = serializers.CharField()
 
 
+class InstitutionsSerializer(serializers.Serializer):
+    scope = serializers.CharField()
+    label = serializers.CharField()
+    signed_as = serializers.CharField(allow_blank=True, help_text="from | approved | '' (not signed yet)")
+    delivered = serializers.IntegerField()
+    read = serializers.IntegerField()
+    acknowledged = serializers.IntegerField()
+
+
 ACTIONS = ["approve", "return", "reject", "resubmit", "publish", "acknowledge", "archive", "unarchive", "cancel"]
 
 
@@ -136,6 +147,7 @@ class MemoDetailSerializer(MemoRowSerializer):
     actions = serializers.ListField(child=serializers.ChoiceField(choices=ACTIONS))
     stats = MemoStatsSerializer(allow_null=True)
     documents = DocumentsSerializer(allow_null=True)
+    institutions = InstitutionsSerializer(allow_null=True, help_text="External / general memos (v2.1 M4).")
 
 
 class MemoActionSerializer(serializers.Serializer):
@@ -167,6 +179,16 @@ class MemoCreateSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=["draft", "publish"], required=False, default="draft")
     from_message = serializers.IntegerField(required=False, allow_null=True,
                                             help_text="Chat message this memo was made from (links it).")
+    # v2.1 Phase E (M1-M6)
+    kind = serializers.ChoiceField(choices=[c for c, _ in Memo.KIND_CHOICES], required=False, default="internal")
+    institution_scope = serializers.ChoiceField(choices=["", "all", "selected", "filter"], required=False,
+                                                default="")
+    target_institutions = serializers.ListField(child=serializers.IntegerField(), required=False)
+    institution_filter = serializers.DictField(required=False, help_text=(
+        "types, categories, ownerships, zones (lists of codes), states (ids), statuses, new_only (bool), "
+        "min_programmes (more than N), accreditation (accredited | none), q"))
+    staff_filter = serializers.DictField(required=False, help_text=(
+        "visibility = staff_filter: departments (ids), roles (codes), designations (ids), grade_min, grade_max"))
 
 
 class MemoCreateResponseSerializer(MemoActionResponseSerializer):
@@ -185,6 +207,9 @@ class ComposeOptionsSerializer(serializers.Serializer):
     roles = DepartmentRefSerializer(many=True)
     can_broadcast = serializers.BooleanField()
     attachments_total_bytes = serializers.IntegerField()
+    kinds = ChoiceSerializer(many=True, help_text="v2.1 M7: memo types this user may pick")
+    can_send_external = serializers.BooleanField(help_text="The ES: external memos go out without approval")
+    institution_filter_options = serializers.DictField()
 
 
 class MemoPersonSerializer(PersonSerializer):

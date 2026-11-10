@@ -1,0 +1,75 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Requests · {{ body.acronym|default:body.name }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} Professional body portal</span>
+    <h1 data-qa-focus>Programme requests</h1>
+    <p>Ask NBTE to put a programme under {{ body.name }}. Once approved, the programme's notifications, visits and your approval letters flow through your portal.</p>
+  </header>
+  {% include "qa_portal/pb/_tabs.html" with section_key="requests" %}
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+
+  {% if rows %}
+  <section class="qa-card qa-mt" aria-labelledby="pb-req-h">
+    <header class="qa-card__head"><div><h2 id="pb-req-h">Your requests</h2><p>NBTE's programme custodian decides each one.</p></div></header>
+    <ul class="qa-rowlist" role="list">
+      {% for r in rows %}
+      <li class="qa-rowlink qa-rowlink--nobadge{% if not can_submit %} is-off{% endif %}">
+        <span class="qa-rowlink__main">
+          <span class="qa-rowlink__title">{{ r.programme_name }}
+            <span class="qa-chip{% if r.status == 'approved' %} qa-tone-success{% elif r.status == 'rejected' or r.status == 'withdrawn' %} qa-tone-warn{% endif %}">{{ r.get_status_display }}</span>
+          </span>
+          <span class="qa-rowlink__meta">{{ r.institution.name|default:"—" }}{% if r.level %} · {{ r.level.code|upper }}{% endif %}
+            · asked {{ r.created_at|date:"j M Y" }}
+            {% if r.decided_at %} · decided {{ r.decided_at|date:"j M Y" }}{% endif %}
+            {% if r.remark %} · NBTE: “{{ r.remark }}”{% endif %}</span>
+        </span>
+        {% if can_submit and r.status == 'pending' %}
+        <span class="qa-rowlink__side">
+          <form method="post" action="{% url 'qa_portal:pb_request_cancel' r.pk %}">{% csrf_token %}
+            <button class="btn btn-xs btn-ghost qa-btn-reject" type="submit" title="Withdraw this request">Withdraw</button>
+          </form>
+        </span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if can_submit %}
+  <section class="qa-card{% if rows %} qa-mt{% endif %}" aria-labelledby="pb-req-new-h">
+    <header class="qa-card__head"><div><h2 id="pb-req-new-h">New request</h2><p>Name the programme exactly as it runs — NBTE maps it onto its master list when it approves.</p></div></header>
+    <div class="qa-card__body">
+      <form class="qa-form qa-stack" method="post" action="{% url 'qa_portal:pb_request_new' %}">{% csrf_token %}
+        <div class="qa-fields">
+          <div class="qa-field is-wide"><label for="pbrq-inst">Institution</label>
+            <select class="input qa-select" id="pbrq-inst" name="institution" required>
+              {% for i in institutions %}<option value="{{ i.pk }}">{{ i.name }}</option>{% endfor %}
+            </select></div>
+          <div class="qa-field is-wide"><label for="pbrq-name">Programme name</label>
+            <input class="input" id="pbrq-name" name="programme_name" maxlength="200" required placeholder="e.g. BSc Computer Science"></div>
+          <div class="qa-field"><label for="pbrq-level">Level</label>
+            <select class="input qa-select" id="pbrq-level" name="level">
+              <option value="">Any level</option>
+              {% for l in groups.levels %}<option value="{{ l.pk }}">{{ l.code|upper }}</option>{% endfor %}
+            </select></div>
+          <div class="qa-field"><label for="pbrq-cat">Category</label>
+            <select class="input qa-select" id="pbrq-cat" name="category">
+              <option value="">Unclassified</option>
+              {% for c in groups.categories %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
+            </select></div>
+          <div class="qa-field is-wide"><label for="pbrq-rat">Why your body regulates it</label>
+            <textarea class="input" id="pbrq-rat" name="rationale" rows="3" maxlength="2000" placeholder="Accreditation mandate, curriculum overlap, professional practice scope …"></textarea></div>
+        </div>
+        <div class="qa-form-actions btn-group"><button class="btn btn-primary" type="submit">{% icon "send" 16 %} Send to NBTE</button></div>
+      </form>
+    </div>
+  </section>
+  {% else %}
+  <p class="qa-muted qa-small qa-mt">Only the body's administrator (the registrar or their stand-in) sends and withdraws requests.</p>
+  {% endif %}
+</div>
+{% endblock %}

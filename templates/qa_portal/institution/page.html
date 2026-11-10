@@ -3,10 +3,17 @@
 {% block title %}Institution · {{ portal_name }}{% endblock %}
 {% block content %}
 <div class="qa-portal-page">
-  <header class="qa-page-head">
-    <span class="qa-eyebrow">{% icon "building" 14 "2.2" %} {{ inst.code }} · {{ inst.status_label }}</span>
+  <header class="qa-page-head pp-team-head">
+    <span class="qa-eyebrow">{% icon "building" 14 "2.2" %} Profile and team · {{ inst.code }} · {{ inst.status_label }}</span>
     <h1 data-qa-focus>{{ inst.name }}</h1>
-    <p>{% if editable %}Keep this up to date while you prepare your application. Once you submit, changes are made by NBTE on request.{% else %}NBTE keeps this record. To change it, contact NBTE — changes are confirmed by two officers.{% endif %}</p>
+    <p>{% if editable %}Keep this up to date while you prepare your application. After the first submission, NBTE approval is required for changes.{% else %}This record is protected after application submission. A change request must be reviewed and approved by NBTE before it is applied.{% endif %}</p>
+    <div class="qa-hero__actions pp-actions">
+      {% if not editable and is_ce %}
+        <a class="btn btn-primary" href="{% url 'qa_portal:change_requests_new' %}?type=profile">{% icon "edit" 16 %} Request a profile change</a>
+      {% endif %}
+      {% if not editable %}<a class="btn btn-subtle" href="{% url 'qa_portal:change_requests' %}">{% icon "clock" 16 %} Change requests</a>{% endif %}
+      <a class="btn btn-subtle" href="{% url 'qa_portal:management' %}">{% icon "users" 16 %} Management team</a>
+    </div>
   </header>
   <div class="qa-cols">
     <div id="qa-profile-region" class="qa-region" data-qa-region>
@@ -16,7 +23,7 @@
           <div><dt>Ownership</dt><dd>{{ inst.ownership.name|default:"—" }}</dd></div><div><dt>Type / category</dt><dd>{{ inst.institution_type.name|default:"—" }} / {{ inst.category.name|default:"—" }}</dd></div>
           <div><dt>State / LGA</dt><dd>{% if inst.state %}{{ inst.state.name }} / {{ inst.lga }}{% else %}—{% endif %}</dd></div><div><dt>Year established</dt><dd>{{ inst.year_established|default:"—" }}</dd></div>
           <div><dt>CAC RC number</dt><dd>{{ inst.cac_rc_number|default:"—" }}</dd></div><div><dt>Website</dt><dd>{{ inst.website|default:"—" }}</dd></div>
-          {% for c in contacts %}<div><dt>{{ c.get_kind_display }}</dt><dd>{{ c.name }} {{ c.value }}</dd></div>{% endfor %}
+          {% for c in contacts %}<div><dt>{{ c.get_kind_display }}</dt><dd>{% if c.name %}{{ c.name }} {% endif %}{{ c.value }}</dd></div>{% endfor %}
           {% for a in addresses %}<div class="is-wide"><dt>{{ a.get_kind_display }}</dt><dd>{{ a.one_line }}</dd></div>{% endfor %}
         </dl></div></section>
       {% endif %}

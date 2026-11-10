@@ -5,10 +5,8 @@ The non-negotiable rule (v1.1, Amendment 1):
 
 * evidence — a verified provider report, an uploaded proof, a statement
   match — moves an obligation at most to ``awaiting_finance_confirmation``;
-* a Finance officer records a first-pass recommendation;
-* only the holder of the role in ``qa.payment.final_approver_role`` (the
-  Director of Finance), holding ``payments.final_confirm_payment``, who did
-  not do the first pass, can take ``final_confirm`` into ``confirmed``.
+* the Director of Finance reviews that evidence and is the only person who can
+  take ``final_confirm`` into ``confirmed``.
 
 There is no other function here that reaches ``confirmed``.
 """
@@ -89,13 +87,34 @@ def _decimal(key, default):
         return to_money(default)
 
 
+def finance_department_code():
+    """Code of the department whose director is the final approver."""
+    return str(config.get("qa.payment.finance_department", "finance") or "finance").strip()
+
+
 def final_approver_role():
-    return str(config.get("qa.payment.final_approver_role", "qa-finance-director") or "").strip()
+    """Kept for callers that print who decides: a description, not a role code."""
+    return f"director of {finance_department_code()}"
+
+
+def finance_department():
+    """The Department whose director is the Director of Finance."""
+    from qa_core.departments import qa_department
+    return qa_department(finance_department_code())
+
+
+def finance_director():
+    """The Director of Finance (org.director_of the finance department) or None."""
+    import org
+    dept = finance_department()
+    return org.director_of(dept) if dept is not None else None
 
 
 def is_final_approver(user):
-    role = getattr(getattr(user, "role", None), "code", "")
-    return bool(user and user.is_authenticated and role and role == final_approver_role()
+    import org
+    dept = finance_department()
+    return bool(user and user.is_authenticated and dept is not None
+                and org.is_director(user, dept)
                 and user.has_perm("payments.final_confirm_payment"))
 
 
@@ -130,6 +149,31 @@ def stage_label(obligation, *, public=False):
     if st is None:
         return obligation.status
     return (st.public_label or st.label) if public else st.label
+
+
+def stage_labels(obligations, *, public=False):
+    """v2.2: ``stage_label`` for a whole page of obligations in three queries
+    (instead of two per row). Sets ``ob.stage`` on each and returns them."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from qa_core.models import FlowInstance, FlowStage
+
+    obligations = list(obligations)
+    if not obligations:
+        return obligations
+    ct = ContentType.objects.get_for_model(obligations[0].__class__, for_concrete_model=True)
+    latest = {}
+    for inst in (FlowInstance.objects.filter(content_type=ct, object_id__in=[o.pk for o in obligations],
+                                             flow_version__code=FLOW).order_by("id")):
+        latest[inst.object_id] = inst          # ordered by id: the newest wins, as in flow.instance_for
+    stages = {}
+    for st in FlowStage.objects.filter(flow_id__in={i.flow_version_id for i in latest.values()}):
+        stages[(st.flow_id, st.code)] = st
+    for ob in obligations:
+        inst = latest.get(ob.pk)
+        st = stages.get((inst.flow_version_id, ob.status)) if inst is not None else None
+        ob.stage = ob.status if st is None else ((st.public_label or st.label) if public else st.label)
+    return obligations
 
 
 # ===========================================================================
@@ -198,6 +242,9 @@ def fee_variables(institution, **extra):
         "ownership": institution.ownership.code if institution.ownership_id else "public",
         "institution_type": institution.institution_type.code if institution.institution_type_id else "",
         **stream_variables([(p, p.requested_streams) for p in programmes]),
+        # X40: no catalogue item was falsified unless a visit report says so
+        # (the fine passes ``falsified`` in ``extra``).
+        "falsified": 0,
     }
     variables.update(extra)
     return variables
@@ -218,14 +265,35 @@ def fee_estimate(institution, schedule_code, rows):
     if schedule is None:
         out["error"] = "This fee is not set up yet."
         return out
-    if schedule.confirmed_setting and not _bool(schedule.confirmed_setting, False):
+    from .models import InstitutionTypeFee as _ITF
+    if schedule.confirmed_setting and not _bool(schedule.confirmed_setting, False) \
+            and _ITF.for_institution(institution) is None:
         out["blocked"] = True
         out["error"] = "NBTE has not confirmed this fee yet; it is issued once the amount is confirmed."
         return out
 
+    from . import billing as _billing
+    from .models import InstitutionTypeFee
+
+    if InstitutionTypeFee.for_institution(institution) is not None:
+        # v2.2: the per-category table gives every line directly.
+        try:
+            lines = _billing.category_lines(schedule, institution,
+                                            fee_variables(institution, **stream_variables(rows)))
+        except ValidationError as exc:
+            out["error"] = "; ".join(exc.messages)
+            out["blocked"] = True
+            return out
+        out["lines"] = [(line["label"], line["amount"]) for line in lines or []]
+        out["total"] = sum((line["amount"] for line in lines or []), Decimal("0"))
+        return out
+
+    from . import billing as _fee_billing
+
     def amount(pairs):
-        return to_money(evaluate_setting(schedule.formula, fee_variables(institution,
-                                                                         **stream_variables(pairs)))["result"])
+        # The schedule formula, or the SOP-01 institution fee setting for the
+        # institution's category and ownership (billing.formula_base).
+        return _fee_billing.formula_base(schedule, fee_variables(institution, **stream_variables(pairs)))[1]
     try:
         total = amount(rows)
     except FormulaError as exc:
@@ -243,6 +311,16 @@ def fee_estimate(institution, schedule_code, rows):
     rest = total - sum((a for _l, a in lines), Decimal("0"))
     if rest:
         lines.append(("Adjustment for the combination", rest))
+    # F.4 (P1): the processing fee and other lines come on top of the formula.
+    from . import billing
+
+    try:
+        extras = billing.extra_lines(schedule, institution, fee_variables(institution, **stream_variables(rows)))
+    except FormulaError:
+        extras = []
+    for line in extras:
+        lines.append((line["label"], line["amount"]))
+        out["total"] += line["amount"]
     out["lines"] = lines
     return out
 
@@ -255,12 +333,18 @@ def issue_obligation(institution, schedule_code, *, source=None, actor=None, var
     schedule = FeeSchedule.objects.filter(code=schedule_code, is_active=True).first()
     if schedule is None:
         raise ValidationError(f"Fee schedule '{schedule_code}' is missing or inactive.")
-    if schedule.confirmed_setting and not _bool(schedule.confirmed_setting, False):
+    from .models import InstitutionTypeFee as _ITF
+    # v2.2: a category with a row in "Fees by institution category" is set by
+    # Finance directly; the old "confirmed" switch only guards the formulas.
+    if schedule.confirmed_setting and not _bool(schedule.confirmed_setting, False) \
+            and _ITF.for_institution(institution) is None:
         raise ValidationError(f"{schedule.name}: the amount is not confirmed yet ({schedule.confirmed_setting} "
                               "is false), so bills cannot be issued.")
     inputs = fee_variables(institution, **(variables or {}))
+    from . import billing
+
     try:
-        snapshot = evaluate_setting(schedule.formula, inputs)
+        snapshot, _lines = billing.compute(schedule, institution, inputs)  # F.4: base + processing + others
     except FormulaError as exc:
         raise ValidationError(f"The fee formula {schedule.formula} could not be evaluated: {exc}") from None
     amount = to_money(snapshot["result"])
@@ -345,9 +429,13 @@ def generate_slip(obligation, *, actor=None):
                        "account_number": bank.account_number, "sort_code": bank.sort_code},
         is_current=True,
     )
+    from documents.payments import finish_slip, register_slip  # v2.1 X22: QR -> verification registry
+
+    doc = register_slip(obligation, slip, actor=actor)
     pdf = render_slip(slip)
     slip.file.save(f"slip-{obligation.reference}-v{version}.pdf", ContentFile(pdf), save=False)
     slip.save()
+    finish_slip(doc, slip)
     return slip
 
 
@@ -483,6 +571,9 @@ def submit_proof(obligation, *, user, upload, payer_name="", paid_on=None, amoun
             item.proof = proof
             item.save(update_fields=["proof", "updated_at"])
         return proof
+    if not obligation.chosen_method:
+        obligation.chosen_method, obligation.chosen_at = "bank_transfer", timezone.now()
+        obligation.save(update_fields=["chosen_method", "chosen_at", "updated_at"])
     _ensure_awaiting_payment(obligation, user)
     _move(obligation, "submit_proof", user)
     _enter_queue(obligation, user, "proof", proof=proof)
@@ -490,21 +581,190 @@ def submit_proof(obligation, *, user, upload, payer_name="", paid_on=None, amoun
 
 
 # ===========================================================================
-# Online payments (§10.1)
+# Method choice (v2.1 F.4, P9): once a method is chosen the others disappear
 # ===========================================================================
-def _next_order_id(obligation, letter):
-    n = PaymentAttempt.unscoped.filter(obligation=obligation).count() + 1
-    return obligation.reference if n == 1 else f"{obligation.reference}-{letter}{n}"
+METHODS = ("remita", "paystack", "bank_transfer")
+
+
+def available_methods(obligation=None):
+    """Codes the institution may choose, in qa.payment.method_order."""
+    return [p.code for p in providers.enabled_methods() if p.code in METHODS]
+
+
+def _abandon_attempts(obligation, *, keep_provider="", reason):
+    qs = PaymentAttempt.unscoped.filter(obligation=obligation, status__in=("initiated", "pending"))
+    if keep_provider:
+        qs = qs.exclude(provider=keep_provider)
+    n = 0
+    for attempt in qs:
+        attempt.status = "abandoned"
+        attempt.failure_reason = reason[:255]
+        attempt.flags = sorted(set((attempt.flags or []) + ["method_changed"]))
+        attempt.save(update_fields=["status", "failure_reason", "flags", "updated_at"])
+        n += 1
+    return n
 
 
 @transaction.atomic
+def choose_method(obligation, method, *, user):
+    """Record the institution's choice. Open online attempts of the other
+    providers are abandoned (hidden from the institution, greyed on the
+    internal evidence panel); the slip's Remita RRR stays usable for a bank
+    transfer, since the slip prints it."""
+    obligation = PaymentObligation.unscoped.select_for_update().get(pk=obligation.pk)
+    if method not in METHODS:
+        raise ValidationError("Choose Remita, Paystack or bank transfer.")
+    if method not in available_methods(obligation):
+        raise ValidationError(f"{dict(PaymentObligation.METHOD_CHOICES)[method]} is not available now.")
+    if obligation.status not in PaymentObligation.OPEN_FOR_PAYMENT + ("provider_processing",):
+        raise ValidationError(f"{obligation.reference} cannot take a payment now ({stage_label(obligation)}).")
+    if obligation.chosen_method == method:
+        return obligation
+    previous = obligation.chosen_method
+    obligation.chosen_method, obligation.chosen_at = method, timezone.now()
+    obligation.save(update_fields=["chosen_method", "chosen_at", "updated_at"])
+    if method != "bank_transfer":
+        _abandon_attempts(obligation, keep_provider=method, reason=f"Institution chose {method}.")
+    label = dict(PaymentObligation.METHOD_CHOICES)[method]
+    timeline.record(obligation.institution, "payment.method_chosen", subject=obligation, actor=user,
+                    visibility="public", public_text=f"Payment method for {obligation.reference}: {label}.",
+                    internal_text=f"Method {previous or '(none)'} → {method}.")
+    return obligation
+
+
+@transaction.atomic
+def change_method(obligation, *, user):
+    """"Change method": forget the choice and abandon every open attempt, so
+    the chooser shows all methods again."""
+    obligation = PaymentObligation.unscoped.select_for_update().get(pk=obligation.pk)
+    if obligation.status not in PaymentObligation.OPEN_FOR_PAYMENT and obligation.status != "provider_processing":
+        raise ValidationError("The method cannot be changed once a payment is being confirmed.")
+    if obligation.status == "provider_processing":
+        _move(obligation, "provider_failed", user, remark="Institution changed the payment method.")
+    previous = obligation.chosen_method
+    _abandon_attempts(obligation, keep_provider="", reason="Institution changed the payment method.")
+    if obligation.remita_rrr and previous == "remita":
+        obligation.remita_rrr = ""
+    obligation.chosen_method, obligation.chosen_at = "", None
+    obligation.save(update_fields=["chosen_method", "chosen_at", "remita_rrr", "updated_at"])
+    timeline.record(obligation.institution, "payment.method_changed", subject=obligation, actor=user,
+                    visibility="internal", internal_text=f"Method {previous or '(none)'} cleared by the institution.")
+    return obligation
+
+
+def visible_attempts(obligation, attempts):
+    """What the institution sees: attempts of its chosen method only, never
+    abandoned ones (P9: no 'pending' for methods it did not use)."""
+    out = [a for a in attempts if a.status != "abandoned"]
+    if obligation.chosen_method:
+        out = [a for a in out if a.provider == obligation.chosen_method]
+    else:  # nothing chosen yet: an RRR printed on the slip is not a "pending payment"
+        out = [a for a in out if a.status not in ("initiated", "pending")]
+    return out
+
+
+# ===========================================================================
+# Online payments (§10.1)
+# ===========================================================================
+def _next_order_id(obligation, letter):
+    """A fresh reference (idempotency key) for every new attempt. The count
+    keeps it readable; the random tail makes it unique even when an earlier
+    attempt row was rolled back, so a retry never reuses a reference the
+    provider may already hold."""
+    import secrets
+
+    n = PaymentAttempt.unscoped.filter(obligation=obligation).count() + 1
+    return f"{obligation.reference}-{letter}{n}{secrets.token_hex(2).upper()}"
+
+
+class OnlinePaymentError(ValidationError):
+    """A provider problem told to the institution in plain words. ``kind`` is
+    'unreachable', 'config', 'refused' or 'already_paid'."""
+
+    def __init__(self, message, *, kind="refused", attempt=None):
+        super().__init__(message)
+        self.kind = kind
+        self.attempt = attempt
+
+
+REUSABLE_ATTEMPT = ("initiated", "pending", "provider_processing")
+
+
+def _reusable_attempt(obligation, provider, amount):
+    """An earlier online attempt for the same bill, method and amount that is
+    still open — reused instead of starting a second checkout (same key)."""
+    minutes = _int("qa.payment.attempt_reuse_minutes", 60)
+    since = timezone.now() - datetime.timedelta(minutes=max(1, minutes))
+    return (PaymentAttempt.unscoped.filter(obligation=obligation, provider=provider.code, amount=amount,
+                                           status__in=REUSABLE_ATTEMPT, created_at__gte=since)
+            .exclude(checkout_url="").order_by("-created_at").first())
+
+
+def _settle_open_attempts_first(obligation, provider):
+    """Never charge twice: before a new checkout, ask the provider about every
+    open attempt on this bill. A paid one is recorded and stops the new
+    payment; if the provider cannot be reached the institution is asked to
+    wait rather than pay again."""
+    open_attempts = list(PaymentAttempt.unscoped.filter(obligation=obligation, status__in=REUSABLE_ATTEMPT,
+                                                        provider__in=providers.ONLINE))
+    for earlier in open_attempts:
+        prov = providers.get(earlier.provider)
+        if not prov.is_enabled():
+            continue
+        try:
+            result = prov.verify(earlier)
+        except providers.ProviderUnreachable as exc:
+            mark_attempt_unverified(earlier, str(exc))
+            return OnlinePaymentError(
+                "We are still checking your last payment attempt with the provider and could not reach it just "
+                "now. To avoid paying twice, please wait a few minutes and refresh this page.",
+                kind="unreachable", attempt=earlier)
+        except providers.ProviderError:
+            continue   # the provider has no record of it: nothing was paid
+        if result.paid:
+            record_provider_result(earlier, result, via="pre_retry")
+            return OnlinePaymentError(
+                f"Your earlier payment {earlier.provider_reference} has gone through, so nothing more is due "
+                "online. Finance confirms it shortly.", kind="already_paid", attempt=earlier)
+    return None
+
+
+def mark_attempt_unverified(attempt, reason):
+    """Timeout / offline while verifying: the attempt stays pending (never
+    failed) and is flagged so the poll and the nightly reconciliation ask the
+    provider again with the same reference."""
+    flags = set(attempt.flags or [])
+    flags.add("verify_unreachable")
+    PaymentAttempt.unscoped.filter(pk=attempt.pk).update(
+        flags=sorted(flags), failure_reason=str(reason)[:255], updated_at=timezone.now())
+
+
 def start_online_payment(obligation, provider_code, *, user, amount=None, callback_url="", request=None):
-    """Create a PaymentAttempt and ask the provider for a checkout. Returns the
-    attempt (its `checkout_url` is where the institution goes next)."""
+    """Start (or resume) an online payment. Returns the attempt whose
+    ``checkout_url`` the institution goes to next.
+
+    * An open checkout for the same bill, method and amount is reused (same
+      reference = idempotency key), so double-clicks and retries never open a
+      second charge.
+    * Earlier open attempts are verified with the provider first; a paid one
+      stops the new payment.
+    * Provider problems are saved on the attempt and raised as
+      :class:`OnlinePaymentError` with plain words (offline, keys, refusal)."""
+    attempt, error = _start_online_payment(obligation, provider_code, user=user, amount=amount,
+                                           callback_url=callback_url, request=request)
+    if error is not None:
+        raise error
+    return attempt
+
+
+@transaction.atomic
+def _start_online_payment(obligation, provider_code, *, user, amount=None, callback_url="", request=None):
     obligation = PaymentObligation.unscoped.select_for_update().get(pk=obligation.pk)
     provider = providers.get(provider_code)
     if not provider.online or not provider.is_enabled():
         raise ValidationError(f"{provider.label} is not available.")
+    if obligation.status in PaymentObligation.SETTLED:
+        raise ValidationError("This bill is already paid.")
     due = obligation.balance
     if amount in (None, ""):
         amount = due
@@ -518,6 +778,17 @@ def start_online_payment(obligation, provider_code, *, user, amount=None, callba
         raise ValidationError(f"The balance is {naira(due)}; you cannot pay more online.")
     if amount < due and not (_bool("qa.payment.allow_partial") and provider.supports_partial()):
         raise ValidationError(f"Part payments are not accepted online. Pay the full balance of {naira(due)}.")
+    reuse = _reusable_attempt(obligation, provider, amount)
+    if reuse is not None and not provider.is_simulated():
+        return reuse, None
+    # Errors are returned (not raised) so what was learnt — a paid attempt,
+    # an unreachable provider — is committed with this transaction.
+    blocker = _settle_open_attempts_first(obligation, provider)
+    if blocker is not None:
+        return blocker.attempt, blocker
+    if obligation.chosen_method != provider.code and provider.code in METHODS:
+        choose_method(obligation, provider.code, user=user)  # F.4: paying is choosing
+        obligation = PaymentObligation.unscoped.select_for_update().get(pk=obligation.pk)
     _ensure_awaiting_payment(obligation, user)
     attempt = PaymentAttempt.unscoped.create(
         obligation=obligation, provider=provider.code, amount=amount, status="initiated",
@@ -527,10 +798,21 @@ def start_online_payment(obligation, provider_code, *, user, amount=None, callba
     try:
         provider.initiate(obligation, user, amount, request=request, attempt=attempt, callback_url=callback_url)
     except providers.ProviderError as exc:
+        # The failed attempt is kept (committed) so Finance can see what
+        # happened; the next try gets a new reference.
+        kind = ("unreachable" if isinstance(exc, providers.ProviderUnreachable)
+                else "config" if isinstance(exc, providers.ProviderConfigError) else "refused")
         attempt.status = "failed"
         attempt.failure_reason = str(exc)[:255]
+        attempt.flags = sorted(set((attempt.flags or []) + [f"init_{kind}"]))
         attempt.save()
-        raise ValidationError(f"{provider.label}: {exc}") from None
+        logger.warning("online payment start failed (%s) for %s: %s", kind, obligation.reference, exc)
+        if kind == "config":
+            _alert_ict_payment_config(provider, exc)
+        message = providers.public_message(exc)
+        if kind == "refused":
+            message = f"{provider.label.split(' (')[0]} did not accept the request: {exc}. Nothing was charged."
+        return attempt, OnlinePaymentError(message, kind=kind, attempt=attempt)
     attempt.status = "pending"
     attempt.save()
     if provider.code == "remita":
@@ -540,7 +822,30 @@ def start_online_payment(obligation, provider_code, *, user, amount=None, callba
     timeline.record(obligation.institution, "payment.online_started", subject=obligation, actor=user,
                     visibility="internal", internal_text=f"{provider.label} attempt {attempt.provider_reference} "
                                                          f"for {naira(amount)}.")
-    return attempt
+    return attempt, None
+
+
+def _alert_ict_payment_config(provider, exc):
+    """Tell the Director of ICT (once an hour) that the gateway set-up is broken."""
+    from django.core.cache import cache
+
+    key = f"payments:config-alert:{provider.code}"
+    if not cache.add(key, 1, 3600):
+        return
+    try:
+        import org
+        from notifications.services import notify
+        from qa_core.departments import qa_department
+
+        ict = qa_department("ict")
+        director = org.director_of(ict) if ict is not None else None
+        if director is not None:
+            transaction.on_commit(lambda: notify(
+                director, title=f"{provider.label.split(' (')[0]} is not working",
+                body=f"Institutions cannot pay online: {exc}. Check the keys in the server's .env file.",
+                url="/qa/finance/"))
+    except Exception:  # an alert must never break the payment page
+        logger.exception("could not send the payment configuration alert")
 
 
 def _find_attempt(provider_code, reference):
@@ -556,6 +861,7 @@ def record_provider_result(attempt, result, *, via="webhook"):
     obligation = PaymentObligation.unscoped.select_for_update().get(pk=attempt.obligation_id)
     attempt.verify_result = {"paid": result.paid, "status": result.status,
                              "amount": str(result.amount) if result.amount is not None else None,
+                             "currency": getattr(result, "currency", "") or "",
                              "message": result.message, "via": via, "at": timezone.now().isoformat()}
     attempt.last_polled_at = timezone.now()
     if attempt.status == "provider_reported_paid":
@@ -600,8 +906,60 @@ def record_provider_result(attempt, result, *, via="webhook"):
         _move(obligation, "pay_online", None, metadata={"attempt": attempt.pk, "via": via})
     if obligation.status == "provider_processing":
         _move(obligation, "provider_report", None, metadata={"attempt": attempt.pk, "via": via})
-        _enter_queue(obligation, None, "provider", attempt=attempt)
+        item = _enter_queue(obligation, None, "provider", attempt=attempt)
+        gateway_first_pass(item, attempt, result, via=via)
     return attempt
+
+
+# ===========================================================================
+# v2.1 X21 (F.18): a server-verified gateway payment needs no first pass
+# ===========================================================================
+def gateway_amount_check(obligation, attempt, result):
+    """(provider_amount, matches). The amount must come from the provider's
+    own status query (never from our attempt row) and equal the balance
+    within qa.payment.gateway_amount_tolerance; the currency must be NGN."""
+    amount = result.amount
+    currency = (getattr(result, "currency", "") or "").upper()
+    if amount is None:
+        return None, False
+    amount = to_money(amount)
+    tolerance = _decimal("qa.payment.gateway_amount_tolerance", "0.00")
+    matches = abs(amount - obligation.balance) <= tolerance and currency in ("", obligation.currency or "NGN")
+    return amount, bool(matches)
+
+
+def gateway_first_pass(item, attempt, result, *, via="webhook"):
+    """Record provider evidence and route the item to the Finance Director.
+    Amount/currency mismatches stay open for manual Director review."""
+    item = PaymentVerification.unscoped.select_for_update().select_related("obligation").get(pk=item.pk)
+    obligation = item.obligation
+    if item.decision or item.final_decision or not item.is_open:
+        return item
+    amount, matches = gateway_amount_check(obligation, attempt, result)
+    item.provider_amount, item.amount_matches = amount, matches
+    if not matches:
+        item.save(update_fields=["provider_amount", "amount_matches", "updated_at"])
+        currency = getattr(result, "currency", "") or "NGN"
+        alert(obligation, f"{attempt.get_provider_display()} {attempt.provider_reference} reported "
+                          f"{naira(amount) if amount is not None else 'no amount'} ({currency}) but the balance is "
+                          f"{naira(obligation.balance)}. The Director of Finance must review the mismatch.", ict=True)
+        timeline.record(obligation.institution, "payment.gateway_mismatch", subject=obligation, visibility="public",
+                        public_text="We are checking your payment. Finance will contact you if anything is needed.")
+        return item
+    provider_label = dict(PaymentAttempt.PROVIDER_CHOICES).get(attempt.provider, attempt.provider)
+    item.decision, item.amount_confirmed = "approved", amount
+    item.verified_via, item.auto_first_pass, item.verified_at = "gateway", True, timezone.now()
+    item.verified_by = None
+    item.reason = f"Verified with {provider_label} ({attempt.provider_reference}, via {via})"
+    item.save()
+    timeline.record(obligation.institution, "payment.gateway_verified", subject=obligation, visibility="public",
+                    public_text=f"Payment received by {provider_label}. NBTE Finance will confirm it "
+                                "(usually within 1 working day). No upload is needed.",
+                    internal_text=f"Gateway verified: {naira(amount)} matches the balance; awaiting Director decision.")
+    audit.log("other", item, actor=None, note=f"Provider verification ({provider_label} "
+                                              f"{attempt.provider_reference}, {naira(amount)})")
+    transaction.on_commit(lambda: _notify_gateway_verified(item))
+    return item
 
 
 def handle_webhook(provider_code, request):
@@ -609,7 +967,9 @@ def handle_webhook(provider_code, request):
     Every call is logged; only signature-valid (Paystack) / allowed (Remita)
     calls are acted on, and only after a server-side verify."""
     provider = providers.get(provider_code)
-    ip = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip() or request.META.get("REMOTE_ADDR", "")
+    from core.ratelimit import client_ip
+
+    ip = client_ip(request)
     log = WebhookLog.objects.create(provider=provider_code, remote_ip=ip[:60],
                                     body=(request.body or b"")[:8000].decode("utf-8", "replace"))
     try:
@@ -642,6 +1002,10 @@ def handle_webhook(provider_code, request):
             log.attempt = attempt
             try:
                 result = provider.verify(attempt)
+            except providers.ProviderUnreachable as exc:
+                mark_attempt_unverified(attempt, str(exc))   # stays pending; same reference asked again
+                outcomes.append(f"{ref}: provider unreachable on verify; will be polled")
+                continue
             except providers.ProviderError as exc:
                 outcomes.append(f"{ref}: verify failed ({exc}); will be polled")
                 continue
@@ -675,6 +1039,11 @@ def verify_on_return(obligation, params):
     provider = providers.get(attempt.provider)
     try:
         result = provider.verify(attempt)
+    except providers.ProviderUnreachable as exc:
+        mark_attempt_unverified(attempt, str(exc))   # pending — the poll asks again with the same reference
+        attempt.refresh_from_db()
+        attempt.verify_unreachable = True
+        return attempt
     except providers.ProviderError:
         return attempt  # the webhook or the sweep will catch up
     record_provider_result(attempt, result, via="return")
@@ -705,11 +1074,109 @@ def poll_pending_attempts(now=None):
 
 
 # ===========================================================================
-# Finance queue (§10.2 step 4): first pass, second check, Director's decision
+# Finance queue (§10.2 step 4): the Director of Finance's decision.
+# Provider verification supplies evidence but never confirms payment.
 # ===========================================================================
+FIRST_PASS_MODES = (("none", "Nobody — the Director of Finance confirms alone below the limit"),
+                    ("role", "Anyone in Finance holding a role"),
+                    ("user", "One named person"))
+
+
+def first_pass_mode():
+    mode = str(config.get("qa.payment.first_pass_mode", "role") or "role").strip().lower()
+    return mode if mode in dict(FIRST_PASS_MODES) else "role"
+
+
+def first_pass_role():
+    return str(config.get("qa.payment.first_pass_role", "qa-finance-officer") or "qa-finance-officer").strip()
+
+
+def first_pass_user_id():
+    try:
+        return int(str(config.get("qa.payment.first_pass_user", "") or "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def first_pass_candidates():
+    """Users who may give the first pass now (P6)."""
+    import org
+    from accounts.models import User
+
+    mode = first_pass_mode()
+    if mode == "user":
+        uid = first_pass_user_id()
+        return User.objects.filter(pk=uid, is_active=True) if uid else User.objects.none()
+    if mode == "role":
+        dept = finance_department()
+        return org.users_with_role(first_pass_role(), department=dept, staff_only=True)
+    from django.contrib.auth.models import Permission
+    from django.db.models import Q
+
+    perm = Permission.objects.filter(codename="verify_payment", content_type__app_label="payments").first()
+    if perm is None:
+        return User.objects.none()
+    return User.objects.filter(Q(user_permissions=perm) | Q(groups__permissions=perm) | Q(role__permissions=perm),
+                               is_active=True, user_type="staff").distinct()
+
+
+def can_first_pass(user):
+    """Preliminary payment approval is disabled."""
+    return False
+
+
+def threshold():
+    return _decimal("qa.payment.dual_verify_threshold", "5000000")
+
+
+def _item_amount(item):
+    for value in (item.amount_confirmed, item.provider_amount):
+        if value is not None:
+            return value
+    return item.obligation.balance
+
+
 def needs_second_check(item):
-    amount = item.amount_confirmed if item.amount_confirmed is not None else item.obligation.balance
-    return amount > _decimal("qa.payment.dual_verify_threshold", "5000000")
+    """Preliminary payment approvals are disabled; the Director decides."""
+    return False
+
+
+def is_gateway_item(item):
+    return item.verified_via == "gateway" and item.auto_first_pass
+
+
+def approvals_required(item):
+    """Only the Director of Finance decides; no preliminary staff approval."""
+    return 0
+
+
+def approvals(item):
+    """Distinct people who recommended confirming (in order)."""
+    out = []
+    if item.decision == "approved" and item.verified_by_id and not item.auto_first_pass:
+        out.append(item.verified_by_id)
+    if item.second_decision == "approved" and item.second_verifier_id:
+        out.append(item.second_verifier_id)
+    for row in item.extra_approvals or []:
+        if row.get("decision") == "approved" and row.get("user"):
+            out.append(row["user"])
+    seen, distinct = set(), []
+    for uid in out:
+        if uid not in seen:
+            seen.add(uid)
+            distinct.append(uid)
+    return distinct
+
+
+def approvers(item):
+    """Everyone who touched the item before the Director (approve or reject)."""
+    ids = {item.verified_by_id, item.second_verifier_id} | {r.get("user") for r in item.extra_approvals or []}
+    return {i for i in ids if i}
+
+
+def _someone_recommends_reject(item):
+    return (item.decision == "rejected" or item.second_decision == "rejected"
+            or any(r.get("decision") == "rejected" for r in item.extra_approvals or []))
 
 
 def receipt_on_file(item):
@@ -719,83 +1186,80 @@ def receipt_on_file(item):
                                           created_at__gte=item.opened_at - datetime.timedelta(days=30)).exists()
 
 
+def receipt_required(item):
+    """X21: gateway-verified payments never need the provider's receipt."""
+    return (item.source == "provider" and not is_gateway_item(item)
+            and _bool("qa.payment.receipt_required_for_provider_payments", False))
+
+
 def ready_for_final(item):
     """(ready, reason) for the Director's decision."""
     if not item.is_open:
         return False, "This item is closed."
-    if item.decision not in ("approved", "rejected"):
-        return False, "Waiting for the Finance officer's first pass."
-    if needs_second_check(item) and item.decision == "approved" and item.second_decision not in ("approved",
-                                                                                                "rejected"):
-        return False, "Above the dual-verification threshold: a second first-pass check is needed."
-    if (item.source == "provider" and item.decision == "approved"
-            and _bool("qa.payment.receipt_required_for_provider_payments", True) and not receipt_on_file(item)):
+    if item.decision == "needs_info":
+        return False, "Finance asked the institution for more information."
+    required = approvals_required(item)
+    if not item.decision and required:
+        return False, "Waiting for the first pass."
+    if _someone_recommends_reject(item):
+        return True, ""
+    have = len(approvals(item))
+    if have < required:
+        if needs_second_check(item):
+            return False, (f"Above the limit of {naira(threshold())}: {required} approval(s) are needed before the "
+                           f"Director of Finance ({have} so far).")
+        return False, "Waiting for the first pass."
+    if receipt_required(item) and not receipt_on_file(item):
         return False, "The provider's receipt must be uploaded by the institution before confirmation."
     return True, ""
 
 
-@transaction.atomic
-def first_pass(item, *, user, decision, amount=None, reason=""):
-    item = PaymentVerification.unscoped.select_for_update().select_related("obligation").get(pk=item.pk)
-    if not user.has_perm("payments.verify_payment"):
-        raise PermissionDenied("You do not hold payments.verify_payment.")
-    if not item.is_open:
-        raise ValidationError("This item is already decided.")
-    if item.final_decision:
-        raise ValidationError("The Director of Finance has already decided this item.")
-    if decision not in dict(PaymentVerification.DECISION_CHOICES):
-        raise ValidationError("Choose recommend confirm, recommend reject or needs information.")
-    reason = (reason or "").strip()
-    if decision == "approved":
-        try:
-            amount = to_money(amount)
-        except ValueError as exc:
-            raise ValidationError(f"Amount received: {exc}") from None
-        if amount <= 0:
-            raise ValidationError("Enter the amount actually received.")
-        item.amount_confirmed = amount
-    elif len(reason) < 3:
-        raise ValidationError("Give a reason.")
-    item.decision, item.reason = decision, reason
-    item.verified_by, item.verified_at = user, timezone.now()
-    item.second_decision, item.second_verifier, item.second_verified_at, item.second_reason = "", None, None, ""
-    item.save()
-    obligation = item.obligation
-    timeline.record(obligation.institution, "payment.first_pass", subject=obligation, actor=user,
-                    visibility="internal", internal_text=f"First pass: {item.get_decision_display()}"
-                                                         f"{' — ' + naira(item.amount_confirmed) if decision == 'approved' else ''}"
-                                                         f"{' — ' + reason if reason else ''}")
-    if decision == "needs_info":
-        from institutions.services import notify_institution
+def _first_pass_locked(item):
+    return bool(item.decision) and not item.first_pass_unlocked
 
-        timeline.record(obligation.institution, "payment.needs_info", subject=obligation, actor=user,
-                        visibility="public", public_text=f"Finance needs more information about "
-                                                         f"{obligation.reference}: {reason}")
-        transaction.on_commit(lambda: notify_institution(obligation.institution, "payment.needs_info",
-                                                         {"reference": obligation.reference, "reason": reason},
-                                                         url=f"/payments/{obligation.pk}/"))
-    else:
-        ready, _why = ready_for_final(item)
-        if ready:
-            transaction.on_commit(lambda: _notify_final_approvers(item))
-    return item
+
+def first_pass(item, *, user, decision, amount=None, reason=""):
+    raise PermissionDenied("Payments go directly to the Director of Finance for a final decision.")
+
+
+def can_change_first_pass(item, user):
+    return False
+
+
+def change_first_pass(item, *, user, reason):
+    raise PermissionDenied("Payments go directly to the Director of Finance for a final decision.")
 
 
 @transaction.atomic
 def second_pass(item, *, user, decision, reason=""):
-    item = PaymentVerification.unscoped.select_for_update().get(pk=item.pk)
+    """An extra approval above the limit (the second check, then any further
+    approvals up to qa.payment.approvers_above_limit)."""
+    item = PaymentVerification.unscoped.select_for_update().select_related("obligation").get(pk=item.pk)
+    if approvals_required(item) == 0:
+        raise PermissionDenied("Payments go directly to the Director of Finance for a decision.")
     if not user.has_perm("payments.second_verify_payment"):
         raise PermissionDenied("You do not hold payments.second_verify_payment.")
     if item.decision not in ("approved", "rejected"):
         raise ValidationError("The first pass has not been recorded yet.")
-    if user.pk == item.verified_by_id:
+    if user.pk in approvers(item):
         raise PermissionDenied("The second check must be done by a different officer.")
+    if is_final_approver(user):
+        raise PermissionDenied("The Director of Finance is the last approver, not a checker.")
     if decision not in ("approved", "rejected"):
         raise ValidationError("Choose agree (recommend confirm) or recommend reject.")
     if decision == "rejected" and len((reason or "").strip()) < 3:
         raise ValidationError("Give a reason.")
-    item.second_decision, item.second_reason = decision, (reason or "").strip()
-    item.second_verifier, item.second_verified_at = user, timezone.now()
+    if len(approvals(item)) >= approvals_required(item) and not _someone_recommends_reject(item) \
+            and item.second_decision:
+        raise ValidationError("No further approval is needed; the item is with the Director of Finance.")
+    now = timezone.now()
+    if not item.second_decision:
+        item.second_decision, item.second_reason = decision, (reason or "").strip()
+        item.second_verifier, item.second_verified_at = user, now
+    else:
+        item.extra_approvals = list(item.extra_approvals or []) + [
+            {"user": user.pk, "name": user.get_full_name() or user.email, "decision": decision,
+             "reason": (reason or "").strip(), "at": now.isoformat()}]
     item.save()
     if ready_for_final(item)[0]:
         transaction.on_commit(lambda: _notify_final_approvers(item))
@@ -803,7 +1267,7 @@ def second_pass(item, *, user, decision, reason=""):
 
 
 @transaction.atomic
-def final_decision(item, *, user, decision, reason="", impersonating=False):
+def final_decision(item, *, user, decision, reason="", impersonating=False, amount=None):
     """The Director of Finance confirms or rejects. THE ONLY PATH TO `confirmed`."""
     item = PaymentVerification.unscoped.select_for_update().select_related("obligation").get(pk=item.pk)
     obligation = PaymentObligation.unscoped.select_for_update().get(pk=item.obligation_id)
@@ -812,18 +1276,22 @@ def final_decision(item, *, user, decision, reason="", impersonating=False):
     if decision not in ("confirmed", "rejected"):
         raise ValidationError("Choose confirm or reject.")
     if not is_final_approver(user):
-        raise PermissionDenied(f"Only the holder of the role '{final_approver_role()}' with "
-                               "payments.final_confirm_payment can decide payments.")
-    if user.pk in (item.verified_by_id, item.second_verifier_id):
-        raise PermissionDenied("You did a first-pass check on this payment, so another approver must decide.")
+        raise PermissionDenied(f"Only the {final_approver_role()} department, holding "
+                               "payments.final_confirm_payment, can decide payments.")
     ready, why = ready_for_final(item)
     if decision == "confirmed" and not ready:
         raise ValidationError(why)
-    if decision == "rejected" and item.decision not in ("approved", "rejected"):
-        raise ValidationError("Waiting for the Finance officer's first pass.")
     reason = (reason or "").strip()
     if decision == "rejected" and len(reason) < 3:
         raise ValidationError("Give the reason the institution will see.")
+    if decision == "confirmed" and item.amount_confirmed is None:
+        # Manual evidence requires the Director to state the amount received.
+        try:
+            item.amount_confirmed = to_money(amount if amount not in (None, "") else obligation.balance)
+        except ValueError as exc:
+            raise ValidationError(f"Amount received: {exc}") from None
+        if item.amount_confirmed <= 0:
+            raise ValidationError("Enter the amount actually received.")
     now = timezone.now()
     item.final_approver, item.final_decision, item.final_reason, item.final_decided_at = user, decision, reason, now
     item.is_open = False
@@ -862,6 +1330,56 @@ def final_decision(item, *, user, decision, reason="", impersonating=False):
     return item
 
 
+# ---------------------------------------------------------------------------
+# P4: ICT "Send reminder to the Director of Finance" (rate-limited, audited)
+# ---------------------------------------------------------------------------
+def is_ict_monitor(user):
+    import org
+
+    return bool(user and user.is_authenticated and (
+        user.is_superuser or org.users_with_role("ict-qa-monitor", staff_only=True).filter(pk=user.pk).exists()))
+
+
+def next_reminder_at(item):
+    if not item.last_dof_reminder_at:
+        return None
+    return item.last_dof_reminder_at + datetime.timedelta(hours=_int("qa.payment.dof_reminder_hours", 24))
+
+
+def can_remind_director(item, user):
+    nxt = next_reminder_at(item)
+    return bool(item.is_open and is_ict_monitor(user) and (nxt is None or nxt <= timezone.now()))
+
+
+@transaction.atomic
+def remind_director(item, *, user, note=""):
+    item = PaymentVerification.unscoped.select_for_update().select_related("obligation").get(pk=item.pk)
+    if not is_ict_monitor(user):
+        raise PermissionDenied("Only ICT QA monitors can send this reminder.")
+    if not item.is_open:
+        raise ValidationError("This item is already decided.")
+    nxt = next_reminder_at(item)
+    if nxt is not None and nxt > timezone.now():
+        raise ValidationError(f"A reminder was already sent; the next one can go after "
+                              f"{timezone.localtime(nxt):%d %b %Y, %H:%M}.")
+    director = finance_director()
+    if director is None:
+        raise ValidationError("Nobody holds the Director of Finance seat; tell the ES.")
+    item.last_dof_reminder_at = timezone.now()
+    item.save(update_fields=["last_dof_reminder_at", "updated_at"])
+    audit.log("other", item, actor=user, note=f"ICT reminder to the Director of Finance{': ' + note if note else ''}")
+    timeline.record(item.obligation.institution, "payment.dof_reminder", subject=item.obligation, actor=user,
+                    visibility="internal", internal_text="ICT reminded the Director of Finance.")
+    from institutions.services import notify_role
+
+    sender = user.get_full_name() or user.email
+    transaction.on_commit(lambda: notify_role(
+        "payment.dof_reminder", {"reference": item.obligation.reference, "institution": item.obligation.institution.name,
+                                 "sender": sender, "note": note.strip()[:300]},
+        final_approvers(), url=f"/qa/finance/queue/{item.pk}/"))
+    return item
+
+
 def _close_open_attempts(obligation, reason):
     """Pending online attempts (e.g. the RRR printed on an old slip) end when
     the bill is settled or cancelled; money that still arrives on them is
@@ -886,7 +1404,31 @@ def _after_confirm(obligation, item, advice, user, *, settled):
         url=f"/payments/{obligation.pk}/"))
     if settled:
         _close_open_attempts(obligation, "Bill settled")
+        _issue_registry_receipt(obligation, advice)
         transaction.on_commit(lambda: payment_settled.send(sender=PaymentObligation, obligation=obligation))
+        from .signals import obligation_confirmed
+
+        # D-5: onboarding listens and auto-submits the application (later task).
+        transaction.on_commit(lambda: obligation_confirmed.send(sender=PaymentObligation, obligation=obligation,
+                                                                verification=item, actor=user))
+
+
+def _issue_registry_receipt(obligation, advice):
+    """X22 call site: register the receipt in the issued-document registry
+    with its QR once pf-docs ships ``documents.payments.issue_receipt``.
+    Guarded so this branch works with or without that module.
+    TODO(pf-docs merge): drop the guard when documents.payments is on master."""
+    try:
+        from documents import payments as doc_payments
+    except ImportError:
+        return None
+    if not hasattr(doc_payments, "issue_receipt"):
+        return None
+    try:
+        return doc_payments.issue_receipt(obligation)
+    except Exception:  # the registry must never block a confirmation
+        logger.exception("Receipt registry entry for %s failed", obligation.reference)
+        return None
 
 
 def _after_reject(obligation, item, user, reason):
@@ -917,6 +1459,9 @@ def generate_advice(obligation, item):
     pdf = render_advice(advice)
     advice.file.save(f"advice-{ref}.pdf", ContentFile(pdf), save=False)
     advice.save()
+    from documents.payments import issue_receipt  # v2.1 X22/X24: signed receipt with a registry QR
+
+    issue_receipt(advice, actor=item.final_approver if item is not None else None)
     return advice
 
 
@@ -1323,25 +1868,53 @@ def sweep(now=None):
 # Notifications and alerts
 # ===========================================================================
 def finance_officers():
-    from accounts.models import User
+    import org
 
-    return [u for u in User.objects.filter(is_active=True, user_type="staff",
-                                           role__code="qa-finance-officer")[:100]]
+    return list(org.users_with_role("qa-finance-officer", staff_only=True)[:100])
 
 
 def final_approvers():
-    from accounts.models import User
+    director = finance_director()
+    return [director] if director is not None and is_final_approver(director) else []
 
-    return [u for u in User.objects.filter(is_active=True, user_type="staff",
-                                           role__code=final_approver_role())[:50] if is_final_approver(u)]
+
+def first_pass_recipients():
+    """Preliminary approvers are no longer part of payment confirmation."""
+    return []
 
 
 def _notify_finance_officers(item):
+    """Route every new payment verification directly to the Finance Director."""
     from institutions.services import notify_role
 
+    item = PaymentVerification.unscoped.select_related("obligation__institution").filter(pk=item.pk).first()
+    if item is None:
+        return
     source = dict(PaymentVerification.SOURCE_CHOICES).get(item.source, item.source)
-    notify_role("payment.claimed", {"reference": item.obligation.reference, "institution": item.obligation.institution.name,
-                                    "source": source}, finance_officers(), url=f"/qa/finance/queue/{item.pk}/")
+    ctx = {"reference": item.obligation.reference, "institution": item.obligation.institution.name, "source": source,
+           "amount": naira(item.obligation.balance)}
+    url = f"/qa/finance/queue/{item.pk}/"
+    if not is_gateway_item(item):
+        notify_role("payment.claimed_director", {**ctx, "next": "Ready for your decision."},
+                    final_approvers(), url=url)
+
+
+def _notify_gateway_verified(item):
+    from institutions.services import notify_institution, notify_role
+
+    item = PaymentVerification.unscoped.select_related("obligation__institution", "attempt").filter(pk=item.pk).first()
+    if item is None:
+        return
+    ob = item.obligation
+    provider = item.attempt.get_provider_display() if item.attempt_id else "the provider"
+    ready = ready_for_final(item)[0]
+    notify_role("payment.gateway_verified", {"reference": ob.reference, "institution": ob.institution.name,
+                                             "provider": provider, "amount": naira(item.amount_confirmed),
+                                             "next": "Ready for your decision." if ready else
+                                             "Evidence needs review before your decision."},
+                final_approvers(), url=f"/qa/finance/queue/{item.pk}/")
+    notify_institution(ob.institution, "payment.gateway_received",
+                       {"reference": ob.reference, "provider": provider.split(" (")[0]}, url=f"/payments/{ob.pk}/")
 
 
 def _notify_final_approvers(item):
@@ -1356,8 +1929,7 @@ def _notify_final_approvers(item):
 def _notify_finance_reminder(item, pct):
     from institutions.services import notify_role
 
-    users = final_approvers() if item.decision else finance_officers()
-    notify_role("payment.reminder", {"reference": item.obligation.reference, "percent": pct}, users,
+    notify_role("payment.reminder", {"reference": item.obligation.reference, "percent": pct}, final_approvers(),
                 url=f"/qa/finance/queue/{item.pk}/")
 
 
@@ -1369,12 +1941,12 @@ def _notify_overdue(item):
 
 
 def alert(obligation, message, *, ict=False):
-    from accounts.models import User
     from institutions.services import notify_role
 
     users = finance_officers() + final_approvers()
     if ict:
-        users += list(User.objects.filter(is_active=True, user_type="staff", role__code="ict-qa-monitor")[:20])
+        import org
+        users += list(org.users_with_role("ict-qa-monitor", staff_only=True)[:20])
     timeline.record(obligation.institution, "payment.alert", subject=obligation, visibility="internal",
                     internal_text=message)
     transaction.on_commit(lambda: notify_role("payment.alert", {"reference": obligation.reference,
@@ -1426,6 +1998,7 @@ class _SimRequest:
         self.body = body
         self.headers = headers or {}
         self.META = {"REMOTE_ADDR": "127.0.0.1"}
+        self.GET = {"token": getattr(settings, "REMITA_WEBHOOK_TOKEN", "")}
 
 
 def simulate_provider_callback(provider_code, ref, outcome="success"):
@@ -1477,7 +2050,9 @@ def queue_items(user, *, source="", age="", q="", stage=""):
     now = timezone.now()
     for item in qs.order_by("opened_at"):
         item.ready, item.ready_why = ready_for_final(item)
-        item.needs_second = needs_second_check(item) and item.decision == "approved" and not item.second_decision
+        item.needs_second = (needs_second_check(item) and item.decision == "approved"
+                             and len(approvals(item)) < approvals_required(item))
+        item.gateway = is_gateway_item(item)
         item.overdue = item.obligation.status == "finance_confirmation_overdue" or bool(
             item.sla_due_at and item.sla_due_at <= now)
         if item.sla_due_at:
@@ -1485,7 +2060,7 @@ def queue_items(user, *, source="", age="", q="", stage=""):
             item.sla_pct = min(100, int(100 * (now - item.opened_at).total_seconds() / total))
         else:
             item.sla_pct = 0
-        if stage == "first" and item.decision:
+        if stage == "first" and (item.decision or item.ready):
             continue
         if stage == "second" and not item.needs_second:
             continue
@@ -1502,13 +2077,65 @@ def queue_items(user, *, source="", age="", q="", stage=""):
 def item_rights(item, user, *, impersonating=False):
     """What ``user`` may do on one verification item (the decision panel)."""
     is_director = is_final_approver(user)
-    did_first_pass = user.pk in (item.verified_by_id, item.second_verifier_id)
+    did_first_pass = user.pk in approvers(item)
+    gateway = is_gateway_item(item)
+    open_ = item.is_open and not item.final_decision and not impersonating
     return {
-        "can_first": bool(user.has_perm("payments.verify_payment") and item.is_open and not item.final_decision
-                          and not impersonating),
-        "can_second": bool(user.has_perm("payments.second_verify_payment") and item.is_open
-                           and item.decision in ("approved", "rejected") and user.pk != item.verified_by_id
-                           and needs_second_check(item) and not item.second_decision),
+        "can_first": False,
+        "first_locked": bool(item.decision and _first_pass_locked(item) and not gateway),
+        "can_change_first": bool(open_ and can_change_first_pass(item, user)),
+        "can_second": bool(approvals_required(item) > 0 and open_ and user.has_perm("payments.second_verify_payment")
+                           and item.decision in ("approved", "rejected") and user.pk not in approvers(item)
+                           and not is_director and needs_second_check(item)
+                           and len(approvals(item)) < approvals_required(item)),
         "is_director": is_director, "did_first_pass": did_first_pass,
-        "can_final": bool(is_director and item.is_open and not did_first_pass and not impersonating),
+        "can_final": bool(is_director and item.is_open and not impersonating),
+        "can_remind": bool(not impersonating and can_remind_director(item, user)),
+        "is_ict": is_ict_monitor(user),
+        "gateway": gateway,
     }
+
+
+# ===========================================================================
+# v2.1 F.4 (P10): what the institution does next after a confirmed payment
+# ===========================================================================
+NEXT_STEPS = {
+    "institutional_processing": ("Next: add your programmes",
+                                 "List the programmes and streams you plan to run, then submit them to NBTE.",
+                                 "qa_portal:programmes", "Add my programmes"),
+    "programme_processing": ("Next: NBTE plans your visit",
+                             "Your programme fee is confirmed. NBTE schedules the accreditation visit and tells you "
+                             "here and by e-mail.", "qa_portal:dashboard", "Go to my dashboard"),
+    "qa_request_processing": ("Next: your QA request moves on",
+                              "NBTE now reviews your QA request. Follow its progress on the QA requests page.",
+                              "qa_portal:qa_requests", "Open my QA requests"),
+}
+
+
+def next_step(obligation):
+    """{title, text, url, label} for the welcome card and the receipt page."""
+    from django.urls import NoReverseMatch, reverse
+
+    title, text, name, label = NEXT_STEPS.get(
+        obligation.fee_schedule.code if obligation.fee_schedule_id else "",
+        ("Next: back to your dashboard", "Your payment is recorded. Your dashboard shows what comes next.",
+         "qa_portal:dashboard", "Go to my dashboard"))
+    try:
+        url = reverse(name)
+    except NoReverseMatch:
+        url = reverse("qa_portal:dashboard")
+    return {"title": title, "text": text, "url": url, "label": label}
+
+
+
+def open_verification(obligation):
+    """The open first-pass / Finance item of a bill (v2.1 P.3: views never call .unscoped)."""
+    from .models import PaymentVerification
+    return PaymentVerification.unscoped.filter(obligation=obligation, is_open=True).first()
+
+
+def mark_welcomed(obligation):
+    """P10: remember that the institution saw the confirmed-payment welcome."""
+    from django.utils import timezone as _tz
+    from .models import PaymentObligation
+    PaymentObligation.unscoped.filter(pk=obligation.pk, welcomed_at__isnull=True).update(welcomed_at=_tz.now())

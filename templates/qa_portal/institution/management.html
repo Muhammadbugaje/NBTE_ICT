@@ -1,0 +1,51 @@
+{% extends base_template %}
+{% load qa_tags static %}
+{% block title %}Management team · {{ portal_name }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/qa-onboard.css' %}">
+<div class="qa-portal-page qa-ob" id="qa-management">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "users" 14 "2.2" %} <a href="{% url 'qa_portal:setup' %}">Setup</a></span>
+    <h1 data-qa-focus>Management team</h1>
+    <p>NBTE defines these roles. Replacing someone keeps the earlier holder in your history.</p>
+  </header>
+  {% if team_locked %}
+  <section class="qa-card qa-ob-card" role="status">
+    <header class="qa-card__head"><div><h2>Management changes are protected</h2>
+      <p>Your first application has been submitted. NBTE approval is required before this record can change.</p></div></header>
+    {% if can_submit_change_request %}<div class="qa-card__body"><div class="pp-actions"><a class="btn btn-primary" href="{% url 'qa_portal:change_requests_new' %}?type=management">Request a management change</a>
+      <a class="btn btn-subtle" href="{% url 'qa_portal:change_requests' %}">View requests</a></div></div>{% endif %}
+  </section>
+  {% endif %}
+  <div class="qa-ob-grid">
+    <section class="qa-card qa-ob-card" aria-labelledby="qa-roles-h">
+      <header class="qa-card__head"><div><h2 id="qa-roles-h">Roles</h2><p>Required roles are marked</p></div></header>
+      <ul class="qa-ob-team" role="list">
+        {% for b in board %}
+        <li class="{% if not b.filled and b.role.is_mandatory %}qa-ob-team__missing{% endif %}">
+          <span class="qa-ob-team__icon" aria-hidden="true">{% icon "users" 16 %}</span>
+          <div><strong>{{ b.role.name }}{% if b.role.is_mandatory %} <span class="qa-chip qa-tone-info">Required</span>{% endif %}</strong>
+            {% if b.holders %}{% for h in b.holders %}<span>{{ h.display_name }}{% if h.email %} · {{ h.email }}{% endif %}{% if h.phone %} · {{ h.phone }}{% endif %}</span>{% endfor %}{% else %}<span>Not filled yet</span>{% endif %}</div>
+          {% if can_edit %}<a class="btn {% if b.filled %}btn-subtle{% else %}btn-primary{% endif %} btn-sm" href="?role={{ b.role.code }}#qa-holder-form">{% if b.filled %}Replace{% else %}{% icon "plus" 14 %} Add{% endif %}</a>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% if can_edit %}
+    <section class="qa-card qa-ob-card" aria-labelledby="qa-holder-h" id="qa-holder-form">
+      <header class="qa-card__head"><div><h2 id="qa-holder-h">Add or replace a holder</h2><p>Changes are recorded in your institution's history.</p></div></header>
+      <form method="post" class="qa-card__body qa-stack" novalidate>{% csrf_token %}
+        {% include "qa_core/partials/_form_errors.html" %}
+        {% for n in "role title full_name email phone"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
+        <div class="btn-group"><button class="btn btn-primary" type="submit">{% icon "check" 16 %} Save</button><a class="btn btn-subtle" href="{% url 'qa_portal:setup' %}">Back to setup</a></div>
+      </form>
+    </section>
+    {% endif %}
+  </div>
+  {% if history %}
+  <section class="qa-card qa-ob-card"><header class="qa-card__head"><div><h2>Earlier holders</h2></div></header>
+    <ul class="qa-ob-team" role="list">{% for h in history %}<li><span class="qa-ob-team__icon" aria-hidden="true">{% icon "clock" 16 %}</span><div><strong>{{ h.display_name }}</strong><span>{{ h.role.name }} · until {{ h.end_date|date:"j M Y" }}</span></div></li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

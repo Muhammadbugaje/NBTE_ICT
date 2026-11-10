@@ -19,17 +19,37 @@ CONTACT_MESSAGES = (5, 60 * 60)
 
 
 def client_ip(request):
-    """The client's address.
+    """The client's address, from the ONE header the proxy in front of us sets.
 
-    Behind the shipped nginx config, `X-Real-IP` is set by nginx from the
-    socket address and cannot be forged by the client (unlike the first
-    entry of `X-Forwarded-For`). Without nginx, REMOTE_ADDR is used.
+    ``settings.CLIENT_IP_HEADER`` names that header's META key:
+
+    * ``HTTP_X_REAL_IP`` (default) — the shipped nginx config sets it from the
+      socket address, so the client cannot forge it.
+    * ``HTTP_CF_CONNECTING_IP`` — Render (Cloudflare in front); chosen
+      automatically in production when Render's ``RENDER`` variable is set.
+    * ``""`` — no proxy: the socket address only.
+
+    v2.2 (security): any other client-supplied header (X-Forwarded-For,
+    X-Real-IP without nginx) is ignored, and a value that is not an IP
+    address falls back to the socket address, so rate limits, the admin IP
+    guard and the Remita webhook check cannot be dodged with a fake header.
     """
-    return (
-        request.META.get("HTTP_X_REAL_IP")
-        or request.META.get("REMOTE_ADDR")
-        or "unknown"
-    ).strip()
+    import ipaddress
+
+    from django.conf import settings
+
+    header = getattr(settings, "CLIENT_IP_HEADER", "HTTP_X_REAL_IP")
+    socket_ip = (request.META.get("REMOTE_ADDR") or "").strip()
+    raw = (request.META.get(header) or "").strip() if header else ""
+    raw = raw.split(",")[0].strip()
+    for candidate in (raw, socket_ip):
+        if not candidate:
+            continue
+        try:
+            return str(ipaddress.ip_address(candidate))
+        except ValueError:
+            continue
+    return "unknown"
 
 
 def _key(scope, ident):

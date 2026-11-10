@@ -1,4 +1,4 @@
-{% load static %}
+{% load static nbte_assets %}{% load brand %}
 <!DOCTYPE html>
 <html lang="en" data-view="auto">
 <head>
@@ -6,17 +6,11 @@
   <meta name="description" content="{% block meta_description %}{{ site_info.organisation_name }} — {{ site_info.department_name }} workspace.{% endblock %}">
   <title>{% block title %}{{ site_info.organisation_name }} · {{ site_info.department_name }}{% endblock %}</title>
   {% block extra_css %}{% endblock %}
-  <link rel="stylesheet" href="{% static 'css/apple.css' %}?v=1">
-  <link rel="stylesheet" href="{% static 'css/polish.css' %}?v=2">
+  {% css_bundle "finish-public" %}
 </head>
 <body class="public-body nbte-watermark-page" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 
-  <div id="page-loader" class="page-loader" aria-hidden="true">
-    <div class="page-loader-inner">
-      <img src="{% static 'img/NBTE_logo.png' %}" alt="" class="page-loader-logo">
-      <div class="page-loader-bar" role="progressbar" aria-label="Loading"></div>
-    </div>
-  </div>
+  {% include "partials/page_loader.html" %}{# NBTE crest loader #}
 
   {% block body %}{% endblock %}
 
@@ -29,10 +23,11 @@
   {% endif %}
 
   <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
-  <script src="{% static 'js/app.js' %}?v=21" defer></script>
-  <script src="{% static 'js/ui.js' %}?v=4" defer></script>
-  <script src="{% static 'js/dialog.js' %}?v=1" defer></script>
+  <script src="{% static 'js/app.js' %}" defer></script>
+  <script src="{% static 'js/motion.js' %}" defer></script>{# v2.1 A9 motion kit #}
+  <script src="{% static 'js/ui.js' %}" defer></script>
+  <script src="{% static 'js/dialog.js' %}" defer></script>
   {% block extra_js %}{% endblock %}
-  <script src="{% static 'js/polish.js' %}?v=1" defer></script>
+  <script src="{% static 'js/polish.js' %}" defer></script>
 </body>
 </html>

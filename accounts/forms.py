@@ -199,7 +199,7 @@ class ProfileForm(forms.Form):
 
     first_name = forms.CharField(max_length=100, required=True)
     last_name = forms.CharField(max_length=100, required=True)
-    email = forms.EmailField(required=True)
+    email = forms.EmailField(required=True, help_text="This is also your sign-in email.")
 
     phone = forms.CharField(max_length=30, required=False)
     contact_preference = forms.ChoiceField(
@@ -284,6 +284,7 @@ class ProfileForm(forms.Form):
                 department=self.user.department,
             )
 
+        staff.email = self.user.email
         staff.phone = data.get("phone") or ""
         if data.get("contact_preference"):
             staff.contact_preference = data["contact_preference"]
@@ -297,3 +298,123 @@ class ProfileForm(forms.Form):
         staff.save()
 
         return self.user
+
+# ---------------------------------------------------------------------------
+# User management: one create form per segment (strict NBTE / institution split)
+# ---------------------------------------------------------------------------
+class _SegmentUserCreateForm(forms.Form):
+    first_name = forms.CharField(max_length=150)
+    last_name = forms.CharField(max_length=150)
+    email = forms.EmailField()
+
+    user_type = User.STAFF
+
+    def __init__(self, *args, actor=None, **kwargs):
+        self.actor = actor
+        super().__init__(*args, **kwargs)
+        from . import audience
+
+        roles = audience.roles_for(self.user_type)
+        if actor is not None and not getattr(actor, "is_superuser", False):
+            import org
+
+            allowed = [r.pk for r in org.grantable_roles(actor)]
+            roles = roles.filter(pk__in=allowed)
+        self.fields["role"].queryset = roles.order_by("-rank", "name")
+        for f in self.fields.values():
+            f.widget.attrs.setdefault("class", "input")
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("An account with this e-mail already exists.")
+        return email
+
+    def clean_role(self):
+        from . import audience
+
+        role = self.cleaned_data.get("role")
+        problem = audience.role_problem(role, self.user_type) if role else ""
+        if problem:   # defence in depth: the queryset already limits the choices
+            raise forms.ValidationError(problem)
+        return role
+
+
+class NBTEUserCreateForm(_SegmentUserCreateForm):
+    """NBTE staff account: user_type is always 'staff' and a department is required."""
+
+    department = forms.ModelChoiceField(queryset=None, required=True, empty_label="Choose a department",
+                                        help_text="Every NBTE staff account belongs to a department.")
+    role = forms.ModelChoiceField(queryset=None, required=False, empty_label="No role yet",
+                                  help_text="Only NBTE internal roles are listed.")
+    send_email = forms.BooleanField(required=False, initial=True, label="E-mail the sign-in details")
+
+    user_type = User.STAFF
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from staff.models import Department
+
+        depts = Department.objects.filter(is_active=True).order_by("name")
+        actor = self.actor
+        if actor is not None and not (actor.is_superuser or actor.has_perm("accounts.access_all_departments")):
+            depts = depts.filter(pk=getattr(actor, "department_id", None))
+        self.fields["department"].queryset = depts
+        self.fields["department"].widget.attrs.setdefault("class", "input")
+
+    def save(self, request=None):
+        from django.db import transaction
+
+        from .services import prepare_new_user, send_credentials_email
+
+        data = self.cleaned_data
+        with transaction.atomic():
+            user = User(email=data["email"], first_name=data["first_name"].strip(),
+                        last_name=data["last_name"].strip(), user_type=User.STAFF,
+                        department=data["department"], institution=None, professional_body=None)
+            password = prepare_new_user(user)
+            user.save()
+            if data.get("role"):
+                from staff.role_ui import RoleAssignError, role_assign
+                try:
+                    role_assign(user, data["role"], self.actor, reason="Account created in User management")
+                except RoleAssignError as exc:
+                    from django.core.exceptions import ValidationError
+                    raise ValidationError(str(exc))
+            if data.get("send_email"):
+                transaction.on_commit(lambda: send_credentials_email(user, password))
+        return user
+
+
+class InstitutionUserCreateForm(_SegmentUserCreateForm):
+    """Institution portal account: user_type is always 'institution'; an
+    institution and an institution portal role are required."""
+
+    institution = forms.ModelChoiceField(queryset=None, required=True, empty_label="Choose an institution")
+    role = forms.ModelChoiceField(queryset=None, required=True, empty_label="Choose a portal role",
+                                  label="Portal role", help_text="Only institution portal roles are listed.")
+    job_title = forms.CharField(max_length=120, required=False)
+    institution_department = forms.CharField(max_length=120, required=False, label="Department at the institution")
+
+    user_type = User.INSTITUTION
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from institutions.models import Institution
+
+        self.fields["institution"].queryset = Institution.unscoped.order_by("name")
+        self.fields["institution"].label_from_instance = lambda i: f"{i.name} ({i.code})"
+        self.fields["institution"].widget.attrs.setdefault("class", "input")
+
+    def save(self, request=None):
+        from django.db import transaction
+
+        from institutions.services import invite_user
+
+        data = self.cleaned_data
+        payload = {"first_name": data["first_name"], "last_name": data["last_name"], "email": data["email"],
+                   "role": data["role"].code, "job_title": data.get("job_title") or "",
+                   "institution_department": data.get("institution_department") or ""}
+        with transaction.atomic():   # a failed credentials step leaves no half-made account
+            return invite_user(data["institution"], payload, actor=self.actor, request=request,
+                               approved_request=True)

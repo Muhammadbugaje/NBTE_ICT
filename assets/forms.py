@@ -93,7 +93,16 @@ class AssignAssetForm(forms.Form):
     )
     assigned_to = forms.ModelChoiceField(
         queryset=User.objects.none(),
-        empty_label="— Select a user —",
+        required=False,
+        empty_label="— Select a person —",
+        label="Person",
+        widget=forms.Select(attrs={"class": "input"}),
+    )
+    department = forms.ModelChoiceField(
+        queryset=None,
+        required=False,
+        empty_label="— Select a department —",
+        label="Department",
         widget=forms.Select(attrs={"class": "input"}),
     )
     condition_on_assign = forms.ChoiceField(
@@ -118,7 +127,8 @@ class AssignAssetForm(forms.Form):
 
     def __init__(self, *args, asset=None, user=None, **kwargs):
         super().__init__(*args, **kwargs)
-        qs = User.objects.filter(is_active=True)
+        from accounts.selectors import staff_users
+        qs = staff_users()  # Phase 0 (T-SEC-2)
         # Scope assignee list to the asset's owning department when possible.
         if asset is not None and asset.owner_department_id:
             scoped = qs.filter(department_id=asset.owner_department_id)
@@ -133,6 +143,28 @@ class AssignAssetForm(forms.Form):
         self.fields["assigned_to"].queryset = qs.order_by(
             "first_name", "last_name", "email"
         )
+        # K1: department mode — own department unless the user sees all assets.
+        from staff.models import Department
+        depts = Department.objects.filter(is_active=True).order_by("name")
+        if user is not None and not can_view_all_assets(user):
+            depts = depts.filter(pk=user.department_id) if user.department_id else depts.none()
+        self.fields["department"].queryset = depts
+        self.asset = asset
+        if asset is not None and asset.assignment_mode == "department":
+            self.fields["department"].required = True
+            if asset.owner_department_id and depts.filter(pk=asset.owner_department_id).exists():
+                self.fields["department"].initial = asset.owner_department_id
+        else:
+            self.fields["assigned_to"].required = True
+
+
+class AssignmentModeForm(forms.Form):
+    """K1/K2: how the asset is held."""
+    assignment_mode = forms.ChoiceField(
+        choices=[("individual", "Individual"), ("department", "Department"), ("shared", "Shared")],
+        widget=forms.Select(attrs={"class": "input"}),
+        label="How it is held",
+    )
 
 
 class ReturnAssetForm(forms.Form):
@@ -148,6 +180,8 @@ class ReturnAssetForm(forms.Form):
             "placeholder": "Optional condition notes",
         }),
     )
+    assignment = forms.IntegerField(required=False, widget=forms.HiddenInput,
+                                    help_text="Which holder's share to return (shared assets).")
 
 
 class SetStateForm(forms.Form):

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Location codes · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Location codes{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=7">
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -13,19 +13,18 @@
      data-codes-api-url="{% url 'attendance:location_codes_api' %}"
      data-seconds-until-rotation="{{ seconds_until_rotation|default:0 }}">
 
-  <header class="att-codes-header">
+  <header class="qa-hero nbte-hero att-qa-hero" data-qa-area="attendance">
     <div>
-      <span class="att-codes-eyebrow">Live codes</span>
+      <a class="nbte-hero__back" href="{% url 'attendance:home' %}">{% icon "back" 14 "2.4" %} Attendance</a>
+      <span class="qa-eyebrow">{% icon "key" 14 "2.2" %} Attendance · Live codes</span>
       <h1>Office check-in codes</h1>
-      <p>
-        Each office displays its current code. Staff ask the office contact
-        for the code, then use it on the manual check-in page.
-      </p>
+      <p>Each office displays its current code. Staff ask the office contact for the code, then use it on the manual check-in page.</p>
+      <div class="qa-hero__actions">
+        <a class="btn btn-subtle" href="{% url 'attendance:check_in_manual' %}">{% icon "lock" 15 "2.2" %} Manual check-in</a>
+      </div>
     </div>
-    <div class="att-codes-rotation" aria-live="polite">
-      <span class="att-codes-rotation-label">Next rotation in</span>
-      <strong id="att-codes-countdown">—</strong>
-      <span class="att-codes-rotation-unit">s</span>
+    <div class="qa-hero__stats" aria-label="Rotation">
+      <div class="qa-stat" aria-live="polite"><strong id="att-codes-countdown">—</strong><span>Seconds to next rotation</span></div>
     </div>
   </header>
 
@@ -81,6 +80,9 @@
               {{ row.location.radius_meters }}m{% if row.location.gps_offset_meters %} + {{ row.location.gps_offset_meters }}m{% endif %}
             </div>
           </footer>
+          <div class="btn-group btn-group--end">
+            <a class="btn btn-ghost btn-sm" href="{% url 'attendance:office_screen' row.location.pk %}" target="_blank" rel="noopener">Show rotating QR on a screen</a>
+          </div>
 
         </article>
       {% endfor %}

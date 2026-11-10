@@ -47,27 +47,9 @@ def _find_logo_path():
       2. Common static/ subdirectories
       3. STATIC_ROOT (if collectstatic has been run)
     """
-    candidates = [
-        getattr(settings, "PDF_LOGO_PATH", None),
-        Path(settings.BASE_DIR) / "static" / "img"      / "NBTE_logo.png",
-        Path(settings.BASE_DIR) / "static" / "images"   / "NBTE_logo.png",
-        Path(settings.BASE_DIR) / "static" / "branding" / "NBTE_logo.png",
-        Path(settings.BASE_DIR) / "static" / "NBTE_logo.png",
-    ]
-    static_root = getattr(settings, "STATIC_ROOT", None)
-    if static_root:
-        candidates.append(Path(static_root) / "img" / "NBTE_logo.png")
-
-    for c in candidates:
-        if not c:
-            continue
-        try:
-            p = Path(c)
-            if p.is_file():
-                return p
-        except (TypeError, OSError):
-            continue
-    return None
+    # v2.1 A5: the formal brand slot (PNG rendered from the SVG crest).
+    from config.branding import pdf_logo_path
+    return pdf_logo_path("formal")
 
 
 def _make_transparent_logo(logo_path, opacity=0.06):
@@ -330,6 +312,24 @@ def generate_request_record(request):
     story.append(Paragraph("Details", section_style))
     body_text = (request.body or "—").replace("\n", "<br/>")
     story.append(Paragraph(body_text, body_style))
+
+    # v2.1 I8: a funds request carries the trail of the ticket it came from.
+    trail = (request.metadata or {}).get("ticket_trail") if isinstance(request.metadata, dict) else None
+    if trail:
+        from xml.sax.saxutils import escape as _x
+        story.append(Paragraph(f"How this came about — ticket {_x(trail.get('reference', ''))}", section_style))
+        story.append(Paragraph(_x(f"{trail.get('subject', '')} · opened by {trail.get('raised_by', '')} · "
+                                  f"{trail.get('handling_department', '')}"), body_style))
+        rows = [[Paragraph("When", cell_head_style), Paragraph("By", cell_head_style),
+                 Paragraph("What happened", cell_head_style)]]
+        for a in trail.get("activities", [])[:60]:
+            rows.append([Paragraph(_x(str(a.get("at", ""))[:16].replace("T", " ")), cell_style),
+                         Paragraph(_x(a.get("actor", "")), cell_style),
+                         Paragraph(_x(a.get("message", ""))[:300], cell_style)])
+        t = Table(rows, colWidths=[3.0 * cm, 3.6 * cm, 10.4 * cm], repeatRows=1)
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), HexColor(GREEN)), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                               ("GRID", (0, 0), (-1, -1), 0.25, HexColor(BORDER))]))
+        story.append(t)
 
     # Approvals -----------------------------------------------------------
     approvals = list(

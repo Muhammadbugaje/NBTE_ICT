@@ -243,7 +243,8 @@ def leave_summary(req):
     if summary is None:
         return None
     app = summary["application"]
-    return {"start_date": app.start_date, "end_date": app.end_date,
+    return {"leave_type": app.leave_type.code, "leave_type_name": app.leave_type.name,
+            "start_date": app.start_date, "end_date": app.end_date,
             "requested_days": str(summary["requested_days"]), "has_over_balance": summary["has_over_balance"],
             "years": [{"year": y["year"], "requested_days": str(y["requested_days"]),
                        "remaining": str(y["remaining"]), "is_set": y["is_set"],

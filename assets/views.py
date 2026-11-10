@@ -26,6 +26,8 @@ from django.urls import reverse
 from . import services
 from .access import (
     asset_scope,
+    can_export_assets,
+    can_import_assets,
     can_manage_asset,
     can_view_all_assets,
     visible_assets_queryset,
@@ -35,6 +37,7 @@ from .forms import (
     AssetForm,
     AssetIssueForm,
     AssignAssetForm,
+    AssignmentModeForm,
     ResolveIssueForm,
     ReturnAssetForm,
     SetStateForm,
@@ -91,13 +94,18 @@ def asset_list(request):
     if state in dict(STATE_CHOICES):
         qs = qs.filter(state=state)
 
+    mode = request.GET.get("mode")
+    if mode in dict(Asset.ASSIGNMENT_MODE_CHOICES):
+        qs = qs.filter(assignment_mode=mode)
+
     dept = request.GET.get("department")
     if dept and can_view_all_assets(request.user):
         qs = qs.filter(owner_department__code=dept)
 
     mine_only = request.GET.get("mine") == "1"
-    if mine_only:
-        qs = qs.filter(current_custodian=request.user)
+    if mine_only:  # K2: shared holders count as "mine" too
+        qs = qs.filter(Q(current_custodian=request.user)
+                       | Q(assignments__assigned_to=request.user, assignments__returned_at__isnull=True)).distinct()
 
     q = (request.GET.get("q") or "").strip()
     if q:
@@ -122,13 +130,44 @@ def asset_list(request):
         "departments": Department.objects.filter(is_active=True).order_by("name"),
         "cat_filter": cat or "",
         "state_filter": state or "",
+        "mode_filter": mode or "",
+        "modes": Asset.ASSIGNMENT_MODE_CHOICES,
         "dept_filter": dept or "",
         "mine_filter": mine_only,
         "q": q,
         "can_see_all": can_view_all_assets(request.user),
+        "can_export_assets": can_export_assets(request.user),
+        "can_import_assets": can_import_assets(request.user),
         "asset_scope": asset_scope(request.user),
         "total": _visible_assets_qs(request.user).count(),
     })
+
+
+@login_required
+def asset_export_xlsx(request):
+    """The asset register as a Data Hub workbook (the "Assets" category: categories,
+    assets, assignments, issues, attachment list). ``?template=1``: blank workbook with
+    the dropdowns and the Instructions sheet. Import it on the Data Hub page."""
+    if not can_export_assets(request.user):
+        raise PermissionDenied("Exporting the asset register needs the right to see and edit every asset.")
+    from django.http import HttpResponse
+    from django.utils import timezone
+    from core.datahub import engine
+    blank = request.GET.get("template") == "1"
+    data = engine.export_workbook(["assets"], include_rows=not blank, source_label=request.get_host())
+    stamp = timezone.localtime().strftime("%Y%m%d-%H%M")
+    resp = HttpResponse(data, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp["Content-Disposition"] = (f'attachment; filename="NBTE_Assets_{"Template" if blank else "Export"}_'
+                                   f'{stamp}.xlsx"')
+    resp["Cache-Control"] = "no-store"
+    if not blank:
+        try:
+            from core import audit
+            audit.log("assets_export", request.user, actor=request.user, changes={"category": "assets"},
+                      note="Assets list: Export assets (Excel)")
+        except Exception:
+            pass
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -150,11 +189,28 @@ def asset_detail(request, asset_tag):
 
     can_edit = _can_edit_asset(request.user, asset)
     open_assignment = asset.open_assignment()
+    open_assignments = list(asset.open_assignments())
+
+    # X5: is this person here through a temporary grant (ticket assignee)?
+    from assignments.access import access_via, record_event
+    from assignments.models import AccessEvent
+    via, grant = access_via(request.user, asset, "asset")
+    grant_ticket = None
+    if via == "grant":
+        from tickets.asset_access import ticket_for_grant
+        grant_ticket = ticket_for_grant(grant)
+        record_event(request.user, asset, AccessEvent.VIEW_VIA_GRANT, via_grant=grant, request=request)
+    asset_tickets = asset.tickets.select_related("raised_by", "assigned_to").order_by("-created_at")[:20]
 
     return render(request, "assets/detail.html", {
         "asset": asset,
         "assignments": assignments,
         "open_assignment": open_assignment,
+        "open_assignments": open_assignments,
+        "via_grant": grant if via == "grant" else None,
+        "grant_ticket": grant_ticket,
+        "asset_tickets": asset_tickets,
+        "mode_form": AssignmentModeForm(initial={"assignment_mode": asset.assignment_mode}),
         "issues": issues,
         "attachments": attachments,
         "can_edit": can_edit,
@@ -261,7 +317,8 @@ def asset_assign(request, asset_tag):
     try:
         services.assign_asset(
             asset=asset,
-            to_user=form.cleaned_data["assigned_to"],
+            to_user=form.cleaned_data.get("assigned_to"),
+            department=form.cleaned_data.get("department"),
             by_user=request.user,
             condition=form.cleaned_data["condition_on_assign"],
             location=form.cleaned_data.get("location_on_assign") or "",
@@ -277,6 +334,26 @@ def asset_assign(request, asset_tag):
 
 @login_required
 @require_POST
+def asset_set_mode(request, asset_tag):
+    """K1/K2: individual / department / shared."""
+    asset = get_object_or_404(_visible_assets_qs(request.user), asset_tag=asset_tag)
+    if not _can_edit_asset(request.user, asset):
+        raise PermissionDenied("You cannot change this asset.")
+    form = AssignmentModeForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Choose how the asset is held.")
+        return redirect("assets:detail", asset_tag=asset.asset_tag)
+    try:
+        services.set_assignment_mode(asset=asset, mode=form.cleaned_data["assignment_mode"], by_user=request.user)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    else:
+        messages.success(request, f"{asset.asset_tag} is now held as: {asset.get_assignment_mode_display()}.")
+    return redirect("assets:detail", asset_tag=asset.asset_tag)
+
+
+@login_required
+@require_POST
 def asset_return(request, asset_tag):
     asset = get_object_or_404(_visible_assets_qs(request.user), asset_tag=asset_tag)
     if not _can_edit_asset(request.user, asset):
@@ -286,11 +363,17 @@ def asset_return(request, asset_tag):
         messages.error(request, "Please check the form.")
         return redirect("assets:detail", asset_tag=asset.asset_tag)
     try:
+        row = None
+        if form.cleaned_data.get("assignment"):
+            row = asset.assignments.filter(pk=form.cleaned_data["assignment"]).first()
+            if row is None:
+                raise ValidationError("That hand-off is not on this asset.")
         services.return_asset(
             asset=asset,
             by_user=request.user,
             condition_on_return=form.cleaned_data["condition_on_return"],
             notes=form.cleaned_data.get("notes") or "",
+            assignment=row,
         )
     except (PermissionDenied, ValidationError) as exc:
         messages.error(request, "; ".join(getattr(exc, "messages", [str(exc)])))
@@ -562,7 +645,7 @@ def print_labels(request):
         "category": category,
         "notice": notice,
         "org_name": settings.SITE_NAME,
-        "logo_url": static("img/NBTE_logo.png"),
+        "logo_url": static("img/brand/nbte-logo-light.svg"),
     })
 
 # ---------------------------------------------------------------------------

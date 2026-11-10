@@ -1,0 +1,11 @@
+{% load qa_tags %}{% if rows %}
+<div class="pb-table-wrap"><table class="pb-table">
+  <thead><tr><th scope="col">Programme</th><th scope="col">Institution</th><th scope="col">Stage</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td><strong>{{ r.programme }}</strong></td>
+    <td>{{ r.programme.institution.name }}{% if r.programme.institution.ownership %}<br><span class="qa-small qa-muted">{{ r.programme.institution.ownership.name }}</span>{% endif %}</td>
+    <td><span class="qa-chip{% if r.stage == 'awaiting_letter' %} qa-tone-warn{% elif r.stage == 'approved' %} qa-tone-success{% elif r.stage == 'visit' %} qa-tone-info{% endif %}">{{ r.label }}</span></td>
+    <td><a class="btn btn-sm {% if r.stage == 'awaiting_letter' %}btn-primary{% else %}btn-subtle{% endif %}" href="{% url 'qa_portal:pb_programme' r.programme.pk %}">{% if r.stage == 'awaiting_letter' %}Upload{% elif r.letters %}Letters{% else %}Details{% endif %}</a></td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="qa-card__body qa-muted qa-small">{% if filters.q or filters.stage or filters.level %}No programmes match these filters.{% else %}No programme is under your body yet.{% endif %}</p>{% endif %}

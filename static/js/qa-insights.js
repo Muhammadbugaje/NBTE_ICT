@@ -16,7 +16,7 @@
   var green = css("--primary", "#1f6b3e");
   var text = css("--text-muted", "#6e6e73");
   var grid = css("--divider", "rgba(0,0,0,.06)");
-  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var reduce = (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) || /^(reduce|reduced|off)$/.test(document.documentElement.getAttribute("data-motion") || "");
   Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif";
   Chart.defaults.color = text;
 

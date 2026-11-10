@@ -1,55 +1,38 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}Attendance · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}My attendance{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/attendance.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/attendance.css' %}">
+  <link rel="stylesheet" href="{% static 'css/hr-leave.css' %}">
 {% endblock %}
 {% block extra_js %}
-  <script src="{% static 'js/attendance.js' %}?v=3" defer></script>
+  <script src="{% static 'js/attendance.js' %}" defer></script>
+  <script src="{% static 'vendor/html5-qrcode-2.3.8.min.js' %}" defer></script>
+  <script src="{% static 'js/attendance-checkout.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
 <div class="att-page">
 
   {# ---------- Header ---------- #}
-  <header class="att-hero">
-    <div class="att-hero-left">
+  <header class="qa-hero nbte-hero att-qa-hero" data-qa-area="attendance">
+    <div>
+      <span class="qa-eyebrow">{% icon "clock" 14 "2.2" %} Attendance · Today</span>
       <h1>Attendance</h1>
-      <p>
-        <strong>{{ today|date:"l, F j, Y" }}</strong>
-        {% if not is_working_day %}
-          <span class="att-pill att-pill-neutral">Not a working day</span>
-        {% endif %}
-      </p>
+      <p><strong>{{ today|date:"l, F j, Y" }}</strong>{% if not is_working_day %} <span class="att-pill att-pill-neutral">Not a working day</span>{% endif %}</p>
+      <div class="qa-hero__actions btn-group">
+        <a class="btn btn-subtle" href="{% url 'attendance:my_attendance' %}">{% icon "user" 15 "2.2" %} My attendance</a>
+        {% if can_view_all %}<a class="btn btn-subtle" href="{% url 'attendance:all_departments' %}">{% icon "building" 15 "2.2" %} All departments</a>{% endif %}
+        {% if can_view_department %}<a class="btn btn-subtle" href="{% url 'attendance:department' %}">{% icon "users" 15 "2.2" %} Department report</a>
+        <a class="btn btn-subtle" href="{% url 'attendance:analytics' %}">{% icon "chart" 15 "2.2" %} Analytics</a>{% endif %}
+        <a class="btn btn-subtle" href="{% url 'leave:apply' %}">{% icon "calendar" 15 "2.2" %} Apply for leave</a>
+        {% if can_upload %}<a class="btn btn-subtle" href="{% url 'attendance:upload' %}">{% icon "upload" 15 "2.2" %} Upload Excel</a>{% endif %}
+      </div>
     </div>
-    <div class="att-hero-right">
-      <a class="att-btn att-btn-ghost" href="{% url 'attendance:my_attendance' %}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        My attendance
-      </a>
-      {% if can_view_all %}
-        <a class="att-btn att-btn-ghost" href="{% url 'attendance:all_departments' %}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><line x1="10" y1="21" x2="10" y2="12"/><line x1="14" y1="21" x2="14" y2="12"/></svg>
-          All departments
-        </a>
-      {% endif %}
-      {% if can_view_department %}
-        <a class="att-btn att-btn-ghost" href="{% url 'attendance:department' %}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg>
-          Department report
-        </a>
-      {% endif %}
-      {% if can_upload %}
-        <a class="att-btn att-btn-ghost" href="{% url 'attendance:upload' %}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Upload Excel
-        </a>
-      {% endif %}
-    </div>  
-</header>
+  </header>
 
   {# ---------- Today's check-in card ---------- #}
   {% if not is_working_day %}
@@ -61,7 +44,7 @@
         <h2>Enjoy your day off</h2>
         <p>Today isn't a working day for your department. Rest up.</p>
       </div>
-      <div class="att-today-action">
+      <div class="att-today-action btn-group btn-group--end btn-group--stack-sm">
         <a class="att-btn att-btn-ghost" href="{% url 'attendance:my_attendance' %}">
           My attendance
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
@@ -85,7 +68,9 @@
           {% elif today_record.status == 'late' %}Checked in — recorded as late
           {% elif today_record.status == 'absent' %}Marked absent today
           {% elif today_record.status == 'excused' %}Excused today
-          {% elif today_record.status == 'on_leave' %}You’re on approved leave today
+          {% elif today_record.status == 'on_leave' %}You’re {{ today_record.status_label|lower }} today
+          {% elif today_record.status == 'on_duty' %}You’re on official duty (QA visit) — no check-in needed
+          {% elif today_record.status == 'holiday' %}Public holiday — enjoy the day
           {% else %}{{ today_record.get_status_display }}{% endif %}
         </h2>
         <p>
@@ -98,11 +83,37 @@
           {% if today_record.distance_meters %}
             · {{ today_record.distance_meters }}m from center
           {% endif %}
+          {% if today_record.check_out_at %}
+            · Checked out at <strong>{{ today_record.check_out_at|time:"H:i" }}</strong>
+          {% endif %}
         </p>
+        {% if today_record.can_check_out %}
+          <div class="att-out" data-checkout data-api="{% url 'attendance:check_out_api' %}">
+            <div class="btn-group">
+              <button class="att-btn att-btn-primary" type="button" data-checkout-gps>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Check out
+              </button>
+              <button class="att-btn att-btn-ghost" type="button" data-checkout-show>Use code or QR</button>
+            </div>
+            <div class="att-out-alt" data-checkout-alt hidden>
+              <form class="att-out-code" data-checkout-code-form>
+                <label class="sr-only" for="att-out-code">Current office code</label>
+                <input class="input" id="att-out-code" name="code" autocomplete="off" inputmode="text" maxlength="12" placeholder="Office code">
+                <button class="att-btn att-btn-primary" type="submit">Check out with code</button>
+              </form>
+              <div class="btn-group hrd-mt">
+                <button class="att-btn att-btn-ghost" type="button" data-checkout-scan>Scan office QR</button>
+              </div>
+              <div id="att-out-reader" class="att-out-reader" hidden></div>
+            </div>
+            <div class="att-out-msg" data-checkout-msg role="status" hidden></div>
+          </div>
+        {% endif %}
       </div>
-      <div class="att-today-action">
+      <div class="att-today-action btn-group btn-group--end btn-group--stack-sm">
         <span class="att-pill att-pill-{{ today_record.status }}">
-          {{ today_record.get_status_display }}
+          {{ today_record.status_label }}
         </span>
         <a class="att-btn att-btn-ghost" href="{% url 'attendance:my_attendance' %}">
           My attendance
@@ -130,7 +141,7 @@
           {% endif %}
         </p>
       </div>
-      <div class="att-today-action">
+      <div class="att-today-action btn-group btn-group--end btn-group--stack-sm">
         {% if has_department and locations_count %}
           <a class="att-btn att-btn-primary" href="{% url 'attendance:check_in' %}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -146,9 +157,9 @@
   {% endif %}
 
   {# ---------- Stats strip ---------- #}
-  <div class="att-stats">
+  <div class="att-stats m-stagger">
     <div class="att-stat">
-      <div class="att-stat-value">{{ stats.streak }}</div>
+      <div class="att-stat-value" data-count="{{ stats.streak }}">{{ stats.streak }}</div>
       <div class="att-stat-label">Day streak</div>
       <div class="att-stat-sub">consecutive working days</div>
     </div>
@@ -160,22 +171,22 @@
       <div class="att-stat-sub">last 30 days</div>
     </div>
     <div class="att-stat">
-      <div class="att-stat-value">{{ stats.present }}</div>
+      <div class="att-stat-value" data-count="{{ stats.present }}">{{ stats.present }}</div>
       <div class="att-stat-label">On time</div>
       <div class="att-stat-sub">last 30 days</div>
     </div>
     <div class="att-stat {% if stats.late > 0 %}is-warn{% endif %}">
-      <div class="att-stat-value">{{ stats.late }}</div>
+      <div class="att-stat-value" data-count="{{ stats.late }}">{{ stats.late }}</div>
       <div class="att-stat-label">Late</div>
       <div class="att-stat-sub">last 30 days</div>
     </div>
     <div class="att-stat {% if stats.absent > 0 %}is-danger{% endif %}">
-      <div class="att-stat-value">{{ stats.absent }}</div>
+      <div class="att-stat-value" data-count="{{ stats.absent }}">{{ stats.absent }}</div>
       <div class="att-stat-label">Absent</div>
       <div class="att-stat-sub">last 30 days</div>
     </div>
     <div class="att-stat">
-      <div class="att-stat-value">{{ stats.on_leave }}</div>
+      <div class="att-stat-value" data-count="{{ stats.on_leave }}">{{ stats.on_leave }}</div>
       <div class="att-stat-label">On leave</div>
       <div class="att-stat-sub">last 30 days</div>
     </div>

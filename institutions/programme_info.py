@@ -51,12 +51,13 @@ def programmes_of_body(body, user):
     from .models import Programme
 
     mappings = list(ProgrammeBodyMapping.objects.filter(body=body, is_active=True))
-    if not mappings:
-        return Programme.objects.for_user(user).none()
+    if not mappings:  # v2.1 R.4: programmes linked to the body directly
+        return (Programme.objects.for_user(user).filter(professional_body=body).exclude(status="dropped")
+                .select_related("institution", "level", "category").order_by("institution__name", "name"))
     names_by_key = {}
     for name in set(Programme.unscoped.values_list("name", flat=True)):
         names_by_key.setdefault(programme_key(name), set()).add(name)
-    q = Q()
+    q = Q(professional_body=body)
     for m in mappings:
         part = Q(name__in=sorted(names_by_key.get(m.programme_key, {m.programme_name})))
         if m.level_id:

@@ -1,17 +1,38 @@
 {% load qa_tags %}
 {% if page.rows %}
-  <ul class="qa-rowlist" role="list">
+  <ul class="ssq-rows" role="list">
     {% for s in page.rows %}
-      {% with r=s.qa_request_programme.qa_request %}
-      <li><a class="qa-rowlink" href="{% url 'qa_req:ssq' s.pk %}" hx-get="{% url 'qa_req:ssq' s.pk %}" hx-target="#qa-panel" hx-push-url="true">
-        <span class="qa-rowlink__badge">{{ r.institution.code }}</span>
-        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ s.qa_request_programme.programme }} — {{ r.institution.name }}</span>
-          <span class="qa-rowlink__meta"><span class="qa-mono">{{ r.reference }}</span><span>· {{ r.qa_type.name }}</span><span>· version {{ s.version }}</span>{% if s.submitted_at %}<span>· submitted {{ s.submitted_at|date:"j M Y" }}</span>{% endif %}</span></span>
-        <span class="qa-rowlink__side"><span class="qa-chip {{ s.status|tone }}">{{ s.public }}</span>{% if s.status == "submitted" and s.waiting_days is not None %}<span class="qa-small qa-muted">waiting {{ s.waiting_days }} day{{ s.waiting_days|pluralize }}</span>{% endif %}</span></a></li>
+      {% with r=s.qa_request_programme.qa_request w=s.who %}
+      <li class="ssq-row{% if w.overdue %} is-overdue{% endif %}">
+        <div class="ssq-row__main">
+          <span class="ssq-row__code" aria-hidden="true">{{ r.institution.code|default:"—" }}</span>
+          <div class="ssq-row__title">
+            {% if s.can_open %}<a href="{% url 'qa_req:ssq' s.pk %}" hx-get="{% url 'qa_req:ssq' s.pk %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ s.qa_request_programme.programme }}</strong></a>{% else %}<strong>{{ s.qa_request_programme.programme }}</strong>{% endif %}
+            <span class="qa-small">{{ r.institution.name }}</span>
+            <span class="ssq-row__meta qa-small qa-muted"><span class="qa-mono">{{ r.reference }}</span> · {{ r.qa_type.name }} · v{{ s.version }}{% if s.submitted_at %} · submitted {{ s.submitted_at|date:"j M Y" }}{% endif %}</span>
+          </div>
+        </div>
+        <div class="ssq-row__who">
+          <span class="qa-chip {{ w.tone }}">{{ w.label }}</span>
+          <span class="qa-small"><span class="qa-muted">Dept:</span> {{ w.department.name|default:"—" }}</span>
+          <span class="qa-small"><span class="qa-muted">Now with:</span> <strong>{{ w.holder_label|default:"—" }}</strong>{% if w.holder_role %} <span class="qa-muted">({{ w.holder_role|lower }})</span>{% endif %}</span>
+          {% if w.is_open and w.approver %}<span class="qa-small"><span class="qa-muted">Approves:</span> {{ w.approver|who }}</span>{% endif %}
+        </div>
+        <div class="ssq-row__side">
+          {% if w.days is not None and w.is_open %}<span class="ssq-row__days{% if w.overdue %} is-overdue{% endif %}"><strong>{{ w.days }}</strong> day{{ w.days|pluralize }}</span>{% endif %}
+          {% if w.overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}
+          <div class="ssq-row__actions">
+            {% if s.can_open %}<a class="btn btn-sm btn-primary" href="{% url 'qa_req:ssq' s.pk %}" hx-get="{% url 'qa_req:ssq' s.pk %}" hx-target="#qa-panel" hx-push-url="true">Open</a>{% endif %}
+            <details class="ssq-row__more"><summary class="btn btn-sm btn-subtle">Who is handling it</summary>
+              <div class="ssq-row__panel">{% include "accreditation/qa/_ssq_who.html" with who=w ssq=s compact=True can_nudge=s.can_nudge nudge_from="queue" %}</div>
+            </details>
+          </div>
+        </div>
+      </li>
       {% endwith %}
     {% endfor %}
   </ul>
   {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
 {% else %}
-  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">Nothing here</h3><p class="nbte-empty-state__body">{% if status == "submitted" %}No SSQ is waiting for review in your scope.{% else %}No SSQs match these filters.{% endif %}</p></div>
+  <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">Nothing here</h3><p class="nbte-empty-state__body">{% if status == "submitted" %}No SSQ is waiting at NBTE in your scope.{% elif status == "unassigned" %}Every SSQ at NBTE has an officer.{% elif status == "overdue" %}Nothing is overdue.{% else %}No SSQs match these filters.{% endif %}</p></div>
 {% endif %}

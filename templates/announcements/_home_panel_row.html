@@ -1,0 +1,20 @@
+<li class="ann-panel-row{% if not a.is_read %} is-unread{% endif %}{% if a.pinned %} is-pinned{% endif %} ann-kind-{{ a.kind }}" id="ann-panel-{{ a.pk }}">
+  <a href="{% url 'announcements:detail' a.pk %}" class="ann-panel-link">
+    <span class="ann-panel-title">{% if not a.is_read %}<span class="ann-panel-dot" aria-label="Unread"></span>{% endif %}{{ a.title }}</span>
+    <span class="ann-panel-meta">
+      {% if a.pinned %}<span class="ann-panel-tag">Pinned</span>{% endif %}
+      {% if a.kind != "notice" %}<span class="ann-panel-tag ann-panel-tag-{{ a.kind }}">{{ a.get_kind_display }}</span>{% endif %}
+      <span>{{ a.published_at|date:"j M Y" }}</span>
+    </span>
+  </a>
+  {% if a.requires_ack %}
+    {% if a.is_acked %}
+      <span class="ann-panel-acked">✓ Acknowledged</span>
+    {% else %}
+      <form method="post" action="{% url 'announcements:acknowledge' a.pk %}" hx-post="{% url 'announcements:acknowledge' a.pk %}" hx-target="#ann-panel-{{ a.pk }}" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="view" value="panel"><input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" class="btn btn-sm btn-primary">Acknowledge</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</li>

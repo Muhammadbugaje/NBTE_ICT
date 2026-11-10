@@ -269,13 +269,18 @@ def _categories_series(days=30, user=None):
     since = timezone.now() - timedelta(days=days)
     labels, pending, inflight, done = [], [], [], []
 
+    # v2.2: one grouped query instead of three counts per category.
+    from django.db.models import Count, Q
+
+    rows = (_requests(user).filter(created_at__gte=since, request_type__category__is_active=True)
+            .values("request_type__category")
+            .annotate(p=Count("pk", filter=Q(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING])),
+                      i=Count("pk", filter=Q(status__in=[Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT,
+                                                         Request.READY])),
+                      d=Count("pk", filter=Q(status=Request.COMPLETED))))
+    counts = {r["request_type__category"]: (r["p"], r["i"], r["d"]) for r in rows}
     for c in RequestCategory.objects.filter(is_active=True).order_by("sort_order", "name"):
-        base = _requests(user).filter(request_type__category=c, created_at__gte=since)
-        p = base.filter(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING]).count()
-        i = base.filter(status__in=[
-            Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT, Request.READY,
-        ]).count()
-        d = base.filter(status=Request.COMPLETED).count()
+        p, i, d = counts.get(c.pk, (0, 0, 0))
         if p + i + d == 0:
             continue
         labels.append(c.name)
@@ -320,25 +325,29 @@ def _approvals_series(weeks=12, user=None):
 
 
 def _dept_activity_chart(days=30, user=None):
+    """v2.2: one grouped query instead of three counts per department (N+1)."""
+    from django.db.models import Count, Q
+
     from workflow.models import Request
     from staff.models import Department
 
     since = timezone.now() - timedelta(days=days)
     labels, pending, inflight, done = [], [], [], []
-
-    for d in Department.objects.filter(is_active=True).order_by("name"):
-        base = _requests(user).filter(receiving_department=d, created_at__gte=since)
-        p = base.filter(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING]).count()
-        i = base.filter(status__in=[
-            Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT, Request.READY,
-        ]).count()
-        c = base.filter(status=Request.COMPLETED).count()
-        if p + i + c == 0:
+    rows = (_requests(user).filter(created_at__gte=since, receiving_department__is_active=True)
+            .order_by().values("receiving_department_id")
+            .annotate(p=Count("pk", filter=Q(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING])),
+                      i=Count("pk", filter=Q(status__in=[Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT,
+                                                         Request.READY])),
+                      c=Count("pk", filter=Q(status=Request.COMPLETED))))
+    by_dept = {r["receiving_department_id"]: r for r in rows}
+    for d in Department.objects.filter(is_active=True, pk__in=list(by_dept)).order_by("name"):
+        r = by_dept[d.pk]
+        if r["p"] + r["i"] + r["c"] == 0:
             continue
         labels.append(d.name)
-        pending.append(p)
-        inflight.append(i)
-        done.append(c)
+        pending.append(r["p"])
+        inflight.append(r["i"])
+        done.append(r["c"])
 
     return {
         "labels": labels,
@@ -691,25 +700,26 @@ def _aged_approvals(days=7, cap=10, user=None):
 
 
 def _office_breakdown(user=None):
+    """v2.2: one grouped query (was three counts per department)."""
+    from django.db.models import Count, Q
+
     from workflow.models import Request
     from staff.models import Department
 
     since = timezone.now() - timedelta(days=30)
+    agg = (_requests(user).order_by().values("receiving_department_id")
+           .annotate(p=Count("pk", filter=Q(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING])),
+                     i=Count("pk", filter=Q(status__in=[Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT,
+                                                        Request.READY])),
+                     c=Count("pk", filter=Q(status=Request.COMPLETED, completed_at__gte=since))))
+    by_dept = {r["receiving_department_id"]: r for r in agg}
     rows = []
-    for d in Department.objects.filter(is_active=True).order_by("name"):
-        base = _requests(user).filter(receiving_department=d)
-        pending   = base.filter(status__in=[Request.AWAITING, Request.AWAITING_RECEIVING]).count()
-        inflight  = base.filter(status__in=[
-            Request.IN_PROGRESS, Request.AWAITING_FULFILLMENT, Request.READY,
-        ]).count()
-        completed = base.filter(status=Request.COMPLETED, completed_at__gte=since).count()
-        if pending + inflight + completed == 0:
+    for d in Department.objects.filter(is_active=True, pk__in=list(by_dept)).order_by("name"):
+        r = by_dept[d.pk]
+        if r["p"] + r["i"] + r["c"] == 0:
             continue
-        rows.append({
-            "department": d,
-            "pending": pending, "in_flight": inflight, "completed": completed,
-            "total_30d": pending + inflight + completed,
-        })
+        rows.append({"department": d, "pending": r["p"], "in_flight": r["i"], "completed": r["c"],
+                     "total_30d": r["p"] + r["i"] + r["c"]})
     return rows
 
 
@@ -851,12 +861,26 @@ def recent_audit_critical(cap=8):
         ]})
     if ts_field:
         qs = qs.order_by(f"-{ts_field}", "-pk")
+    if "actor" in field_names:
+        qs = qs.select_related("actor", "actor__department")   # v2.2: no query per row
     return [_normalize_audit_row(e) for e in qs[:cap]]
 
 
 # ---------------------------------------------------------------------------
 # System health + user role breakdown
 # ---------------------------------------------------------------------------
+def _system_health_cached():
+    """v2.2: the health probe (DB, cache, disk and a Celery ping that can wait
+    1.5 s) is shared for 60 s instead of running on every dashboard load."""
+    from django.core.cache import cache
+
+    hit = cache.get("dash:system_health")
+    if hit is None:
+        hit = system_health()
+        cache.set("dash:system_health", hit, 60)
+    return hit
+
+
 def system_health():
     import shutil
     from pathlib import Path
@@ -904,13 +928,13 @@ def system_health():
 
 
 def user_role_breakdown():
-    from accounts.models import Role, User
-    rows = []
-    for r in Role.objects.order_by("-rank", "name"):
-        n = User.objects.filter(is_active=True, role=r).count()
-        if n:
-            rows.append({"role": r, "count": n})
-    return rows
+    # v2.2: one grouped query instead of a count per role.
+    from django.db.models import Count, Q
+
+    from accounts.models import Role
+    roles = (Role.objects.annotate(n=Count("users", filter=Q(users__is_active=True)))
+             .filter(n__gt=0).order_by("-rank", "name"))
+    return [{"role": r, "count": r.n} for r in roles]
 
 
 # ---------------------------------------------------------------------------
@@ -1033,7 +1057,7 @@ def superadmin_context(user):
             "depts":      _safe(_dept_activity_chart, _chart_empty()) or _chart_empty(),
             "categories": _safe(_categories_series, _chart_empty()) or _chart_empty(),
         },
-        "health":           _safe(system_health, {}) or {},
+        "health":           _safe(_system_health_cached, {}) or {},
         "parked":           _safe(lambda: _parked_requests(cap=10), []) or [],
         "aged_approvals":   _safe(lambda: _aged_approvals(7, 10), []) or [],
         "critical_audit":   _safe(lambda: recent_audit_critical(cap=8), []) or [],
@@ -1067,7 +1091,13 @@ def audit_log_context(user, *, page=1, action=None, actor_id=None,
             since = None
 
     if not user.is_superuser and not user.has_perm("accounts.access_all_departments"):
-        actor = user
+        # Phase B (B10): a director sees their own department's entries;
+        # everyone else only their own actions.
+        import org
+        if user.department_id and org.is_director(user, user.department_id):
+            department = user.department
+        else:
+            actor = user
 
     rows, total, page_count = audit_page(
         user=user, page=page, per_page=40,

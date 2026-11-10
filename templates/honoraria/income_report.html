@@ -1,0 +1,92 @@
+{% extends "qa_core/_shell.html" %}
+{% load static qa_tags %}
+{% block qa_title %}Income vs expenditure · Honoraria{% endblock %}
+{% block qa_page_title %}Honoraria{% endblock %}
+{% block panel %}
+<div class="uxf">
+<header class="ux-hero uxf-hero">
+  <div>
+    <span class="ux-hero__eyebrow">Finance · {{ from|date:"j M Y" }} – {{ to|date:"j M Y" }}</span>
+    <h1 data-qa-focus>Income vs expenditure</h1>
+    <p>Confirmed fee income against honoraria paid out{% if selected_account %} through {{ selected_account.bank_name }} ••{{ selected_account.account_number|slice:"-4:" }}{% endif %}. An internal ledger view, not a live bank balance.</p>
+  </div>
+  <div class="uxf-hero__figure uxf-hero__figure--net{% if report.balance < 0 %} uxf-hero__figure--neg{% endif %}"><span>Net position</span><strong>{{ report.balance|naira }}</strong><small>{% if report.balance < 0 %}More paid out than received{% else %}Income covers honoraria{% endif %}</small></div>
+</header>
+{% if can_view_all %}{% include "honoraria/_nav.html" with tab="income" %}{% endif %}
+
+<div class="uxf-range">
+  <div class="uxf-presets" role="group" aria-label="Date range">
+    {% for key, label in presets %}<a class="ux-filter{% if preset == key %} is-active{% endif %}" href="?range={{ key }}{% if selected_account %}&amp;bank={{ selected_account.pk }}{% endif %}">{{ label }}</a>{% endfor %}
+  </div>
+  <form method="get">
+    <div><label for="ir-from">From</label><input class="input" id="ir-from" type="date" name="from" value="{{ from|date:'Y-m-d' }}"></div>
+    <div><label for="ir-to">To</label><input class="input" id="ir-to" type="date" name="to" value="{{ to|date:'Y-m-d' }}"></div>
+    <div><label for="ir-bank">NBTE bank account</label>
+      <select class="input" id="ir-bank" name="bank">
+        <option value="">All configured accounts</option>
+        {% for account in funding_accounts %}<option value="{{ account.pk }}"{% if selected_account.pk == account.pk %} selected{% endif %}>{{ account.bank_name }} · {{ account.account_name }} · ending {{ account.account_number|slice:"-4:" }}</option>{% endfor %}
+      </select></div>
+    <button class="btn btn-primary" type="submit">Show</button>
+  </form>
+</div>
+
+<div class="ux-stats">
+  <div class="ux-stat"><span class="ux-stat__label">Confirmed income</span><span class="ux-stat__value">{{ report.income|naira }}</span><span class="ux-stat__hint">{{ report.income_by_fee|length }} fee component{{ report.income_by_fee|length|pluralize }}</span></div>
+  <div class="ux-stat ux-stat--gold"><span class="ux-stat__label">Honoraria paid</span><span class="ux-stat__value">{{ report.expenditure|naira }}</span><span class="ux-stat__hint">{{ report.paid_lines|length }} payment{{ report.paid_lines|length|pluralize }} · {{ payees }} payee{{ payees|pluralize }}</span></div>
+  <div class="ux-stat {% if report.balance < 0 %}ux-stat--red{% else %}ux-stat--teal{% endif %}"><span class="ux-stat__label">Net</span><span class="ux-stat__value">{{ report.balance|naira }}</span><span class="ux-stat__hint">{% if cover %}Income is {{ cover }}× honoraria{% else %}No honoraria paid{% endif %}</span></div>
+  <div class="ux-stat ux-stat--violet"><span class="ux-stat__label">Receipts confirmed</span><span class="ux-stat__value">{{ confirmed }}/{{ report.paid_lines|length }}</span><span class="ux-stat__hint">Payees who confirmed</span></div>
+</div>
+
+<div class="ux-grid">
+  <section class="ux-card ux-span-8">
+    <div class="ux-card__head"><div><h2>Last 12 months</h2><p>Income (confirmed fees) and expenditure (honoraria) per month, to {{ to|date:"M Y" }}</p></div></div>
+    <div class="ux-chart ux-chart--lg"><canvas data-ux-chart="money-12m" aria-label="Income and expenditure per month"></canvas></div>
+  </section>
+  <section class="ux-card ux-span-4">
+    <div class="ux-card__head"><div><h2>Net position</h2><p>Share of money in and out</p></div></div>
+    <div class="uxf-net">
+      <div class="uxf-net__big{% if report.balance < 0 %} is-neg{% endif %}">{{ report.balance|naira }}</div>
+      <div class="uxf-net__bar" aria-hidden="true"><i class="is-in" style="width: {{ income_share }}%"></i><i class="is-out" style="width: {{ spend_share }}%"></i></div>
+      <div class="uxf-ratio"><span><i class="uxf-legend-dot" style="background:#1f6b3e"></i>In <b>{{ report.income|naira }}</b></span><span><i class="uxf-legend-dot" style="background:#c8962a"></i>Out <b>{{ report.expenditure|naira }}</b></span></div>
+      <p class="ux-muted" style="margin:0;font-size:.82rem">Based on confirmed fee payments and honoraria disbursements recorded by Finance.</p>
+    </div>
+  </section>
+</div>
+
+<div class="ux-grid">
+  <section class="ux-card ux-span-6" aria-labelledby="income-breakdown-h">
+    <div class="ux-card__head"><div><h2 id="income-breakdown-h">Income by fee</h2><p>Confirmed payments in the selected date range.</p></div></div>
+    <div class="ux-chart ux-chart--md"><canvas data-ux-chart="income-fee" aria-label="Income by fee"></canvas></div>
+    <div class="uxf-table-wrap ux-mt"><table class="uxf-table">
+      <thead><tr><th scope="col">Fee component</th><th scope="col" class="ux-num">Bills</th><th scope="col" class="ux-num">Received</th></tr></thead>
+      <tbody>{% for row in report.income_by_fee %}<tr><td>{{ row.label }}</td><td class="ux-num">{{ row.count }}</td><td class="ux-num">{{ row.amount|naira }}</td></tr>
+      {% empty %}<tr><td colspan="3" class="ux-muted">No confirmed fee income in this period.</td></tr>{% endfor %}</tbody>
+      {% if report.income_by_fee %}<tfoot><tr><th>Total</th><td></td><td class="ux-num">{{ report.income|naira }}</td></tr></tfoot>{% endif %}
+    </table></div>
+  </section>
+  <section class="ux-card ux-span-6" aria-labelledby="spend-h">
+    <div class="ux-card__head"><div><h2 id="spend-h">Expenditure by activity</h2><p>Honoraria paid, by the work they were for.</p></div></div>
+    <div class="ux-chart ux-chart--md"><canvas data-ux-chart="spend-activity" aria-label="Expenditure by activity"></canvas></div>
+    <ul class="uxf-keys ux-mt">{% for label, amount in activities %}<li><span>{{ label }}</span><b>{{ amount|naira }}</b></li>{% empty %}<li class="ux-muted">No honoraria paid in this period.</li>{% endfor %}</ul>
+  </section>
+</div>
+
+<section class="ux-card" aria-labelledby="paid-work-h">
+  <div class="ux-card__head"><div><h2 id="paid-work-h">Honoraria paid by person and work</h2><p>Each row records the payee, completed activity, amount sent, and receipt acknowledgment.</p></div></div>
+  <div class="uxf-table-wrap"><table class="uxf-table">
+    <thead><tr><th scope="col">Payee</th><th scope="col">Work completed</th><th scope="col">Batch</th><th scope="col">Reference</th><th scope="col">Paid on</th><th scope="col">Receipt</th><th scope="col" class="ux-num">Amount</th></tr></thead>
+    <tbody>{% for line in report.paid_lines %}
+      <tr><td><div class="uxf-person"><span class="ux-avatar{% if line.resource_person_id %} ux-avatar--violet{% endif %}" aria-hidden="true">{{ line.report_payee|slice:":1" }}</span><strong>{{ line.report_payee }}</strong></div></td>
+        <td class="uxf-work">{% for activity in line.report_activities %}{{ activity }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td>
+        <td><a class="qa-mono" href="{% url 'honoraria_sched:detail' line.schedule.pk %}">{{ line.schedule.reference }}</a></td><td class="qa-mono">{{ line.payment_reference|default:"—" }}</td>
+        <td>{{ line.paid_at|date:"j M Y" }}</td>
+        <td>{% if line.confirmed_at %}<span class="ux-chip ux-chip--green">Confirmed {{ line.confirmed_at|date:"j M" }}</span>{% else %}<span class="ux-chip ux-chip--violet">Awaiting payee</span>{% endif %}</td>
+        <td class="ux-num"><strong>{{ line.amount|naira }}</strong></td></tr>
+    {% empty %}<tr><td colspan="7" class="ux-muted">No honoraria payments recorded in this period.</td></tr>{% endfor %}</tbody>
+    {% if report.paid_lines %}<tfoot><tr><th colspan="6">Total</th><td class="ux-num">{{ report.expenditure|naira }}</td></tr></tfoot>{% endif %}
+  </table></div>
+</section>
+{{ charts|json_script:"ux-chart-data" }}
+<script src="{% static 'js/ux-charts.js' %}" data-chart-lib="{% static 'vendor/chart-4.4.1.umd.js' %}" defer></script>
+</div>
+{% endblock %}

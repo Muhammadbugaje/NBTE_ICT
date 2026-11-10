@@ -1,0 +1,18 @@
+<div class="idiff-footer" id="idiff-footer"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <div class="idiff-footer__text">
+    {% if open %}
+      <strong>{{ summary.selected_changes }} of {{ summary.total_changes }} change{{ summary.total_changes|pluralize }} and {{ summary.selected_new }} new selected</strong>
+      <span class="muted">Each one is logged with your name. Records missing from the file are kept.</span>
+    {% else %}
+      <strong>{{ run.get_status_display }}</strong>
+      <span class="muted">{% if run.applied_at %}Applied {{ run.applied_at|date:"j M Y, H:i" }}.{% else %}This preview is closed.{% endif %}</span>
+    {% endif %}
+  </div>
+  {% if open %}
+  <div class="btn-group">
+    <form method="post" action="{% url 'core:import_discard' run.pk %}">{% csrf_token %}<button class="btn btn-subtle" type="submit">Cancel</button></form>
+    <form method="post" action="{% url 'core:import_apply' run.pk %}">{% csrf_token %}
+      <button class="btn btn-primary" type="submit"{% if not summary.selected_changes and not summary.selected_new %} disabled{% endif %}>Confirm selected changes</button></form>
+  </div>
+  {% endif %}
+</div>

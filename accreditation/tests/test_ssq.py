@@ -103,7 +103,7 @@ def test_submit_creates_an_immutable_submission(p3, paid_request):
     from accreditation.models import Submission
 
     ssq = complete_ssq(svc.request_ssqs(paid_request)[0], p3.admin)
-    svc.submit_ssq(ssq, user=p3.admin, declaration=True)
+    svc.submit_ssq(ssq, user=p3.ceo, declaration=True)
     snap = Submission.unscoped.get(ssq=ssq)
     assert snap.version == 1 and snap.template_version == ssq.template.version
     assert snap.data_snapshot["department_name"] == "Computing" and snap.verify()
@@ -128,7 +128,7 @@ def test_snapshot_freezes_catalogue_names_and_quantities(p3, paid_request):
     item = CatalogueItem.objects.get(programme_name="Computer Science", name="Desktop computer")
     complete_ssq(ssq, p3.admin)
     svc.save_fields(ssq, {"equipment": {str(item.pk): "35"}}, user=p3.admin)
-    svc.submit_ssq(ssq, user=p3.admin, declaration=True)
+    svc.submit_ssq(ssq, user=p3.ceo, declaration=True)
     builder.revise_item(item, user=p3.p2.director, required_quantity="60", name="Desktop computer (i5)")
     snap = Submission.unscoped.get(ssq=ssq)
     rows = next(f for s in snap.rendered_snapshot for f in s["fields"] if f["key"] == "equipment")["rows"]
@@ -150,7 +150,7 @@ def test_incomplete_ssq_cannot_be_submitted(p3, paid_request):
     from accreditation import qa_services as svc
 
     with pytest.raises(ValidationError, match="required"):
-        svc.submit_ssq(svc.request_ssqs(paid_request)[0], user=p3.admin, declaration=True)
+        svc.submit_ssq(svc.request_ssqs(paid_request)[0], user=p3.ceo, declaration=True)
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +164,7 @@ def _admin_ssq(p3, django_capture_on_commit_callbacks):
                                            level=ProgrammeLevel.objects.get(code="nd"), status="accredited",
                                            is_institutional_admin=True, expiry_date=p3.cs.expiry_date)
     req = make_request(p3, [admin_prog], type_code="institutional_administration")
-    svc.submit(req, user=p3.admin, declaration=True)
+    svc.submit(req, user=p3.ceo, declaration=True)
     with django_capture_on_commit_callbacks(execute=True):
         waive_fee(p3, req)
     return svc.request_ssqs(req)[0]
@@ -292,7 +292,7 @@ def test_department_return_path(p3, paid_request):
     ssq.refresh_from_db()
     assert ssq.status == "submitted_by_department" and svc.editable_sections(ssq, p3.dept) == []
     complete_ssq(ssq, p3.admin)
-    svc.submit_ssq(ssq, user=p3.admin, declaration=True)
+    svc.submit_ssq(ssq, user=p3.ceo, declaration=True)
     ssq.refresh_from_db()
     assert ssq.status == "submitted"
 
@@ -316,7 +316,7 @@ def test_return_then_revise_supersedes_never_overwrites(p3, paid_request, django
 
     v1 = complete_ssq(svc.request_ssqs(paid_request)[0], p3.admin)
     svc.attach_upload(v1, "corrective_evidence", pdf_upload("plan.pdf"), user=p3.admin)
-    svc.submit_ssq(v1, user=p3.admin, declaration=True)
+    svc.submit_ssq(v1, user=p3.ceo, declaration=True)
     with pytest.raises(PermissionDenied):
         svc.return_ssq(v1, user=p3.other_admin, remark="x")
     with django_capture_on_commit_callbacks(execute=True):
@@ -334,7 +334,7 @@ def test_return_then_revise_supersedes_never_overwrites(p3, paid_request, django
     with pytest.raises(ValidationError):
         svc.revise_ssq(v1, user=p3.admin)                            # only the current returned version
     assert SSQ.unscoped.filter(qa_request_programme=v1.qa_request_programme).count() == 2
-    svc.submit_ssq(v2, user=p3.admin, declaration=True)
+    svc.submit_ssq(v2, user=p3.ceo, declaration=True)
     svc.accept_ssq(v2, user=p3.p2.officer)
     v2.refresh_from_db()
     assert v2.status == "accepted"
@@ -347,7 +347,7 @@ def test_reviewer_needs_permission_and_scope(p3, paid_request):
     from accreditation import qa_services as svc
 
     ssq = complete_ssq(svc.request_ssqs(paid_request)[0], p3.admin)
-    svc.submit_ssq(ssq, user=p3.admin, declaration=True)
+    svc.submit_ssq(ssq, user=p3.ceo, declaration=True)
     outsider = User.objects.get(pk=p3.p2.officer2.pk)
     outsider.department = Department.objects.get(code="vtsd")
     outsider.save(update_fields=["department"])
@@ -431,7 +431,7 @@ def test_internal_query_form_and_review_screens(p3, paid_request):
     from accreditation import qa_services as svc
 
     ssq = complete_ssq(svc.request_ssqs(paid_request)[0], p3.admin)
-    svc.submit_ssq(ssq, user=p3.admin, declaration=True)
+    svc.submit_ssq(ssq, user=p3.ceo, declaration=True)
     c = Client(HTTP_HOST="localhost")
     c.force_login(p3.p2.officer)
     r = c.get("/qa/requests/ssq/?status=submitted")

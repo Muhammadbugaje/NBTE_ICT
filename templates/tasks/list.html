@@ -1,28 +1,57 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load tasks_tags %}
 
 {% block title %}Tasks · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Tasks{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/tasks.css' %}">
 {% endblock %}
 {% block extra_js %}
-  <script src="{% static 'js/tasks.js' %}?v=3" defer></script>
+  <script src="{% static 'js/tasks.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
-<div class="tsk-page">
+<div class="tsk-page wk-page" data-qa-area="tasks">
 
-  {# ---------- Header ---------- #}
-  <header class="tsk-page-head">
+  {# ---------- Hero ---------- #}
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tasks">
     <div>
+      <span class="qa-eyebrow">{% icon "check" 14 "2.4" %} Tasks</span>
       <h1>Tasks</h1>
-      <p>{{ total }} task{{ total|pluralize }} in your scope.</p>
+      <p>Work assigned across your team: who has it, how far along it is and when it is due.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'tasks:create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New task</a>
+        <a href="{% url 'tasks:assigned_to_me' %}" class="btn btn-subtle">{% icon "user" 16 "2.2" %} Assigned to me</a>
+        {% if show_division_queue %}<a href="{% url 'tasks:division_queue' %}" class="btn btn-subtle">{% icon "users" 16 "2.2" %} Division queue</a>{% endif %}
+        {% if show_performance %}<a href="{% url 'tasks:performance' %}" class="btn btn-subtle">{% icon "chart" 16 "2.2" %} Performance</a>{% endif %}
+      </div>
     </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong>{{ total|default:0 }}</strong><span>Task{{ total|pluralize }} in view</span></div>
+    </div>
+  </header>
 
-    <div class="tsk-page-head-actions">
+  {# ---------- Tabs ---------- #}
+  <div class="wk-toolbar">
+  <nav class="tsk-tabs" aria-label="Task views">
+    <a class="tsk-tab {% if scope_filter == '' and state_filter == 'active' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&state=active&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Active</a>
+    <a class="tsk-tab {% if state_filter == 'all' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&state=all&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">All</a>
+    <a class="tsk-tab {% if scope_filter == 'assigned' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&scope=assigned&state=active&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Assigned to me</a>
+    <a class="tsk-tab {% if scope_filter == 'mine' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&scope=mine&state=active&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Created by me</a>
+    <a class="tsk-tab {% if state_filter == 'overdue' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&state=overdue&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Overdue</a>
+    <a class="tsk-tab {% if kind_filter == 'group' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&kind=group&state=active&q={{ q|urlencode }}">Group tasks</a>
+    <a class="tsk-tab {% if state_filter == 'completed' %}is-active{% endif %}"
+        href="?view={{ view_mode }}&state=completed&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Completed</a>
+  </nav>
+    <div class="wk-toolbar__tools">
       <div class="tsk-view-toggle">
         <a href="?view=list&q={{ q|urlencode }}&state={{ state_filter }}&category={{ cat_filter }}&priority={{ prio_filter }}&scope={{ scope_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}"
            class="{% if view_mode != 'kanban' %}is-active{% endif %}">
@@ -35,34 +64,13 @@
           Kanban
         </a>
       </div>
-
-      <button type="button" class="tsk-btn tsk-btn-ghost" data-bulk-toggle-btn>
+      <button type="button" class="tsk-btn tsk-btn-ghost" data-bulk-toggle-btn aria-pressed="false">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Select
+        <span data-bulk-toggle-label>Select</span>
       </button>
-
-      <a href="{% url 'tasks:create' %}" class="tsk-btn tsk-btn-primary">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New task
-      </a>
+      <button type="button" class="tsk-btn tsk-btn-ghost" data-bulk-select-all hidden>Select all</button>
     </div>
-  </header>
-
-  {# ---------- Tabs ---------- #}
-  <nav class="tsk-tabs" aria-label="Task views">
-    <a class="tsk-tab {% if scope_filter == '' and state_filter == 'active' %}is-active{% endif %}"
-        href="?view={{ view_mode }}&state=active&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Active</a>
-    <a class="tsk-tab {% if state_filter == 'all' %}is-active{% endif %}"
-        href="?view={{ view_mode }}&state=all&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">All</a>
-    <a class="tsk-tab {% if scope_filter == 'assigned' %}is-active{% endif %}"
-        href="?view={{ view_mode }}&scope=assigned&state=active&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Assigned to me</a>
-    <a class="tsk-tab {% if scope_filter == 'mine' %}is-active{% endif %}"
-        href="?view={{ view_mode }}&scope=mine&state=active&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Created by me</a>
-    <a class="tsk-tab {% if state_filter == 'overdue' %}is-active{% endif %}"
-        href="?view={{ view_mode }}&state=overdue&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Overdue</a>
-    <a class="tsk-tab {% if state_filter == 'completed' %}is-active{% endif %}"
-        href="?view={{ view_mode }}&state=completed&q={{ q|urlencode }}&category={{ cat_filter }}&priority={{ prio_filter }}&assignee={{ assignee_filter }}&sort={{ sort_key }}&direction={{ sort_dir }}">Completed</a>
-  </nav>
+  </div>
 
   {# ---------- Filters ---------- #}
   <form method="get" class="tsk-filters"
@@ -75,6 +83,9 @@
     <input type="search" name="q" value="{{ q }}"
            placeholder="Search tasks…"
            class="tsk-search" autocomplete="off">
+    {% if kind_filter %}<input type="hidden" name="kind" value="{{ kind_filter }}">{% endif %}
+    {% if division_filter %}<input type="hidden" name="division" value="{{ division_filter }}">{% endif %}
+    {% if since_filter %}<input type="hidden" name="since" value="{{ since_filter }}">{% endif %}
 
     <select name="state">
       <option value="active"     {% if state_filter == 'active' %}selected{% endif %}>Any active</option>
@@ -211,7 +222,7 @@
            class="tsk-bulk-reason" data-bulk-field="reason">
 
     <div class="tsk-bulk-actions">
-      <button type="button" class="tsk-btn tsk-btn-ghost" data-bulk-clear>Clear</button>
+      <button type="button" class="tsk-btn tsk-btn-ghost" data-bulk-clear>Cancel</button>
       <button type="submit" class="tsk-btn tsk-btn-primary">Apply</button>
     </div>
   </form>
@@ -219,15 +230,62 @@
 
 <script>
 (function () {
+  /* Select mode: the round checkboxes on the task cards stay hidden until
+     "Select" is pressed. Then "Select all" appears, the button reads "Done",
+     and the action bar slides up once something is ticked. "Done", Clear in
+     the bar, or Esc leave select mode and clear the selection. Survives the
+     HTMX list refresh (filters, paging). tasks.js handles single clicks. */
   var toggleBtn = document.querySelector("[data-bulk-toggle-btn]");
-  if (toggleBtn) {
-    toggleBtn.addEventListener("click", function () {
-      document.querySelectorAll(".tsk-list, .tsk-kanban").forEach(function (s) {
-        s.classList.toggle("is-bulk-mode");
-      });
-      toggleBtn.classList.toggle("is-active");
-    });
+  var allBtn = document.querySelector("[data-bulk-select-all]");
+  var bulkBar = document.querySelector("[data-bulk-bar]");
+  var on = false;
+  function toggles() { return Array.prototype.slice.call(document.querySelectorAll(".tsk-select-toggle")); }
+  function recount() {
+    var ids = toggles().filter(function (t) { return t.classList.contains("is-checked"); })
+                       .map(function (t) { return t.getAttribute("data-task-id"); });
+    if (bulkBar) {
+      bulkBar.classList.toggle("is-visible", ids.length > 0);
+      var c = bulkBar.querySelector("[data-bulk-count]"); if (c) c.textContent = ids.length + " selected";
+      var i = bulkBar.querySelector("[data-bulk-ids]"); if (i) i.value = ids.join(",");
+    }
+    toggles().forEach(function (t) { t.setAttribute("aria-pressed", t.classList.contains("is-checked") ? "true" : "false"); });
+    if (allBtn) {
+      var all = ids.length > 0 && ids.length === toggles().length;
+      allBtn.textContent = all ? "Select none" : "Select all";
+    }
   }
+  function apply() {
+    document.querySelectorAll(".tsk-list, .tsk-kanban").forEach(function (s) { s.classList.toggle("is-bulk-mode", on); });
+    if (toggleBtn) {
+      toggleBtn.hidden = toggles().length === 0;   // kanban view has no checkboxes
+      toggleBtn.classList.toggle("is-active", on);
+      toggleBtn.setAttribute("aria-pressed", on ? "true" : "false");
+      var l = toggleBtn.querySelector("[data-bulk-toggle-label]"); if (l) l.textContent = on ? "Done" : "Select";
+    }
+    if (allBtn) allBtn.hidden = !on;
+    recount();
+  }
+  function setMode(v) {
+    on = !!v;
+    if (!on) toggles().forEach(function (t) { t.classList.remove("is-checked"); });
+    apply();
+  }
+  if (toggleBtn) toggleBtn.addEventListener("click", function () { setMode(!on); });
+  if (allBtn) allBtn.addEventListener("click", function () {
+    var list = toggles();
+    var all = list.length && list.every(function (t) { return t.classList.contains("is-checked"); });
+    list.forEach(function (t) { t.classList.toggle("is-checked", !all); });
+    recount();
+  });
+  document.addEventListener("click", function (e) {
+    if (e.target.closest && e.target.closest(".tsk-select-toggle")) window.setTimeout(recount, 0);
+    if (e.target.closest && e.target.closest("[data-bulk-clear]")) window.setTimeout(function () { setMode(false); }, 0);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && on && !Array.prototype.some.call(document.querySelectorAll(".nbte-confirm, [role=dialog][aria-modal=true]:not([hidden])"), function (d) { return d.getClientRects().length > 0 && !d.closest("[aria-hidden=true], [hidden]"); })) setMode(false);
+  });
+  document.body.addEventListener("htmx:afterSettle", apply);
+  apply();
 
   var sel = document.querySelector("[data-bulk-action-select]");
   var bar = document.querySelector("[data-bulk-bar]");

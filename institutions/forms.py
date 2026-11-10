@@ -9,6 +9,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 
+from core.forms_dynamic import DynamicFormMixin
 from staff.models import StateOfOrigin
 
 from . import services
@@ -70,6 +71,10 @@ def _lga_clean(form, state_field="state", lga_field="lga"):
             services.validate_lga(state, lga)
         except ValidationError as exc:
             form.add_error(lga_field, exc)
+        else:  # keep the list's spelling
+            match = next((o for o in services.lgas_for(state) if o.lower() == lga.lower()), None)
+            if match and match != lga:
+                lga = form.cleaned_data[lga_field] = match
     return lga
 
 
@@ -119,9 +124,25 @@ class InstitutionProfileFields(QAForm):
         }
 
 
-class AddTvetForm(ReasonMixin, InstitutionProfileFields):
-    code = forms.CharField(max_length=6, required=False, label="Code (optional)",
-                           help_text="3–6 letters/digits. Leave blank to allocate one at confirmation.")
+class AddTvetForm(DynamicFormMixin, ReasonMixin, InstitutionProfileFields):
+    """v2.1 R.7 (X46, design 33): code generated automatically; status at
+    registration (+ approval letter when Approved); type and category in one
+    field; RC/CAC number for private institutions only; physical + postal
+    address; State -> LGA dropdown; chief executive and head of ICT."""
+
+    STATUS_CHOICES = [("proposed", "Proposed: not yet operating"),
+                      ("existing", "Existing: already operating, approved earlier"),
+                      ("approved", "Approved: NBTE approval letter issued")]
+    status_at_add = forms.ChoiceField(choices=STATUS_CHOICES, initial="proposed", label="Status at registration",
+                                      widget=forms.RadioSelect)
+    approval_letter = forms.FileField(required=True, label="Approval letter (PDF)",
+                                      help_text="Required when the institution is already approved. Up to 10 MB.")
+    postal_address = forms.CharField(max_length=255, required=False, label="Postal address")
+    ce_email = forms.EmailField(label="Chief executive e-mail")
+    ce_phone = forms.CharField(max_length=30, required=False, label="Chief executive phone")
+    ict_name = forms.CharField(max_length=150, required=False, label="Head of ICT (name)")
+    ict_email = forms.EmailField(required=False, label="Head of ICT e-mail")
+    ict_phone = forms.CharField(max_length=30, required=False, label="Head of ICT phone")
     admin_first_name = forms.CharField(max_length=150, label="Administrator first name")
     admin_last_name = forms.CharField(max_length=150, label="Administrator last name")
     admin_email = forms.EmailField(label="Administrator e-mail",
@@ -132,31 +153,99 @@ class AddTvetForm(ReasonMixin, InstitutionProfileFields):
     admin_department = forms.CharField(max_length=120, required=False, label="Administrator's department",
                                        help_text="Checked against qa.institution.admin_required_department.")
 
-    field_order = ["name", "code", "ownership", "institution_type", "category", "state", "lga", "address_line1",
-                   "address_town", "year_established", "cac_rc_number", "website", "official_email", "phone",
-                   "head_name", "admin_first_name", "admin_last_name", "admin_email", "admin_phone",
+    field_order = ["name", "status_at_add", "approval_letter", "ownership", "category", "cac_rc_number",
+                   "year_established", "website", "state", "lga", "address_line1", "address_town", "postal_address",
+                   "official_email", "phone", "head_name", "ce_email", "ce_phone", "ict_name", "ict_email",
+                   "ict_phone", "admin_first_name", "admin_last_name", "admin_email", "admin_phone",
                    "admin_job_title", "admin_department", "reason"]
     fieldsets = [
-        ("Institution", ["name", "code", "ownership", "institution_type", "category", "year_established",
-                         "cac_rc_number", "website"]),
-        ("Location", ["state", "lga", "address_line1", "address_town"]),
-        ("Contacts", ["official_email", "phone", "head_name"]),
+        ("Institution", ["name", "status_at_add", "approval_letter", "ownership", "category", "cac_rc_number",
+                         "year_established", "website"]),
+        ("Location", ["state", "lga", "address_line1", "address_town", "postal_address"]),
+        ("Contacts", ["official_email", "phone"]),
+        ("Chief executive and head of ICT", ["head_name", "ce_email", "ce_phone", "ict_name", "ict_email",
+                                             "ict_phone"]),
         ("Portal administrator", ["admin_first_name", "admin_last_name", "admin_email", "admin_phone",
                                   "admin_job_title", "admin_department"]),
         ("Why", ["reason"]),
     ]
+    lga_select = True
 
-    def clean_code(self):
-        return (self.cleaned_data.get("code") or "").strip().upper()
+    def __init__(self, *args, **kwargs):
+        private = list(InstitutionOwnership.objects.filter(is_active=True, is_public=False)
+                       .values_list("pk", flat=True))
+        self.show_if = {"approval_letter": {"status_at_add": ["approved"]},
+                        "cac_rc_number": {"ownership": [str(pk) for pk in private]}}
+        super().__init__(*args, **kwargs)
+        del self.fields["institution_type"]
+        cat = self.fields["category"]
+        cat.label = "Type"
+        cat.queryset = InstitutionCategory.objects.filter(is_active=True).select_related("institution_type")
+        cat.label_from_instance = lambda c: (f"{c.institution_type.name} · {c.name}"
+                                             if c.institution_type_id and c.institution_type.name != c.name
+                                             else c.name)
+        self.fields["cac_rc_number"].label = "RC / CAC number"
+        self.fields["cac_rc_number"].help_text = "Private institutions only."
+        self.fields["address_line1"].label = "Physical address"
+        self.fields["head_name"].label = "Chief executive (name)"
+        # State -> LGA: a real dropdown, refilled through HTMX when the state changes
+        state_id = (self.data.get(self.add_prefix("state")) if self.is_bound else None) or self.initial.get("state")
+        lgas = services.lgas_for(StateOfOrigin.objects.filter(pk=state_id).first()) if state_id else []
+        self.fields["lga"].widget = forms.Select(
+            choices=[("", "Choose the LGA" if lgas else "Choose the state first")] + [(x, x) for x in lgas],
+            attrs={"class": "input"})
+        self.fields["approval_letter"].widget.attrs["accept"] = ".pdf"
+
+    def clean_approval_letter(self):
+        f = self.cleaned_data.get("approval_letter")
+        if f:
+            from qa_core.files import validate_upload
+
+            validate_upload(f, extensions=("pdf",), max_mb=10, label="approval letter")
+        return f
+
+    def clean(self):
+        data = super().clean()
+        cat = data.get("category")
+        if cat is not None:
+            if not cat.institution_type_id:
+                self.add_error("category", "This category has no institution type. Choose another.")
+            else:
+                data["institution_type"] = cat.institution_type
+        own = data.get("ownership")
+        if own is not None and own.is_public:
+            data["cac_rc_number"] = ""
+        elif own is not None and not (data.get("cac_rc_number") or "").strip():
+            self.add_error("cac_rc_number", "Enter the RC / CAC number of the private institution.")
+        return data
 
     def payload(self):
         d = self.cleaned_data
         out = self.profile_payload()
-        out.update({"code": d.get("code", ""), "admin_first_name": d["admin_first_name"],
+        out.update({"code": "", "status_at_add": d.get("status_at_add", "proposed"),
+                    "postal_address": d.get("postal_address", ""), "ce_email": (d.get("ce_email") or "").lower(),
+                    "ce_phone": d.get("ce_phone", ""), "ict_name": d.get("ict_name", ""),
+                    "ict_email": (d.get("ict_email") or "").lower(), "ict_phone": d.get("ict_phone", ""),
+                    "admin_first_name": d["admin_first_name"],
                     "admin_last_name": d["admin_last_name"], "admin_email": d["admin_email"].lower(),
                     "admin_phone": d.get("admin_phone", ""), "admin_job_title": d.get("admin_job_title", ""),
                     "admin_department": d.get("admin_department", "")})
+        letter = d.get("approval_letter")
+        if letter and out["status_at_add"] == "approved":
+            out.update(stage_upload(letter))
         return out
+
+
+def stage_upload(upload):
+    """Keep an upload in restricted storage until the pending action is
+    confirmed (the payload is JSON, so it carries the stored name)."""
+    import uuid
+
+    from qa_core.files import extension_of, restricted_storage, sha256_of
+
+    name = restricted_storage().save(f"qa/staged/{uuid.uuid4().hex}.{extension_of(upload.name) or 'pdf'}", upload)
+    return {"approval_letter_path": name, "approval_letter_name": (upload.name or "")[:255],
+            "approval_letter_sha256": sha256_of(upload)}
 
 
 class ReasonOnlyForm(ReasonMixin, QAForm):
@@ -191,6 +280,36 @@ class DropProgrammesForm(InstitutionActionForm):
 
     def payload(self):
         return {"programme_ids": [p.pk for p in self.cleaned_data["programmes"]]}
+
+
+class UpdateProgrammeForm(InstitutionActionForm):
+    """v2.1 R.7 (X48): inline Edit on the institution page (second officer confirms)."""
+    programme = forms.ModelChoiceField(Programme.objects.none())
+    name = forms.CharField(max_length=200, label="Programme name")
+    level = forms.ModelChoiceField(ProgrammeLevel.objects.filter(is_active=True))
+    category = forms.ModelChoiceField(ProgrammeCategory.objects.filter(is_active=True), required=False)
+    professional_body = forms.ModelChoiceField(None, required=False, label="Professional body")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .models import ProfessionalBody
+
+        self.fields["programme"].queryset = (Programme.objects.for_user(self.user)
+                                             .filter(institution=self.institution).exclude(status="dropped")
+                                             .select_related("level").order_by("name"))
+        self.fields["professional_body"].queryset = ProfessionalBody.objects.filter(is_active=True)
+        pk = self.initial.get("programme")
+        if pk and not self.is_bound:
+            p = self.fields["programme"].queryset.filter(pk=pk).first()
+            if p is not None:
+                self.initial.update({"name": p.name, "level": p.level_id, "category": p.category_id,
+                                     "professional_body": p.professional_body_id})
+
+    def payload(self):
+        d = self.cleaned_data
+        return {"programme_id": d["programme"].pk, "name": " ".join(d["name"].split()), "level_id": d["level"].pk,
+                "category_id": d["category"].pk if d.get("category") else None,
+                "professional_body_id": d["professional_body"].pk if d.get("professional_body") else None}
 
 
 class UpdateStateLgaForm(InstitutionActionForm):
@@ -479,6 +598,26 @@ class DocumentRequirementForm(forms.ModelForm):
                   "reviewing_department", "refresh_after_months", "notes", "is_active"]
 
 
+class ManagementRoleForm(forms.ModelForm):
+    """v2.1 X13: NBTE's list of management roles (Settings → QA → Lookups)."""
+
+    class Meta:
+        from .models import ManagementRole
+
+        model = ManagementRole
+        fields = ["code", "name", "is_mandatory", "max_holders", "requires_email", "requires_phone",
+                  "is_chief_executive", "is_ict_head", "is_active", "sort_order"]
+
+    def clean(self):
+        from .models import ManagementRole
+
+        data = super().clean()
+        for flag, label in (("is_chief_executive", "Chief Executive"), ("is_ict_head", "Head of ICT")):
+            if data.get(flag) and ManagementRole.objects.filter(**{flag: True}).exclude(pk=self.instance.pk).exists():
+                self.add_error(flag, f"Another role is already marked as the {label}.")
+        return data
+
+
 LOOKUP_FORMS = {
     "ownership": (InstitutionOwnership, OwnershipForm, "Ownership"),
     "type": (InstitutionType, TypeForm, "Institution types"),
@@ -487,4 +626,5 @@ LOOKUP_FORMS = {
     "level": (ProgrammeLevel, LevelForm, "Programme levels"),
     "programme-category": (ProgrammeCategory, ProgrammeCategoryForm, "Programme categories"),
     "document-kind": (DocumentKind, DocumentKindForm, "Document kinds"),
+    "management-role": (ManagementRoleForm.Meta.model, ManagementRoleForm, "Management roles"),  # v2.1 X13
 }

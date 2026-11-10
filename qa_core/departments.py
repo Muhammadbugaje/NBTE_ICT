@@ -22,11 +22,82 @@ def candidate_codes(code):
 
 
 def qa_department(code):
-    """The Department for a QA code ('legal', 'academic-planning' …) or None."""
+    """The Department for a QA code ('legal', 'academic-planning' …) or None.
+    v2.2: memoised per request/thread for 30 s (called many times per page).
+    v2.4: the per-request map below reads every department in ONE query, so
+    distinct codes on one page no longer cost one query each."""
+    if not code:
+        return None
+    import time
+
+    hit = _MEMO.get(code)
+    if hit is not None and time.monotonic() - hit[1] < 30:
+        return hit[0]
+    dept = _qa_department(code)
+    _MEMO[code] = (dept, time.monotonic())
+    return dept
+
+
+_MEMO = {}
+
+import threading as _threading  # noqa: E402
+
+_DEPTS = _threading.local()
+
+
+def dept_request_started(*_args, **_kwargs):
+    """v2.4: the whole department table as maps, one query, for one request."""
+    _DEPTS.map = None
+    _DEPTS.in_request = True
+
+
+def dept_request_finished(*_args, **_kwargs):
+    _DEPTS.map = None
+    _DEPTS.in_request = False
+
+
+def _dept_map():
+    """{"by_code": {code: Department}, "name": {name.lower(): Department}} for
+    one web request on one thread (cleared on the same events as ``_MEMO``)."""
+    if not getattr(_DEPTS, "in_request", False):
+        return None
+    m = getattr(_DEPTS, "map", None)
+    if m is not None:
+        return m
+    from staff.models import Department
+
+    by_code, names = {}, {}
+    for dept in Department.objects.all().order_by("pk"):
+        if dept.code and dept.code not in by_code:
+            by_code[dept.code] = dept
+        if dept.name and dept.name.lower() not in names:
+            names[dept.name.lower()] = dept
+    m = _DEPTS.map = (by_code, names)
+    return m
+
+
+def clear_cache(*_args, **_kwargs):
+    _MEMO.clear()
+    _DEPTS.map = None
+    from org.services import clear_seat_cache
+
+    clear_seat_cache()
+
+
+def _qa_department(code):
     from staff.models import Department
 
     if not code:
         return None
+    m = _dept_map()
+    if m is not None:
+        by_code, names = m
+        for candidate in candidate_codes(code):
+            dept = by_code.get(candidate)
+            if dept is not None:
+                return dept
+        name, _aliases_ = _aliases().get(code, ("", ()))
+        return names.get(name.lower()) if name else None
     for candidate in candidate_codes(code):
         dept = Department.objects.filter(code=candidate).first()
         if dept is not None:

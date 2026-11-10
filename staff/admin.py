@@ -143,15 +143,15 @@ class ExecutivePositionAdmin(ModelAdmin):
 
 @admin.register(ExecutiveTenure)
 class ExecutiveTenureAdmin(ModelAdmin):
-    list_display = ("staff", "position", "started_on", "ended_on",
+    list_display = ("person_name", "position", "started_on", "ended_on",
                     "is_acting", "is_current", "is_public", "is_featured")
     list_filter = ("is_acting", "is_public", "is_featured", "position")
-    search_fields = ("staff__first_name", "staff__last_name",
+    search_fields = ("display_name", "staff__first_name", "staff__last_name",
                      "staff__employee_no", "position__name")
     date_hierarchy = "started_on"
     autocomplete_fields = ("staff", "position")
     fieldsets = (
-        (None, {"fields": ("position", "staff",
+        (None, {"fields": ("position", "staff", "display_name", "title", "is_placeholder",
                             "started_on", "ended_on",
                             "is_acting", "appointment_reference")}),
         ("Public profile", {"fields": ("photo", "photo_original_name",
@@ -190,8 +190,8 @@ class DesignationAdmin(ModelAdmin):
 
 @admin.register(StateOfOrigin)
 class StateOfOriginAdmin(LookupAdmin):
-    list_display = ("name", "code", "zone", "is_active", "sort_order")
-    list_filter = ("zone", "is_active")
+    list_display = ("name", "code", "zone", "travel_mode", "distance_from_hq_km", "is_active", "sort_order")
+    list_filter = ("zone", "travel_mode", "is_active")
     search_fields = ("name", "code")
 
 

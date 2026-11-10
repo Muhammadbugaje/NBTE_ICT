@@ -29,7 +29,8 @@ def test_only_final_confirm_reaches_confirmed(payment):
     assert set(into.values_list("from_stage__code", flat=True)) == {
         "awaiting_finance_confirmation", "finance_confirmation_overdue"}
     for t in into:
-        assert t.required_role_setting == "qa.payment.final_approver_role"
+        # Phase B (B2): the guard is the Finance director seat, not a role.
+        assert t.required_role_setting == "qa.payment.finance_department"
         assert t.required_permission == "payments.final_confirm_payment"
     # Evidence never confirms: no move out of these stages goes to confirmed.
     for stage in ("provider_reported_paid", "proof_submitted", "provider_processing", "awaiting_payment"):
@@ -38,41 +39,59 @@ def test_only_final_confirm_reaches_confirmed(payment):
         assert "confirmed" not in targets, stage
 
 
-def test_final_confirm_rejects_actor_without_final_approver_role(payment, make_user):
+def _finance_director(make_user, email="dof@t.local", **kw):
+    """The director of the Finance department (seat filled automatically when
+    the seat is empty and the person gets the director role)."""
+    import org
+
+    user = make_user(email, role="director", dept="finance", **kw)
+    assert org.is_director(user, "finance")
+    return user
+
+
+def test_b2_finance_director_confirms_payment(payment, make_user):
+    t = FlowTransition.objects.get(flow=payment, from_stage__code="awaiting_finance_confirmation",
+                                   action_code="final_confirm")
+    director = _finance_director(make_user)
+    flow.check(t, director)
+
+
+def test_b2_other_director_cannot(payment, make_user):
+    """Phase B (B2): any other director — even a superuser, even holding the
+    permission — is refused; only the Finance seat decides."""
     t = FlowTransition.objects.get(flow=payment, from_stage__code="awaiting_finance_confirmation",
                                    action_code="final_confirm")
     finance_officer = make_user("fo@t.local", role="qa-finance-officer", dept="finance")
-    root_wrong_role = make_user("root@t.local", superuser=True, role="director")
-    for actor in (finance_officer, root_wrong_role):
-        with pytest.raises(flow.TransitionRefused, match="qa-finance-director|permission"):
+    other_director = make_user("dict@t.local", role="director", dept="ict", superuser=True)
+    _finance_director(make_user)
+    second_finance_director_role = make_user("dof2@t.local", role="director", dept="finance", superuser=True)
+    for actor in (finance_officer, other_director, second_finance_director_role):
+        with pytest.raises(flow.TransitionRefused, match="director of the department|permission"):
             flow.check(t, actor)
-    # Holding the role is not enough without the permission. Phase 2 grants the
-    # permission to the role, so take it away here to prove the check.
-    from django.contrib.auth.models import Permission
-
-    from accounts.models import Role
-
-    perm = Permission.objects.filter(codename="final_confirm_payment", content_type__app_label="payments").first()
-    if perm is not None:
-        role = Role.objects.get(code="qa-finance-director")
-        role.permissions.remove(perm)
-        for group in role.groups.all():
-            group.permissions.remove(perm)
-    director_no_perm = make_user("dof@t.local", role="qa-finance-director", dept="finance")
-    with pytest.raises(flow.TransitionRefused, match="payments.final_confirm_payment"):
-        flow.check(t, director_no_perm)
-    # Role + permission: allowed.
-    director_ok = make_user("dof2@t.local", role="qa-finance-director", dept="finance", superuser=True)
-    flow.check(t, director_ok)
 
 
-def test_final_approver_role_is_a_setting(payment, make_user):
+def test_final_confirm_needs_the_permission_too(payment, make_user):
+    from django.contrib.auth.models import Permission, Group
+
     t = FlowTransition.objects.get(flow=payment, from_stage__code="awaiting_finance_confirmation",
                                    action_code="final_confirm")
-    actor = make_user("x@t.local", role="director", superuser=True)
+    perm = Permission.objects.get(codename="final_confirm_payment", content_type__app_label="payments")
+    from accounts.models import Role
+    Role.objects.get(code="director").permissions.remove(perm)
+    for group in Group.objects.filter(permissions=perm):
+        group.permissions.remove(perm)
+    director_no_perm = _finance_director(make_user)
+    with pytest.raises(flow.TransitionRefused, match="payments.final_confirm_payment"):
+        flow.check(t, director_no_perm)
+
+
+def test_finance_department_is_a_setting(payment, make_user):
+    t = FlowTransition.objects.get(flow=payment, from_stage__code="awaiting_finance_confirmation",
+                                   action_code="final_confirm")
+    actor = make_user("x@t.local", role="director", dept="ict", superuser=True)
     with pytest.raises(flow.TransitionRefused):
         flow.check(t, actor)
-    ConfigEntry.objects.filter(key="qa.payment.final_approver_role").update(value="director")
+    ConfigEntry.objects.filter(key="qa.payment.finance_department").update(value="ict")
     cache.clear()
     flow.check(t, actor)
 
@@ -80,7 +99,7 @@ def test_final_approver_role_is_a_setting(payment, make_user):
 def test_reject_needs_remark(payment, make_user):
     t = FlowTransition.objects.get(flow=payment, from_stage__code="awaiting_finance_confirmation",
                                    action_code="final_reject")
-    actor = make_user("d@t.local", role="qa-finance-director", superuser=True)
+    actor = _finance_director(make_user, "d@t.local", superuser=True)
     with pytest.raises(ValidationError):
         flow.check(t, actor, remark="")
     flow.check(t, actor, remark="Teller number does not match")
@@ -88,16 +107,16 @@ def test_reject_needs_remark(payment, make_user):
 
 def test_engine_end_to_end_on_a_stand_in_subject(payment, make_user):
     """Walk a manual payment from issue to confirmation."""
-    subject = ConfigEntry.objects.get(key="qa.payment.final_approver_role")  # any row works as a subject
+    subject = ConfigEntry.objects.get(key="qa.payment.finance_department")  # any row works as a subject
     institution_side = make_user("i@t.local", superuser=True)
-    director_of_finance = make_user("dof@t.local", role="qa-finance-director", superuser=True)
+    director_of_finance = _finance_director(make_user, superuser=True)
     inst = flow.start("payment", subject, actor=institution_side)
     assert inst.current_stages == ["issued"]
     for action in ("publish_slip", "submit_proof", "enter_finance_queue"):
         inst = flow.transition(inst, action, institution_side)
     assert inst.current_stages == ["awaiting_finance_confirmation"]
     with pytest.raises(flow.TransitionRefused):
-        flow.transition(inst, "final_confirm", institution_side)  # superuser, wrong role
+        flow.transition(inst, "final_confirm", institution_side)  # superuser, not the Finance director
     inst = flow.transition(inst, "final_confirm", director_of_finance, remark="Matches statement")
     assert inst.current_stages == ["confirmed"] and inst.outcome == "confirmed" and inst.completed_at
     events = list(FlowEvent.objects.filter(instance=inst).values_list("action_code", flat=True))
@@ -109,7 +128,7 @@ def test_engine_end_to_end_on_a_stand_in_subject(payment, make_user):
 
 
 def test_transitions_needing_a_second_officer_cannot_be_taken_directly(payment, make_user):
-    subject = ConfigEntry.objects.get(key="qa.payment.final_approver_role")
+    subject = ConfigEntry.objects.get(key="qa.payment.finance_department")
     actor = make_user("a@t.local", superuser=True)
     inst = flow.start("payment", subject, actor=actor)
     inst = flow.transition(inst, "publish_slip", actor)

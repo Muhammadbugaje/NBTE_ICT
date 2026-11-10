@@ -1,11 +1,12 @@
 {% extends "qa_portal/public/base.html" %}
-{% load static qa_tags %}
+{% load static qa_tags %}{% load brand %}
 {% block title %}Register an institution · {{ portal_name }}{% endblock %}
-{% block description %}Register a proposed TVET institution with NBTE and start onboarding (SOP-01).{% endblock %}
+{% block description %}Register a proposed TVET institution with NBTE and start your onboarding.{% endblock %}
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/qa.css' %}?v=2">
-  <link rel="stylesheet" href="{% static 'css/qa-p2.css' %}?v=3">
-  <link rel="stylesheet" href="{% static 'css/apple.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/qa.css' %}">
+  <link rel="stylesheet" href="{% static 'css/qa-p2.css' %}">
+  <link rel="stylesheet" href="{% static 'css/qa-public.css' %}">
+  <link rel="stylesheet" href="{% static 'css/apple.css' %}">
 {% endblock %}
 {% block dock %}{% endblock %}
 {% block content %}
@@ -15,7 +16,7 @@
   <div class="vv-grid" aria-hidden="true"></div>
   <div class="vv-wrap rg-hero">
     <div class="vv-enter">
-      <p class="vv-eyebrow"><img src="{% static 'img/NBTE_logo.png' %}" alt="" width="24" height="24">Onboarding · SOP-01</p>
+      <p class="vv-eyebrow"><img loading="lazy" decoding="async" src="{% brand_logo_url 'primary' %}" alt="" width="24" height="24">Onboarding · step 1 of your journey</p>
       {% if enabled %}
       <h1 class="vv-h1 rg-title" id="rg-title">Register your institution.</h1>
       <p class="vv-lede">Create your institution's record and your administrator account. It takes about fifteen minutes; you upload documents afterwards.</p>
@@ -66,7 +67,7 @@
       </div>
     </aside>
 
-    <form method="post" action="{% url 'qa_portal:register' %}" novalidate class="qa-form rg-form">
+    <form method="post" action="{% url 'qa_portal:register' %}" novalidate class="qa-form rg-form" data-rg-form>
       {% csrf_token %}
       {% include "qa_core/partials/_form_errors.html" %}
 
@@ -74,7 +75,8 @@
         <legend class="rg-legend"><span class="rg-legend__in"><b>1</b><span>Institution<small>As it appears on official documents.</small></span></span></legend>
         <div class="qa-fields">
           {% include "qa_core/partials/_field.html" with field=form|bf:"name" wide=True %}
-          {% for n in "ownership institution_type category year_established cac_rc_number website"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
+          {# X50: only what NBTE needs; RC / CAC appears for private ownership, the year for an operating institution (static/js/forms-dynamic.js; the server applies the same rules). #}
+          {% for n in "ownership cac_rc_number category operating_status year_established"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
         </div>
       </fieldset>
 
@@ -82,18 +84,31 @@
         <legend class="rg-legend"><span class="rg-legend__in"><b>2</b><span>Location and contacts<small>The permanent site, and how NBTE reaches the institution.</small></span></span></legend>
         <div class="qa-fields">
           <div class="qa-field{% if form.state.errors %} has-error{% endif %}"><label for="{{ form.state.id_for_label }}">State <span class="qa-muted" aria-hidden="true">*</span></label>
-            <select class="input" name="state" id="{{ form.state.id_for_label }}" hx-get="{% url 'qa_portal:lga_options' %}" hx-target="#qa-lga-options" hx-trigger="change">
+            <select class="input" name="state" id="{{ form.state.id_for_label }}" hx-get="{% url 'qa_portal:public_lga_options' %}" hx-target="#rg-lga" hx-swap="innerHTML" hx-trigger="change" hx-include="this" data-qa-no-overlay>
               {% for v, l in form.state.field.choices %}<option value="{{ v }}"{% if form.state.value|stringformat:"s" == v|stringformat:"s" %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
             {% for e in form.state.errors %}<div class="qa-field__error" role="alert">{{ e }}</div>{% endfor %}</div>
-          {% for n in "lga address_line1 address_town official_email phone head_name"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
+          {# X49: a real dependent <select>; without JavaScript every LGA is listed, grouped by state. #}
+          <div class="qa-field{% if form.lga.errors %} has-error{% endif %}"><label for="rg-lga">LGA <span class="qa-muted" aria-hidden="true">*</span></label>
+            <select class="input" name="lga" id="rg-lga" required>
+              {% if lga_state %}{% include "qa_portal/_lga_select_options.html" with lgas=lgas state=lga_state selected=lga_selected %}
+              {% else %}<option value="">Choose the state first</option>{% for state_name, names in lga_groups %}<optgroup label="{{ state_name }}">{% for lga in names %}<option value="{{ lga }}"{% if lga == lga_selected %} selected{% endif %}>{{ lga }}</option>{% endfor %}</optgroup>{% endfor %}{% endif %}
+            </select>
+            {% for e in form.lga.errors %}<div class="qa-field__error" role="alert">{{ e }}</div>{% endfor %}</div>
+          {% for n in "address_line1 address_town official_email phone"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
         </div>
-        <datalist id="qa-lga-options">{% for lga in lgas %}<option value="{{ lga }}"></option>{% endfor %}</datalist>
+      </fieldset>
+
+      <fieldset class="rg-card" id="rg-ce">
+        <legend class="rg-legend"><span class="rg-legend__in"><b>3</b><span>Chief Executive<small>Rector, Provost or Principal. Gets an invitation to sign in; only this account declares, pays and submits to NBTE.</small></span></span></legend>
+        <div class="qa-fields">
+          {% for n in "ce_title ce_full_name ce_email ce_phone"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
+        </div>
       </fieldset>
 
       <fieldset class="rg-card" id="rg-account">
-        <legend class="rg-legend"><span class="rg-legend__in"><b>3</b><span>Your account<small>You become the institution administrator, usually the Registrar or head of the QA unit.</small></span></span></legend>
+        <legend class="rg-legend"><span class="rg-legend__in"><b>4</b><span>Head of ICT — portal administrator (you)<small>You manage the portal, users and uploads. You cannot submit or declare.</small></span></span></legend>
         <div class="qa-fields">
-          {% for n in "admin_first_name admin_last_name admin_email admin_job_title admin_department"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
+          {% for n in "admin_first_name admin_last_name admin_email admin_phone"|split %}{% include "qa_core/partials/_field.html" with field=form|bf:n %}{% endfor %}
           <div class="rg-split is-wide">
             {% include "qa_core/partials/_field.html" with field=form|bf:"password1" %}
             {% include "qa_core/partials/_field.html" with field=form|bf:"password2" %}
@@ -104,21 +119,69 @@
       <div class="sr-only" aria-hidden="true"><label>Website <input type="text" name="website_hp" tabindex="-1" autocomplete="off"></label></div>
 
       <fieldset class="rg-card rg-card--submit" id="rg-declare">
-        <legend class="rg-legend"><span class="rg-legend__in"><b>4</b><span>Declaration</span></span></legend>
+        <legend class="rg-legend"><span class="rg-legend__in"><b>5</b><span>Declaration</span></span></legend>
         {% include "qa_core/partials/_field.html" with field=form|bf:"declaration" %}
         <div class="rg-submit">
           <button class="vv-btn vv-btn--green rg-submit__btn" type="submit">Register institution
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
-          <p>Next you will be signed in and taken to your application.</p>
+          <p>Next you will be signed in and taken to your setup checklist.</p>
         </div>
       </fieldset>
     </form>
+  </div>
+  <div class="rg-loader" data-rg-processing hidden role="status" aria-live="polite" aria-busy="true">
+    <div class="rg-loader__card">
+      <div class="rg-loader__logo" aria-hidden="true">
+        <svg class="rg-loader__ring" viewBox="0 0 120 120"><circle class="rg-loader__track" cx="60" cy="60" r="54"/><circle class="rg-loader__arc" cx="60" cy="60" r="54" data-rg-arc/></svg>
+        <img loading="eager" decoding="async" src="{% brand_logo_url 'primary' %}" alt="">
+      </div>
+      <strong class="rg-loader__title">Setting up your institution</strong>
+      <ol class="rg-loader__steps" data-rg-steps-live>
+        <li>Checking your details</li>
+        <li>Creating the institution record</li>
+        <li>Creating your Head of ICT account</li>
+        <li>Sending the Chief Executive their private set-up link</li>
+        <li>Telling NBTE a new institution has registered</li>
+        <li>Preparing your onboarding checklist</li>
+      </ol>
+      <span class="rg-loader__hint" data-rg-hint>This usually takes a few seconds. Please keep this page open.</span>
+    </div>
+  </div>
   </div>
 {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<style>
+.rg-loader{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;padding:16px;background:radial-gradient(1200px 600px at 50% 40%,rgba(16,122,64,.18),rgba(8,20,14,.72));backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:rg-fade .25s ease}
+.rg-loader[hidden]{display:none}
+.rg-loader__card{width:min(440px,100%);background:var(--surface,#fff);color:var(--text,#111);border-radius:24px;padding:2rem 1.75rem 1.5rem;box-shadow:0 30px 80px rgba(0,0,0,.35);text-align:center;animation:rg-rise .35s cubic-bezier(.2,.8,.2,1)}
+.rg-loader__logo{position:relative;width:120px;height:120px;margin:0 auto 1rem}
+.rg-loader__logo img{position:absolute;inset:22px;width:76px;height:76px;object-fit:contain;animation:rg-breathe 2.4s ease-in-out infinite}
+.rg-loader__ring{width:120px;height:120px;transform:rotate(-90deg)}
+.rg-loader__track{fill:none;stroke:rgba(16,122,64,.12);stroke-width:6}
+.rg-loader__arc{fill:none;stroke:#107a40;stroke-width:6;stroke-linecap:round;stroke-dasharray:340;stroke-dashoffset:330;transition:stroke-dashoffset .6s ease}
+.rg-loader__ring::after{content:""}
+.rg-loader__title{display:block;font-size:1.15rem;margin-bottom:.9rem}
+.rg-loader__steps{list-style:none;margin:0 0 1rem;padding:0;text-align:left;display:grid;gap:.45rem}
+.rg-loader__steps li{position:relative;padding-left:1.8rem;font-size:.9rem;opacity:.45;transition:opacity .3s}
+.rg-loader__steps li::before{content:"";position:absolute;left:0;top:.1rem;width:1.1rem;height:1.1rem;border-radius:50%;border:2px solid rgba(16,122,64,.35)}
+.rg-loader__steps li.is-now{opacity:1;font-weight:600}
+.rg-loader__steps li.is-now::before{border-color:#107a40;border-right-color:transparent;animation:rg-spin .8s linear infinite}
+.rg-loader__steps li.is-done{opacity:.9}
+.rg-loader__steps li.is-done::before{background:#16a34a;border-color:#16a34a;animation:rg-pop .25s ease}
+.rg-loader__steps li.is-done::after{content:"";position:absolute;left:.38rem;top:.33rem;width:.3rem;height:.55rem;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.rg-loader__hint{font-size:.8rem;opacity:.7}
+html.rg-loading,html.rg-loading body{overflow:hidden}
+@keyframes rg-fade{from{opacity:0}}
+@keyframes rg-rise{from{opacity:0;transform:translateY(14px) scale(.98)}}
+@keyframes rg-breathe{50%{transform:scale(1.06)}}
+@keyframes rg-spin{to{transform:rotate(360deg)}}
+@keyframes rg-pop{from{transform:scale(.6)}}
+@media (prefers-reduced-motion:reduce){.rg-loader,.rg-loader__card,.rg-loader__logo img,.rg-loader__steps li::before{animation:none!important}}
+</style>
+<script src="{% static 'js/forms-dynamic.js' %}?v=2" defer></script>
 <script>
   /* Highlight the section in view in the side rail. */
   (function () {
@@ -132,6 +195,49 @@
       });
     }, { rootMargin: "-35% 0px -55% 0px" });
     links.forEach(function (a) { var t = document.querySelector(a.getAttribute("href")); if (t) io.observe(t); });
+  })();
+  (function () {
+    var form = document.querySelector("[data-rg-form]");
+    var processing = document.querySelector("[data-rg-processing]");
+    if (!form || !processing) return;
+    var firstError = form.querySelector(".qa-field.has-error");
+    if (firstError) {
+      var invalidField = firstError.querySelector("input:not([type='hidden']), select, textarea");
+      if (invalidField) {
+        invalidField.focus({ preventScroll: true });
+        firstError.scrollIntoView({ block: "center" });
+      }
+    }
+    form.addEventListener("submit", function (event) {
+      if (!form.checkValidity()) {
+        event.preventDefault();
+        form.reportValidity();
+        return;
+      }
+      if (navigator.onLine === false) {
+        event.preventDefault();
+        if (window.QA && QA.toast) QA.toast("error", "You are offline", "Reconnect to the internet, then press Register again.");
+        return;
+      }
+      processing.hidden = false;
+      document.documentElement.classList.add("rg-loading");
+      form.setAttribute("aria-busy", "true");
+      var button = form.querySelector('button[type="submit"]');
+      if (button) button.disabled = true;
+      /* Smart loading: the steps advance with a natural rhythm while the
+         server works; the last step waits for the real response. */
+      var steps = Array.prototype.slice.call(processing.querySelectorAll("[data-rg-steps-live] li"));
+      var arc = processing.querySelector("[data-rg-arc]");
+      var hint = processing.querySelector("[data-rg-hint]");
+      var i = 0;
+      function advance() {
+        steps.forEach(function (li, n) { li.className = n < i ? "is-done" : (n === i ? "is-now" : ""); });
+        if (arc) arc.style.strokeDashoffset = String(340 - 340 * Math.min(0.94, (i + 0.5) / steps.length));
+        if (i < steps.length - 1) { i += 1; setTimeout(advance, 650 + Math.random() * 450); }
+      }
+      advance();
+      setTimeout(function () { if (hint) hint.textContent = "Still working — slow connections can take up to a minute. Don't press Register again."; }, 12000);
+    });
   })();
 </script>
 {% endblock %}

@@ -61,8 +61,8 @@ CASE_STAGES = [
     ("request_fund_release", "Release the funds (Pay Officer)", "Visit being arranged", "action",
      "role_in_department",
      {**TASK, "sop_stage_no": 11, "actor_role": "pay-officer", "actor_scope": "finance", "sla_hours": 72}),
-    # Phase 5: stage 12's work is the post-visit report sub-flow (one report per
-    # programme, each with its own tasks), so the stage has no task of its own.
+    # Phase 5: stage 12 collects attendee reports, then the Team Lead's
+    # per-programme compilation enters the endorsement sub-flow.
     ("post_visit_report", "Post-visit report", "Visit carried out — report in preparation", "action",
      "specific_user",
      {"sop_stage_no": 12, "form_key": "desk_officer", "actor_scope": "owning", "sla_hours": 120}),
@@ -162,6 +162,9 @@ FLOWS = [CASE_FLOW]
 TASK_CATEGORIES = [  # code, name, description
     ("qa-sop03", "QA — SOP-03 case stage",
      "Created by the QA system for a case stage. Completed from QA (Open in QA), never from Tasks."),
+    ("qa-onboarding", "QA — onboarding action",
+     "Created by the QA system when an institution registers (e.g. assign an ICT supervisor). "
+     "Completed from the QA institution page."),
 ]
 SYSTEM_USER = ("qa-system@nbte.local", "QA", "System")
 
@@ -193,7 +196,7 @@ ROLE_PERMISSIONS = {
     "officer": _CASE + ["accreditation.edit_cost_sheet", "accreditation.audit_cost_sheet"],
     "pay-officer": _CASE + ["accreditation.release_funds"],
     "qa-finance-officer": _CASE,
-    "qa-finance-director": _CASE + ["accreditation.manage_rate_table"],
+    "seat:finance": _CASE + ["accreditation.manage_rate_table"],
     "cqac-member": _CASE,
     "cqac-chairman": _CASE,
     "ict-qa-monitor": ["accreditation.view_qa_case", "qa_core.view_all_institutions"],

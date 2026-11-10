@@ -269,7 +269,22 @@ def _quantity(raw):
 
 
 @transaction.atomic
-def create_item(*, user, category, programme_name, kind, name, required_quantity, unit="no."):
+def _weight(value, default=Decimal("1")):
+    """v2.1 R.1 (X35): item weight in the shortfall score (> 0)."""
+    text = str(value if value is not None else "").strip()
+    if text == "":
+        return default
+    try:
+        w = Decimal(text)
+    except InvalidOperation:
+        raise ValidationError("Enter the weight as a number.") from None
+    if w <= 0 or w > 1000:
+        raise ValidationError("The weight must be above 0 and at most 1000.")
+    return w
+
+
+def create_item(*, user, category, programme_name, kind, name, required_quantity, unit="no.", weight="",
+                min_spec="", is_critical=False):
     _need(user, "accreditation.manage_catalogue")
     name = (name or "").strip()
     if len(name) < 2:
@@ -284,11 +299,13 @@ def create_item(*, user, category, programme_name, kind, name, required_quantity
     order = (CatalogueItem.objects.aggregate(m=Max("sort_order"))["m"] or 0) + 10
     return CatalogueItem.objects.create(category=category, programme_name=(programme_name or "").strip(), kind=kind,
                                         name=name, required_quantity=_quantity(required_quantity),
-                                        unit=(unit or "no.").strip()[:40], sort_order=order)
+                                        unit=(unit or "no.").strip()[:40], sort_order=order, weight=_weight(weight),
+                                        min_spec=(min_spec or "").strip(), is_critical=bool(is_critical))
 
 
 @transaction.atomic
-def revise_item(item, *, user, required_quantity, unit=None, name=None):
+def revise_item(item, *, user, required_quantity, unit=None, name=None, weight=None, min_spec=None,
+                is_critical=None):
     """A change writes version n+1 and retires version n (never overwritten:
     SSQ snapshots already taken keep the old quantities)."""
     _need(user, "accreditation.manage_catalogue")
@@ -298,14 +315,19 @@ def revise_item(item, *, user, required_quantity, unit=None, name=None):
     quantity = _quantity(required_quantity)
     new_name = (name or item.name).strip()
     new_unit = (unit if unit is not None else item.unit).strip()[:40]
-    if quantity == item.required_quantity and new_name == item.name and new_unit == item.unit:
+    new_weight = _weight(weight, item.weight) if weight is not None else item.weight
+    new_spec = (min_spec if min_spec is not None else item.min_spec).strip()
+    new_critical = item.is_critical if is_critical is None else bool(is_critical)
+    if quantity == item.required_quantity and new_name == item.name and new_unit == item.unit \
+            and new_weight == item.weight and new_spec == item.min_spec and new_critical == item.is_critical:
         raise ValidationError("Nothing changed.")
     item.is_active = False
     item.save(update_fields=["is_active", "updated_at"])
     return CatalogueItem.objects.create(category=item.category, programme_name=item.programme_name, kind=item.kind,
                                         name=new_name, required_quantity=quantity, unit=new_unit,
                                         version=item.version + 1, sort_order=item.sort_order,
-                                        effective_from=timezone.localdate())
+                                        effective_from=timezone.localdate(), weight=new_weight, min_spec=new_spec,
+                                        is_critical=new_critical, programme_master=item.programme_master)
 
 
 @transaction.atomic

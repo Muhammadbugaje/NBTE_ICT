@@ -29,7 +29,7 @@ def portal(portal_host):
 def test_queue_full_page_partials_and_filters(world, client_for):
     pay = _raise(world["a_user"], "payment-issues")
     _raise(world["a_user"], "portal-access", subject="Cannot sign in at all", priority="critical")
-    c = client_for(world["fin_officer"])
+    c = client_for(world["fin_director"])  # v2.1 X9: the handling director (officers once assigned)
     url = reverse("qa_complaints:queue")
     full = c.get(url).content.decode()
     assert "<html" in full and "app-sidebar" in full and "complaints.css" in full and "qa.js" in full
@@ -55,7 +55,7 @@ def test_queue_full_page_partials_and_filters(world, client_for):
 def test_queue_pagination_25_and_show_all(world, client_for):
     for i in range(27):
         _raise(world["a_user"], "payment-issues", subject=f"Bulk payment complaint {i:02d}")
-    c = client_for(world["fin_officer"])
+    c = client_for(world["fin_director"])
     url = reverse("qa_complaints:queue") + "?tab=all"
     page1 = c.get(url, **hx("qa-rows")).content.decode()
     assert page1.count("cx-rowlink") == 25 and "Show all" in page1
@@ -65,19 +65,28 @@ def test_queue_pagination_25_and_show_all(world, client_for):
 
 @pytest.mark.django_db
 def test_detail_actions_messages_and_escalation(world, client_for):
+    """v2.1 X9–X11: the Finance director acknowledges and assigns; the officer works it."""
     comp = _raise(world["a_user"], "payment-issues")
-    c = client_for(world["fin_officer"])
+    d = client_for(world["fin_director"])
     url = reverse("qa_complaints:detail", args=[comp.pk])
-    full = c.get(url).content.decode()
+    full = d.get(url).content.decode()
     assert "<html" in full and comp.subject in full and "Acknowledge" in full and "data-cx-countdown" in full
-    assert "<html" not in c.get(url, **hx("qa-panel")).content.decode()
-    r = c.post(reverse("qa_complaints:act", args=[comp.pk, "acknowledge"]), {}, **hx("qa-panel"))
+    assert "Assign to an officer" in full and world["fin_officer"].get_full_name() in full
+    assert "<html" not in d.get(url, **hx("qa-panel")).content.decode()
+    r = d.post(reverse("qa_complaints:act", args=[comp.pk, "acknowledge"]), {}, **hx("qa-panel"))
     assert r.status_code == 200 and "qa:toast" in r["HX-Trigger"]
     comp.refresh_from_db()
-    assert comp.status == "in_progress"
-    # A remark is required to resolve: the error stays in place (422, role=alert).
-    r = c.post(reverse("qa_complaints:act", args=[comp.pk, "resolve"]), {"remark": ""}, **hx("qa-panel"))
+    assert comp.status == "awaiting_assignment"
+    # A remark is required to close: the error stays in place (422, role=alert).
+    r = d.post(reverse("qa_complaints:act", args=[comp.pk, "close"]), {"remark": ""}, **hx("qa-panel"))
     assert r.status_code == 422 and 'role="alert"' in r.content.decode()
+    r = d.post(reverse("qa_complaints:act", args=[comp.pk, "assign"]), {"officer": world["fin_officer"].pk},
+               **hx("qa-panel"))
+    assert r.status_code == 200
+    comp.refresh_from_db()
+    assert comp.status == "in_progress" and comp.assigned_officer == world["fin_officer"]
+    c = client_for(world["fin_officer"])
+    assert "Submit for review" in c.get(url).content.decode()
     c.post(reverse("qa_complaints:message", args=[comp.pk]), {"body": "Checked the statement: no line yet.",
                                                              "visibility": "internal"}, **hx("qa-panel"))
     c.post(reverse("qa_complaints:message", args=[comp.pk]), {"body": "We are checking with the bank today.",
@@ -87,7 +96,6 @@ def test_detail_actions_messages_and_escalation(world, client_for):
     # Manual escalation needs the permission; the Director of Finance has it.
     r = c.post(reverse("qa_complaints:escalate", args=[comp.pk]), {"reason": "Urgent"}, **hx("qa-panel"))
     assert r.status_code == 422
-    d = client_for(world["fin_director"])
     r = d.post(reverse("qa_complaints:escalate", args=[comp.pk]), {"reason": "Board tomorrow"}, **hx("qa-panel"))
     assert r.status_code == 200 and "Escalations" in r.content.decode()
     # Holds are off: no hold form, and posting one is refused.
@@ -166,7 +174,8 @@ def test_portal_raise_list_detail_and_reply(world, portal):
     bad = c.post("/complaints/new/", {"layer": layer.pk, "subject": "x", "body": "short"})
     assert bad.status_code == 422 and 'role="alert"' in bad.content.decode()
 
-    # Internal notes never reach the portal (TR-12).
+    # Internal notes never reach the portal (TR-12). v2.1 X10: the director assigns the officer first.
+    services.act(comp, "assign", world["fin_director"], officer=world["fin_officer"])
     services.add_message(comp, world["fin_officer"], "INTERNAL: bank statement not imported yet",
                          visibility="internal")
     services.add_message(comp, world["fin_officer"], "We are checking with the bank.", visibility="public")
@@ -175,7 +184,6 @@ def test_portal_raise_list_detail_and_reply(world, portal):
     assert "Finance" in detail  # the department is shown …
     assert world["fin_officer"].email not in detail and "Fo Test" not in detail  # … the officer is not (default)
     # Request information → the raiser answers on the portal → clock resumes.
-    services.act(comp, "acknowledge", world["fin_officer"])
     services.act(comp, "request_info", world["fin_officer"], remark="Which bank did you pay from?")
     detail = c.get(f"/complaints/{comp.pk}/").content.decode()
     assert "Which bank did you pay from?" in detail and "Waiting for your reply" in detail
@@ -183,8 +191,9 @@ def test_portal_raise_list_detail_and_reply(world, portal):
     assert r.status_code == 200 and "qa:toast" in r["HX-Trigger"]
     comp.refresh_from_db()
     assert comp.status == "in_progress"
-    # Resolve → the raiser confirms with a rating.
-    services.act(comp, "resolve", world["fin_officer"], remark="Confirmed; receipt issued.")
+    # Submit for review → the director resolves → the raiser confirms with a rating (X11).
+    services.act(comp, "submit_for_review", world["fin_officer"], remark="Statement line found; confirm it.")
+    services.act(comp, "resolve", world["fin_director"], remark="Confirmed; receipt issued.")
     page = c.get(f"/complaints/{comp.pk}/").content.decode()
     assert "NBTE says this is resolved" in page and "Reopen" in page
     r = c.post(f"/complaints/{comp.pk}/act/confirm/", {"satisfaction": "5"}, **hx("qa-main"))
@@ -202,6 +211,7 @@ def test_portal_officer_name_setting(world, portal):
     from config.models import ConfigEntry
 
     comp = _raise(world["a_user"], "payment-issues")
+    services.act(comp, "assign", world["fin_director"], officer=world["fin_officer"])  # v2.1 X10
     c = portal(world["a_user"])
     officer_name = world["fin_officer"].get_full_name()
     assert officer_name not in c.get(f"/complaints/{comp.pk}/").content.decode()
@@ -271,6 +281,7 @@ def test_settings_complaints_crud(world, client_for):
     url = reverse("qa_set:complaints")
     page = admin.get(url).content.decode()
     assert "<html" in page and "Payment issues" in page and "qa-tabs" in page
+    assert "Handling department" in page  # v2.1 X9
     panel = admin.get(url + "?section=routing", **hx("qa-panel")).content.decode()
     assert "<html" not in panel and "Finance and Account Department" in panel
     # A new layer, then a routing rule for it (with a formula condition).

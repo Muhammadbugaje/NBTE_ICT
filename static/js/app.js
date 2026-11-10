@@ -89,6 +89,11 @@
       } catch (e) { return false; }
     },
     system: function () { return this.prefersDark() ? "dark" : "light"; },
+    /* v2.1 A10: a light/dark choice saved on the profile (NBTE_PREFS.theme). */
+    profile: function () {
+      var t = (window.NBTE_PREFS || {}).theme;
+      return (t === "light" || t === "dark") ? t : null;
+    },
     get: function () {
       try {
         var stored = localStorage.getItem(this.STORAGE_KEY);
@@ -96,7 +101,7 @@
         if ((stored === "light" || stored === "dark") && osAtChoice === this.system()) return stored;
         this.forget();
       } catch (e) {}
-      return this.system();
+      return this.profile() || this.system();
     },
     remember: function (theme) {
       try {
@@ -145,17 +150,88 @@
         var mq = window.matchMedia &&
                  window.matchMedia("(prefers-color-scheme: dark)");
         var onChange = function (e) {
-          // The device switched light/dark: follow it and drop any manual choice.
+          // The device switched light/dark: follow it and drop any manual
+          // choice (a light/dark saved on the profile still wins).
           Theme.forget();
-          Theme.apply(e.matches ? "dark" : "light", { animate: true });
+          Theme.apply(Theme.profile() || (e.matches ? "dark" : "light"), { animate: true });
         };
         if (mq && mq.addEventListener) mq.addEventListener("change", onChange);
         else if (mq && mq.addListener) mq.addListener(onChange);   // older Safari
       } catch (e) {}
       // Another open tab pressed the toggle: keep this one in step.
       window.addEventListener("storage", function (e) {
-        if (e.key === Theme.STORAGE_KEY || e.key === Theme.OS_KEY) Theme.apply(Theme.get());
+        if (e.key === Theme.STORAGE_KEY || e.key === Theme.OS_KEY) {
+          var stored = null;
+          try { stored = localStorage.getItem(Theme.STORAGE_KEY); } catch (e) {}
+          Theme.apply(
+            stored === "light" || stored === "dark"
+              ? stored : (Theme.profile() || Theme.system())
+          );
+        }
+        if (e.key && /^nbte-(palette|motion|density)$/.test(e.key)) {
+          var k = e.key.slice(5);
+          document.documentElement.setAttribute("data-" + k, e.newValue || Theme.siteValue(k));
+        }
       });
+    },
+
+    /* ---- v2.1 A9/A10: palette, motion, density (+ theme) ----------------
+       Theme.set(k, v) applies one preference at once (one repaint: the
+       theme-switching class turns transitions off for a frame), remembers it
+       on this device and saves it on the profile (POST /me/preferences/), so
+       it follows the person to every device. v = "" goes back to the site
+       default. Fires "theme:change" {k, v}. */
+    KEYS: { theme: 1, palette: 1, motion: 1, density: 1 },
+    siteValue: function (k) {
+      var s = (window.NBTE_PREFS || {}).site || {};
+      return s[k] || { palette: "green", motion: "full", density: "comfortable" }[k] || "";
+    },
+    set: function (k, v, opts) {
+      if (!this.KEYS[k]) return;
+      opts = opts || {};
+      var r = document.documentElement, stamp = Date.now();
+      r.classList.add("theme-switching");
+      try {
+        if (k === "theme") {
+          var t = (v === "light" || v === "dark") ? v : this.system();
+          this.forget();
+          r.setAttribute("data-theme", t);
+          window.NBTE_PREFS = Object.assign(window.NBTE_PREFS || {}, { theme: v || "system" });
+        } else {
+          var val = v || this.siteValue(k);
+          if (k === "motion" && v === "system") val = this.siteValue(k);
+          if (k === "motion" && val === "full" && window.matchMedia &&
+              window.matchMedia("(prefers-reduced-motion: reduce)").matches) val = "reduced";
+          r.setAttribute("data-" + k, val);
+          if (k === "motion") r.classList.toggle("m-on", val !== "off" && !(window.matchMedia &&
+              window.matchMedia("(prefers-reduced-motion: reduce)").matches));
+          if (v && v !== "system") localStorage.setItem("nbte-" + k, v); else localStorage.removeItem("nbte-" + k);
+        }
+        localStorage.setItem("nbte-stamp", String(stamp));
+      } catch (e) {}
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { r.classList.remove("theme-switching"); });
+      });
+      if (opts.save !== false) this.save(k, v, stamp);
+      try {
+        document.dispatchEvent(new CustomEvent("theme:change", { detail: { k: k, v: v } }));
+      } catch (e) {}
+    },
+    setPalette: function (p) { this.set("palette", p); },
+    save: function (k, v, stamp) {
+      var body = {}; body[k] = v || ""; body.stamp = stamp;
+      var token = getCookie("csrftoken");
+      if (!token || !window.fetch) return;
+      return fetch("/me/preferences/", {
+        method: "POST", credentials: "same-origin",
+        headers: { "X-CSRFToken": token, "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(body)
+      }).then(function (res) {
+        if (res.ok) return res.json().then(function (j) {
+          try { if (j && j.preferences && j.preferences.stamp) localStorage.setItem("nbte-stamp", String(j.preferences.stamp)); } catch (e) {}
+          return j;
+        });
+      }).catch(function () {});
     }
   };
 
@@ -164,25 +240,74 @@
      ============================================================ */
   // Phase 6: the loader is hidden by default (content is never covered on
   // load) and only appears when a navigation is slow (over 400 ms).
+  // The NBTE crest loader (partials/page_loader.html) also covers slow
+  // full-page navigations and form posts (sign-in included): see
+  // initNavigationLoader. show(text) sets the status line ("Signing you in…").
   var PageLoader = {
     timer: null,
+    safety: null,
     hide: function () {
       var el = document.getElementById("page-loader");
       if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+      if (this.safety) { clearTimeout(this.safety); this.safety = null; }
       if (!el) return;
       el.classList.remove("is-shown");
       el.classList.add("hidden");
+      el.setAttribute("aria-hidden", "true");
     },
-    show: function () {
+    show: function (text, delay) {
       var el = document.getElementById("page-loader");
       if (!el) return;
+      var self = this;
       if (this.timer) clearTimeout(this.timer);
+      var label = el.querySelector("[data-loader-label]");
+      if (label) {
+        if (!label.hasAttribute("data-default")) label.setAttribute("data-default", label.textContent);
+        label.textContent = text || label.getAttribute("data-default") || "Loading…";
+      }
       this.timer = setTimeout(function () {
         el.classList.remove("hidden");
         el.classList.add("is-shown");
-      }, 400);
+        el.setAttribute("aria-hidden", "false");
+      }, typeof delay === "number" ? delay : 400);
+      // A download or a cancelled navigation never unloads the page.
+      if (this.safety) clearTimeout(this.safety);
+      this.safety = setTimeout(function () { self.hide(); }, 10000);
     }
   };
+
+  function initNavigationLoader() {
+    function skipLink(a, e) {
+      if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return true;
+      if (a.hasAttribute("download") || a.hasAttribute("data-no-loader") || (a.target && a.target !== "_self")) return true;
+      if (a.hasAttribute("hx-get") || a.hasAttribute("hx-post") || a.closest("[hx-boost='true']")) return true;
+      var href = a.getAttribute("href") || "";
+      if (!href || href.charAt(0) === "#" || /^(mailto|tel|javascript|webcal|blob|data):/i.test(href)) return true;
+      if (a.origin !== window.location.origin) return true;
+      if (a.pathname === window.location.pathname && a.search === window.location.search && a.hash) return true;
+      return /\.(ics|pdf|csv|xlsx?|docx?|zip|png|jpe?g)$/i.test(a.pathname);
+    }
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest("a[href]");
+      if (!a) return;
+      // Decide after every other handler ran (htmx / dialogs may cancel it).
+      setTimeout(function () { if (!skipLink(a, e)) PageLoader.show(a.getAttribute("data-loading-text"), 600); }, 0);
+    });
+    document.addEventListener("submit", function (e) {
+      var form = e.target;
+      if (!form || form.tagName !== "FORM") return;
+      setTimeout(function () {
+        if (e.defaultPrevented || form.hasAttribute("data-no-loader") || (form.target && form.target !== "_self")) return;
+        if (form.hasAttribute("hx-post") || form.hasAttribute("hx-get") || form.closest("[hx-boost='true']")) return;
+        // Opt-in (data-loading-text, e.g. sign-in): other posts may answer
+        // with a file download, which never unloads the page, so they keep
+        // the busy button (ui.js) instead of a full-screen loader.
+        var text = form.getAttribute("data-loading-text");
+        if (text) PageLoader.show(text, 250);
+      }, 0);
+    });
+    window.addEventListener("pagehide", function () { PageLoader.hide(); });
+  }
 
   /* ============================================================
      TOASTS
@@ -221,7 +346,7 @@
       Object.keys(sigs).forEach(function (k) {
         if (now - sigs[k] > Toast.DEDUP_MS) delete sigs[k];
       });
-      if (sigs[sig]) return function () {};
+      if (sigs[sig] && opts.dedupe !== false) return function () {};
       sigs[sig] = now;
       try { sessionStorage.setItem(this.DEDUP_KEY, JSON.stringify(sigs)); } catch (e) {}
 
@@ -347,13 +472,20 @@
   /* ============================================================
      DROPDOWN
      ============================================================ */
+  function setDropdownTriggersExpanded(id, expanded) {
+    document.querySelectorAll("[data-dropdown-trigger]").forEach(function (trigger) {
+      if (trigger.getAttribute("data-dropdown-trigger") === id) {
+        trigger.setAttribute("aria-expanded", expanded ? "true" : "false");
+      }
+    });
+  }
+
   var Dropdown = {
     closeAll: function (except) {
       document.querySelectorAll("[data-dropdown-menu]").forEach(function (menu) {
         if (menu === except) return;
         menu.setAttribute("aria-hidden", "true");
-        var trigger = document.querySelector('[data-dropdown-trigger="' + menu.id + '"]');
-        if (trigger) trigger.setAttribute("aria-expanded", "false");
+        setDropdownTriggersExpanded(menu.id, false);
       });
     },
     toggle: function (id) {
@@ -363,8 +495,7 @@
       this.closeAll();
       if (!isOpen) {
         menu.setAttribute("aria-hidden", "false");
-        var trigger = document.querySelector('[data-dropdown-trigger="' + id + '"]');
-        if (trigger) trigger.setAttribute("aria-expanded", "true");
+        setDropdownTriggersExpanded(id, true);
         syncTopbarOffset();
       }
       return true;
@@ -809,10 +940,30 @@
       setTimeout(initHtmxHooks, 60);
       return;
     }
+    // Phase 0 (N2, V6): one place for the history settings of every page.
+    // A cache miss on Back reloads the URL as a full page (the server always
+    // renders the full page for a normal or history-restore request).
+    window.htmx.config.refreshOnHistoryMiss = true;
+    window.htmx.config.historyCacheSize = 10;
     document.body.addEventListener("htmx:beforeRequest", handleHtmxRequestStart);
     document.body.addEventListener("htmx:afterRequest", handleHtmxRequestEnd);
     document.body.addEventListener("htmx:responseError", handleHtmxResponseError);
     document.body.addEventListener("htmx:sendError", handleHtmxSendError);
+    // Django messages added during an HTMX request arrive as the HX-Trigger
+    // event "nbte:messages" (core.middleware.DrainHtmxMessagesMiddleware).
+    document.body.addEventListener("nbte:messages", function (evt) {
+      var list = (evt.detail && evt.detail.value) || evt.detail || [];
+      if (!Array.isArray(list)) return;
+      var map = { error: "error", danger: "error", warning: "warn", warn: "warn", success: "success" };
+      list.forEach(function (m) {
+        if (m && m.title) Toast.push(map[m.kind] || "info", m.title, "", { dedupe: false });
+      });
+    });
+    // QA pages (qa.js) show their own inline "taking too long" message.
+    document.body.addEventListener("htmx:timeout", function () {
+      if (window.NBTE && window.NBTE.QA) return;
+      Toast.error("This is taking too long", "The server did not answer in time. Try again.");
+    });
     document.body.addEventListener("htmx:beforeSwap", function (evt) {
       // 422 = a form with inline validation errors (QA §20): let it swap in.
       if (evt.detail.xhr && evt.detail.xhr.status >= 400 && evt.detail.xhr.status !== 422) {
@@ -1007,6 +1158,7 @@
     safeCall("theme init", function () { Theme.init(); });
     safeCall("page loader hide", function () { PageLoader.hide(); });
     window.addEventListener("pageshow", function () { PageLoader.hide(); });
+    safeCall("navigation loader", initNavigationLoader);
     safeCall("impersonation restore", function () { Impersonation.restore(); });
     safeCall("scroll reveal", initScrollReveal);
     safeCall("sticky nav", initStickyNav);
@@ -1033,6 +1185,13 @@
     safeCall("sse streams", initSSEStreams);
 
     safeCall("confirmation modal", function () { Confirmation.init(); });
+    // v2.1 A10: profile Appearance card — apply a pick at once; HTMX saves it.
+    document.addEventListener("change", function (e) {
+      var t = e.target;
+      if (t && t.matches && t.matches("[data-pap-key]")) {
+        Theme.set(t.getAttribute("data-pap-key"), t.value, { save: !window.htmx });
+      }
+    });
   }
 
   /* Expose public API */

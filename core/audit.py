@@ -58,7 +58,7 @@ def log(action, instance, actor=None, changes=None, note=""):
     return AuditLogEntry.objects.create(
         actor=actor if getattr(actor, "pk", None) else None,
         actor_repr=str(actor) if actor else "system",
-        action=action,
+        action=str(action)[:64],
         model_label=instance._meta.label,
         object_pk=str(instance.pk),
         object_repr=str(instance)[:255],

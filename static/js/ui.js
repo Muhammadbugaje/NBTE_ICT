@@ -25,7 +25,7 @@
     'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
   function reducedMotion() {
-    if (document.documentElement.getAttribute("data-motion") === "reduce") return true;
+    if (/^(reduce|reduced|off)$/.test(document.documentElement.getAttribute("data-motion") || "")) return true;
     try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
     catch (e) { return false; }
   }
@@ -723,28 +723,54 @@
       // submit — defaultPrevented is only final after dispatch.
       setTimeout(function () {
         if (e.defaultPrevented) return;
-        btn.classList.add("is-busy");
-        btn.setAttribute("aria-busy", "true");
-        btn.disabled = true;
+        NBTE.setBusy(btn, true, btn.getAttribute("data-busy-text") || form.getAttribute("data-busy-text"));
         // File downloads never unload the page; give the button back.
         setTimeout(function () { clearBusy(form); }, 8000);
       }, 0);
     });
   };
+  /**
+   * NBTE.setBusy(button, on, text) — the one busy state for buttons: disabled,
+   * aria-busy, .is-busy (an on-brand arc, nbte-loader.css). With `text`
+   * (or data-busy-text) the label becomes spinner + words, e.g. "Signing you in…";
+   * the original content comes back when the busy state ends.
+   */
+  NBTE.setBusy = function (btn, on, text) {
+    if (!btn) return;
+    if (on) {
+      if (btn.classList.contains("is-busy")) return;
+      text = text || btn.getAttribute("data-busy-text");
+      if (text && btn.tagName === "BUTTON" && !btn.__nbteBusyHTML) {
+        btn.__nbteBusyHTML = btn.innerHTML;
+        btn.classList.add("has-busy-text");
+        btn.innerHTML = '<span class="nbte-busy"><span class="spinner spinner-sm" aria-hidden="true"></span><span></span></span>';
+        btn.querySelector(".nbte-busy > span:last-child").textContent = text;
+      }
+      btn.classList.add("is-busy");
+      btn.setAttribute("aria-busy", "true");
+      btn.disabled = true;
+    } else {
+      if (btn.__nbteBusyHTML != null) { btn.innerHTML = btn.__nbteBusyHTML; btn.__nbteBusyHTML = null; }
+      btn.classList.remove("is-busy", "has-busy-text");
+      btn.removeAttribute("aria-busy");
+      btn.disabled = false;
+    }
+  };
   function clearBusy(scope) {
-    $all(scope || document, ".is-busy").forEach(function (b) {
-      b.classList.remove("is-busy");
-      b.removeAttribute("aria-busy");
-      b.disabled = false;
-    });
+    var root = scope || document;
+    var list = $all(root, ".is-busy");
+    if (root.classList && root.classList.contains("is-busy")) list.push(root);
+    list.forEach(function (b) { NBTE.setBusy(b, false); });
   }
+  NBTE.clearBusy = clearBusy;
 
   /* ======================================================= loadingOverlay */
   var overlayEl = null;
   /**
-   * NBTE.loadingOverlay(show) — global blocking loader (spinner + dimmed
-   * backdrop that fades in). Use for whole-page operations only.
-   * @param {boolean} show
+   * NBTE.loadingOverlay(show) — global blocking loader (the NBTE crest loader
+   * + dimmed backdrop that fades in). Use for whole-page operations only.
+   * Pass a string instead of true to set the status line.
+   * @param {boolean|string} show
    */
   NBTE.loadingOverlay = function (show) {
     if (show) {
@@ -753,7 +779,18 @@
       overlayEl.className = "global-loader";
       overlayEl.setAttribute("role", "status");
       overlayEl.setAttribute("aria-live", "polite");
-      overlayEl.innerHTML = '<span class="spinner spinner-lg" aria-hidden="true"></span><span class="sr-only">Loading…</span>';
+      // The NBTE crest loader from the page (partials/page_loader.html);
+      // a plain on-brand arc if this page has none.
+      var tpl = document.querySelector("#page-loader [data-nbte-loader]");
+      if (tpl) {
+        var loader = tpl.cloneNode(true);
+        loader.classList.remove("nbte-loader--lg");
+        var lbl = loader.querySelector("[data-loader-label]");
+        if (lbl) lbl.textContent = typeof show === "string" ? show : "Please wait…";
+        overlayEl.appendChild(loader);
+      } else {
+        overlayEl.innerHTML = '<span class="spinner spinner-lg" aria-hidden="true"></span><span class="sr-only">Loading…</span>';
+      }
       document.body.appendChild(overlayEl);
     } else if (overlayEl) {
       overlayEl.remove();
@@ -954,8 +991,22 @@
     // Busy buttons must not stay stuck after back/forward or htmx requests.
     window.addEventListener("pageshow", function (e) { if (e.persisted) clearBusy(); });
     document.body.addEventListener("htmx:afterRequest", function (e) {
-      var form = e.detail && e.detail.elt && e.detail.elt.closest && e.detail.elt.closest("form");
+      var elt = e.detail && e.detail.elt;
+      var form = elt && elt.closest && elt.closest("form");
       clearBusy(form || undefined);
+      if (elt && elt.__nbteHxBusy) { elt.__nbteHxBusy = false; NBTE.setBusy(elt, false); }
+    });
+    // A button that posts on its own (hx-post/put/patch/delete, no form)
+    // gets the same busy state while the request runs; restored on success
+    // and on error (afterRequest fires for both).
+    document.body.addEventListener("htmx:beforeRequest", function (e) {
+      var elt = e.detail && e.detail.elt;
+      if (!elt || !elt.matches || !elt.matches("button, a.btn, input[type=submit]")) return;
+      if (elt.hasAttribute("data-no-busy") || elt.hasAttribute("data-qa-no-busy") || elt.classList.contains("is-busy")) return;
+      var verb = ((e.detail.requestConfig && e.detail.requestConfig.verb) || "get").toLowerCase();
+      if (verb === "get" && !elt.hasAttribute("data-busy-text")) return;
+      elt.__nbteHxBusy = true;
+      NBTE.setBusy(elt, true);
     });
     // New content from htmx gets the same treatment.
     document.body.addEventListener("htmx:afterSwap", function (e) {
@@ -964,6 +1015,31 @@
   }
 
   NBTE.enhance = enhance;
+
+  // "Add to calendar" menus (partials/add_to_calendar.html): one open at a
+  // time, closed by Escape or a click elsewhere; [data-nbte-copy] copies text.
+  document.addEventListener("click", function (e) {
+    var copy = e.target.closest && e.target.closest("[data-nbte-copy]");
+    if (copy) {
+      e.preventDefault();
+      var text = copy.getAttribute("data-nbte-copy");
+      var done = function () { if (NBTE.Toast) NBTE.Toast.push("success", "Link copied", "Paste it into your calendar app's \u201cSubscribe\u201d or \u201cAdd calendar from URL\u201d."); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { window.prompt("Copy this link", text); });
+      else window.prompt("Copy this link", text);
+      return;
+    }
+    $all(document, "details[data-nbte-cal][open]").forEach(function (d) {
+      if (!d.contains(e.target)) d.removeAttribute("open");
+    });
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    $all(document, "details[data-nbte-cal][open]").forEach(function (d) {
+      d.removeAttribute("open");
+      var s = d.querySelector("summary");
+      if (s) s.focus();
+    });
+  });
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();

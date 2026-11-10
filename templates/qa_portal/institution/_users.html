@@ -1,17 +1,38 @@
 {% load qa_tags %}
-<section class="qa-card" aria-labelledby="pp-users">
-  <header class="qa-card__head"><div><h2 id="pp-users">Users</h2><p>People who can sign in for {{ inst.code }}.</p></div></header>
-  <ul class="qa-rowlist" role="list">
-    {% for m in members %}<li><div class="qa-rowlink"><span class="qa-pa__avatar" aria-hidden="true">{{ m.user|initials }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ m.user|who }}</span><span class="qa-rowlink__meta">{{ m.institution_role.name|default:"" }}{% if m.job_title %} · {{ m.job_title }}{% endif %}</span></span><span class="qa-rowlink__side">{% if m.is_primary_contact %}<span class="qa-chip qa-chip--direct">Primary</span>{% endif %}{% if not m.user.has_usable_password %}<span class="qa-chip qa-tone-warn">Invited</span>{% endif %}</span></div></li>{% endfor %}
+<section class="qa-card pp-team" aria-labelledby="pp-users">
+  <header class="qa-card__head"><div><h2 id="pp-users">Users</h2><p>{{ members|length }} {{ members|length|pluralize:"person,people" }} can sign in for {{ inst.code }}.</p></div></header>
+  {% if team_locked %}
+  <div class="qa-card__body pp-team__locked" role="status">
+    <p class="pp-team__note">{% icon "lock" 15 %}<span>Your first application has been submitted. NBTE approval is required before users can be changed.</span></p>
+    {% if can_submit_change_request %}
+    <div class="pp-actions pp-actions--stack">
+      <a class="btn btn-primary btn-sm" href="{% url 'qa_portal:change_requests_new' %}?type=user_invite">{% icon "plus" 14 "2.4" %} Request to invite a user</a>
+      <a class="btn btn-subtle btn-sm" href="{% url 'qa_portal:change_requests_new' %}?type=user_remove">Request to remove a user</a>
+      <a class="btn btn-subtle btn-sm" href="{% url 'qa_portal:change_requests' %}">View requests</a>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  <ul class="qa-rowlist pp-team__list" role="list">
+    {% for m in members %}<li><div class="qa-rowlink">
+      <span class="qa-pa__avatar" aria-hidden="true">{{ m.user|initials }}</span>
+      <span class="qa-rowlink__main">
+        <span class="qa-rowlink__title">{{ m.user|who }}</span>
+        <span class="qa-rowlink__meta">{{ m.institution_role.name|default:"" }}{% if m.job_title and m.job_title != m.institution_role.name %} · {{ m.job_title }}{% endif %}</span>
+        {% if m.is_primary_contact or not m.user.has_usable_password %}<span class="pp-team__chips">{% if m.is_primary_contact %}<span class="qa-chip qa-chip--direct">Primary contact</span>{% endif %}{% if not m.user.has_usable_password %}<span class="qa-chip qa-tone-warn">Invited</span>{% endif %}</span>{% endif %}
+      </span>
+    </div></li>{% empty %}<li><div class="qa-empty"><p>No users yet.</p></div></li>{% endfor %}
   </ul>
   {% if can_manage_users %}
-    <div class="qa-card__body" style="border-top:1px solid var(--divider)">
+    <div class="qa-card__body pp-team__invite">
       <details{% if invite_form.errors %} open{% endif %}><summary class="btn btn-sm btn-subtle">{% icon "plus" 14 "2.4" %} Invite a user</summary>
         <form method="post" action="{% url 'qa_portal:institution_users' %}" hx-post="{% url 'qa_portal:institution_users' %}" hx-target="#qa-users" class="qa-form qa-mt">
           {% csrf_token %}{% include "qa_core/partials/_form_errors.html" with form=invite_form %}
           {% for field in invite_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}
-          <button class="btn btn-primary btn-block" type="submit">Send invitation</button>
-          <p class="qa-small qa-muted">They receive a one-time link to set their own password.</p>
+          <div class="pp-actions">
+            <button class="btn btn-primary" type="submit">Send invitation</button>
+          </div>
+          <p class="qa-small qa-muted">They receive a one-time link to set their own password. User changes lock after the first application is submitted.</p>
         </form></details>
     </div>
   {% endif %}

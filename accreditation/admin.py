@@ -12,8 +12,8 @@ from core.admin_base import (
 )
 
 from .models import (
-    SSQ, Application, ApplicationCycle, CatalogueItem, CostLine, CostSheet, DepartmentalClearance, Evidence,
-    FundRelease, PersonnelEntry, PersonnelList, ProfessionalBodyNotice, QACase, QARequest, QARequestProgramme,
+    SSQ, Application, ApplicationCycle, CatalogueItem, ClearanceDelegate, CostLine, CostSheet, DepartmentalClearance, Evidence,
+    FundRelease, OnboardingProgrammeReview, PersonnelEntry, PersonnelList, ProfessionalBodyNotice, QACase, QARequest, QARequestProgramme,
     QAType, Query, RateTable, Response, SSQTemplate, Submission, VisitDetail,
 )
 
@@ -162,3 +162,27 @@ for _model, _cols, _search in (
         "exclude": tuple(f for f in ("data", "schema", "data_snapshot", "rendered_snapshot")
                          if f in {x.name for x in _model._meta.concrete_fields}) or None,
     }))
+
+
+@admin.register(ClearanceDelegate)
+class ClearanceDelegateAdmin(ModelAdmin):
+    """Phase 0 (O10): the delegate's permission override is kept in step by
+    ``accreditation.clearance_access.add_delegate`` / ``revoke_delegate``;
+    prefer the Delegates panel on the clearance queue."""
+
+    list_display = ("user", "department", "active", "expires_at", "granted_by", "created_at")
+    list_filter = ("active", ("department", RelatedDropdownFilter))
+    search_fields = ("user__email", "user__first_name", "user__last_name", "department__name")
+    raw_id_fields = ("user", "granted_by", "revoked_by")
+    readonly_fields = ("revoked_at", "revoked_by")
+
+    def save_model(self, request, obj, form, change):
+        from .clearance_access import _sync_override
+
+        super().save_model(request, obj, form, change)
+        _sync_override(obj.user, granted_by=request.user)
+
+
+admin.site.register(OnboardingProgrammeReview, type("OnboardingProgrammeReviewAdmin", (UnscopedReadOnlyModelAdmin,), {
+    "list_display": ("application", "programme", "department", "round", "status", "decided_by", "decided_at"),
+    "search_fields": ("application__reference",)}))

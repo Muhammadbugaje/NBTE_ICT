@@ -13,6 +13,9 @@ _VIEW_STAFF = ["staff.view_staff"]
 _VIEW_HISTORY = ["staff.view_staffstatushistory"]
 _AUDIT_READ = ["core.view_auditlogentry"]
 _CROSS_DEPARTMENT = ["accounts.access_all_departments"]
+# Phase B (B10/T-SEC-3): explicit "see everything" rights. Only the ES and the
+# super admin hold them (and _CROSS_DEPARTMENT); directors see their own department.
+_SEE_ALL = ["tasks.view_all_tasks", "accounts.view_all_users", "inspection.view_all_ssq"]
 _POWER = ["accounts.view_analytics_dashboard"]
 _ASSETS_VIEW = ["assets.view_asset"]
 _ASSETS_MANAGE = ["assets.view_asset", "assets.add_asset", "assets.change_asset"]
@@ -33,21 +36,21 @@ ROLES = [
         "executive-secretary",
         "Executive Secretary",
         True, 999, 100,
-        _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
+        _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _SEE_ALL + _POWER
         + _ASSETS_MANAGE + _ASSETS_ALL + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE + _ATT_ALL,
     ),
     (
         "director",
         "Director of Department",
         True, 100, 50,
-        _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
+        _VIEW_STAFF + _VIEW_HISTORY + _AUDIT_READ + _POWER
         + _ASSETS_MANAGE + _ASSETS_DEPT + _WORKFLOW_DEPT + _WORKFLOW_APPROVE + _ATT_DEPT,
     ),
     (
         "deputy-director",
         "Deputy Director",
         True, 80, 30,
-        _VIEW_STAFF + _VIEW_HISTORY + _CROSS_DEPARTMENT + _POWER
+        _VIEW_STAFF + _VIEW_HISTORY + _POWER
         + _ASSETS_VIEW + _ASSETS_DEPT + _WORKFLOW_DEPT + _WORKFLOW_APPROVE + _ATT_DEPT,
     ),
     (
@@ -71,7 +74,7 @@ ROLES = [
             "staff.change_staff_state", "staff.view_staffstatushistory",
             "staff.view_staffattachment", "staff.add_staffattachment",
         ]
-        + _CROSS_DEPARTMENT + _POWER + _ASSETS_MANAGE + _ASSETS_DEPT + _WORKFLOW_DEPT
+        + _POWER + _ASSETS_MANAGE + _ASSETS_DEPT + _WORKFLOW_DEPT
         + _WORKFLOW_APPROVE,
     ),
     (
@@ -103,7 +106,7 @@ ROLES = [
             "staff.view_staff", "staff.add_staff", "staff.change_staff",
             "staff.change_staff_state", "staff.view_staffstatushistory",
         ]
-        + _AUDIT_READ + _CROSS_DEPARTMENT + _POWER
+        + _AUDIT_READ + _CROSS_DEPARTMENT + _SEE_ALL + _POWER
         + _ASSETS_MANAGE + _ASSETS_ALL + _WORKFLOW_VIEW_ALL + _WORKFLOW_APPROVE + _ATT_ALL,
     ),
     (
@@ -127,6 +130,9 @@ _MIGRATION_GRANTED = (
     "view_all_assets", "view_department_assets",
     "view_all_requests", "view_department_requests",
     "view_all_attendance", "view_department_attendance",
+    # Phase B: org.seed adds these to the ES / super admin after every migrate.
+    "view_all_tasks", "view_all_users", "view_all_ssq",
+    "assign_director", "manage_offices", "manage_all_divisions", "manage_grade_levels",
 )
 
 
@@ -177,3 +183,8 @@ class Command(BaseCommand):
                 f"{'created' if created else 'exists '} {code} "
                 f"(rank {rank}, max_open_tasks {max_open})"
             )
+        # Phase B (C9, B10): proposed minimum grades (empty ones only) and the
+        # ES / super-admin explicit "see all" rights.
+        from org import seed as org_seed
+        org_seed.seed_role_min_grades()
+        org_seed.seed_es_permissions()

@@ -138,12 +138,12 @@
   transform: none;
 }
 .att-btn-primary {
-  background: var(--brand-500);
+  background: var(--primary-solid);
   color: var(--white);
   box-shadow: 0 2px 4px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 .att-btn-primary:hover:not(:disabled) {
-  background: var(--brand-600);
+  background: var(--primary-solid-hover);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 28%, transparent);
   transform: translateY(-1px);
 }
@@ -575,7 +575,7 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--brand-500);
+  background: var(--primary-solid);
   color: var(--white);
   display: flex;
   align-items: center;
@@ -792,7 +792,7 @@
   margin-bottom: 20px;
   animation: none;
 }
-.att-checkin-card h1 {
+.att-checkin-card :is(h1, h2) {
   font-size: 22px;
   font-weight: 700;
   color: var(--att-fg);
@@ -1129,7 +1129,7 @@
   .att-upload-drop { padding: 16px; flex-direction: column; text-align: center; }
   .att-checkin-page { padding: 12px 12px 40px; }
   .att-checkin-card { padding: 24px 18px; }
-  .att-checkin-card h1 { font-size: 19px; }
+  .att-checkin-card :is(h1, h2) { font-size: 19px; }
   .att-input-month, .att-input-select { width: 100%; }
 }
 
@@ -1700,7 +1700,7 @@
 .att-trend-fill {
   height: 100%;
   border-radius: 3px;
-  background: var(--brand-500);
+  background: var(--primary-solid);
   transition: width 0.6s var(--att-ease);
 }
 .att-trend-fill.is-present { background: var(--emerald-500); }
@@ -2029,7 +2029,7 @@
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: var(--brand-500);
+  background: var(--primary-solid);
   transition: width 0.5s var(--att-ease);
 }
 .att-dept-card-bar.is-warn > span { background: var(--amber-500); }
@@ -2522,5 +2522,28 @@
 }
 
 /* Ring state colours */
-.att-distance-ring.in-range #att-ring-progress { stroke: var(--accent, var(--brand-500)); }
+.att-distance-ring.in-range #att-ring-progress { stroke: var(--accent, var(--primary-solid)); }
 .att-distance-ring.out-of-range #att-ring-progress { stroke: var(--danger, var(--red-700)); }
+
+/* Safari < 16.2 (no color-mix): custom properties built with color-mix
+   resolve to nothing there; give them plain token values instead. */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  :root { --att-accent-soft: var(--primary-subtle); --att-present-soft: var(--success-subtle); --att-late-soft: var(--warning-subtle); --att-absent-soft: var(--danger-subtle); --att-excused-soft: var(--neutral-subtle); --att-holiday-soft: var(--neutral-subtle); --att-on-leave-soft: var(--neutral-subtle); --att-present-text: var(--att-present); --att-late-text: var(--att-late); --att-absent-text: var(--att-absent); --att-excused-text: var(--att-excused); --att-holiday-text: var(--att-holiday); --att-on-leave-text: var(--att-on-leave); }
+}
+
+/* v2.1 Phase D: official duty (G7) and missing check-out (G3) */
+.att-pill-on_duty { background: var(--info-subtle); color: var(--info-fg); }
+.att-day.is-on_duty { background: var(--info-subtle); color: var(--info-fg); font-weight: 600; }
+.att-legend-dot.is-on_duty { background: var(--info); }
+.att-today.is-on_duty::before { background: var(--info); }
+.att-today.is-on_duty .att-today-icon { background: var(--info-subtle); color: var(--info-fg); }
+.att-day.is-missing-out { box-shadow: inset 0 -3px 0 var(--warning); }
+.att-matrix-cell.is-on_duty, .att-legend-cell.is-on_duty { background: var(--info-subtle); color: var(--info-fg); }
+.att-legend-dot.is-holiday { background: var(--att-holiday, var(--warning)); }
+
+/* --------------------------------------------------------------------------
+   Page hero — the shared qa-hero pattern (qa-redesign.css) with the
+   attendance hue (data-qa-area="attendance"). Only small local touches here.
+   -------------------------------------------------------------------------- */
+.att-qa-hero p .att-pill { margin-inline-start: 4px; vertical-align: 1px; }
+.att-qa-hero--narrow { margin-bottom: 14px; }

@@ -11,6 +11,8 @@ urlpatterns = [
     path("my/",                   views.my_tasks,          name="my_tasks"),
     path("assigned/",             views.assigned_to_me,    name="assigned_to_me"),
     path("review/",               views.review_queue,      name="review_queue"),
+    path("divisions/",            views.division_queue,    name="division_queue"),
+    path("performance/",          views.performance,       name="performance"),
 
     # ---- Create / edit ----
     path("new/",                  views.task_create,       name="create"),
@@ -28,6 +30,18 @@ urlpatterns = [
     path("<int:pk>/open/",        views.task_open,         name="open"),
     path("<int:pk>/accept/",      views.task_accept,       name="accept"),
     path("<int:pk>/start/",       views.task_start,        name="start"),
+    path("<int:pk>/accept-start/", views.task_accept_start, name="accept_start"),
+    path("<int:pk>/parts/<int:user_id>/confirm/", views.task_confirm_part, name="confirm_part"),
+    path("<int:pk>/parts/<int:user_id>/return/",  views.task_return_part,  name="return_part"),
+    path("<int:pk>/parts/confirm-all/", views.task_confirm_all, name="confirm_all"),
+    path("<int:pk>/reviewer/",    views.task_set_reviewer, name="set_reviewer"),
+    path("<int:pk>/report.pdf",   views.task_report_pdf,   name="report_pdf"),
+
+    # ---- Division routing (Phase C) ----
+    path("<int:pk>/division/route/",    views.task_route_division,    name="route_division"),
+    path("<int:pk>/division/accept/",   views.task_division_accept,   name="division_accept"),
+    path("<int:pk>/division/decline/",  views.task_division_decline,  name="division_decline"),
+    path("<int:pk>/division/complete/", views.task_division_complete, name="division_complete"),
     path("<int:pk>/ask/",         views.task_ask,          name="ask"),
     path("<int:pk>/resume/",      views.task_resume,       name="resume"),
     path("<int:pk>/return/",      views.task_return,       name="return"),

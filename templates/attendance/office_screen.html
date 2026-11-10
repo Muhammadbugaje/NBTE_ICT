@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Office QR · {{ p.location.name }} · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Office QR{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/hr-leave.css' %}">{% endblock %}
+{% block content %}
+<main class="hrd-page qr-screen">
+  <div id="office-qr" hx-get="{% url 'attendance:office_qr' p.location.pk %}" hx-trigger="every {{ p.seconds_left }}s" hx-swap="outerHTML">
+    {% include "attendance/_office_qr.html" with fragment_only=True %}
+  </div>
+</main>
+<script>
+(function () {
+  // Countdown ring between swaps (no motion when reduced motion is set).
+  function tick() {
+    var el = document.querySelector("[data-qr-left]");
+    if (!el) return;
+    var left = Math.max(0, parseInt(el.getAttribute("data-qr-left"), 10) - 1);
+    var rot = parseInt(el.getAttribute("data-qr-rot"), 10) || 60;
+    el.setAttribute("data-qr-left", left);
+    var out = document.querySelector("[data-qr-count]");
+    if (out) out.textContent = left + " s";
+    var arc = document.querySelector(".qr-arc");
+    if (arc) { var c = 2 * Math.PI * 47; arc.style.strokeDasharray = c; arc.style.strokeDashoffset = c * (1 - left / rot); }
+  }
+  setInterval(tick, 1000);
+})();
+</script>
+{% endblock %}

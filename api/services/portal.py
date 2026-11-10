@@ -194,7 +194,7 @@ def members_payload(request, inst):
                         "role": m.institution_role.name if m.institution_role_id else "",
                         "job_title": m.job_title or "", "is_primary_contact": bool(m.is_primary_contact),
                         "invited": not m.user.has_usable_password()})
-    can_manage = pv._can_manage_users(request)
+    can_manage = pv._can_manage_users(request) and not services.institution_team_locked(inst)
     roles = [{"value": v, "label": str(label)} for v, label in pv.InviteUserForm.base_fields["role"].choices]
     return {"can_manage": can_manage, "results": members, "invite_roles": roles if can_manage else []}
 
@@ -316,16 +316,35 @@ def application_payload(request, inst):
         "hold": {"reason": str(getattr(hold, "reason", "") or "")} if hold else None,
         "gaps": services.profile_gaps(inst) if app is None or app.status == "draft" else [],
         "blockers": blockers,
-        "can_submit": bool(app is not None and app.status == "draft" and not blockers and not impersonating),
+        "can_submit": bool(app is not None and app.status == "draft" and not blockers and not impersonating
+                           and inst_services.is_chief_executive(request.user)),
+        "is_chief_executive": inst_services.is_chief_executive(request.user),
         "documents": summary_payload(rows),
         "clearances": clearances,
         "fees": [obligation_row(ob) for ob in apv._obligations(request, app)],
         "programmes": [programme_brief(p) for p in programmes],
         "estimate": estimate_payload(apv._programme_estimate(inst, programmes)),
         "selecting_programmes": selecting,
+        "programme_submission": _programme_submission(request, app, impersonating),
         "programme_options": options,
         "handled_by": inst.handling_department.name if inst.handling_department_id else "NBTE",
     }
+
+
+def _programme_submission(request, app, impersonating):
+    """Q1/Q2: the Submit programmes bar and each programme's clearance state."""
+    if app is None or not (app.status.startswith("programme_") or app.programme_round):
+        return None
+    from accreditation import onboarding_programmes as op
+
+    info = op.summary(app, request.user)
+    return {"can_submit": bool(info["can_submit"] and not impersonating), "blockers": info["blockers"],
+            "chief_executive_only": not info["is_ce"], "count": info["count"], "streams": info["streams"],
+            "department": info["department"].name if info["department"] is not None else "NBTE",
+            "expected_time": info["expected_time"], "round": app.programme_round,
+            "programmes": [{"id": r["programme"].pk, "state": r["state"],
+                            "remark": r["review"].remark if r["review"] is not None and r["state"] == "returned"
+                            else ""} for r in info["rows"]]}
 
 
 def programme_brief(p):

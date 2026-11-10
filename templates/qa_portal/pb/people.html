@@ -1,0 +1,73 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}People · {{ body.acronym|default:body.name }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} Professional body portal</span>
+    <h1 data-qa-focus>People</h1>
+    <p>The {{ body.name }} staff with portal accounts. The No.1 (the registrar) gets NBTE's letters, assigns your visit representatives and reviews their reports.</p>
+  </header>
+  {% include "qa_portal/pb/_tabs.html" with section_key="people" %}
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+  <section class="qa-card qa-mt" aria-labelledby="pb-people-h">
+    <header class="qa-card__head"><div><h2 id="pb-people-h">Your people</h2><p>Each account is created here and confirmed by its owner through a one-time e-mail link — no password travels.</p></div></header>
+    {% if members %}
+    <ul class="qa-rowlist" role="list">
+      {% for m in members %}
+      <li class="qa-rowlink qa-rowlink--nobadge{% if not m.is_active_link or not m.user.is_active %} is-off{% endif %}">
+        <span class="qa-rowlink__main">
+          <span class="qa-rowlink__title">{{ m.name }}
+            {% if m.is_primary_contact and m.is_active_link %}<span class="qa-chip qa-chip--top">No.1 contact</span>{% endif %}
+            {% if not m.is_active_link or not m.user.is_active %}<span class="qa-chip">Removed</span>{% endif %}
+          </span>
+          <span class="qa-rowlink__meta">{{ m.user.email }}{% if m.job_title %} · {{ m.job_title }}{% endif %} ·
+            {{ m.user.get_role_display|default:m.user.role.name|default:"" }} ·
+            {% if m.user.has_usable_password %}active{% else %}password not set yet{% endif %}
+          </span>
+        </span>
+        {% if is_admin and m.is_active_link %}
+        <span class="qa-rowlink__side qa-btn-row">
+          {% if not m.is_primary_contact %}
+          <form method="post" action="{% url 'qa_portal:pb_person_primary' m.pk %}">{% csrf_token %}
+            <button class="btn btn-xs btn-subtle" type="submit" title="Make this person the body's No.1 contact">Make No.1</button></form>
+          {% endif %}
+          {% if not m.user.has_usable_password %}
+          <form method="post" action="{% url 'qa_portal:pb_person_resend' m.pk %}">{% csrf_token %}
+            <button class="btn btn-xs btn-subtle" type="submit">Resend link</button></form>
+          {% endif %}
+          <form method="post" action="{% url 'qa_portal:pb_person_toggle' m.pk %}">{% csrf_token %}
+            <button class="btn btn-xs btn-ghost qa-btn-reject" type="submit">Remove</button></form>
+        </span>
+        {% elif is_admin %}
+        <span class="qa-rowlink__side">
+          <form method="post" action="{% url 'qa_portal:pb_person_toggle' m.pk %}">{% csrf_token %}
+            <button class="btn btn-xs btn-subtle" type="submit">Restore</button></form>
+        </span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="qa-card__body qa-muted qa-small">Nobody is on the list yet. Add your first person below.</p>{% endif %}
+  </section>
+  {% if is_admin %}
+  <section class="qa-card" aria-labelledby="pb-add-h">
+    <header class="qa-card__head"><div><h2 id="pb-add-h">Add a person</h2><p>Their account opens the moment they set a password from the e-mail link.</p></div></header>
+    <div class="qa-card__body">
+      <form class="qa-form qa-stack" method="post" action="{% url 'qa_portal:pb_person_new' %}">{% csrf_token %}
+        <div class="qa-fields">
+          <div class="qa-field is-wide"><label for="pbp-name">Full name</label><input class="input" id="pbp-name" name="full_name" maxlength="160" required></div>
+          <div class="qa-field"><label for="pbp-email">E-mail</label><input class="input" id="pbp-email" name="email" type="email" required></div>
+          <div class="qa-field"><label for="pbp-title">Job title</label><input class="input" id="pbp-title" name="job_title" maxlength="120" placeholder="Registrar, Field Officer …"></div>
+          <div class="qa-field"><label for="pbp-role">Role</label><select class="input" id="pbp-role" name="role">{% for code, label in roles %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
+        </div>
+        <label class="qa-check"><input type="checkbox" name="primary_contact"> Make this person the No.1 contact (registrar) — the current No.1 passes the pin.</label>
+        <div class="qa-form-actions btn-group"><button class="btn btn-primary" type="submit">{% icon "user" 16 %} Add person</button></div>
+      </form>
+    </div>
+  </section>
+  {% else %}
+  <p class="qa-muted qa-small qa-mt">Only the body's administrator (the registrar or their stand-in) manages the people list.</p>
+  {% endif %}
+</div>
+{% endblock %}

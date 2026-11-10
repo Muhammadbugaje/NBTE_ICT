@@ -103,6 +103,8 @@ def portal_programme(request, pk):
     from qa_core.models import TimelineEvent
     from qa_core.portal_views import _shell_context
 
+    from .models import BodyLetter
+
     from .portal_views import _inst
 
     inst = _inst(request)
@@ -125,5 +127,7 @@ def portal_programme(request, pk):
     ctx = _shell_context(request, "programmes", p=programme, rows=rows, events=events,
                          bodies=programme_info.bodies_map([programme]).get(programme.pk, []),
                          expiry_info=programme_info.expiry(programme),
-                         approval_type=programme_info.approval_type_name(programme))
+                         approval_type=programme_info.approval_type_name(programme),
+                         body_letters=list(BodyLetter.objects.for_user(request.user).filter(
+                             programme=programme, visible_to_institution=True).select_related("body")))
     return render_qa(request, "qa_portal/programmes/detail.html", ctx)

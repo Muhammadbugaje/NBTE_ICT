@@ -7,7 +7,7 @@
 (function () {
   "use strict";
   var root = document.documentElement;
-  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var reduce = (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) || /^(reduce|reduced|off)$/.test(document.documentElement.getAttribute("data-motion") || "");
   root.classList.add("vv-js");
   if (!reduce) root.classList.add("vv-motion");
 

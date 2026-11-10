@@ -207,3 +207,31 @@ Response 200 (header `Cache-Control: no-store`):
 Errors: on the portal door this route does not exist (404 `not_found`).
 
 Passkeys are website-only: there are no passkey endpoints.
+
+## Appearance (v2.1 Phase A, A10)
+
+### GET `me/appearance/` — both doors
+
+The person's own light/dark, palette, motion and density, and what the website applies
+(site defaults from Settings → Appearance with the person's choices on top).
+
+```json
+{
+  "preferences": {"palette": "blue", "theme": "dark", "stamp": 1793260000000},
+  "effective": {"theme": "dark", "palette": "blue", "scene": "laminar", "motion": "full",
+                "density": "comfortable", "stamp": 1793260000000},
+  "allow_user_palette": true,
+  "choices": {"theme": ["light", "dark", "system"], "palette": ["green", "blue", "gold", "teal", "plum", "graphite"],
+              "motion": ["full", "reduced", "off", "system"], "density": ["comfortable", "compact"]}
+}
+```
+
+### PATCH `me/appearance/` — both doors
+
+Body: any of `theme`, `palette`, `motion`, `density`. `""` (or `motion: "system"`) goes back to the
+site default. Saved on the account, so the website follows it on every device (the same rules as the
+website's `POST /me/preferences/`). The site's motion level is a ceiling: asking for more motion than
+the site allows has no effect.
+
+Errors: 400 `validation_error` (a value outside `choices`); 403 `permission_denied` when the site does not
+let staff choose (only `theme` may change then).

@@ -1,0 +1,89 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}{{ report.title }} · {{ report.case.reference }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:pb_reports' %}">Reports</a><span aria-hidden="true">/</span><span aria-current="page">{{ report.case.reference }}</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} {{ report.case.institution.name }}</span>
+    <h1 data-qa-focus>{{ report.title }} <span class="qa-muted">{{ report.case.reference }}</span></h1>
+    <p><span class="qa-chip{% if report.status == 'returned' %} qa-tone-warn{% elif report.status == 'with_nbte' %} qa-tone-info{% endif %}">{{ report.get_status_display }}</span>
+       <span class="qa-chip">{{ report.get_recommendation_display }}</span></p>
+  </header>
+
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+  {% if report.status == 'returned' and report.review_remark %}
+  <div class="qa-callout" role="note"><strong>Returned by the registrar</strong><p>{{ report.review_remark }}</p></div>
+  {% endif %}
+
+  {% if report.member %}<p class="qa-muted qa-small">Representative on the visit: {{ report.member.name }} · author: {{ report.author.get_full_name|default:report.author.email }}</p>{% endif %}
+
+  {% if editable %}
+  <section class="qa-card qa-mt" aria-labelledby="pb-edit-h">
+    <header class="qa-card__head"><div><h2 id="pb-edit-h">Write the report</h2><p>Save as you go. Submit when it is complete; the registrar reviews it next.</p></div></header>
+    <div class="qa-card__body">
+      <form class="qa-form qa-stack" method="post" action="{% url 'qa_portal:pb_report_save' report.pk %}" enctype="multipart/form-data">{% csrf_token %}
+        <div class="qa-fields">
+          <div class="qa-field is-wide"><label for="pbr-title">Title</label><input class="input" id="pbr-title" name="title" value="{{ report.title }}" maxlength="200"></div>
+          <div class="qa-field"><label for="pbr-rec">Recommendation</label>
+            <select class="input" id="pbr-rec" name="recommendation">{% for code, label in recommendations %}<option value="{{ code }}"{% if report.recommendation == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+          <div class="qa-field is-wide"><label for="pbr-sum">One-line summary</label><input class="input" id="pbr-sum" name="summary" value="{{ report.summary }}" maxlength="200"></div>
+          <div class="qa-field is-wide"><label for="pbr-cont">Findings</label><textarea class="input" id="pbr-cont" name="content" rows="9">{{ report.content }}</textarea></div>
+          <div class="qa-field"><label for="pbr-rem">Additional note</label><input class="input" id="pbr-rem" name="remark" value="{{ report.remark }}" maxlength="255"></div>
+          {% if report.file %}<div class="qa-field is-wide"><label>Attachment on file</label>
+            <a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_portal:pb_report_file' report.pk %}">{{ report.original_name|default:"attached file" }}</a></div>{% endif %}
+          <div class="qa-field"><label for="pbr-file">{% if report.file %}Replace attachment{% else %}Attachment (optional){% endif %}</label>
+            <input class="input" id="pbr-file" name="file" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+        </div>
+        <div class="qa-form-actions btn-group">
+          <button class="btn btn-subtle" type="submit" name="save" value="1">{% icon "check" 16 %} Save</button>
+          <button class="btn btn-primary" type="submit" formaction="{% url 'qa_portal:pb_report_submit' report.pk %}">{% icon "send" 16 %} Submit to the registrar</button>
+        </div>
+      </form>
+    </div>
+  </section>
+  {% else %}
+  <section class="qa-card qa-mt" aria-labelledby="pb-view-h">
+    <header class="qa-card__head"><div><h2 id="pb-view-h">The report</h2></div></header>
+    <div class="qa-card__body qa-stack">
+      {% if report.summary %}<p><strong>{{ report.summary }}</strong></p>{% endif %}
+      <p>{{ report.content|linebreaksbr }}</p>
+      {% if report.remark %}<p class="qa-muted qa-small">Note: {{ report.remark }}</p>{% endif %}
+      {% if report.file %}<a class="qa-rowlink qa-rowlink--nobadge" href="{% url 'qa_portal:pb_report_file' report.pk %}">{{ report.original_name|default:"attached file" }}</a>{% endif %}
+      {% if report.review_remark and report.status != 'returned' %}<p class="qa-muted qa-small">Registrar: {{ report.review_remark }}</p>{% endif %}
+      <p class="qa-muted qa-small">{{ report.author.get_full_name|default:report.author.email }} · reviewed by {{ report.reviewed_by.get_full_name|default:"—" }} {{ report.reviewed_at|date:"j M Y H:i"|default:"" }}</p>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if reviewing %}
+  <section class="qa-card" aria-labelledby="pb-rev-h">
+    <header class="qa-card__head"><div><h2 id="pb-rev-h">Registrar's review</h2><p>Approve sends it toward NBTE (you still press "Send to NBTE" after). Returning asks the representative for corrections.</p></div></header>
+    <div class="qa-card__body qa-stack">
+      <form class="qa-form qa-stack" method="post" action="{% url 'qa_portal:pb_report_review' report.pk %}">{% csrf_token %}
+        <div class="qa-fields">
+          <div class="qa-field is-wide"><label for="pbrr-rem">Remark <span class="qa-muted">(needed to return)</span></label>
+            <input class="input" id="pbrr-rem" name="remark" maxlength="500" placeholder="What to correct — or a note for the record"></div>
+        </div>
+        <div class="qa-form-actions btn-group">
+          <button class="btn btn-primary" type="submit" name="decision" value="approve">{% icon "check" 16 %} Approve</button>
+          <button class="btn btn-ghost qa-btn-reject" type="submit" name="decision" value="return">{% icon "back" 16 %} Return for correction</button>
+        </div>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if is_admin and report.status == 'approved' %}
+  <section class="qa-card" aria-labelledby="pb-send-h">
+    <header class="qa-card__head"><div><h2 id="pb-send-h">Send to NBTE</h2><p>Your approved report lands on the case's Reports tab. Optionally attach the signed PDF as the record copy.</p></div></header>
+    <div class="qa-card__body">
+      <form class="qa-form qa-stack" method="post" action="{% url 'qa_portal:pb_report_send' report.pk %}" enctype="multipart/form-data">{% csrf_token %}
+        <div class="qa-field"><label for="pbrf-file">Signed PDF (optional)</label><input class="input" id="pbrf-file" name="file" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+        <div class="qa-form-actions btn-group"><button class="btn btn-primary" type="submit">{% icon "send" 16 %} Send to NBTE</button></div>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

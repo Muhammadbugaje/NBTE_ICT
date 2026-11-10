@@ -1,0 +1,63 @@
+{% extends base_template %}
+{% load qa_tags visit_notice_tags %}
+{% block title %}Visit invitations · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} {% if is_body %}Professional body{% else %}Resource person{% endif %}</span>
+    <h1 data-qa-focus>Visit invitations</h1>
+    <p>NBTE QA visits {% if is_body %}your council is invited to join{% else %}you are invited to serve on{% endif %}. Read the letter, then confirm, or tell NBTE at once if {% if is_body %}you{% else %}you{% endif %} cannot attend.</p>
+  </header>
+  {% if not rows %}
+  <section class="qa-card"><div class="qa-card__body vip-empty">{% icon "mail" 22 "2" %}<p>No visit invitations yet. You will be notified here and by e-mail when NBTE approves a visit.</p></div></section>
+  {% endif %}
+  <ul class="vip-list" role="list">
+    {% for inv in rows %}
+    <li class="qa-card vip-card" id="inv-{{ inv.pk }}">
+      <div class="vip-head">
+        <div><h2>{{ inv.case.institution.name }}</h2><p class="vip-muted">{{ inv.ctx.dates }}{% if inv.is_amended %} · amended{% endif %}</p></div>
+        <span class="qa-chip {{ inv.status|invite_tone }}">{% if inv.status == "acknowledged" %}Confirmed{% elif inv.status == "declined" %}Declined{% else %}Awaiting your reply{% endif %}</span>
+      </div>
+      <dl class="vip-facts">
+        <div><dt>Programme(s)</dt><dd>{{ inv.ctx.programmes }}</dd></div>
+        <div><dt>Venue</dt><dd>{{ inv.ctx.venue }}</dd></div>
+        <div><dt>Team lead</dt><dd>{{ inv.ctx.team_lead }}</dd></div>
+        <div><dt>NBTE contact</dt><dd>{{ inv.ctx.contact_officer }}{% if inv.ctx.contact_details %} · {{ inv.ctx.contact_details }}{% endif %}</dd></div>
+        {% if inv.is_open %}<div><dt>Confirm by</dt><dd><strong>{{ inv.ctx.confirm_by }}</strong></dd></div>{% endif %}
+      </dl>
+      {% if inv.responded_at %}<p class="vip-muted">Answered {{ inv.responded_at|date:"j M Y" }}{% if inv.response_note %}: “{{ inv.response_note }}”{% endif %}</p>{% endif %}
+      <div class="vip-actions">
+        {% if inv.letter %}<a class="btn btn-ghost" href="{% url 'qa_portal:visit_invitation_letter' inv.pk %}" target="_blank" rel="noopener">{% icon "download" 16 "2.2" %} Letter (PDF)</a>{% endif %}
+        {% if not inv.token_expired %}
+        <form method="post" action="{% url 'qa_portal:visit_invitation_respond' inv.pk %}" class="vip-form">{% csrf_token %}
+          <label class="sr-only" for="vip-note-{{ inv.pk }}">Note</label>
+          <input class="input" id="vip-note-{{ inv.pk }}" name="note" maxlength="500" placeholder="{% if is_body %}Representative's name, or why you cannot attend{% else %}Note (needed if you cannot attend){% endif %}">
+          <div class="vip-buttons">
+            {% if inv.status != "acknowledged" %}<button class="btn btn-primary" type="submit" name="answer" value="confirm">{% icon "check" 16 "2.4" %} Confirm attendance</button>{% endif %}
+            {% if inv.status != "declined" %}<button class="btn btn-ghost" type="submit" name="answer" value="decline">{% icon "x" 16 "2.4" %} Cannot attend</button>{% endif %}
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+<style>
+  .vip-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+  .vip-card { display: grid; gap: 14px; padding: 20px; }
+  .vip-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .vip-head h2 { margin: 0; font-size: 1.1rem; }
+  .vip-muted { margin: 2px 0 0; color: var(--text-muted); font-size: .88rem; }
+  .vip-facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .vip-facts > div { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+  .vip-facts dt { font-size: .76rem; color: var(--text-muted); }
+  .vip-facts dd { margin: 2px 0 0; font-size: .9rem; overflow-wrap: anywhere; }
+  .vip-actions { display: grid; gap: 10px; }
+  .vip-actions > .btn { justify-self: start; }
+  .vip-form { display: grid; gap: 10px; }
+  .vip-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  .vip-empty { display: flex; gap: 12px; align-items: center; color: var(--text-muted); }
+  @media (max-width: 560px) { .vip-buttons .btn { flex: 1 1 100%; justify-content: center; } }
+</style>
+{% endblock %}

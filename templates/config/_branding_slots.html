@@ -1,0 +1,42 @@
+{# v2.1 A5/A6: one card per place; choosing a mark swaps this fragment (HTMX). #}
+<section class="sh-section" aria-labelledby="brand-slots-title">
+  <header class="sh-section__head"><div>
+    <h2 id="brand-slots-title">Where each mark appears</h2>
+    <p>Changes apply on the next page load across both portals, the admin and new PDFs.</p>
+  </div></header>
+  <div class="sh-section__body">
+    {% for slot in slots %}
+      <form class="sh-row brand-slot" method="post" action="{% url 'config:branding_select' %}"
+            hx-post="{% url 'config:branding_select' %}" hx-target="#brand-slots" hx-swap="innerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="slot" value="{{ slot.code }}">
+        <div class="brand-slot__info">
+          <span class="brand-slot__preview" aria-hidden="true">{{ slot.markup }}</span>
+          <span><label class="sh-row__title" for="brand-slot-{{ slot.code }}">{{ slot.label }}</label>
+          <span class="sh-row__desc">{{ slot.where }}</span>
+          <span class="sh-row__key">brand.logo.{{ slot.code }}</span></span>
+        </div>
+        <div class="sh-row__control btn-group">
+          <select class="input" id="brand-slot-{{ slot.code }}" name="code">
+            {% for card in cards %}<option value="{{ card.logo.code }}"{% if card.logo.code == slot.current %} selected{% endif %}>{{ card.logo.name }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-sm btn-subtle" type="submit">Use</button>
+        </div>
+      </form>
+    {% endfor %}
+  </div>
+</section>
+<section class="sh-section" aria-labelledby="brand-marks-title">
+  <header class="sh-section__head"><div><h2 id="brand-marks-title">Available marks</h2>
+    <p>Light and dark versions switch with the theme.</p></div></header>
+  <ul class="brand-cards">
+    {% for card in cards %}
+      <li class="brand-card">
+        <span class="brand-card__art">{{ card.markup }}</span>
+        <b>{{ card.logo.name }}</b>
+        <span>{{ card.logo.use_note|default:card.logo.tagline }}</span>
+        <span class="sh-row__key">{{ card.logo.code }}{% if card.logo.is_builtin %} · built-in{% else %} · uploaded{% endif %}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</section>

@@ -1,0 +1,54 @@
+{% load qa_tags %}
+<div class="rot-page">
+  <header class="qa-hero rot-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "rotate" 14 "2.2" %} Quality Assurance · Rotation · <a href="{% url 'rotation:board' %}?dept={{ pool.department.code|default:'' }}">Back to rotation</a></span>
+      <h1 data-qa-focus>Rules and members</h1>
+      <p>Who takes turns in <strong>{{ pool.name }}</strong>, their share of the work, their own caps and pauses, and which rules apply. Blank fields follow the QA settings (<span class="qa-mono">qa.rotation.*</span>).</p>
+      {% if pools|length > 1 %}
+      <div class="qa-hero__actions">
+        <label class="sr-only" for="rot-pool">Pool</label>
+        <select class="rot-select" id="rot-pool" name="pool" hx-get="{% url 'rotation:pool_settings' %}" hx-target="#rot-settings" hx-push-url="true">
+          {% for p in pools %}<option value="{{ p.code }}"{% if p.pk == pool.pk %} selected{% endif %}>{{ p.name }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong>{{ members|length }}</strong><span>Members</span></div>
+      <div class="qa-stat"><strong>{{ pool.get_kind_display }}</strong><span>Kind of work</span></div>
+    </div>
+  </header>
+  {% if error %}<div class="rot-alert" role="alert">{{ error }}</div>{% elif saved %}<div class="rot-alert rot-alert--ok" role="status">{{ saved }}</div>{% endif %}
+  <div class="rot-grid2">
+    <section class="rot-card" aria-label="Members">
+      <div class="rot-card__head"><span class="rot-tile rot-tile--blue">{% icon "users" 20 "2.2" %}</span><div><h2>Members</h2><p>Weight 1 = a normal share, 0.5 = half (part-time), 2 = double. Pause someone for leave, training or a long visit.</p></div>
+        <form hx-post="{% url 'rotation:pool_settings' %}?pool={{ pool.code|urlencode }}" hx-target="#rot-settings">{% csrf_token %}<input type="hidden" name="action" value="sync"><button class="btn btn-subtle btn-sm" type="submit">{% icon "plus" 14 "2.4" %} Add missing staff</button></form></div>
+      <div class="rot-table-wrap"><table class="rot-table">
+        <thead><tr><th>Person</th><th>Weight</th><th>Own cap</th><th>Paused until</th><th>Reason</th><th>In rotation</th><th></th></tr></thead>
+        <tbody>{% for m in members %}{% include "assignments/_member_row.html" %}{% empty %}<tr><td colspan="7" class="rot-empty">Nobody yet — add the department's staff.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </section>
+    <form class="rot-card" aria-label="Rules" hx-post="{% url 'rotation:pool_settings' %}?pool={{ pool.code|urlencode }}" hx-target="#rot-settings">
+      {% csrf_token %}<input type="hidden" name="action" value="rules">
+      <div class="rot-card__head"><span class="rot-tile rot-tile--violet">{% icon "key" 20 "2.2" %}</span><div><h2>Rotation rules</h2><p>{{ pool.department.name|default:"NBTE" }}</p></div></div>
+      <p class="rot-sec">Cap per person</p>
+      <div class="rot-set"><span>{{ pool.get_kind_display }} at a time<small>Blank = setting ({{ cfg.cap|default:"none" }})</small></span><span class="rot-inline"><input type="number" min="0" max="99" name="cap" value="{{ own_cap }}" placeholder="{{ cfg.cap|default:'' }}" aria-label="Cap"></span></div>
+      <p class="rot-sec">How the next person is chosen (%)</p>
+      <div class="rot-set"><span>Current load</span><span class="rot-inline"><input type="number" min="0" max="100" name="w_load" value="{{ weights_pct.load }}" aria-label="Weight of current load"></span></div>
+      <div class="rot-set"><span>Fair share ({{ cfg.fairness_window_days }} days)</span><span class="rot-inline"><input type="number" min="0" max="100" name="w_fairness" value="{{ weights_pct.fairness }}" aria-label="Weight of fair share"></span></div>
+      <div class="rot-set"><span>Days since last</span><span class="rot-inline"><input type="number" min="0" max="100" name="w_recency" value="{{ weights_pct.recency }}" aria-label="Weight of days since last"></span></div>
+      <p class="rot-sec">Rules</p>
+      {% for r in rule_rows %}
+      <div class="rot-set"><span>{{ r.label }}<small>Now {{ r.effective|yesno:"on,off" }}</small></span>
+        <span class="rot-seg" role="radiogroup" aria-label="{{ r.label }}">
+          <label><input type="radio" name="rule_{{ r.code }}" value="inherit"{% if r.state == "inherit" %} checked{% endif %}>Setting</label>
+          <label><input type="radio" name="rule_{{ r.code }}" value="on"{% if r.state == "on" %} checked{% endif %}>On</label>
+          <label><input type="radio" name="rule_{{ r.code }}" value="off"{% if r.state == "off" %} checked{% endif %}>Off</label>
+        </span></div>
+      {% endfor %}
+      <div class="rot-set"><span>Assign the suggestion at once<small>You can still reassign</small></span><input type="checkbox" name="auto_assign" value="1"{% if pool.auto_assign %} checked{% endif %} aria-label="Auto-assign"></div>
+      <div class="btn-group btn-group--end"><button class="btn btn-primary" type="submit">{% icon "check" 16 "2.4" %} Save rules</button></div>
+    </form>
+  </div>
+</div>

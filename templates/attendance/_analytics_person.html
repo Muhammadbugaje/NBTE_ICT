@@ -1,0 +1,27 @@
+<div class="an-person">
+  {% if not standalone %}<div class="btn-group btn-group--between">
+    <div>
+      <span class="hrd-eyebrow">{{ person.department.name|default:"" }}</span>
+      <h2>{{ p.name }}</h2>
+      <p class="hrd-sub">{{ first|date:"j M" }} – {{ last|date:"j M Y" }}</p>
+    </div>
+    <div class="btn-group btn-group--end">
+      {% if person.pk != request.user.pk %}<a class="btn btn-primary btn-sm" href="{% url 'messaging:compose' %}?to={{ person.pk }}">Message {{ person.first_name|default:"this person" }}</a>{% endif %}
+      <button class="btn btn-ghost btn-sm" type="button" data-close-dialog>Close</button>
+    </div>
+  </div>{% endif %}
+  <section class="hrd-kpis{% if not standalone %} hrd-mt{% endif %}">
+    <div class="hrd-kpi"><strong>{% if p.counted %}{{ p.attendance_pct }}%{% else %}—{% endif %}</strong><span>Attendance</span></div>
+    <div class="hrd-kpi"><strong>{% if p.punctuality_pct is not None %}{{ p.punctuality_pct }}%{% else %}—{% endif %}</strong><span>Punctuality</span></div>
+    <div class="hrd-kpi"><strong>{{ p.avg_arrival_label }}</strong><span>Average arrival</span></div>
+    <div class="hrd-kpi"><strong>{{ p.late }} · {{ p.absent }}</strong><span>Late · absent</span></div>
+  </section>
+  <div class="hrd-tablewrap hrd-mt"><table class="hrd-table">
+    <thead><tr><th>Day</th><th>Status</th><th>In</th><th>Out</th><th>How</th></tr></thead>
+    <tbody>{% for r in days %}<tr>
+      <td>{{ r.date|date:"D j M" }}</td>
+      <td><span class="att-pill att-pill-{{ r.status }}">{{ r.status_label }}</span>{% if r.missing_checkout %} <span class="hrd-tag is-warn">No check-out</span>{% endif %}</td>
+      <td>{{ r.check_in_at|time:"H:i"|default:"—" }}</td><td>{{ r.check_out_at|time:"H:i"|default:"—" }}</td>
+      <td>{{ r.get_source_display }}</td></tr>{% empty %}<tr><td colspan="5">No records in this period.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>

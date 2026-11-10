@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from .. import serializers_portal as sp
 from ..services import portal_complaints as svc
+from complaints import services as complaint_services
 from .common import AUTHED_ERRORS, errors
 from .portal_common import Forbidden, binary, body, page, paged, query, website_rules
 
@@ -196,7 +197,7 @@ class ComplaintActionView(APIView):
             services.act(c, action, request.user, remark=data.get("remark", ""))
         rating = data.get("satisfaction")
         if action == "confirm" and rating:
-            type(c).unscoped.filter(pk=c.pk).update(satisfaction=int(rating))
+            complaint_services.record_satisfaction(c, request.user, int(rating))
         return _detail(request, c)
 
 

@@ -1,0 +1,34 @@
+{% include "org/_alerts.html" %}
+<div class="org-table-wrap">
+  <table class="org-table">
+    <thead><tr><th scope="col">Level</th><th scope="col" colspan="7">Label · min. years in grade · highest role · notes · active</th></tr></thead>
+    <tbody>
+    {% for g in grades %}
+      <tr>
+        <td><strong>{{ g.number|stringformat:"02d" }}</strong></td>
+        <td colspan="7">
+          <form class="org-grade-form" hx-post="{% url 'org:grade_level_save' g.pk %}" hx-target="#org-grades" method="post" action="{% url 'org:grade_level_save' g.pk %}">
+            {% csrf_token %}
+            <input class="org-input" name="label" value="{{ g.label }}" aria-label="Label for level {{ g.number }}">
+            <input class="org-input" type="number" min="0" max="40" name="min_years_in_grade" value="{{ g.min_years_in_grade|default_if_none:'' }}" placeholder="to confirm" aria-label="Minimum years in grade">
+            <select class="org-input" name="max_role" aria-label="Highest role"><option value="">Any</option>{% for r in roles %}<option value="{{ r.pk }}" {% if g.max_role_id == r.pk %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select>
+            <input class="org-input" name="notes" value="{{ g.notes }}" aria-label="Notes">
+            <label class="org-check"><input type="checkbox" name="is_active" {% if g.is_active %}checked{% endif %}> Active · {{ g.n_staff }} staff</label>
+            <div class="btn-group"><button class="btn btn-subtle" type="submit">Save</button></div>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<section class="org-card org-gap" aria-labelledby="newgl-h">
+  <h2 id="newgl-h">Add a level</h2>
+  <form class="org-form org-form--row" hx-post="{% url 'org:grade_level_create' %}" hx-target="#org-grades" method="post" action="{% url 'org:grade_level_create' %}">
+    {% csrf_token %}
+    <label class="org-field">Number<input type="number" name="number" min="1" max="30" required></label>
+    <label class="org-field">Scale<select name="scale"><option>CONTEDISS</option><option>CONHESS</option><option value="OTHER">Other</option></select></label>
+    <label class="org-field">Label<input name="label" maxlength="60"></label>
+    <div class="btn-group"><button class="btn btn-primary" type="submit">Add level</button></div>
+  </form>
+</section>

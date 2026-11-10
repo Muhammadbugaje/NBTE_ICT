@@ -1,0 +1,10 @@
+{% if balance and balance.is_set %}
+  <div class="lv-balance">
+    <div><strong>{{ balance.entitlement|floatformat:"-2" }}</strong><span>Entitled</span></div>
+    <div><strong>{{ balance.used|floatformat:"-2" }}</strong><span>Used</span></div>
+    <div><strong>{{ balance.remaining|floatformat:"-2" }}</strong><span>Left{% if balance.pending %} · {{ balance.pending|floatformat:"-2" }} pending{% endif %}</span></div>
+  </div>
+  <p class="hrd-sub">{% if balance.entitlement_source == "override" %}Set for you by HR.{% elif balance.entitlement_source == "role" %}Default for your role.{% else %}Default for this leave type.{% endif %}</p>
+{% elif leave_type %}
+  <p class="hrd-sub">{{ leave_type.name }} has no yearly limit. HR decides on each application.</p>
+{% endif %}

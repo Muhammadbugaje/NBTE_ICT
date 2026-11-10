@@ -154,7 +154,17 @@ def thread_detail(request, pk):
         if message.level < messages.ERROR
     ]
 
+    from . import group_services as gs
+    from .group_views import subtitle
+
+    perms = gs.permissions_for(thread, participant)
     return render(request, "messaging/thread.html", {
+        "perms": perms,
+        "thread_color": chat_services.avatar_color(thread.pk),
+        "head_subtitle": subtitle(thread),
+        "pinned_messages": gs.pinned_messages(thread, request.user),
+        "group_photo_url": gs.photo_url(thread),
+        "live_version": snapshot.get("v", ""),
         "thread": thread,
         "thread_messages": snapshot["messages"],
         "participants": snapshot["participants"],

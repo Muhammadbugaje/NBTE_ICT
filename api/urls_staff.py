@@ -6,13 +6,17 @@ from django.urls import path
 from .urls_common import common_patterns
 from .views import announcements as announcements_views
 from .views import insights as insights_views
-from .views import chats, me, memos
+from .views import chats, me, me_v21, memos
 from .views import qa_staff as qa
 
 app_name = "api"
 
 urlpatterns = common_patterns(settings.ROOT_URLCONF) + [
     path("me/staff-id/", me.StaffIdView.as_view(), name="me_staff_id"),
+    # v2.1 Phase B (X23, X33): owner-only
+    path("me/signature/", me_v21.MySignatureView.as_view(), name="me_signature"),
+    path("me/bank-details/", me_v21.MyBankDetailsView.as_view(), name="me_bank_details"),
+    path("me/bank-details/confirm/", me_v21.MyBankDetailsConfirmView.as_view(), name="me_bank_details_confirm"),
     # --- announcements ---
     path("announcements/", announcements_views.AnnouncementListView.as_view(), name="announcements"),
     path("announcements/<int:pk>/", announcements_views.AnnouncementDetailView.as_view(), name="announcement"),
@@ -50,6 +54,9 @@ urlpatterns = common_patterns(settings.ROOT_URLCONF) + [
     path("qa/institutions/", qa.InstitutionListView.as_view(), name="qa_institutions"),
     path("qa/institutions/<str:code>/", qa.InstitutionDetailView.as_view(), name="qa_institution"),
     path("qa/applications/clearance/", qa.ClearanceListView.as_view(), name="qa_clearances"),
+    path("qa/applications/programmes/", qa.ProgrammeClearanceListView.as_view(), name="qa_onboarding_programmes"),
+    path("qa/applications/programmes/<int:pk>/decide/", qa.ProgrammeClearanceDecideView.as_view(),
+         name="qa_onboarding_programme_decide"),
     path("qa/applications/clearance/<int:pk>/", qa.ClearanceDetailView.as_view(), name="qa_clearance"),
     path("qa/applications/clearance/<int:pk>/decide/", qa.ClearanceDecideView.as_view(),
          name="qa_clearance_decide"),
@@ -57,6 +64,7 @@ urlpatterns = common_patterns(settings.ROOT_URLCONF) + [
     path("qa/requests/ssq/", qa.SSQListView.as_view(), name="qa_ssqs"),
     path("qa/requests/ssq/<int:pk>/", qa.SSQDetailView.as_view(), name="qa_ssq"),
     path("qa/requests/ssq/<int:pk>/decide/", qa.SSQDecideView.as_view(), name="qa_ssq_decide"),
+    path("qa/requests/ssq/<int:pk>/assign/", qa.SSQAssignView.as_view(), name="qa_ssq_assign"),  # v2.1 Part 2.2
     path("qa/requests/<int:pk>/", qa.RequestDetailView.as_view(), name="qa_request"),
     path("qa/requests/<int:pk>/clearance/", qa.RequestClearView.as_view(), name="qa_request_clearance"),
     path("qa/complaints/", qa.ComplaintListView.as_view(), name="qa_complaints"),
@@ -98,6 +106,22 @@ urlpatterns += [
     path("chats/voice/<int:pk>/played/", chats.VoicePlayedView.as_view(), name="chats_voice_played"),
     path("chats/voice/<int:pk>/transcript/", chats.VoiceTranscriptView.as_view(), name="chats_voice_transcript"),
     path("chats/attachments/<int:pk>/", chats.AttachmentDownloadView.as_view(), name="chats_attachment"),
+    # v2.1 Phase E: groups, invite links, in-chat pins, reminders
+    path("chats/threads/<int:pk>/group/", chats.GroupView.as_view(), name="chats_group"),
+    path("chats/threads/<int:pk>/group/photo/", chats.GroupPhotoView.as_view(), name="chats_group_photo"),
+    path("chats/threads/<int:pk>/members/", chats.MembersView.as_view(), name="chats_members"),
+    path("chats/threads/<int:pk>/members/<int:user_pk>/remove/", chats.MemberRemoveView.as_view(),
+         name="chats_member_remove"),
+    path("chats/threads/<int:pk>/members/<int:user_pk>/role/", chats.MemberRoleView.as_view(),
+         name="chats_member_role"),
+    path("chats/threads/<int:pk>/leave/", chats.LeaveView.as_view(), name="chats_leave"),
+    path("chats/threads/<int:pk>/invites/", chats.InvitesView.as_view(), name="chats_invites"),
+    path("chats/threads/<int:pk>/invites/<int:invite_pk>/revoke/", chats.InviteRevokeView.as_view(),
+         name="chats_invite_revoke"),
+    path("chats/join/<str:token>/", chats.JoinView.as_view(), name="chats_join"),
+    path("chats/messages/<int:pk>/pin/", chats.MessagePinView.as_view(), name="chats_message_pin"),
+    path("chats/messages/<int:pk>/reminder/", chats.MessageReminderView.as_view(), name="chats_message_reminder"),
+    path("chats/reminders/", chats.RemindersView.as_view(), name="chats_reminders"),
 ]
 
 # --- memos ---
@@ -126,6 +150,7 @@ from .views import attendance as work_attendance  # noqa: E402
 from .views import leave as work_leave  # noqa: E402
 from .views import requests as work_requests  # noqa: E402
 from .views import staff as work_staff  # noqa: E402
+from .views import staff_hr  # noqa: E402
 from .views import tasks as work_tasks  # noqa: E402
 from .views import tickets as work_tickets  # noqa: E402
 from .views import workspace as work_workspace  # noqa: E402
@@ -158,6 +183,13 @@ urlpatterns += [
          name="ticket_attachment"),
     *[path(f"tickets/<int:pk>/{name}/", view.as_view(), name=f"ticket_{name}")
       for name, view in work_tickets.ACTIONS.items()],
+    path("tickets/<int:pk>/route/", work_tickets.TicketRouteView.as_view(), name="ticket_route"),
+    path("tickets/<int:pk>/division/<str:decision>/", work_tickets.TicketDivisionDecisionView.as_view(),
+         name="ticket_division_decide"),
+    path("tickets/<int:pk>/request-funds/", work_tickets.TicketRequestFundsView.as_view(),
+         name="ticket_request_funds"),
+    path("tickets/<int:pk>/rate/", work_tickets.TicketRateView.as_view(), name="ticket_rate"),
+    path("tickets/<int:pk>/report.pdf", work_tickets.TicketReportPdfView.as_view(), name="ticket_report_pdf"),
     # Requests (workflow)
     path("requests/", work_requests.RequestListView.as_view(), name="requests"),
     path("requests/types/", work_requests.RequestTypesView.as_view(), name="request_types"),
@@ -196,6 +228,8 @@ urlpatterns += [
          name="asset_attachment"),
     # Staff directory
     path("staff/", work_staff.DirectoryView.as_view(), name="staff_directory"),
+    path("staff/promotions/", staff_hr.PromotionsView.as_view(), name="staff_promotions"),
+    path("staff/<int:pk>/access/", staff_hr.AccessView.as_view(), name="staff_access"),
     path("staff/departments/", work_staff.DepartmentsView.as_view(), name="staff_departments"),
     path("staff/<int:pk>/", work_staff.ProfileView.as_view(), name="staff_profile"),
     # My workspace
@@ -210,4 +244,15 @@ from .views import search as search_views  # noqa: E402
 urlpatterns += [
     path("dashboard/executive/", dashboard_views.ExecutiveDashboardView.as_view(), name="dashboard_executive"),
     path("search/", search_views.SearchView.as_view(), name="search"),
+]
+
+# v2.1 Phase P: rotation (X27-X29) and review chains (X30)
+from .views import rotation as rotation_views  # noqa: E402
+
+urlpatterns += [
+    path("rotation/pools/", rotation_views.PoolsView.as_view(), name="rotation_pools"),
+    path("rotation/suggest/", rotation_views.SuggestView.as_view(), name="rotation_suggest"),
+    path("rotation/decisions/<int:pk>/", rotation_views.DecideView.as_view(), name="rotation_decide"),
+    path("chains/<int:pk>/", rotation_views.ChainView.as_view(), name="chain_detail"),
+    path("chains/<int:pk>/act/", rotation_views.ChainActView.as_view(), name="chain_act"),
 ]

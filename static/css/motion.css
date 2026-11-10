@@ -1,0 +1,157 @@
+/* NBTE motion kit v1 — v2.1 Phase A (A9), ported from design/motion/motion.css.
+   Bundled into nbte-core.bundle.css in @layer motion (core/css_bundles.py).
+   Rules: animate transform/opacity (plus stroke-dashoffset and one
+   registered custom property for rings). Entry animations use fill-mode
+   backwards so content is never left hidden. Everything is gated by
+   html.m-on (set by motion.js only when motion is allowed). */
+
+@property --p { syntax: "<number>"; inherits: true; initial-value: 0; }
+
+/* 1. page enter */
+.m-on .m-page { animation: m-page var(--dur-3, 420ms) var(--ease-out) backwards; }
+@keyframes m-page { from { opacity: 0; transform: translate3d(0, 12px, 0); } }
+
+/* 2. staggered children (first 12 only; --i is set by motion.js) */
+.m-on .m-stagger > * { animation: m-rise 560ms var(--ease-out) backwards; animation-delay: calc(min(var(--i, 0), 12) * 45ms + 80ms); }
+@keyframes m-rise { from { opacity: 0; transform: translate3d(0, 16px, 0) scale(.985); } }
+
+/* 3. count-up: JS only; this keeps width stable while counting */
+[data-count] { font-variant-numeric: tabular-nums; }
+
+/* 4. shimmer loading (skeleton) */
+.m-shimmer { position: relative; overflow: hidden; background: var(--surface-3); border-radius: 10px; color: transparent !important; }
+.m-shimmer::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 75%, transparent), transparent);
+  animation: m-shimmer 1.3s ease-in-out infinite; }
+@keyframes m-shimmer { to { transform: translateX(100%); } }
+
+/* 5. success check (circle then tick draw on) */
+.m-check { width: 64px; height: 64px; }
+.m-check circle, .m-check path { fill: none; stroke: var(--success); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+.m-check circle { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.m-check path { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.m-on .m-check circle { animation: m-draw 520ms var(--ease-out) backwards; }
+.m-on .m-check path { animation: m-draw 360ms var(--ease-out) 420ms backwards; }
+.m-on .m-check { animation: m-pop 420ms var(--ease-spring) 700ms backwards; }
+@keyframes m-draw { from { stroke-dashoffset: 1; } }
+@keyframes m-pop { 0% { transform: scale(1); } 50% { transform: scale(1.12); } }
+
+/* 6. ring fill: style="--v:72" (0..100) */
+.m-ring { --size: 56px; --w: 6px; width: var(--size); height: var(--size); border-radius: 50%; display: grid; place-items: center; position: relative;
+  background: conic-gradient(var(--ring-c, var(--primary-2)) calc(var(--p) * 1%), var(--surface-3) 0);
+  --p: var(--v, 0); }
+.m-ring::before { content: ""; position: absolute; inset: var(--w); border-radius: 50%; background: var(--ring-bg, var(--surface)); }
+.m-ring > * { position: relative; }
+.m-on .m-ring { animation: m-ring 1100ms var(--ease-out) 200ms backwards; }
+@keyframes m-ring { from { --p: 0; } }
+
+/* 7. bottom sheet slide (dialog.sheet or .sheet.is-open) */
+.m-on .sheet.is-open { animation: m-sheet 420ms var(--ease-out) backwards; }
+.m-on .sheet-backdrop.is-open { animation: m-fade 300ms ease backwards; }
+@keyframes m-sheet { from { transform: translate3d(0, 100%, 0); } }
+@keyframes m-fade { from { opacity: 0; } }
+
+/* 8. hero gradient flow: see theme/tokens-palettes.css .scene--* */
+
+/* 9. logo draw-on (crest outlines, then fills, then the cog turns) */
+.m-draw .d-line { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-dasharray: 1; stroke-dashoffset: 0; }
+.m-draw .d-fill { opacity: 1; }
+.m-on .m-draw .d-line { animation: m-draw 1400ms var(--ease-out) backwards; animation-delay: calc(var(--k, 0) * 120ms); }
+.m-on .m-draw .d-fill { animation: m-fade 600ms ease backwards; animation-delay: calc(1100ms + var(--k, 0) * 90ms); }
+.m-on .m-draw .d-spin { transform-box: view-box; transform-origin: 50% 45%; animation: m-spin 9s linear 1.4s infinite; }
+@keyframes m-spin { to { transform: rotate(1turn); } }
+
+/* 10. current journey step glow */
+.m-on .m-glow { animation: m-glow 2.4s ease-in-out infinite; }
+@keyframes m-glow { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary-2) 45%, transparent), var(--shadow-glow); }
+  50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--primary-2) 0%, transparent), var(--shadow-glow); } }
+
+/* 11. watermark cog (very slow; only the teeth turn) */
+.m-on .m-cog { transform-box: view-box; transform-origin: 50% 45%; animation: m-spin 140s linear infinite; }
+
+/* 12. pop in (toasts, chips, the "Saved" pill) */
+.m-on .m-popin { animation: m-popin 380ms var(--ease-spring) backwards; }
+@keyframes m-popin { from { opacity: 0; transform: scale(.85) translateY(6px); } }
+
+/* 13. press feedback */
+.m-press { transition: transform var(--dur-1) ease; }
+.m-press:active { transform: scale(.97); }
+
+/* 14. live dot (timer running, QR rotating) */
+.m-on .m-live::before { animation: m-live 1.6s ease-in-out infinite; }
+@keyframes m-live { 50% { opacity: .35; transform: scale(.7); } }
+
+/* 15. QR countdown ring: style="--t:30s" */
+.m-on .m-countdown { animation: m-countdown var(--t, 30s) linear infinite; }
+@keyframes m-countdown { from { --p: 100; } to { --p: 0; } }
+
+
+/* 16. shimmer while an htmx request is slow (motion.js adds .is-loading after 140 ms) */
+.m-on .is-loading.m-shimmer-target, .m-on [aria-busy="true"].m-shimmer-target { position: relative; }
+.m-on .is-loading.m-shimmer-target::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 70%, transparent), transparent);
+  transform: translateX(-100%); animation: m-shimmer 1.3s ease-in-out infinite; }
+.is-loading.m-shimmer-target > * { opacity: .55; transition: opacity var(--dur-fast, 120ms) ease; }
+
+/* 16b. a fragment that htmx swapped in again (filters, pagination) does not re-run entry motion */
+.m-on .m-quiet .m-stagger > *, .m-on .m-quiet.m-stagger > *, .m-on .m-quiet .m-page, .m-on .m-quiet.m-page { animation: none; }
+
+/* 17. KPI number pop when it lands (count-up end) */
+.m-on [data-count].is-counted { animation: m-popin 380ms var(--ease-spring) backwards; }
+
+/* reduced / off: settle instantly, keep state changes */
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .m-on *, .m-on *::before, .m-on *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
+}
+:root[data-motion="reduced"].m-on .m-stagger > *, :root[data-motion="reduced"].m-on .m-page { animation-delay: 0ms !important; animation-duration: 200ms !important; }
+:root[data-motion="reduced"] .m-cog, :root[data-motion="reduced"] .m-glow { animation: none; }
+
+/* ---- 5. Hero gradient "scenes" (cheap CSS, no WebGL) ---------------------
+   .scene is a full-bleed layer; children are blurred colour fields that the
+   compositor moves with transform only. motion.css pauses them when
+   data-motion != full or prefers-reduced-motion is set. */
+.scene { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: linear-gradient(160deg, var(--hero-1), var(--hero-2) 45%, var(--hero-3)); isolation: isolate; }
+.scene > i { position: absolute; display: block; border-radius: 50%; filter: blur(60px); opacity: .75; will-change: transform; }
+
+/* Laminar: long soft ribbons sliding past each other (smooth layered flow) */
+.scene--laminar { background: linear-gradient(160deg, var(--hero-1), var(--hero-2) 55%, var(--hero-1)); }
+.scene--laminar > i { filter: blur(38px); }
+.scene--laminar > i:nth-child(1) { width: 150%; height: 34%; left: -25%; top: 6%; background: linear-gradient(90deg, transparent 5%, color-mix(in srgb, var(--hero-4) 75%, white) 45%, var(--hero-3) 70%, transparent 95%); opacity: .7; border-radius: 50%; transform: rotate(-9deg); animation: lam-a 18s ease-in-out infinite alternate; }
+.scene--laminar > i:nth-child(2) { width: 130%; height: 22%; left: -10%; top: 44%; background: linear-gradient(90deg, transparent 10%, var(--hero-5) 50%, transparent 90%); opacity: .45; border-radius: 50%; transform: rotate(-6deg); animation: lam-b 22s ease-in-out infinite alternate; }
+.scene--laminar > i:nth-child(3) { width: 140%; height: 36%; left: -30%; top: 64%; background: linear-gradient(90deg, transparent 5%, var(--hero-3), var(--hero-4) 60%, transparent 95%); opacity: .85; border-radius: 50%; transform: rotate(-11deg); animation: lam-a 26s ease-in-out infinite alternate-reverse; }
+.scene--laminar > i:nth-child(4) { width: 55%; height: 70%; right: -12%; top: -24%; background: radial-gradient(circle, var(--hero-5), transparent 62%); opacity: .4; animation: lam-c 20s ease-in-out infinite alternate; }
+@keyframes lam-a { from { transform: translate3d(-8%, 0, 0) rotate(-8deg); } to { transform: translate3d(10%, 6%, 0) rotate(-3deg); } }
+@keyframes lam-b { from { transform: translate3d(12%, -4%, 0) rotate(-6deg); } to { transform: translate3d(-10%, 8%, 0) rotate(-12deg); } }
+@keyframes lam-c { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-18%, 14%, 0) scale(1.2); } }
+
+/* Komorebi: dappled light through leaves (soft spots drifting) */
+.scene--komorebi { background: radial-gradient(120% 90% at 20% 0%, var(--hero-3), var(--hero-1) 70%); }
+.scene--komorebi > i { background: radial-gradient(circle, color-mix(in srgb, var(--hero-5) 70%, white), transparent 62%); filter: blur(18px); opacity: .62; }
+.scene--komorebi > i:nth-child(1) { width: 34%; height: 50%; left: 8%; top: -6%; animation: kom 14s ease-in-out infinite alternate; }
+.scene--komorebi > i:nth-child(2) { width: 22%; height: 32%; left: 46%; top: 18%; animation: kom 11s ease-in-out -4s infinite alternate-reverse; }
+.scene--komorebi > i:nth-child(3) { width: 28%; height: 40%; left: 70%; top: 48%; background: radial-gradient(circle, var(--hero-4), transparent 62%); opacity: .5; animation: kom 17s ease-in-out -7s infinite alternate; }
+.scene--komorebi > i:nth-child(4) { width: 18%; height: 26%; left: 24%; top: 62%; animation: kom 12s ease-in-out -2s infinite alternate-reverse; }
+@keyframes kom { from { transform: translate3d(0, 0, 0) scale(.9); } to { transform: translate3d(6%, 10%, 0) scale(1.15); } }
+
+/* Quicksilver: a liquid-metal sheen sweeping across a deep ground */
+.scene--quicksilver { background: linear-gradient(135deg, var(--hero-1), var(--hero-2) 50%, var(--hero-1)); }
+.scene--quicksilver > i:nth-child(1) { inset: -40% -20%; width: auto; height: auto; border-radius: 0; filter: blur(24px); opacity: .7;
+  background: conic-gradient(from 210deg at 60% 40%, transparent, color-mix(in srgb, var(--hero-4) 60%, white) 8%, transparent 18%, var(--hero-3) 30%, transparent 46%, color-mix(in srgb, var(--hero-5) 50%, white) 58%, transparent 70%);
+  animation: qs 24s linear infinite; }
+.scene--quicksilver > i:nth-child(n+2) { display: none; }
+@keyframes qs { to { transform: rotate(1turn); } }
+
+/* Blinds: glass vertical slats with light behind (static-friendly) */
+.scene--blinds > i:nth-child(1) { inset: 0; width: auto; height: auto; border-radius: 0; filter: none; opacity: 1;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,.14) 0 2px, rgba(255,255,255,.03) 2px 30px, rgba(0,0,0,.16) 30px 34px), radial-gradient(70% 90% at 70% 20%, var(--hero-4), transparent 70%); }
+.scene--blinds > i:nth-child(2) { width: 50%; height: 80%; left: 10%; top: 30%; background: radial-gradient(circle, var(--hero-5), transparent 60%); opacity: .35; animation: lam-c 22s ease-in-out infinite alternate; }
+.scene--blinds > i:nth-child(n+3) { display: none; }
+
+/* grain + grid overlay used on every scene (keeps gradients from banding) */
+.scene::after { content: ""; position: absolute; inset: 0; z-index: 1;
+  background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+  background-size: 44px 44px; -webkit-mask-image: radial-gradient(120% 90% at 50% 40%, #000 30%, transparent 80%); mask-image: radial-gradient(120% 90% at 50% 40%, #000 30%, transparent 80%); }
+
+:root[data-motion="off"] .scene > i, :root[data-motion="reduced"] .scene > i, :root[data-motion="reduce"] .scene > i, .scene.is-paused > i { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .scene > i { animation: none !important; } }

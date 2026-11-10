@@ -1,35 +1,32 @@
 {% extends "base.html" %}
-{% load ux_tags %}
+{% load ux_tags qa_tags %}
 {% load static %}
 
 {% block title %}Memos · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Memos{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=8">
-  <link rel="stylesheet" href="{% static 'css/memo.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}">
+  <link rel="stylesheet" href="{% static 'css/memo.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="memo-page">
 
-  <header class="memo-hero">
+  <header class="qa-hero nbte-hero memo-qa-hero" data-qa-area="memos">
     <div>
+      <span class="qa-eyebrow">{% icon "file" 14 "2.2" %} Communication · Memos</span>
       <h1>Memos</h1>
-      <p class="muted">
-        Formal internal declarations. Two-way conversation stays in
-        <a href="{% url 'messaging:inbox' %}">Messages</a>.
-      </p>
+      <p>Formal internal declarations, routed through your directorate's approvers. Two-way conversation stays in <a href="{% url 'messaging:inbox' %}">Messages</a>.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'messaging:memo_create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New memo</a>
+        <a href="{% url 'messaging:inbox' %}" class="btn btn-subtle">{% icon "message" 15 "2.2" %} Messages</a>
+      </div>
     </div>
-    <div class="memo-hero-actions">
-      <a href="{% url 'messaging:inbox' %}" class="btn btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        Messages
-      </a>
-      <a href="{% url 'messaging:memo_create' %}" class="btn btn-primary">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New memo
-      </a>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <a class="qa-stat qa-stat--link" href="?tab=inbox"><strong>{{ counts.inbox|default:0 }}</strong><span>Inbox</span></a>
+      <a class="qa-stat qa-stat--link{% if counts.awaiting %} qa-stat--warn{% endif %}" href="?tab=awaiting"><strong>{{ counts.awaiting|default:0 }}</strong><span>Awaiting me</span></a>
+      <a class="qa-stat qa-stat--link" href="?tab=sent"><strong>{{ counts.sent|default:0 }}</strong><span>Sent &amp; drafts</span></a>
     </div>
   </header>
 
@@ -77,8 +74,14 @@
         <option value="{{ value }}" {% if priority_filter == value %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
+    <select name="kind" aria-label="Memo type">
+      <option value="">All types</option>
+      {% for value, label in kind_choices %}
+        <option value="{{ value }}" {% if kind_filter == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
     <button type="submit" class="btn btn-ghost btn-sm">Filter</button>
-    {% if q or priority_filter %}
+    {% if q or priority_filter or kind_filter %}
       <a href="?tab={{ tab }}" class="memo-clear">Clear</a>
     {% endif %}
   </form>
@@ -121,6 +124,7 @@
                   <span class="memo-status-chip memo-status-chip-cancelled">Cancelled</span>
                 {% endif %}
 
+                {% if memo.kind != "internal" %}<span class="memo-kind-badge memo-kind-badge-{{ memo.kind }}">{% if memo.kind == "external" %}External{% else %}General{% endif %}</span>{% endif %}
                 {% if memo.requires_acknowledgment and tab == 'inbox' %}
                   <span class="memo-tag memo-tag-ack">Ack required</span>
                 {% endif %}
@@ -137,6 +141,8 @@
                   {% elif memo.visibility == "all_directors" %}All Directors
                   {% elif memo.visibility == "department" %}{{ memo.department.name|default:"Department" }}
                   {% elif memo.visibility == "role" %}By role
+                  {% elif memo.visibility == "staff_filter" %}Staff by filter
+                  {% elif memo.kind == "external" %}Institutions
                   {% else %}Selected people{% endif %}
                 </span>
                 {% if memo.status == "published" %}

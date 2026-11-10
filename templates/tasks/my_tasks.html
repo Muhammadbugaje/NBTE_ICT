@@ -1,35 +1,34 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load tasks_tags %}
 {% block title %}Created by me · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Created by me{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=3">{% endblock %}
-{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=3" defer></script>{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}" defer></script>{% endblock %}
 
 {% block content %}
-<div class="tsk-page">
-  <header class="tsk-page-head">
+<div class="tsk-page wk-page" data-qa-area="tasks">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tasks">
     <div>
+      <span class="qa-eyebrow">{% icon "check" 14 "2.4" %} Tasks · Created by me</span>
       <h1>Created by me</h1>
-      <p>{{ total }} task{{ total|pluralize }} you've assigned.</p>
-    </div>
-    <div class="tsk-page-head-actions">
-      {% if draft_count %}
+      <p>Tasks you have created and assigned, with the progress of each assignee.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'tasks:create' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New task</a>
+        <a href="{% url 'tasks:list' %}" class="btn btn-subtle">{% icon "list" 16 "2.2" %} All tasks</a>
+        {% if draft_count %}
         <form method="post" action="{% url 'tasks:discard_drafts' %}" class="m-0"
               data-confirm="Your {{ draft_count }} draft task{{ draft_count|pluralize }} {{ draft_count|pluralize:'is,are' }} deleted. Drafts were never sent to anyone, so nobody else is affected."
               data-confirm-title="Discard your drafts?" data-confirm-action="Discard drafts">
           {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-          <button type="submit" class="tsk-btn tsk-btn-ghost">Discard my drafts ({{ draft_count }})</button>
+          <button type="submit" class="btn btn-subtle">Discard my drafts ({{ draft_count }})</button>
         </form>
       {% endif %}
-      <a href="{% url 'tasks:list' %}" class="tsk-btn tsk-btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        All tasks
-      </a>
-      <a href="{% url 'tasks:create' %}" class="tsk-btn tsk-btn-primary">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New task
-      </a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat qa-stat--info"><strong>{{ total|default:0 }}</strong><span>Task{{ total|pluralize }}</span></div>
+      {% if draft_count %}<div class="qa-stat qa-stat--warn"><strong>{{ draft_count }}</strong><span>Draft{{ draft_count|pluralize }}</span></div>{% endif %}
     </div>
   </header>
 

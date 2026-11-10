@@ -219,7 +219,7 @@
   function reveal(el, opts) {
     if (!el) return;
     opts = opts || {};
-    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var reduce = (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) || /^(reduce|reduced|off)$/.test(document.documentElement.getAttribute("data-motion") || "");
     var r = el.getBoundingClientRect();
     var off = topOffset();
     var fullyVisible = r.top >= off && r.bottom <= window.innerHeight;

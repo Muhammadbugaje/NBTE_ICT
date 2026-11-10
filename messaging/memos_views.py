@@ -90,6 +90,9 @@ def memo_list(request):
     q = (request.GET.get("q") or "").strip()
     prio = (request.GET.get("priority") or "").strip()
     qs = memo_service.memo_tab_queryset(request.user, tab, q=q, priority=prio)
+    kind = (request.GET.get("kind") or "").strip()
+    if kind in dict(Memo.KIND_CHOICES):
+        qs = qs.filter(kind=kind)
     counts = memo_service.memo_tab_counts(request.user)
 
     return render(request, "messaging/memo_list.html", {
@@ -99,6 +102,8 @@ def memo_list(request):
         "q": q,
         "priority_filter": prio,
         "priority_choices": Memo.PRIORITY_CHOICES,
+        "kind_filter": kind if kind in dict(Memo.KIND_CHOICES) else "",
+        "kind_choices": [("internal", "Internal"), ("external", "External"), ("general", "General")],
         "can_compose": memo_service.can_compose_memo(request.user),
     })
 
@@ -144,12 +149,47 @@ def memo_detail(request, pk):
         "ack_pct": ack_pct,
         "can_act": state["can_act"],
         "current_step": state["current_step"],
-        "current_actor": state["current_actor"],
-        "acting_for": state["acting_for"],
+        # v2.1 M2: on the ES gate, whoever holds the ES's authority is the one who acts.
+        "current_actor": (request.user if memo.is_outbound and state["can_act"] else state["current_actor"]),
+        "acting_for": state["acting_for"] and not memo.is_outbound,
         "parked_reason": state["parked_reason"],
         "can_recheck": state["can_recheck"],
         "chain_rows": state["chain_rows"],
+        "can_download_document": state["can_download_document"],
+        **_outbound_context(memo, state, request.user),
     })
+
+
+def _outbound_context(memo, state, viewer=None):
+    """v2.1 Phase E: the external letterhead, the ES block and the
+    institutions' read / acknowledge state for the memo page."""
+    if not memo.is_outbound:
+        return {"outbound": False}
+    from .memo_documents import _es_for_letter, external_letterhead, external_reference, institutions_label
+
+    es = _es_for_letter(memo, viewer)
+    sig = ""
+    if memo.es_signatory_id:
+        try:
+            from documents.signature import data_uri_for
+            sig = data_uri_for(memo.es_signatory, memo.es_signed_at)
+        except Exception:
+            sig = ""
+    receipts = []
+    if state["show_stats"] or state["can_act"] or memo.es_signatory_id == getattr(state.get("receipt"), "user_id", 0):
+        receipts = list(memo.institution_recipients.select_related("institution").order_by("institution__name")[:200])
+    return {
+        "outbound": True,
+        "letterhead": external_letterhead(),
+        "external_ref": external_reference(memo),
+        "es_name": (es.get_full_name() or es.email) if es else "Executive Secretary",
+        "es_signature": sig,
+        "institutions_label": institutions_label(memo),
+        "inst_receipts": receipts,
+        "inst_total": memo.institution_recipients.count(),
+        "inst_read": memo.institution_recipients.filter(read_at__isnull=False).count(),
+        "inst_acked": memo.institution_recipients.filter(acknowledged_at__isnull=False).count(),
+    }
 
 
 # ===========================================================================
@@ -193,6 +233,7 @@ def memo_create(request):
         "mode": "create",
         "allowed_kinds": allowed_kinds,
         "can_broadcast": memo_service.can_broadcast_memo(request.user),
+        **_compose_extras(request, form),
     })
 
 
@@ -212,8 +253,19 @@ def memo_update(request, pk):
         action = request.POST.get("action", "save")
         if form.is_valid():
             try:
+                cd = form.cleaned_data
+                inst_filter, staff_filter = memo_service.validate_kind_and_targets(
+                    memo.sender, kind=cd["kind"], visibility=cd["visibility"],
+                    institution_scope=cd.get("institution_scope") or "",
+                    institution_filter=cd.get("institution_filter"),
+                    target_institutions=list(cd.get("target_institutions") or []),
+                    staff_filter=cd.get("staff_filter"))
                 memo_service.update_memo(
                     memo, request.user,
+                    kind=cd["kind"],
+                    institution_scope=(cd.get("institution_scope") or "") if cd["kind"] != Memo.INTERNAL else "",
+                    institution_filter=inst_filter,
+                    staff_filter=staff_filter,
                     subject=form.cleaned_data["subject"],
                     body=form.cleaned_data["body"],
                     visibility=form.cleaned_data["visibility"],
@@ -228,6 +280,10 @@ def memo_update(request, pk):
                 if memo.status in (Memo.DRAFT, Memo.RETURNED):
                     memo.roles.set(form.cleaned_data.get("roles") or [])
                     memo.recipients.set(form.cleaned_data.get("recipients") or [])
+                    from .memo_audience import set_target_institutions
+                    set_target_institutions(memo,
+                        form.cleaned_data.get("target_institutions") or []
+                        if memo.institution_scope == Memo.INST_SELECTED else [])
             except (ValidationError, PermissionDenied) as exc:
                 msgs = getattr(exc, "messages", None) or [str(exc)]
                 messages.error(request, "; ".join(msgs))
@@ -249,12 +305,7 @@ def memo_update(request, pk):
                             + "; ".join(msgs),
                         )
                         return redirect("messaging:memo_detail", pk=memo.pk)
-                    messages.success(
-                        request,
-                        f"Memo {memo.reference} sent for approval."
-                        if memo.status != Memo.PUBLISHED
-                        else f"Memo {memo.reference} published.",
-                    )
+                    messages.success(request, memo_service.publish_notice(memo))
                 else:
                     messages.success(request, "Memo updated.")
                 return redirect("messaging:memo_detail", pk=memo.pk)
@@ -272,6 +323,77 @@ def memo_update(request, pk):
         "mode": "update",
         "allowed_kinds": allowed_kinds,
         "can_broadcast": memo_service.can_broadcast_memo(request.user),
+        **_compose_extras(request, form, memo),
+    })
+
+
+def _compose_extras(request, form, memo=None):
+    """Filter-builder options and the chosen filters (v2.1 Phase E)."""
+    from .memo_audience import institution_filter_options, staff_filter_options
+
+    if form.is_bound:
+        inst_flt = form.cleaned_data.get("institution_filter", {}) if hasattr(form, "cleaned_data") else {}
+        staff_flt = form.cleaned_data.get("staff_filter", {}) if hasattr(form, "cleaned_data") else {}
+    else:
+        inst_flt = (memo.institution_filter if memo else {}) or {}
+        staff_flt = (memo.staff_filter if memo else {}) or {}
+    selected = set()
+    if form.is_bound:
+        selected = {str(v) for v in form.data.getlist("target_institutions")}
+    elif memo is not None:
+        from .memo_audience import target_institution_ids
+        selected = {str(pk) for pk in target_institution_ids(memo)}
+    kind = (form.data.get("kind") if form.is_bound else (memo.kind if memo else "")) or Memo.INTERNAL
+    return {
+        "inst_options": institution_filter_options(),
+        "staff_options": staff_filter_options(),
+        "inst_filter": inst_flt,
+        "staff_filter": staff_flt,
+        "selected_institutions": selected,
+        "memo_kind": kind,
+        "memo_kinds": form.memo_kinds,
+        "can_send_external": memo_service.can_send_external_memo(request.user),
+    }
+
+
+@login_required
+def memo_institution_count(request):
+    """HTMX: the live count for the institution filter builder (M5)."""
+    from .memo_audience import describe_institution_filter, institutions_matching, parse_institution_filter
+
+    if not memo_service.can_initiate_external_memo(request.user):
+        raise PermissionDenied
+    scope = (request.GET.get("institution_scope") or "").strip()
+    flt = parse_institution_filter(request.GET)
+    if scope == Memo.INST_SELECTED:
+        ids = [int(v) for v in request.GET.getlist("target_institutions") if str(v).isdigit()]
+        qs = memo_service.selected_institutions(ids)
+        label = "Selected institutions"
+    elif scope == Memo.INST_ALL:
+        qs = institutions_matching({})
+        label = "All institutions"
+    else:
+        qs = institutions_matching(flt)
+        label = describe_institution_filter(flt)
+    total = qs.count()
+    return render(request, "messaging/partials/memo_inst_count.html", {
+        "total": total, "label": label, "sample": list(qs[:8]), "more": max(0, total - 8), "scope": scope,
+    })
+
+
+@login_required
+def memo_staff_count(request):
+    """HTMX: the live count for the staff filter (M6)."""
+    from .memo_audience import describe_staff_filter, parse_staff_filter, staff_matching
+
+    if not memo_service.can_broadcast_memo(request.user):
+        raise PermissionDenied
+    flt = parse_staff_filter(request.GET)
+    qs = staff_matching(flt, exclude=request.user).order_by("first_name", "last_name")
+    total = qs.count()
+    return render(request, "messaging/partials/memo_staff_count.html", {
+        "total": total, "label": describe_staff_filter(flt), "sample": list(qs[:6]), "more": max(0, total - 6),
+        "empty_filter": not flt,
     })
 
 

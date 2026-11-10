@@ -1,44 +1,23 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags %}
 
 {% block title %}{{ album.title }} · {{ SITE_NAME }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/gallery.css' %}?v=7">
+  <link rel="stylesheet" href="{% static 'css/gallery.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="gal-page gal-page-wide" data-gallery-root>
 
-  <a href="{% url 'portal:gallery_list' %}" class="gal-back">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Gallery
-  </a>
-
-  <header class="gal-album-head">
-    <div class="gal-album-head-info">
-      {% if album.category %}
-        <span class="gal-album-cat">{{ album.category.name }}</span>
-      {% endif %}
+  <header class="qa-hero nbte-hero portal-qa-hero gal-qa-hero" data-qa-area="portal">
+    <div>
+      <a class="nbte-hero__back" href="{% url 'portal:gallery_list' %}">{% icon "back" 14 "2.4" %} Gallery</a>
+      <span class="qa-eyebrow">{% icon "image" 14 "2.2" %} Portal · Gallery{% if album.category %} · {{ album.category.name }}{% endif %}</span>
       <h1>{{ album.title }}</h1>
-      {% if album.description %}
-        <p class="gal-album-desc">{{ album.description }}</p>
-      {% endif %}
-      <div class="gal-album-meta">
-        <span>{{ album.item_count }} item{{ album.item_count|pluralize }}</span>
-        {% if album.event_date %}
-          <span class="gal-meta-sep">·</span>
-          <span>{{ album.event_date|date:"F j, Y" }}</span>
-        {% endif %}
-        {% if album.owner %}
-          <span class="gal-meta-sep">·</span>
-          <span>by {{ album.owner.get_full_name|default:album.owner.email }}</span>
-        {% endif %}
-      </div>
-    </div>
-
+      <p>{% if album.description %}{{ album.description }}<br>{% endif %}<span class="gal-qa-meta">{{ album.item_count }} item{{ album.item_count|pluralize }}{% if album.event_date %} · {{ album.event_date|date:"F j, Y" }}{% endif %}{% if album.owner %} · by {{ album.owner.get_full_name|default:album.owner.email }}{% endif %}</span></p>
     {% if can_manage %}
-      <div class="gal-album-actions">
+      <div class="qa-hero__actions gal-album-actions">
         {% if items %}
           <button type="button" class="btn btn-ghost" id="gal-select-toggle">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
@@ -67,6 +46,7 @@
         </form>
       </div>
     {% endif %}
+    </div>
   </header>
 
   {% if items %}
@@ -199,7 +179,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/gallery-lightbox.js' %}?v=1" defer></script>
+<script src="{% static 'js/gallery-lightbox.js' %}" defer></script>
 <script>
 /* ==========================================================================
    GALLERY — Select mode + bulk delete

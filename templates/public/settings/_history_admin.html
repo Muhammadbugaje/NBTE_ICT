@@ -1,0 +1,70 @@
+{# v2.1 A1/A2: Settings → History. Every form swaps #history-admin (HTMX); without JS they post and redirect. #}
+<section class="sh-section" aria-labelledby="hist-set-title">
+  <header class="sh-section__head"><div>
+    <h2 id="hist-set-title">Section</h2>
+    <p>Settings keys home.history.enabled, home.title.history and home.history.intro.</p>
+  </div></header>
+  <form class="sh-section__body" method="post" action="{% url 'config:history_settings_save' %}"
+        hx-post="{% url 'config:history_settings_save' %}" hx-target="#history-admin" hx-swap="innerHTML">
+    {% csrf_token %}
+    <div class="sh-row"><div><span class="sh-row__title">Show the History section and page</span>
+      <span class="sh-row__desc">Off: visitors do not see it; administrators can still preview /history/.</span></div>
+      <div class="sh-row__control"><label class="sh-switch"><input type="checkbox" name="enabled" value="1"{% if history_settings.enabled %} checked{% endif %}>
+        <span class="sh-switch__track" aria-hidden="true"></span><span class="sh-switch__label">{% if history_settings.enabled %}On{% else %}Off{% endif %}</span></label></div></div>
+    <div class="sh-row"><div><label class="sh-row__title" for="hist-title">Section title</label></div>
+      <div class="sh-row__control"><input class="input" id="hist-title" name="title" maxlength="200" value="{{ history_settings.title }}"></div></div>
+    <div class="sh-row"><div><label class="sh-row__title" for="hist-intro">Introduction</label></div>
+      <div class="sh-row__control"><textarea class="input" id="hist-intro" name="intro" rows="2" maxlength="600">{{ history_settings.intro }}</textarea></div></div>
+    <div class="sh-section__foot"><div class="btn-group btn-group--end"><button class="btn btn-primary" type="submit">Save section</button></div></div>
+  </form>
+</section>
+
+<section class="sh-section" aria-labelledby="hist-list-title">
+  <header class="sh-section__head"><div>
+    <h2 id="hist-list-title">Milestones</h2>
+    <p>Shown left to right on wide screens and top to bottom on phones, in this order.</p>
+  </div><span class="sh-chip">{{ milestones|length }}</span></header>
+  <ol class="hist-admin">
+    {% for m in milestones %}
+      <li class="hist-admin__row{% if not m.is_published %} is-hidden{% endif %}" id="hist-{{ m.pk }}">
+        {% if editing == m.pk %}
+          <form class="hist-admin__form" method="post" enctype="multipart/form-data" action="{% url 'config:history_edit' m.pk %}"
+                hx-post="{% url 'config:history_edit' m.pk %}" hx-target="#history-admin" hx-swap="innerHTML" hx-encoding="multipart/form-data">
+            {% csrf_token %}
+            {% include "public/settings/_history_fields.html" %}
+            <div class="btn-group btn-group--end">
+              <a class="btn btn-ghost" href="{% url 'config:history' %}" hx-get="{% url 'config:history' %}" hx-target="#history-admin" hx-select="#history-admin > *" hx-swap="innerHTML">Cancel</a>
+              <button class="btn btn-primary" type="submit">Save</button>
+            </div>
+          </form>
+        {% else %}
+          <span class="hist-admin__year">{{ m.year }}</span>
+          <span class="hist-admin__txt"><b>{{ m.title }}</b>
+            <span>{{ m.body|truncatechars:110 }}</span>
+            <span class="hist-admin__meta">{% if m.led_by %}Led by {{ m.led_by }} · {% endif %}{% if m.is_published %}Published{% else %}Hidden{% endif %}{% if m.is_placeholder %} · <span class="tag-confirm">to confirm</span>{% endif %}</span>
+          </span>
+          <div class="btn-group btn-group--end hist-admin__actions">
+            <form method="post" action="{% url 'config:history_move' m.pk 'up' %}" hx-post="{% url 'config:history_move' m.pk 'up' %}" hx-target="#history-admin" hx-swap="innerHTML">{% csrf_token %}<button class="btn btn-sm btn-ghost" type="submit" aria-label="Move {{ m.year }} up"{% if forloop.first %} disabled{% endif %}>↑</button></form>
+            <form method="post" action="{% url 'config:history_move' m.pk 'down' %}" hx-post="{% url 'config:history_move' m.pk 'down' %}" hx-target="#history-admin" hx-swap="innerHTML">{% csrf_token %}<button class="btn btn-sm btn-ghost" type="submit" aria-label="Move {{ m.year }} down"{% if forloop.last %} disabled{% endif %}>↓</button></form>
+            <a class="btn btn-sm btn-subtle" href="{% url 'config:history_edit' m.pk %}" hx-get="{% url 'config:history_edit' m.pk %}" hx-target="#history-admin" hx-swap="innerHTML">Edit</a>
+            <form method="post" action="{% url 'config:history_delete' m.pk %}" hx-post="{% url 'config:history_delete' m.pk %}" hx-target="#history-admin" hx-swap="innerHTML" hx-confirm="Remove {{ m.year }} · {{ m.title }}?">{% csrf_token %}<button class="btn btn-sm btn-ghost btn-danger" type="submit">Remove</button></form>
+          </div>
+        {% endif %}
+      </li>
+    {% empty %}
+      <li class="lead-prev__empty">No milestones yet. Add the first one below, or run <code>python manage.py seed_nbte --only public.history</code>.</li>
+    {% endfor %}
+  </ol>
+</section>
+
+{% if not editing %}
+<section class="sh-section" aria-labelledby="hist-add-title">
+  <header class="sh-section__head"><div><h2 id="hist-add-title">Add a milestone</h2><p>It goes to the end of the timeline; move it with the arrows.</p></div></header>
+  <form class="hist-admin__form" method="post" enctype="multipart/form-data" action="{% url 'config:history_create' %}"
+        hx-post="{% url 'config:history_create' %}" hx-target="#history-admin" hx-swap="innerHTML" hx-encoding="multipart/form-data">
+    {% csrf_token %}
+    {% include "public/settings/_history_fields.html" %}
+    <div class="btn-group btn-group--end"><button class="btn btn-primary" type="submit">Add milestone</button></div>
+  </form>
+</section>
+{% endif %}

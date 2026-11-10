@@ -344,6 +344,11 @@ class PendingAction(TimeStampedModel):
     decided_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     decided_at = models.DateTimeField(null=True, blank=True)
     decision_remark = models.TextField(blank=True)
+    # X47 three layers: "confirm" then (when the group needs it) "approve".
+    stage = models.CharField(max_length=10, default="confirm", db_index=True)
+    confirmed_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    confirm_remark = models.TextField(blank=True)
     applied_at = models.DateTimeField(null=True, blank=True)
     failure_detail = models.TextField(blank=True)
     expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
@@ -480,8 +485,15 @@ class TimelineEvent(InstitutionScopedModelMixin, AppendOnlyMixin, models.Model):
     """Append-only record, written only by `qa_core.timeline.record()`."""
 
     INSTITUTION_PATH = "institution"
+    # v2.1 X3: staff outside the full-journey circle see only rows of their department.
+    DEPARTMENT_PATH = "department"
     PUBLIC, INTERNAL = "public", "internal"
     VISIBILITY_CHOICES = [(PUBLIC, "Public (institution can see)"), (INTERNAL, "Internal only")]
+    # v2.1 X6/X3 (spec G1.c): who may read the row.
+    AUD_PUBLIC, AUD_FULL, AUD_DEPARTMENT = "public", "full", "department"
+    AUDIENCE_CHOICES = [(AUD_PUBLIC, "Institution and everyone entitled to it"),
+                        (AUD_FULL, "Full-journey viewers only"),
+                        (AUD_DEPARTMENT, "Full-journey viewers and the department")]
 
     institution = models.ForeignKey("institutions.Institution", on_delete=models.PROTECT,
                                     related_name="timeline_events")
@@ -493,6 +505,9 @@ class TimelineEvent(InstitutionScopedModelMixin, AppendOnlyMixin, models.Model):
     public_text = models.TextField(blank=True)
     internal_text = models.TextField(blank=True)
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default=INTERNAL)
+    audience = models.CharField(max_length=12, choices=AUDIENCE_CHOICES, default=AUD_FULL, db_index=True)
+    department = models.ForeignKey("staff.Department", null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+", help_text="Department whose part of the journey this is.")
     actor = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     at = models.DateTimeField(default=timezone.now, db_index=True)
 
@@ -625,15 +640,14 @@ class DemoTag(models.Model):
 
 
 # ===========================================================================
-# Console e-mail outbox (Phase 2: e-mails are logged, not sent)
+# Console e-mail outbox (used only when delivery is explicitly disabled)
 # ===========================================================================
 class OutboundEmail(models.Model):
     """Every QA e-mail while ``settings.QA_EMAIL_DELIVERY == "console"``.
 
-    Phase 2 builds the mechanics; delivery is switched on in a later phase by
-    setting ``QA_EMAIL_DELIVERY=queue``. Until then each message is written to
-    the console log *and* kept here, so an administrator can read it (for
-    example a set-password link) from *QA → E-mail outbox*."""
+    This is the log-only development mode. Delivery normally goes through the
+    configured e-mail provider; console-mode messages are kept here so an
+    administrator can inspect them from *QA → E-mail outbox*."""
 
     subject = models.CharField(max_length=255)
     recipients = models.JSONField(default=list)

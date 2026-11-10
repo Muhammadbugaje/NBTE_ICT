@@ -1,0 +1,14 @@
+{% load qa_tags %}
+{% if priced %}
+  {% for g in priced.groups %}
+  <div class="ib-sum-group">
+    <div class="ib-sum-group__head"><b>{{ g.title }}</b>{% if g.kind != "fee" %}<span class="qa-small qa-muted">{{ g.items|length }} programme{{ g.items|length|pluralize }}</span>{% endif %}</div>
+    {% if g.error %}<p class="ib-sum-error" role="alert">{% icon "alert" 14 %} {{ g.error }}</p>{% endif %}
+    {% for l in g.lines %}<div class="qa-bill-line"><span>{{ l.label }}{% if l.description %}<small>{{ l.description }}</small>{% endif %}{% if l.to_confirm %}<small class="ib-sum-warn">Amount not yet confirmed by NBTE</small>{% endif %}</span><span class="qa-num">{{ l.amount|naira }}</span></div>{% endfor %}
+  </div>
+  {% endfor %}
+  <div class="ib-sum-total"><span>Total</span><strong class="qa-num">{{ priced.total|naira }}</strong></div>
+  <p class="qa-small qa-muted ib-sum-note">{{ priced.count }} item{{ priced.count|pluralize }} · prices are frozen when you send it to the ES.</p>
+{% else %}
+  <div class="ib-sum-empty">{% icon "card" 22 %}<p><b>Nothing ticked yet</b><span>Tick programmes or fees; the total appears here.</span></p></div>
+{% endif %}

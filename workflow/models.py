@@ -402,8 +402,10 @@ class Request(SoftDeleteModel):
     closed_at = models.DateTimeField(null=True, blank=True)
 
     # --- final record ---
+    # Phase 0 (U3): restricted storage - served only by workflow:record_pdf
+    # after the request's view check (move old files: move_record_pdfs).
     record_pdf = models.FileField(
-        upload_to=uuid_upload_to, null=True, blank=True,
+        upload_to=uuid_upload_to, storage=restricted_storage, null=True, blank=True,
         help_text="Watermarked PDF generated when the request is completed.",
     )
     record_original_name = models.CharField(max_length=255, blank=True)

@@ -1,26 +1,37 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags audience_tags %}
 
 {% block title %}Users · User management · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Users{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="gp-page">
-  <header class="page-header">
+  <header class="qa-hero nbte-hero">
     <div>
-      <p class="gp-eyebrow">User management</p>
-      <h1>Users</h1>
-      <p class="muted">Each person's role, groups and direct permissions. Accounts themselves (passwords, activation) are managed on the existing user pages.</p>
+      <span class="qa-eyebrow">{% icon "users" 14 "2.2" %} User management · Access</span>
+      <h1>Access by person</h1>
+      <p>Each person's role, groups and direct permissions — one kind of account at a time. Accounts themselves (passwords, activation) are managed on the user pages.</p>
+      <div class="qa-hero__actions">
+        <a href="{% if segment == 'institution' %}{% url 'accounts:user_list_institution' %}{% elif segment == 'external' %}{% url 'accounts:user_list_external' %}{% else %}{% url 'accounts:user_list' %}{% endif %}" class="btn btn-subtle">{% icon "user" 16 "2.2" %} Manage these accounts</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats um-tiles" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ page.paginator.count }}</strong><span>{{ seg.label }}</span></div>
     </div>
   </header>
 
   {% include "accounts/groups/_subnav.html" with section="users" %}
+  {% url 'accounts:groups:users' as nbte_url %}
+  {% with inst_url=nbte_url|add:"?segment=institution" ext_url=nbte_url|add:"?segment=external" %}
+    {% include "accounts/users/_segments.html" with label="Account groups" %}
+  {% endwith %}
 
   <form method="get" class="gp-toolbar" role="search" aria-label="Filter users">
+    <input type="hidden" name="segment" value="{{ segment }}">
     <div class="field">
       <label for="ua-q">Search</label>
       <input type="search" id="ua-q" name="q" value="{{ q }}" class="input" placeholder="Name or email" autocomplete="off">
@@ -33,7 +44,7 @@
       </select>
     </div>
     <button type="submit" class="btn btn-ghost">Filter</button>
-    {% if q or role %}<a href="{% url 'accounts:groups:users' %}" class="btn btn-ghost">Clear</a>{% endif %}
+    {% if q or role %}<a href="{% url 'accounts:groups:users' %}?segment={{ segment }}" class="btn btn-ghost">Clear</a>{% endif %}
   </form>
 
   {% if page.object_list %}
@@ -46,7 +57,7 @@
           {% for u in page.object_list %}
             <tr>
               <td data-label="Person"><strong>{{ u.get_full_name|default:u.email }}</strong><br><span class="muted">{{ u.email }}</span></td>
-              <td data-label="Role">{{ u.role.name|default:"—" }}{% if u.is_superuser %} <span class="badge badge-warn">superuser</span>{% endif %}</td>
+              <td data-label="Role">{{ u.role.name|default:"—" }}{% if u.institution %} <span class="muted">· {{ u.institution.code }}</span>{% endif %}{% if u.is_superuser %} <span class="badge badge-warn">superuser</span>{% endif %}</td>
               <td data-label="Groups">{{ u.group_count }}</td>
               <td data-label="Direct permissions">{{ u.direct_perm_count }}</td>
               <td data-label="Actions" class="text-end">

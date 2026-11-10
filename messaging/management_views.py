@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import org
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -22,6 +23,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from accounts.models import Role, User
+from accounts.selectors import staff_users
 
 from .management_forms import (
     GrantBroadcastForm,
@@ -637,7 +639,7 @@ def permission_panel(request):
     # Superusers and the ES always have broadcast power — surface them
     # as "implicit" so the admin understands.
     implicit_qs = User.objects.filter(
-        Q(is_superuser=True) | Q(role__code="executive-secretary"),
+        Q(is_superuser=True) | org.role_q("executive-secretary"),
         is_active=True,
     ).select_related("role", "department").distinct()
 
@@ -709,7 +711,7 @@ def resolution_tester(request):
         "target_dept_id": target_dept_id,
         "target_kinds": Memo.VISIBILITY_CHOICES,
         "users": (
-            User.objects.filter(is_active=True)
+            staff_users()  # Phase 0 (M9)
             .select_related("department", "role")
             .order_by("first_name", "last_name", "email")[:500]
         ),

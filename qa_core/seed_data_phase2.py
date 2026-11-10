@@ -121,10 +121,14 @@ DOCUMENT_REQUIREMENTS = [
 FEE_SCHEDULES = [  # code, name, slip description, formula key, confirmed setting
     ("institutional_processing", "Institutional processing fee", "Institutional processing fee (SOP-01)",
      "qa.fee.institutional_processing", ""),
+    ("institutional_processing_v3", "Institutional fee", "Institutional fee (SOP-01)",
+     "qa.fee.institutional_processing_v3", ""),
     ("programme_processing", "Programme processing fee", "Programme processing fee",
      "qa.fee.programme_processing", ""),
     ("qa_request_processing", "QA request processing fee", "QA request processing fee (SOP-02)",
      "qa.fee.qa_request_processing", "qa.fee.qa_request_processing.confirmed"),
+    ("visit_fine", "Visit report fine", "Fine for falsified items on a visit report (X40)",
+     "qa.fee.visit_fine", ""),
 ]
 
 PLACEHOLDER_BANK = {"bank_name": "(to be set by Finance)", "account_name": "National Board for Technical Education",
@@ -303,6 +307,8 @@ ACTION_POLICIES = [
                "department. Confirmed by the ES or a delegate (rank 100+)."),
     _pair("institutions.drop_programmes", "Drop Programmes", TS, 50,
           desc="Marks programmes dropped and cancels their open tasks."),
+    _pair("institutions.update_programme", "Edit Programme", TS, 50,
+          desc="Corrects a programme's name, level, category or professional body (v2.1 X48)."),
     _pair("institutions.update_state_lga", "Update State & LGA", TS, 50,
           desc="Changes the state and LGA; the zone is recomputed."),
     _pair("institutions.wipe_requests", "Wipe Institution Requests", TS, 80,
@@ -340,6 +346,18 @@ ACTION_POLICIES = [
     _pair("institutions.impersonate", "Impersonate Institution", TS, 0, second=False,
           initiate="institutions.impersonate_institution",
           desc="Read-only, time-boxed view of the portal as the institution, with a banner and an audit trail."),
+    # Part 1c (X47): professional bodies and programmes go through initiate → confirm (→ approve).
+    _pair("institutions.edit_professional_body", "Edit Professional Body", "Professional bodies", 0, same_dept=False,
+          initiate="institutions.initiate_edit_professional_bodies",
+          confirm="institutions.confirm_edit_professional_bodies",
+          desc="Adds or edits a professional body, or creates its portal account."),
+    _pair("institutions.edit_programme_mapping", "Map Programme to Body", "Professional bodies", 0, same_dept=False,
+          initiate="institutions.initiate_edit_programmes", confirm="institutions.confirm_edit_programmes",
+          desc="Adds, edits or switches off a programme-to-professional-body mapping."),
+    _pair("institutions.edit_programme_master", "Edit Programme Master List", "Professional bodies", 0,
+          same_dept=False, initiate="institutions.initiate_edit_programmes",
+          confirm="institutions.confirm_edit_programmes",
+          desc="Maps a hand-typed programme to the master list (or adds a master row)."),
     _pair("institutions.bulk_import", "Bulk Import (Excel)", NI, 50,
           desc="Creates proposed institutions or updates existing ones / programmes from a validated sheet."),
     # Shown disabled until the phase that provides their records.
@@ -373,20 +391,23 @@ _ROUTINE_CONFIRMS = [
     "institutions.confirm_add_tvet", "institutions.confirm_update_contact", "institutions.confirm_update_address",
     "institutions.confirm_update_state_lga", "institutions.confirm_drop_programmes",
     "institutions.confirm_cancel_institution_request", "institutions.confirm_bulk_import",
+    "institutions.confirm_update_programme",  # v2.1 R.7 X48
 ]
 _ALL_INITIATES = [
     "institutions.initiate_add_tvet", "institutions.initiate_update_contact", "institutions.initiate_update_address",
     "institutions.initiate_update_state_lga", "institutions.initiate_update_category",
     "institutions.initiate_update_name", "institutions.initiate_update_ownership",
     "institutions.initiate_drop_programmes", "institutions.initiate_wipe_requests",
+    "institutions.initiate_update_programme",  # v2.1 R.7 X48
     "institutions.initiate_cancel_institution_request", "institutions.initiate_bulk_import",
     "institutions.export_institutions", "institutions.send_login_credentials",
 ]
 _CLEARANCE = ["accreditation.view_onboarding_application", "accreditation.decide_departmental_clearance"]
 
 ROLE_PERMISSIONS = {
+    # Phase 0 (O10): the ES may decide any departmental clearance.
     "executive-secretary": ["accreditation.view_onboarding_application", "payments.view_obligation",
-                            "payments.view_payment_reports"],
+                            "payments.view_payment_reports", "accreditation.decide_departmental_clearance"],
     "director": _ROUTINE_CONFIRMS + _ALL_INITIATES + _CLEARANCE + [
         "institutions.confirm_wipe_requests", "institutions.confirm_revert_qa_history",
         "institutions.confirm_update_category", "institutions.confirm_update_name",
@@ -398,11 +419,13 @@ ROLE_PERMISSIONS = {
         "institutions.confirm_suspend_portal_access", "institutions.impersonate_institution",
     ],
     "division-head": _ROUTINE_CONFIRMS + _ALL_INITIATES + _CLEARANCE + ["institutions.impersonate_institution"],
-    "officer": _ALL_INITIATES + _CLEARANCE,
+    # Phase 0 (O10, T-SEC-7): officers see applications but no longer decide
+    # departmental clearance (the director or a ClearanceDelegate does).
+    "officer": _ALL_INITIATES + ["accreditation.view_onboarding_application"],
     # Finance handles every institution's payments, so its queue and bills
     # are not limited to one handling department.
     "qa-finance-officer": ["payments.initiate_cancel_obligation", "qa_core.view_all_institutions"],
-    "qa-finance-director": ["payments.confirm_cancel_obligation", "payments.view_obligation", "qa_core.view_all_institutions",
+    "seat:finance": ["payments.confirm_cancel_obligation", "payments.view_obligation", "qa_core.view_all_institutions",
                             "payments.view_proof", "payments.view_payment_reports"],
     "ict-qa-monitor": ["accreditation.view_onboarding_application", "payments.view_obligation"],
 }
@@ -458,6 +481,19 @@ TEMPLATES = [
      "SLA reminder to Finance at 50% and 90%."),
     ("payment.alert", "in_app", "Payment alert: {{ reference }}",
      "{{ message }}", "Alerts Finance and ICT (provider/verify mismatch, duplicate, payment after cancellation)."),
+    # v2.1 Phase F (F.4 P3/P4, F.18 X21)
+    ("payment.claimed_director", "in_app", "Payment claimed: {{ reference }}",
+     "{{ institution }} paid {{ amount }} ({{ source }}). {{ next }}",
+     "Tells the Director of Finance about every payment claim (P3)."),
+    ("payment.gateway_verified", "in_app", "Verified by {{ provider }}: {{ reference }}",
+     "{{ institution }} paid {{ amount }}; the provider confirmed it server-side and the amount matches. "
+     "No first pass is needed. {{ next }}", "Tells the Director of Finance a gateway payment is ready (X21)."),
+    ("payment.gateway_received", "in_app", "Payment received by {{ provider }}: {{ reference }}",
+     "NBTE Finance will confirm it, usually within 1 working day. You do not need to upload anything.",
+     "Tells the institution a gateway payment was received (X21)."),
+    ("payment.dof_reminder", "in_app", "Reminder from ICT: {{ reference }} awaits you",
+     "{{ sender }} asks you to check the payment of {{ institution }} ({{ reference }}).{% if note %} "
+     "Note: {{ note }}{% endif %}", "ICT monitor's reminder to the Director of Finance (P4)."),
     ("institution.credentials", "email", "Your NBTE Quality Assurance Portal account",
      "<p>An account has been created for {{ institution }}.</p>", "Kept for reference; the link e-mail is a file."),
     ("institution.document_returned", "in_app", "Document returned: {{ document }}",
@@ -465,6 +501,32 @@ TEMPLATES = [
     ("institution.approved", "in_app", "{{ institution }} is approved",
      "NBTE has approved your institution. It is now handled by {{ department }}.",
      "Tells the institution it was approved."),
+    # --- v2.1 Phase 0: O9 re-upload routing, Q1/Q2 programme submission and clearance ---
+    ("onboarding.document_resubmitted", "in_app", "Re-uploaded: {{ document }} — {{ institution }}",
+     "{{ institution }} re-uploaded {{ document }} (version {{ version }}) on {{ reference }}. It is back in the "
+     "{{ department }} clearance queue.", "Tells the clearance department a returned document is back."),
+    ("onboarding.document_resubmitted_institution", "in_app", "{{ document }} sent back to NBTE",
+     "{{ department }} will review {{ document }} again. You do not need to resubmit your application.",
+     "Tells the institution where a re-uploaded document went."),
+    ("onboarding.programmes_submitted", "in_app", "Programmes to clear: {{ institution }}",
+     "{{ institution }} submitted {{ count }} programme(s) on {{ reference }} for clearance.",
+     "Tells the programme-clearance department (NTIRD) a programme list is waiting."),
+    ("onboarding.programmes_submitted_institution", "in_app", "Programmes submitted to NBTE",
+     "{{ department }} will clear your programmes. Expected time: {{ expected_time }}. You will be told after "
+     "each decision.", "Confirms the programme submission to the institution."),
+    ("onboarding.programme_decided", "in_app", "{{ programme }}: {{ decision }}",
+     "NBTE {{ decision }} {{ programme }} on {{ reference }}.{% if remark %} Remark: {{ remark }}{% endif %}",
+     "Tells the institution about each programme decision."),
+    ("onboarding.programmes_returned", "in_app", "Programmes returned on {{ reference }}",
+     "{{ count }} programme(s) need changes: {{ remark }}. Fix them and submit the list again.",
+     "Tells the institution that some programmes were returned."),
+    ("onboarding.programmes_returned", "email", "NBTE returned programmes on {{ reference }}",
+     "<p>{{ count }} programme(s) need changes.</p><p>{{ remark }}</p><p>Sign in to the NBTE Quality Assurance "
+     "Portal, fix them and submit the list again. Cleared programmes stay cleared.</p>",
+     "E-mail to the institution when programmes are returned."),
+    ("onboarding.programmes_cleared", "in_app", "All programmes cleared on {{ reference }}",
+     "Your programme processing fee is now due. Open Payments to download the slip or pay online.",
+     "Tells the institution every programme is cleared and the fee is issued."),
 ]
 
 RULES = [  # event, recipient kind, template code, channel
@@ -483,8 +545,23 @@ RULES = [  # event, recipient kind, template code, channel
     ("payment.overdue", "role", "payment.overdue", "in_app"),
     ("payment.reminder", "role", "payment.reminder", "in_app"),
     ("payment.alert", "role", "payment.alert", "in_app"),
+    ("payment.claimed_director", "role", "payment.claimed_director", "in_app"),
+    ("payment.gateway_verified", "role", "payment.gateway_verified", "in_app"),
+    ("payment.gateway_received", "institution_users", "payment.gateway_received", "in_app"),
+    ("payment.dof_reminder", "role", "payment.dof_reminder", "in_app"),
     ("institution.document_returned", "institution_users", "institution.document_returned", "in_app"),
     ("institution.approved", "institution_users", "institution.approved", "in_app"),
+    # v2.1 Phase 0
+    ("onboarding.document_resubmitted", "role", "onboarding.document_resubmitted", "in_app"),
+    ("onboarding.document_resubmitted_institution", "institution_users",
+     "onboarding.document_resubmitted_institution", "in_app"),
+    ("onboarding.programmes_submitted", "role", "onboarding.programmes_submitted", "in_app"),
+    ("onboarding.programmes_submitted_institution", "institution_users",
+     "onboarding.programmes_submitted_institution", "in_app"),
+    ("onboarding.programme_decided", "institution_users", "onboarding.programme_decided", "in_app"),
+    ("onboarding.programmes_returned", "institution_users", "onboarding.programmes_returned", "in_app"),
+    ("onboarding.programmes_returned", "institution_users", "onboarding.programmes_returned", "email"),
+    ("onboarding.programmes_cleared", "institution_users", "onboarding.programmes_cleared", "in_app"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -507,7 +584,7 @@ DEMO_PROGRAMMES = [  # institution code, name, level, category, status, streams
 DEMO_USERS = [
     # email, first, last, user_type, department QA code, role code, extra groups
     ("finance.director@demo.nbte.local", "Fatima", "Director of Finance (Demo)", "staff", "finance",
-     "qa-finance-director", []),
+     "deputy-director", []),  # Part 1a: one director per department — qa.finance_director holds the seat
     ("legal.officer@demo.nbte.local", "Garba", "Legal (Demo)", "staff", "legal", "officer", []),
     ("finance.clearance@demo.nbte.local", "Hauwa", "Finance Clearance (Demo)", "staff", "finance", "officer", []),
     ("planning.academic@demo.nbte.local", "Ifeanyi", "Academic Planning (Demo)", "staff", "academic-planning",

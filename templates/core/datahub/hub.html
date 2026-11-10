@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% load static qa_tags %}
+
+{% block title %}Data Hub · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Data Hub{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/datahub.css' %}">{% endblock %}
+
+{% block content %}
+<div class="dh-page">
+  <header class="qa-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "lock" 14 "2.2" %} Administration · Site administrators only</span>
+      <h1>Data Hub</h1>
+      <p>Export everything you have set up on this database, then load it into a new one. Request types and their approval chains, memo routing, leave types, roles, ranks and the promotion ladder, offices and departments, institutions, programmes, facilities, users and every setting travel as Excel workbooks that link rows by codes, names and e-mails, never by database ids.</p>
+      <div class="qa-hero__actions">
+        <a class="btn btn-primary" href="{% url 'core:datahub_export' 'everything' %}">{% icon "download" 16 %} Export everything</a>
+        <a class="btn btn-subtle" href="{% url 'core:datahub_template' 'everything' %}">{% icon "sheet" 16 %} Blank template</a>
+        <a class="btn btn-subtle" href="#dh-import">{% icon "upload" 16 %} Import a workbook</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="What this database holds">
+      <div class="qa-stat"><strong>{{ total_categories }}</strong><span>Categories</span></div>
+      <div class="qa-stat qa-stat--info"><strong>{{ total_sheets }}</strong><span>Tables</span></div>
+      <div class="qa-stat qa-stat--success"><strong>{{ total_rows }}</strong><span>Records to move</span></div>
+    </div>
+  </header>
+
+  {% if messages %}
+    {% for m in messages %}
+      <div class="dh-banner {% if m.level_tag == 'error' %}dh-banner--bad{% elif m.level_tag == 'success' %}dh-banner--ok{% else %}dh-banner--warn{% endif %}" role="status">{% icon "alert" 16 %}<span>{{ m }}</span></div>
+    {% endfor %}
+  {% endif %}
+
+  <section class="dh-panel" aria-labelledby="dh-order-title">
+    <h2 id="dh-order-title">Recommended import order for a fresh database</h2>
+    <p class="dh-sub">The simplest route is one file: <strong>Export everything</strong> here, then import that single workbook on the new database; it loads every sheet in this order by itself. If you move the categories one by one, import them in this order. Each later step can point back at rows loaded by an earlier one.</p>
+    <ol class="dh-steps">
+      <li class="is-pre"><span class="dh-num">0</span><span><b>Prepare the new database</b><small>Point the system at it, run <code>python manage.py migrate</code>, create your own administrator with <code>createsuperuser</code>, sign in and open this page.</small></span></li>
+      {% for c in categories %}
+        <li><span class="dh-num">{{ c.n }}</span><span><b>{{ c.title }}</b><small>{{ c.rows }} record{{ c.rows|pluralize }} in {{ c.sheets|length }} table{{ c.sheets|length|pluralize }}{% if c.links %} · also fills {{ c.links|join:", " }}{% endif %}</small></span></li>
+      {% endfor %}
+      <li class="is-post"><span class="dh-num">{% icon "check" 14 "2.6" %}</span><span><b>After the import</b><small>Every imported person must set a new password at first sign-in. With password hashes in the file they sign in with their old password; otherwise with the default password you give on the import form. Copy the media folder too if you want photos, logos and signatures (asset photos and attachments travel only as file paths: copy the protected media folder for those). Importing a file twice is safe: rows are matched and updated, never duplicated, and nothing is deleted.</small></span></li>
+    </ol>
+  </section>
+
+  <section class="dh-panel" aria-labelledby="dh-hash-title">
+    <h2 id="dh-hash-title">Export with passwords (optional)</h2>
+    <form class="dh-hash" method="get" action="{% url 'core:datahub_export' 'everything' %}">
+      <label class="dh-check"><input type="checkbox" name="hashes" value="1"> Include password hashes</label>
+      <div class="dh-banner dh-banner--warn" role="note">{% icon "alert" 16 %}<span><strong>Only for moving to a new database.</strong> Adds every user's Django password hash (never the password itself) to the Users sheet so old passwords keep working after the import. Anyone holding the file can try to crack the hashes: keep it secret, move it securely and delete it afterwards. Off by default.</span></div>
+      <button class="btn btn-subtle" type="submit">{% icon "download" 16 %} Export everything</button>
+    </form>
+  </section>
+
+  <section class="dh-panel" aria-labelledby="dh-cats-title">
+    <h2 id="dh-cats-title">Categories</h2>
+    <p class="dh-sub">Each workbook has one sheet per table plus a README sheet. Headers carry a note explaining each column and what a link points at.</p>
+    <div class="dh-grid">
+      <article class="dh-card dh-card--all">
+        <div class="dh-card__top"><span class="dh-card__icon">{% icon "layers" 18 %}</span><h3>Everything</h3></div>
+        <p>All {{ total_categories }} categories in one workbook, already in the right order. Best for moving to a new database.</p>
+        <div class="dh-card__count"><strong>{{ total_rows }}</strong> records · {{ total_sheets }} tables</div>
+        <div class="dh-card__actions">
+          <a class="btn btn-sm btn-primary" href="{% url 'core:datahub_export' 'everything' %}">{% icon "download" 14 %} Export</a>
+          <a class="btn btn-sm btn-subtle" href="{% url 'core:datahub_template' 'everything' %}">{% icon "sheet" 14 %} Template</a>
+          <a class="btn btn-sm btn-subtle" href="?scope=everything#dh-import">{% icon "upload" 14 %} Import</a>
+        </div>
+      </article>
+      {% for c in categories %}
+        <article class="dh-card" id="cat-{{ c.key }}">
+          <div class="dh-card__top"><span class="dh-card__icon">{% icon c.icon 18 %}</span><h3>{{ c.title }}</h3><span class="dh-num" title="Import step {{ c.n }}">{{ c.n }}</span></div>
+          <p>{{ c.summary }}</p>
+          <div class="dh-card__count"><strong>{{ c.rows }}</strong> record{{ c.rows|pluralize }}</div>
+          <details>
+            <summary>{{ c.sheets|length }} table{{ c.sheets|length|pluralize }}{% if c.links %} + {{ c.links|length }} link sheet{{ c.links|length|pluralize }}{% endif %}</summary>
+            <ul class="dh-sheetlist">
+              {% for s in c.sheets %}<li><span title="{{ s.label }}">{{ s.title }}</span><span>{{ s.count }}</span></li>{% endfor %}
+              {% for l in c.links %}<li class="is-link"><span>{{ l }}</span><span>links</span></li>{% endfor %}
+            </ul>
+          </details>
+          <div class="dh-card__actions">
+            <a class="btn btn-sm btn-primary" href="{% url 'core:datahub_export' c.key %}">{% icon "download" 14 %} Export</a>
+            <a class="btn btn-sm btn-subtle" href="{% url 'core:datahub_template' c.key %}">{% icon "sheet" 14 %} Template</a>
+            <a class="btn btn-sm btn-subtle" href="?scope={{ c.key }}#dh-import">{% icon "upload" 14 %} Import</a>
+            {% if c.link_url %}<a class="btn btn-sm btn-subtle" href="{{ c.link_url }}">{% icon "link" 14 %} {{ c.link_label }}</a>{% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="dh-panel" id="dh-import" aria-labelledby="dh-import-title">
+    <h2 id="dh-import-title">Import a workbook</h2>
+    <p class="dh-sub">Upload a Data Hub export or a filled template. You get a full preview first (new, changed, unchanged and errors for every sheet); nothing is saved until you press Apply.</p>
+    <form class="dh-import" method="post" action="{% url 'core:datahub_upload' %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <label>Workbook (.xlsx, up to {{ max_mb }} MB)
+        <input class="input" type="file" name="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+      </label>
+      <label>Import which sheets
+        <select class="input" name="scope">
+          <option value="everything"{% if request.GET.scope == "everything" or not request.GET.scope %} selected{% endif %}>Every sheet in the file</option>
+          {% for c in categories %}<option value="{{ c.key }}"{% if request.GET.scope == c.key %} selected{% endif %}>{{ c.n }}. {{ c.title }} only</option>{% endfor %}
+        </select>
+      </label>
+      <label>Default password for imported users
+        <input class="input" type="password" name="default_password" autocomplete="new-password">
+        <small class="dh-note">Required when the file has no password hashes. Given to every new account without a hash; everyone must change it at first sign-in. It must pass the system's password rules.</small>
+      </label>
+      <button class="btn btn-primary" type="submit">{% icon "eye" 16 %} Upload &amp; preview</button>
+    </form>
+    <p class="dh-note">Sheets are always processed in the recommended order, whatever their order in the file. Unknown sheets and columns are ignored and listed. Rows are matched on their key columns (shown in the README sheet); blank cells clear a value.</p>
+  </section>
+</div>
+{% endblock %}

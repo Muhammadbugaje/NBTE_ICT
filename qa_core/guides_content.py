@@ -40,7 +40,7 @@ GUIDES = {
             "accreditation, paying fees, answering queries and following every decision.",
             "This guide is for everyone at your institution who will use the portal. It shows you how to sign in, "
             "find your way around and keep your institution's record up to date. The other three guides take you "
-            "through each process step by step: **Onboarding (SOP-01)**, **QA requests (SOP-02)** and "
+            "through each process step by step: **Onboarding**, **QA requests** and "
             "**Payments**.",
         ],
         "before": [
@@ -57,10 +57,10 @@ GUIDES = {
             ("h2", "What you can do on the portal"),
             ("table", ["Area", "What it is for"], [
                 ["Dashboard", "What needs your action now, and what happened recently."],
-                ["Application", "A new institution's onboarding application (SOP-01): profile, documents, "
+                ["Application", "A new institution's onboarding application: profile, documents, "
                                 "departmental clearance and fees."],
                 ["QA requests", "Requests for accreditation, reaccreditation and the other QA exercises, with a "
-                                "self-study questionnaire (SSQ) for each programme (SOP-02)."],
+                                "self-study questionnaire (SSQ) for each programme."],
                 ["Documents", "Your institution's statutory documents: upload, replace and follow their review."],
                 ["Payments", "Every bill NBTE issues to you: pay online or by bank, upload proof, download "
                              "receipts."],
@@ -240,13 +240,13 @@ GUIDES = {
     # =====================================================================================
     "onboarding": {
         "title": "Onboarding guide",
-        "subtitle": "Registering a new institution and getting it approved (SOP-01)",
+        "subtitle": "Registering a new institution and getting it approved",
         "audience": "For proposed polytechnics, colleges and innovation institutes",
         "summary": "Registering a new institution and getting it approved.",
         "accent": "0F9F9A",
         "intro": [
-            "Onboarding turns a proposed institution into one NBTE has approved. It follows NBTE's standard "
-            "operating procedure **SOP-01**, and every step happens on the portal.",
+            "Onboarding turns a proposed institution into one NBTE has approved. It follows one simple, "
+            "step-by-step path, and every step happens on the portal.",
             "This guide takes you through all of it: registering, completing your application, uploading your "
             "documents, departmental clearance, the institutional fee and what happens next.",
         ],
@@ -261,19 +261,27 @@ GUIDES = {
         ],
         "blocks": [
             ("part", "Onboarding at a glance",
-             "Seven stages from your first form to your programmes' questionnaires."),
-            ("diagram", "diagram_onboarding", "Onboarding (SOP-01). Green steps are yours; white steps are NBTE's."),
+             "From your first form to your programmes' questionnaires — you always see the next step on your "
+             "dashboard."),
+            ("diagram", "diagram_onboarding", "Onboarding, step by step. Green steps are yours; white steps are NBTE's."),
             ("table", ["Stage", "Who acts", "What happens"], [
-                ["Draft and documents", "You", "Complete your profile, upload documents, list your programmes, submit."],
-                ["Departmental clearance", "NBTE", "Legal, Finance, Academic Planning (ASPD) and Physical Planning "
-                                                   "(PPD) review your application in parallel."],
-                ["Institutional fee", "You", "Pay the institutional processing fee."],
-                ["Fee confirmed by Finance", "NBTE", "NBTE Finance confirms your payment against the bank record."],
-                ["Programme selection", "You", "Confirm the programmes you will offer, and pay programme fees."],
-                ["Programme clearance", "NBTE", "NTIRD clears each programme."],
-                ["Questionnaire (SSQ)", "You", "Complete a self-study questionnaire per programme. NBTE then "
-                                               "schedules a resource inspection."],
-            ], [4.4, 2.2, 10.0]),
+                ["1. Register and set up", "You", "Register, complete your profile and management team. The Chief "
+                                                  "Executive signs the declaration."],
+                ["2. Documents", "You", "Upload the required documents; the Chief Executive submits them."],
+                ["3. Departmental review", "NBTE", "Each document goes to its own department (Legal, Finance, "
+                                                   "Academic Planning, Physical Planning). A returned document comes "
+                                                   "back to you alone, with a remark; re-upload just that one."],
+                ["4. Institutional fee", "You, then NBTE Finance", "As soon as every document is approved, pay "
+                                                                   "the institutional processing fee; NBTE Finance "
+                                                                   "confirms it. (NBTE may instead ask for this fee "
+                                                                   "before documents — your dashboard always shows "
+                                                                   "which.)"],
+                ["5. Programmes", "You, then NBTE", "Choose your programmes; NBTE clears them; pay the programme fee "
+                                                    "for each cleared programme."],
+                ["6. Self-study (SSQ)", "You", "Complete one questionnaire per programme; the Chief Executive "
+                                               "submits them. NBTE's quality assurance process then begins, and your "
+                                               "institution is fully approved when it ends."],
+            ], [4.4, 3.0, 9.2]),
 
             ("part", "Step 1: Register your institution",
              "About fifteen minutes. You can upload documents afterwards."),
@@ -301,19 +309,33 @@ GUIDES = {
                 "**Official e-mail** is where NBTE sends bills, queries and decisions: use an address the institution "
                 "will keep.",
             ]),
-            ("h2", "Section 3: Your account"),
-            ("halfshot", "register_account", "Your account: you become the institution administrator."),
+            ("h2", "Section 3: Chief Executive"),
+            ("p", "Give the **Chief Executive's** (Rector, Provost or equivalent) title, full name, own e-mail and "
+                  "phone. The Chief Executive gets a separate account: only they can declare, pay and submit for "
+                  "the institution."),
+            ("important", "The Chief Executive sets their own password",
+             "NBTE e-mails a private set-up link **only to the Chief Executive's own e-mail address**. Nobody "
+             "else — not you, not the Head of ICT — sees that link or the password. If it does not arrive, ask the "
+             "Chief Executive to check spam, press **Resend to the Chief Executive** on your setup page, or contact "
+             "the NBTE officer handling your institution, who can send it again."),
+            ("h2", "Section 4: Your account (Head of ICT)"),
+            ("halfshot", "register_account", "Your account: you become the institution's portal administrator."),
             ("p", "**Your e-mail** is the address you will sign in with. Choose a password of at least 8 characters "
                   "and type it twice."),
-            ("h2", "Section 4: Declaration and submit"),
+            ("h2", "Section 5: Declaration and submit"),
             ("halfshot", "register_submit", "The declaration and the Register institution button.", [
                 (1, "Tick the declaration: you are authorised to register the institution and the information is "
                     "true."),
                 (2, "**Register institution**."),
             ]),
             ("p", "If anything is missing or wrong, the form shows the problem next to the field. Fix it and choose "
-                  "**Register institution** again. When it succeeds you are signed in and taken to your "
-                  "application, and your institution receives its NBTE code."),
+                  "**Register institution** again. While NBTE sets up your institution you see each step tick off "
+                  "(about a few seconds). When it succeeds you are signed in and taken to your setup checklist, "
+                  "and your institution receives its NBTE code. NBTE assigns an ICT officer to follow your "
+                  "institution from then on."),
+            ("tip", "Fees depend on your institution type",
+             "Polytechnics, monotechnics, colleges of health, colleges of nursing and other types each have their "
+             "own registration, processing and programme fees. Your bill always shows each line separately."),
             ("important", "Already known to NBTE?",
              "Do not register again. If NBTE set up your institution, use the set-password link NBTE e-mailed, or "
              "**Forgot password?** on the sign-in page."),
@@ -420,7 +442,7 @@ GUIDES = {
     # =====================================================================================
     "qa-requests": {
         "title": "QA requests guide",
-        "subtitle": "Requesting accreditation and completing the self-study questionnaire (SOP-02)",
+        "subtitle": "Requesting accreditation and completing the self-study questionnaire",
         "audience": "For approved institutions: registrars, QA officers and heads of department",
         "summary": "Requesting accreditation and completing the SSQ.",
         "accent": "2F7FE0",
@@ -553,8 +575,8 @@ GUIDES = {
              "only change what was asked, then submit again."),
 
             ("part", "What happens inside NBTE",
-             "When every SSQ is accepted, NBTE opens an internal case with seventeen stages."),
-            ("diagram", "diagram_sop03", "The internal stages (SOP-03). Green-outlined stages are the ones you are "
+             "When every SSQ is accepted, NBTE plans your visit, visits, writes a report and decides."),
+            ("diagram", "diagram_sop03", "What happens inside NBTE. Green-outlined stages are the ones you are "
                                          "told about."),
             ("p", "NBTE assigns the team, costs and funds the visit, inspects, reports and decides. You do not need to "
                   "act during these stages. You are told when the visit is approved, when it takes place and when "
@@ -658,6 +680,12 @@ GUIDES = {
             ]),
             ("tip", "Keep the provider's receipt",
              "If Finance asks, upload it from the bill with **Upload the provider's receipt**."),
+            ("important", "Never pay twice",
+             "If your connection drops or the page shows **Can't reach the payment provider**, nothing was "
+             "charged — check your internet and try again. If money left your account but the bill does not show "
+             "it yet, **do not pay again**: the portal keeps asking the provider with the same reference and "
+             "updates the bill automatically (a nightly check also catches anything missed). Pressing the pay "
+             "button twice reopens the same checkout, never a second charge."),
 
             ("part", "Pay by bank transfer or deposit",
              "Download the slip, pay quoting the reference, then upload your proof."),
@@ -694,6 +722,26 @@ GUIDES = {
                 ["The slip has expired", "Choose **Generate a new slip** on the bill. Do not pay with an old slip."],
                 ["The bill has expired or is cancelled", "Do not pay it. Ask NBTE to re-issue it."],
             ], [6.2, 10.4]),
+
+            ("part", "Cancelling and refunds",
+             "You can cancel a QA request before NBTE's final decision, and your onboarding application before your "
+             "institution is approved."),
+            ("p", "Open the request (or your application) and choose **Cancel**. The page shows how much you would get "
+                  "back before you confirm. Give the reason, tick the declaration and, if a refund is due, your bank "
+                  "account (you can also add it later under **Payments → Refunds**). Only the chief executive or the "
+                  "institution administrator can cancel."),
+            ("table", ["When it is cancelled", "Refunded"], [
+                ["Before NBTE assigns an officer or starts work on it", "90% (10% admin fee)"],
+                ["After an officer is assigned or the assessment has started, before the visit cost is approved",
+                 "50%"],
+                ["After the visit cost is approved (funds released, visit done or decision pending)", "Nothing"],
+                ["NBTE withdraws or rejects it for reasons on NBTE's side", "100%"],
+            ], [10.4, 6.2]),
+            ("note", "These are NBTE's standard figures",
+             "NBTE can change them; the cancel page and **Refunds → refund policy** always show the figures in force. "
+             "Bills you have not paid are simply cancelled. Give your bank details within 90 days of cancelling. "
+             "NBTE Finance checks every refund and the Executive Secretary approves it before the money is paid; you "
+             "are notified at each step."),
             ("help",),
         ],
     },

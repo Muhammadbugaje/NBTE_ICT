@@ -1,21 +1,22 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static qa_tags audience_tags %}
 
 {% block title %}{% if group %}Edit {{ group.name }}{% else %}New group{% endif %} · Groups · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{% if group %}Edit group{% else %}New group{% endif %}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/groups.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/groups.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="gp-page">
   <a class="gp-back" href="{% if group %}{% url 'accounts:groups:detail' group.pk %}{% else %}{% url 'accounts:groups:list' %}{% endif %}">← {% if group %}{{ group.name }}{% else %}All groups{% endif %}</a>
-  <header class="page-header">
+  <header class="qa-hero nbte-hero">
     <div>
-      <p class="gp-eyebrow">Groups</p>
+      <a class="nbte-hero__back" href="{% if group %}{% url 'accounts:groups:detail' group.pk %}{% else %}{% url 'accounts:groups:list' %}{% endif %}">{% icon "back" 14 "2.4" %} {% if group %}{{ group.name }}{% else %}Groups{% endif %}</a>
+      <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} User management · Groups</span>
       <h1>{% if group %}Edit “{{ group.name }}”{% else %}New group{% endif %}</h1>
-      <p class="muted">Tick the permissions this group carries. You can only add or remove permissions you hold yourself.</p>
+      <p>Tick the permissions this group carries. You can only add or remove permissions you hold yourself.</p>
     </div>
   </header>
 
@@ -74,5 +75,5 @@
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/groups.js' %}?v=1" defer></script>
+  <script src="{% static 'js/groups.js' %}" defer></script>
 {% endblock %}

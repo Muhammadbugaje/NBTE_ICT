@@ -28,6 +28,7 @@ urlpatterns = [
     path("<int:pk>/comment/", views.comment, name="comment"),
     path("<int:pk>/attach/", views.attach, name="attach"),
     path("<int:pk>/record.pdf", views.record_pdf, name="record_pdf"),
+    path("<int:pk>/convert-to-ticket/", views.convert_to_ticket, name="convert_to_ticket"),
     path("<int:pk>/return-to-requester/", views.return_to_requester, name="return_to_requester"),
     path("<int:pk>/resubmit/", views.resubmit, name="resubmit"),
     path("<int:pk>/comments/<int:comment_id>/delete/",views.delete_comment, name="delete_comment"),

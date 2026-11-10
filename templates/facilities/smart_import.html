@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load qa_tags %}
+{% block title %}Smart Excel import · Facilities &amp; equipment · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Facilities &amp; equipment{% endblock %}
+{% block content %}
+<div class="fx">
+  <a class="fx-back" href="{% url 'facilities:index' %}">{% icon "back" 14 %} Facilities &amp; equipment register</a>
+  <header class="qa-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Curriculum · Facilities &amp; equipment</span>
+      <h1 data-qa-focus>Smart Excel import</h1>
+      <p>Upload the facilities and equipment workbook. Before anything is saved you see, for every programme, how many facilities and items will be created, updated or left unchanged — and you decide what to do with any programme that is not yet on the national programme list.</p>
+      <div class="qa-hero__actions">
+        <a class="btn btn-subtle" href="{% url 'facilities:smart_export' %}">{% icon "download" 16 %} Download the register in this layout</a>
+        <a class="btn btn-subtle" href="{% url 'facilities:import_word' %}">{% icon "file" 16 %} Start from the Word files instead</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Register today">
+      <div class="qa-stat"><strong>{{ stats.programme_count }}</strong><span>Programmes</span></div>
+      <div class="qa-stat qa-stat--info"><strong>{{ stats.section_count }}</strong><span>Facilities</span></div>
+      <div class="qa-stat qa-stat--success"><strong>{{ stats.item_count }}</strong><span>Items</span></div>
+    </div>
+  </header>
+
+  <ol class="fx-steps" aria-label="Steps"><li class="is-on" aria-current="step"><b>1</b> Upload</li><li><b>2</b> Check &amp; decide</li><li><b>3</b> Done</li></ol>
+
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+  {% for m in messages %}<div class="alert alert-{{ m.tags }}">{{ m }}</div>{% endfor %}
+
+  <div class="fx-cols">
+    <form class="card fx-card" method="post" enctype="multipart/form-data">{% csrf_token %}
+      <h2>Upload the workbook</h2>
+      <div class="fx-drop">
+        {% icon "upload" 28 %}
+        <label for="fx-file"><strong>Excel file (.xlsx)</strong></label>
+        <input id="fx-file" class="input" type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+        <span class="fx-muted">Up to 25 MB · e.g. NBTE_Facilities_and_Equipment_Import.xlsx</span>
+      </div>
+      <p><button class="btn btn-primary" type="submit">{% icon "eye" 16 %} Read and preview</button></p>
+    </form>
+    <section class="card fx-card" aria-labelledby="fx-how">
+      <h2 id="fx-how">What the file needs</h2>
+      <ul class="fx-list">
+        <li>A sheet <strong>Facilities &amp; Equipment</strong> with one row per item: Programme, Levels, Facility code, Facility, Group / sub-heading, Equipment, ND qty, HND qty, Remarks, Critical (Y/N), Sort order.</li>
+        <li>An optional <strong>Programmes</strong> sheet with each programme's levels, source curricula and notes.</li>
+        <li>Rows are matched on Programme + Facility + Group + Equipment, ignoring capitals and spaces — so importing the same file twice changes nothing.</li>
+        <li>Programme names are matched to the national programme list exactly, by alias, or by the closest similar name; you confirm each one that is not an exact match.</li>
+        <li>Nothing is deleted. Items missing from the file are kept unless you choose to mark them inactive.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+{% include "facilities/_smart_styles.html" %}
+{% endblock %}

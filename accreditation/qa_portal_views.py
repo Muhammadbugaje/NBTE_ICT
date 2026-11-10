@@ -23,6 +23,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 import config
 from institutions.models import Institution, InstitutionDocument, Programme
+from institutions.profile import profile_gate
 from qa_core.portal_views import _shell_context, institution_required
 from qa_core.ui import is_htmx, paginate, toast
 
@@ -60,6 +61,7 @@ def _ssq_or_404(request, req, ssq_pk):
 # QA requests
 # ===========================================================================
 @institution_required
+@profile_gate  # v2.1 X13
 @require_GET
 def requests_list(request):
     user = request.user
@@ -145,6 +147,7 @@ def request_estimate(request):
 
 
 @institution_required
+@profile_gate  # v2.1 X13
 @require_http_methods(["GET", "POST"])
 def request_new(request):
     user = request.user
@@ -219,6 +222,7 @@ def _detail_context(request, req, **extra):
         "queries": list(Query.objects.for_user(user).filter(qa_request=req).order_by("-created_at")),
         "board": _board(req),
         "max_streams": svc.max_streams(),
+        "is_ce": _is_ce(user),
     }
     if req.status == "draft":  # Phase 8: what the fee will be, from the streams asked for
         ctx["estimate"] = svc.fee_estimate(inst, req.qa_type, [(r.programme, r.requested_streams) for r in rows
@@ -234,7 +238,19 @@ STEP_OF = {"draft": "draft", "submitted": "submitted", "programme_clearance": "s
            "ssq_submitted": "review", "in_workflow": "review", "decided": "review"}
 
 
+def _is_ce(user):
+    from institutions.services import is_chief_executive
+
+    return is_chief_executive(user)
+
+
 def _board(req):
+    """v2.1 X6: the plain milestones of qa.portal.milestones (never SOP-03 stage names)."""
+    from qa_core import portal_journey
+    return portal_journey.request_board(req)
+
+
+def _legacy_board(req):
     current = STEP_OF.get(req.status)
     if current is None:
         return []
@@ -439,8 +455,10 @@ def _ws_context(request, req, ssq, section_key=None, **extra):
     ctx["prev_section"] = sections[index - 1] if section is not None and index > 0 else None
     ctx["next_section"] = sections[index + 1] if section is not None and index + 1 < len(sections) else None
     if not ssq.is_current or ssq.status in ("submitted", "accepted", "returned", "analysed"):
-        ctx["snapshot_sections"] = (submission.rendered_snapshot if submission is not None
-                                    else engine.render_snapshot(template, ssq.data or {}, programme=programme))
+        # X35: the institution never sees NBTE's required quantities or "Short" flags.
+        ctx["snapshot_sections"] = engine.for_audience(
+            submission.rendered_snapshot if submission is not None
+            else engine.render_snapshot(template, ssq.data or {}, programme=programme), "institution")
         ctx["evidence_by_field"] = by_field
     ctx.update(extra)
     current = ctx.pop("section")

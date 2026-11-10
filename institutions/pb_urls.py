@@ -15,6 +15,12 @@ urlpatterns = [
     path("import/", views.import_page, name="import"),
     path("import/template/", views.import_template, name="import_template"),
     path("export/", views.export, name="export"),
+    path("export/bodies/", views.bodies_export, name="bodies_export"),  # v2.1 R.5 X42
+    path("master/export/", views.master_export, name="master_export"),
+    path("master/", views.master_list, name="master"),  # v2.1 R.4 X44
+    path("master/unmapped/", views.master_unmapped, name="unmapped"),
+    path("master/unmapped/<int:pk>/map/", views.master_map, name="master_map"),
     path("<int:pk>/", views.body_detail, name="body_detail"),
     path("<int:pk>/edit/", views.body_edit, name="body_edit"),
+    path("<int:pk>/users/new/", views.body_user_new, name="body_user_new"),  # v2.1 R.5 X43
 ]

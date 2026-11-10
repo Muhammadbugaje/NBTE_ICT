@@ -1,31 +1,43 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load workflow_extras %}
 
 {% block title %}{{ req.reference }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{{ req.reference }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/workflow.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/workflow.css' %}">
 {% endblock %}
 
 {% block content %}
+<div class="wk-page wk-page--detail" data-qa-area="requests">
 
-{# ---------- Page head ---------- #}
-<div class="wf-page-head">
+{# ---------- Hero (shared qa-hero pattern) ---------- #}
+<header class="qa-hero nbte-hero wk-hero wk-hero--detail {% if req.status == 'returned' %}is-returned{% elif req.status == 'completed' %}is-completed{% elif req.status == 'rejected' %}is-rejected{% elif req.status == 'cancelled' %}is-cancelled{% endif %}" data-qa-area="requests">
   <div>
-    <a href="{% url 'workflow:my_requests' %}" class="btn btn-subtle btn-sm mb-3">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-      My requests
-    </a>
+    <a class="nbte-hero__back" href="{% url 'workflow:my_requests' %}">{% icon "back" 14 "2.4" %} My requests</a>
+    <span class="qa-eyebrow">{% icon "inbox" 14 "2.2" %} Requests · <span class="wk-ref">{{ req.reference }}</span></span>
+    <h1>{{ req.subject }}</h1>
+    <div class="wk-hero-meta">
+      <span class="badge badge-status-{{ req.status }}">{{ req.get_status_display }}</span>
+      <span class="badge badge-priority-{{ req.priority }}">{{ req.get_priority_display }}</span>
+      {% if req.receiving_department %}<span class="wk-chip">{% icon "building" 13 "2.2" %} {{ req.receiving_department.name }}</span>{% endif %}
+      {% if req.assigned_to %}<span class="wk-chip wk-chip--info">{% icon "user" 13 "2.2" %} {{ req.assigned_to.get_full_name|default:req.assigned_to.email }}</span>{% endif %}
+      {% if req.revision_count %}<span class="wk-chip">Revised {{ req.revision_count }}×</span>{% endif %}
+    </div>
+    <p class="wk-hero-facts">
+      <span>{% icon "user" 13 "2.2" %} <strong>{{ req.requester.get_full_name|default:req.requester.email }}</strong></span>
+      <span>{% icon "clock" 13 "2.2" %} {{ req.created_at|date:"M j, Y · H:i" }}</span>
+      <span>{% icon "file" 13 "2.2" %} {{ req.request_type.name }}</span>
+      {% if req.asset and asset_link_ok %}<a href="{% url 'assets:detail' req.asset.asset_tag %}">{% icon "box" 13 "2.2" %} Asset: {{ req.asset.asset_tag }}</a>{% endif %}
+    </p>
+    {% if req.record_pdf or req.is_closed %}
+    <div class="qa-hero__actions">
+      <a href="{% url 'workflow:record_pdf' req.pk %}" class="btn btn-primary" target="_blank" data-report-pdf>{% icon "download" 16 "2.2" %} Download record PDF</a>
+    </div>
+    {% endif %}
   </div>
-  {% if req.record_pdf %}
-    <a href="{% url 'workflow:record_pdf' req.pk %}" class="btn btn-primary" target="_blank">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      Download record PDF
-    </a>
-  {% endif %}
-</div>
+</header>
 
 {# ---------- Returned banner ---------- #}
 {% if req.status == 'returned' %}
@@ -53,48 +65,25 @@
   </div>
 {% endif %}
 
-{# ---------- Hero ---------- #}
-<header class="wf-hero {% if req.status == 'returned' %}is-returned{% elif req.status == 'completed' %}is-completed{% elif req.status == 'rejected' %}is-rejected{% elif req.status == 'cancelled' %}is-cancelled{% endif %}">
-  <div class="wf-hero-top">
-    <span class="wf-hero-ref">{{ req.reference }}</span>
-    <span class="badge badge-priority-{{ req.priority }}">{{ req.get_priority_display }}</span>
-    <span class="badge badge-status-{{ req.status }}">{{ req.get_status_display }}</span>
-    {% if req.receiving_department %}<span class="badge">{{ req.receiving_department.name }}</span>{% endif %}
-    {% if req.assigned_to %}<span class="badge badge-info">Assigned: {{ req.assigned_to.get_full_name|default:req.assigned_to.email }}</span>{% endif %}
-    {% if req.revision_count %}<span class="badge">Revised {{ req.revision_count }}×</span>{% endif %}
+{# ---------- v2.1 J1: closed = read-only record ---------- #}
+{% if req.is_closed %}
+  <div class="wf-closed-banner" role="status" data-closed-readonly>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <div class="min-w-0"><strong>This request is {{ req.get_status_display|lower }}.</strong>
+      <p>It is a read-only record now: no new comments or files.
+        {% if converted_ticket %}The work continues as ticket <a href="{% url 'tickets:detail' converted_ticket.pk %}">{{ converted_ticket.reference }}</a>.{% endif %}
+        <a href="{% url 'workflow:record_pdf' req.pk %}" target="_blank" rel="noopener">Download the report (PDF)</a>.</p></div>
   </div>
+{% endif %}
 
-  <h1>{{ req.subject }}</h1>
-
-  <div class="wf-hero-meta">
-    <span class="wf-hero-meta-item">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      <strong>{{ req.requester.get_full_name|default:req.requester.email }}</strong>
-    </span>
-    <span class="wf-hero-meta-item">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      {{ req.created_at|date:"M j, Y · H:i" }}
-    </span>
-    <span class="wf-hero-meta-item">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
-      {{ req.request_type.name }}
-    </span>
-    {% if req.asset and asset_link_ok %}
-      <a href="{% url 'assets:detail' req.asset.asset_tag %}" class="wf-hero-meta-item is-link">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        Asset: {{ req.asset.asset_tag }}
-      </a>
-    {% endif %}
-  </div>
-</header>
 
 {% if leave_summary %}
   <section class="wf-leave-review" aria-labelledby="leave-review-title">
     <div>
-      <h2 id="leave-review-title">Annual leave balance review</h2>
+      <h2 id="leave-review-title">{{ leave_summary.leave_type.name|default:"Annual leave" }} balance review</h2>
       <p>
         This application requests
-        <strong>{{ leave_summary.requested_days|floatformat:"-2" }} working days</strong>.
+        <strong>{{ leave_summary.requested_days|floatformat:"-2" }} {{ leave_summary.day_unit|default:"working days" }}</strong>{% if leave_summary.application.days_requested %} ({{ leave_summary.application.start_date|date:"j M" }} to {{ leave_summary.application.end_date|date:"j M Y" }}){% endif %}.
         Pending requests are not deducted until approved.
       </p>
     </div>
@@ -105,7 +94,7 @@
           {% if period.is_set %}
             <span>{{ period.requested_days|floatformat:"-2" }} requested · {{ period.remaining|floatformat:"-2" }} available</span>
           {% else %}
-            <span>No entitlement recorded for {{ period.year }}; HR must set it before balance can be assessed.</span>
+            <span>{% if leave_summary.leave_type and leave_summary.leave_type.code != "annual" %}{{ leave_summary.leave_type.name }} has no yearly limit; HR decides on this application.{% else %}No entitlement recorded for {{ period.year }}; HR must set it before balance can be assessed.{% endif %}</span>
           {% endif %}
           {% if period.is_over_balance %}
             <span class="wf-leave-review-warning">
@@ -251,6 +240,33 @@
             {% if a.comment %}<div class="wf-approval-comment">{{ a.comment }}</div>{% endif %}
           </div>
         {% endfor %}
+      </section>
+    {% endif %}
+
+    {# --- v2.1 I8: how this funds request came about (ticket trail) --- #}
+    {% if ticket_trail %}
+      <section class="wf-card-block wf-trail" id="ticket-trail">
+        <h2 class="wf-block-title">How this came about — ticket {% if funded_ticket %}<a href="{% url 'tickets:detail' funded_ticket.pk %}">{{ ticket_trail.reference }}</a>{% else %}{{ ticket_trail.reference }}{% endif %}</h2>
+        <dl class="wf-trail-kv">
+          <dt>Ticket</dt><dd>{{ ticket_trail.subject }}</dd>
+          <dt>Opened by</dt><dd>{{ ticket_trail.raised_by }} · {{ ticket_trail.category }} · {{ ticket_trail.priority }}</dd>
+          <dt>Handled by</dt><dd>{{ ticket_trail.handling_department }}{% if ticket_trail.division %} · {{ ticket_trail.division }}{% endif %}{% if ticket_trail.assignee %} · {{ ticket_trail.assignee }}{% endif %}</dd>
+          {% if ticket_trail.asset %}<dt>Asset</dt><dd>{{ ticket_trail.asset.tag }} · {{ ticket_trail.asset.name }} ({{ ticket_trail.asset.state }}) · {{ ticket_trail.asset.past_tickets }} earlier ticket{{ ticket_trail.asset.past_tickets|pluralize }}, {{ ticket_trail.asset.past_issues }} issue{{ ticket_trail.asset.past_issues|pluralize }}</dd>{% endif %}
+          {% if req.metadata.amount %}<dt>Amount</dt><dd>₦{{ req.metadata.amount }}</dd>{% endif %}
+        </dl>
+        <p class="wf-trail-body">{{ ticket_trail.body|linebreaksbr }}</p>
+        <h3 class="detail-eyebrow">Ticket activity</h3>
+        <ol class="wf-trail-list">
+          {% for a in ticket_trail.activities %}<li><span class="wf-trail-when">{{ a.at|slice:":10" }} {{ a.at|slice:"11:16" }}</span> <strong>{{ a.actor }}</strong> — {{ a.message }}</li>{% endfor %}
+        </ol>
+        {% if ticket_trail.comments %}
+          <h3 class="detail-eyebrow">Ticket comments</h3>
+          <ol class="wf-trail-list">{% for c in ticket_trail.comments %}<li><strong>{{ c.author }}</strong>: {{ c.body }}</li>{% endfor %}</ol>
+        {% endif %}
+        {% if ticket_trail.attachments %}
+          <h3 class="detail-eyebrow">Ticket files</h3>
+          <ul class="wf-trail-list">{% for f in ticket_trail.attachments %}<li>{{ f.name }} · {{ f.by }}</li>{% endfor %}</ul>
+        {% endif %}
       </section>
     {% endif %}
 
@@ -491,6 +507,23 @@
       </div>
     {% endif %}
 
+    {# --- v2.1 I9: convert to ticket --- #}
+    {% if can_convert_to_ticket %}
+      <div class="wf-side-card" data-convert-ticket>
+        <h3 class="wf-side-card-title">Handle as a ticket</h3>
+        <p class="wf-side-card-sub">For fixes and issues: the request closes and continues as a ticket for the requester, routed like any ticket.</p>
+        <form class="vstack" method="post" action="{% url 'workflow:convert_to_ticket' req.pk %}">
+          {% csrf_token %}
+          <select name="category" class="input" required>
+            <option value="">— Ticket category —</option>
+            {% for c in ticket_categories %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
+          </select>
+          <input type="text" class="input" name="note" placeholder="Optional note">
+          <div class="btn-group"><button class="btn btn-ghost btn-sm" type="submit">Convert to ticket</button></div>
+        </form>
+      </div>
+    {% endif %}
+
     {# --- Convert to task --- #}
     {% if not req.is_closed and req.status != 'returned' %}
       <div class="wf-side-card">
@@ -510,9 +543,7 @@
           This request is <strong>{{ req.get_status_display|lower }}</strong>.
           {% if req.completed_at %}Completed {{ req.completed_at|date:"M j, Y" }}.{% endif %}
         </p>
-        {% if req.record_pdf %}
-          <a href="{% url 'workflow:record_pdf' req.pk %}" class="btn btn-ghost btn-sm w-full" target="_blank">Download record PDF</a>
-        {% endif %}
+        <a href="{% url 'workflow:record_pdf' req.pk %}" class="btn btn-ghost btn-sm w-full" target="_blank">Download record PDF</a>
       </div>
     {% endif %}
 
@@ -573,5 +604,5 @@
 
 {# ---------- SSE stream ---------- #}
 <div hidden data-sse-stream="{% url 'workflow:request_stream' req.pk %}?since={{ timeline_last_pk|default:0 }}"></div>
-
+</div>
 {% endblock %}

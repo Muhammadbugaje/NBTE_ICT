@@ -422,14 +422,11 @@ def find(need, *, kind="all", search="", include_ineligible=False):
     if kind == "resource_person":
         good = [c for c in good if c.kind == "resource_person"]
         bad = [c for c in bad if c.kind == "resource_person"]
-    today = timezone.localdate()
+    # v2.1 X27: one fairness implementation — the rotation engine's fair_sort
+    # (identical ordering to the Phase 5/8 finder).
+    from assignments.rotation import fair_sort
 
-    def fair(c):
-        days = (today - c.last_served).days if c.last_served else 100000
-        external = c.kind == "resource_person" and not c.obj.is_staff_person
-        return (staff_first and external, c.assignments_this_year, -days, c.score, c.name)
-
-    good.sort(key=fair)
+    fair_sort(good, staff_first=staff_first, today=timezone.localdate())
     bad.sort(key=lambda c: c.name)
     return good + bad
 

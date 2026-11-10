@@ -1,23 +1,22 @@
 {% extends "portal/_layout.html" %}
+{% load qa_tags %}
 {% load static %}
 {% block title %}{% if mode == "create" %}New document{% else %}Edit document{% endif %} · {{ SITE_NAME }}{% endblock %}
 
 {% block extra_js %}
   {{ block.super }}
-  <script src="{% static 'js/portal-document-form.js' %}?v=1" defer></script>
+  <script src="{% static 'js/portal-document-form.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
 <div class="portal-page portal-page-narrow">
 
-  <header class="portal-head">
+  <header class="qa-hero nbte-hero portal-qa-hero" data-qa-area="portal">
     <div>
-      <a href="{% url 'portal:document_list' %}" class="portal-back">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        Documents
-      </a>
+      <a class="nbte-hero__back" href="{% url 'portal:document_list' %}">{% icon "back" 14 "2.4" %} Documents</a>
+      <span class="qa-eyebrow">{% icon "file" 14 "2.2" %} Portal · Documents</span>
       <h1>{% if mode == "create" %}New document{% else %}Edit document{% endif %}</h1>
-      <p class="muted">Upload a file or point to an external link.</p>
+      <p>Upload a file or point to an external link.</p>
     </div>
   </header>
 
@@ -50,7 +49,7 @@
              data-portal-image-preview
              {% if document.cover_image %}data-has-image="1"{% endif %}>
           {% if document and document.cover_image %}
-            <img src="{{ document.cover_thumb_url|default:document.cover_image.url }}"
+            <img loading="lazy" decoding="async" src="{{ document.cover_thumb_url|default:document.cover_image.url }}"
                  data-fallback-src="{{ document.cover_image.url }}"
                  alt="">
           {% else %}

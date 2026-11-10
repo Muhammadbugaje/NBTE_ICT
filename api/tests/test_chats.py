@@ -303,7 +303,8 @@ def test_message_shape(staff_api, people):
     assert set(m) == {"id", "thread_id", "kind", "sender", "is_mine", "is_system", "body", "sent_at", "edited",
                       "edited_at", "changed_at", "deleted", "forwarded", "reply_to", "attachments", "voice_note",
                       "poll", "reactions", "my_reaction", "starred", "receipt", "linked_task", "linked_memo",
-                      "can_edit", "can_delete_for_everyone"}
+                      "can_edit", "can_delete_for_everyone",
+                      "pinned_at", "my_reminder_at"}  # v2.1 L6/L7
     assert m["kind"] == "text" and m["is_mine"] and m["can_edit"]
     assert m["reply_to"] == {"id": first.pk, "sender_name": "Amina Test", "preview": "Hello Musa"}
     att = m["attachments"][0]
@@ -320,7 +321,8 @@ def test_updates_new_changed_receipts_typing(staff_api, people):
     ca, cb = api(staff_api, a), api(staff_api, b)
     first = cb.get(C + f"threads/{d.pk}/updates/?after=0").json()
     assert [m["id"] for m in first["new"]] == [first_msg(d).pk]
-    assert set(first) == {"server_time", "last_id", "new", "changed", "receipts", "typing"}
+    assert set(first) == {"server_time", "last_id", "new", "changed", "receipts", "typing",
+                          "v", "unchanged"}  # v2.1 L9
     new = cs.send_message(d, a, body="Are you there?")
     ca2 = api(staff_api, a)
     ca2.post(C + f"threads/{d.pk}/typing/", {}, format="json")

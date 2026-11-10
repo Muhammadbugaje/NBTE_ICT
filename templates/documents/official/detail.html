@@ -1,0 +1,152 @@
+{% extends "qa_core/_shell.html" %}
+{% load static qa_tags %}
+{% block qa_title %}{{ letter }} · {{ doc.institution.name }} · Official letters{% endblock %}
+{% block qa_page_title %}Official letters{% endblock %}
+{% block panel %}<link rel="stylesheet" href="{% static 'css/scan.css' %}"><link rel="stylesheet" href="{% static 'css/official-letters.css' %}">
+<div class="sv-page dr-page ol-page" data-qa-area="official_letter">
+  <header class="qa-hero dr-hero dr-hero--detail">
+    <div>
+      {% if can_queue %}<a class="nbte-hero__back" href="{% url 'documents_register:official_letters' %}">{% icon "back" 14 "2.4" %} Official letters</a>{% endif %}
+      <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} Official letter · {{ doc.institution.name }}</span>
+      <h1 data-qa-focus>{{ letter }}</h1>
+      <p>{{ doc.title }} — provisional copy issued {{ doc.issued_at|date:"j M Y" }}{% if doc.institution.handling_department %} · handled by {{ doc.institution.handling_department.name }}{% endif %}.
+        {% if copies %}The signed official copy is uploaded and the institution has it.{% elif not open %}This document is {{ doc.get_status_display|lower }}; no official copy is needed.{% elif state == "draft_ready" and manage %}A draft is ready: review it, then upload the signed official copy.{% elif can_draft %}You were asked to prepare this letter{% if job.due_date %} by {{ job.due_date|date:"j M Y" }}{% endif %}. Send your draft below.{% else %}The institution is waiting for the signed official copy.{% endif %}</p>
+      <div class="dr-hero__chips">
+        <span class="sv-chip sv-chip--plain sv-mono">{{ doc.reference }}</span>
+        <span class="sv-chip sv-chip--{% if tone == 'ok' %}ok{% elif tone == 'warn' %}warn{% elif tone == 'info' %}info{% else %}plain{% endif %}">{% if copies %}Official copy uploaded{% else %}{{ state_label }}{% endif %}</span>
+        {% if open %}<span class="sv-chip {% if overdue %}sv-chip--bad{% else %}sv-chip--plain{% endif %}">{{ days }} day{{ days|pluralize }} waiting{% if overdue %} · overdue{% endif %}</span>{% endif %}
+        {% if job.assignee and open %}<span class="sv-chip sv-chip--info">{% icon "users" 13 "2.2" %} {{ job.assignee.get_full_name|default:job.assignee.email }}{% if job.due_date %} · due {{ job.due_date|date:"j M" }}{% endif %}</span>{% endif %}
+      </div>
+      <div class="qa-hero__actions">
+        {% if manage and open %}<a class="btn btn-primary" href="#ol-upload">{% icon "upload" 16 "2.2" %} Upload official copy</a>
+          {% if state == "draft_ready" %}<a class="btn btn-subtle" href="#ol-review">{% icon "eye" 16 "2.2" %} Review draft</a>{% else %}<a class="btn btn-subtle" href="#ol-assign">{% icon "users" 16 "2.2" %} {% if job.assignee %}Reassign{% else %}Assign to staff{% endif %}</a>{% endif %}{% endif %}
+        {% if can_draft %}<a class="btn btn-primary" href="#ol-draft">{% icon "upload" 16 "2.2" %} Send draft</a>{% endif %}
+        {% if doc.file %}<a class="btn btn-subtle" href="{{ doc.download_url }}">{% icon "download" 16 "2.2" %} Provisional PDF</a>{% endif %}
+      </div>
+    </div>
+  </header>
+
+  <div class="ol-layout">
+    <div class="ol-main">
+      <section class="sv-card" aria-labelledby="ol-steps-h">
+        <h2 id="ol-steps-h">Progress</h2>
+        <ol class="ol-steps" role="list">{% for s in steps %}
+          <li class="ol-step{% if s.done %} is-done{% endif %}{% if s.optional and not s.done %} is-optional{% endif %}">
+            <span class="ol-step__dot" aria-hidden="true">{% if s.done %}{% icon "check" 12 "3" %}{% endif %}</span>
+            <span class="ol-step__label">{{ s.label }}{% if s.optional and not s.done %} <small>(optional)</small>{% endif %}</span>
+            {% if s.when %}<span class="ol-step__when">{{ s.when|date:"j M Y, H:i" }}</span>{% endif %}
+          </li>{% endfor %}
+        </ol>
+      </section>
+
+      {% if job.review_comment and state == "returned" %}
+      <section class="sv-card ol-callout ol-callout--warn" aria-label="Comments from the Director">
+        <h2>{% icon "edit" 16 "2.2" %} Sent back with comments</h2>
+        <p>{{ job.review_comment|linebreaksbr }}</p>
+      </section>
+      {% endif %}
+
+      {% if drafts %}
+      <section class="sv-card" id="ol-review" aria-labelledby="ol-drafts-h">
+        <h2 id="ol-drafts-h">Drafts</h2>
+        <ul class="ol-files" role="list">{% for d in drafts %}
+          <li class="ol-file{% if forloop.first %} is-latest{% endif %}">
+            <span class="ol-file__ico" aria-hidden="true">{% icon "file" 18 "2.2" %}</span>
+            <div class="ol-file__main"><b>{{ d.display_name }}</b>
+              <small>{{ d.uploaded_by.get_full_name|default:d.uploaded_by.email }} · {{ d.uploaded_at|date:"j M Y, H:i" }} · {{ d.size_label }}{% if forloop.first %} · latest{% endif %}</small>
+              {% if d.note %}<p class="ol-file__note">{{ d.note }}</p>{% endif %}</div>
+            <a class="btn btn-subtle btn-sm" href="{{ d.download_url }}">{% icon "download" 14 "2.2" %} Download</a>
+          </li>{% endfor %}
+        </ul>
+        {% if can_review %}
+        <details class="ol-sendback">
+          <summary class="btn btn-subtle btn-sm">{% icon "rewind" 14 "2.2" %} Send back with comments</summary>
+          <form class="sv-form" method="post" action="{% url 'documents_register:official_letter_send_back' doc.pk %}">{% csrf_token %}
+            <label class="ol-label" for="ol-comment">What needs to change?</label>
+            <textarea id="ol-comment" name="comment" rows="3" minlength="3" maxlength="1000" required placeholder="e.g. Use the conditions agreed at the committee; correct the address."></textarea>
+            <div class="btn-group"><button class="btn btn-subtle" type="submit">{% icon "rewind" 16 "2.2" %} Send back</button></div>
+          </form>
+        </details>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% if history %}
+      <section class="sv-card" aria-labelledby="ol-hist-h">
+        <h2 id="ol-hist-h">History</h2>
+        <ul class="ol-history" role="list">{% for h in history %}
+          <li><span class="ol-history__when">{{ h.at_dt|date:"j M Y, H:i"|default:"" }}</span>
+            <span><b>{% if h.action == "assigned" %}Assigned{% elif h.action == "reassigned" %}Reassigned{% elif h.action == "draft_sent" %}Draft sent{% elif h.action == "sent_back" %}Sent back{% elif h.action == "official_uploaded" %}Official copy uploaded{% elif h.action == "closed" %}Closed{% else %}{{ h.action }}{% endif %}</b>{% if h.user %} · {{ h.user }}{% endif %}{% if h.note %}<small>{{ h.note }}</small>{% endif %}</span></li>{% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+    </div>
+
+    <aside class="ol-side">
+      {% if copies %}
+      <section class="sv-card ol-callout ol-callout--ok" aria-label="Official copy">
+        <h2>{% icon "check" 16 "2.6" %} Official copy uploaded</h2>
+        <p>{{ copies.0.uploaded_at|date:"j M Y, H:i" }}{% if copies.0.uploaded_by %} by {{ copies.0.uploaded_by.get_full_name|default:copies.0.uploaded_by.email }}{% endif %}. The institution was told their official letter is ready.</p>
+        <div class="btn-group">{% for c in copies %}<a class="btn btn-primary btn-sm" href="{{ c.download_url }}">{% icon "download" 14 "2.2" %} Official copy · {{ c.uploaded_at|date:"j M Y" }}</a>{% endfor %}</div>
+      </section>
+      {% endif %}
+
+      {% if manage and open %}
+      <section class="sv-card ol-action" id="ol-upload" aria-labelledby="ol-upload-h">
+        <h2 id="ol-upload-h">{% icon "upload" 16 "2.2" %} Upload the signed official copy</h2>
+        <p class="sv-note">The institution is told “Your official {{ letter|lower }} is ready”, and anyone who scans the QR sees the official copy.</p>
+        <form class="sv-form" method="post" enctype="multipart/form-data" action="{% url 'documents_register:official_letter_upload' doc.pk %}">{% csrf_token %}
+          <label class="ol-file-input"><span>Signed PDF</span><input type="file" name="file" accept="application/pdf,.pdf" required></label>
+          <label class="ol-label" for="ol-up-note">Note <small>(optional)</small></label>
+          <input id="ol-up-note" type="text" name="note" maxlength="300" placeholder="e.g. Signed by the Executive Secretary">
+          <div class="btn-group"><button class="btn btn-primary" type="submit">{% icon "upload" 16 "2.2" %} Upload official copy</button></div>
+        </form>
+      </section>
+
+      {% if state != "draft_ready" %}
+      <section class="sv-card ol-action" id="ol-assign" aria-labelledby="ol-assign-h">
+        <h2 id="ol-assign-h">{% icon "users" 16 "2.2" %} {% if job.assignee %}Reassign the preparation{% else %}Assign a staff member to prepare it{% endif %}</h2>
+        <p class="sv-note">They get a task and a notification, prepare the letter and send the draft back here. You then upload the signed copy.</p>
+        {% if staff %}
+        <form class="sv-form" method="post" action="{% url 'documents_register:official_letter_assign' doc.pk %}">{% csrf_token %}
+          <label class="ol-label" for="ol-assignee">Staff member</label>
+          <select id="ol-assignee" name="assignee" required data-pp-auto data-pp-noun="staff member"><option value="">Choose…</option>{% for u in staff %}<option value="{{ u.pk }}"{% if job.assignee_id == u.pk %} selected{% endif %}>{{ u.get_full_name|default:u.email }}</option>{% endfor %}</select>
+          <label class="ol-label" for="ol-due">Due date</label>
+          <input id="ol-due" type="date" name="due_date" min="{{ today|date:'Y-m-d' }}" value="{% if job.due_date and job.due_date >= today %}{{ job.due_date|date:'Y-m-d' }}{% else %}{{ default_due|date:'Y-m-d' }}{% endif %}" required>
+          <label class="ol-label" for="ol-note">Instructions <small>(optional)</small></label>
+          <textarea id="ol-note" name="note" rows="2" maxlength="500" placeholder="Anything they should know"></textarea>
+          <div class="btn-group"><button class="btn btn-subtle" type="submit">{% icon "users" 16 "2.2" %} {% if job.assignee %}Reassign{% else %}Assign{% endif %}</button></div>
+        </form>
+        {% else %}<p class="sv-note">No staff found in the handling department.</p>{% endif %}
+      </section>
+      {% endif %}
+      {% endif %}
+
+      {% if can_draft %}
+      <section class="sv-card ol-action" id="ol-draft" aria-labelledby="ol-draft-h">
+        <h2 id="ol-draft-h">{% icon "upload" 16 "2.2" %} Send your draft</h2>
+        <p class="sv-note">The Director reviews it and uploads the signed official copy{% if job.due_date %}. Due {{ job.due_date|date:"j M Y" }}{% endif %}.</p>
+        {% if job.assign_note %}<p class="ol-file__note">{{ job.assign_note }}</p>{% endif %}
+        <form class="sv-form" method="post" enctype="multipart/form-data" action="{% url 'documents_register:official_letter_draft' doc.pk %}">{% csrf_token %}
+          <label class="ol-file-input"><span>Draft (PDF or Word)</span><input type="file" name="file" accept=".pdf,.doc,.docx,.odt,.rtf" required></label>
+          <label class="ol-label" for="ol-draft-note">Note to the Director <small>(optional)</small></label>
+          <textarea id="ol-draft-note" name="note" rows="2" maxlength="1000"></textarea>
+          <div class="btn-group"><button class="btn btn-primary" type="submit">{% icon "arrow" 16 "2.2" %} Send draft for review</button></div>
+        </form>
+      </section>
+      {% endif %}
+
+      <section class="sv-card" aria-label="Document">
+        <h2>Document</h2>
+        <dl class="sv-kv ol-kv">
+          <dt>Institution</dt><dd>{{ doc.institution.name }} <span class="sv-mono">{{ doc.institution.code }}</span></dd>
+          <dt>Reference</dt><dd class="sv-mono">{{ doc.reference }}</dd>
+          <dt>Issued</dt><dd>{{ doc.issued_at|date:"j M Y" }}{% if doc.issued_by %} · {{ doc.issued_by.get_full_name|default:doc.issued_by.email }}{% endif %}</dd>
+          <dt>Target</dt><dd>{{ sla }} day{{ sla|pluralize }}</dd>
+          <dt>Verify</dt><dd><a href="{{ verify_url }}" target="_blank" rel="noopener">{% icon "qr" 13 "2.2" %} {{ doc.short_code }}</a></dd>
+        </dl>
+      </section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

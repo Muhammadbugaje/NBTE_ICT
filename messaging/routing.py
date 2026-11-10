@@ -310,8 +310,8 @@ def build_memo_chain(memo):
 # Approver resolution
 # ===========================================================================
 def _active_users():
-    from accounts.models import User
-    return User.objects.filter(is_active=True)
+    from accounts.selectors import staff_users
+    return staff_users()  # Phase 0 (M9): memo approvers are staff
 
 
 def _find_user_with_role_in_department(role_code, department):
@@ -319,10 +319,11 @@ def _find_user_with_role_in_department(role_code, department):
     (account department, or staff-record department)."""
     if not role_code or department is None:
         return None
+    import org
     from django.db.models import Q
     return (
         _active_users()
-        .filter(role__code=role_code)
+        .filter(org.role_q(role_code))
         .filter(Q(department=department) | Q(staff_profile__department=department))
         .order_by("pk")
         .first()
@@ -354,16 +355,19 @@ def _find_by_designation(department, min_rank, max_rank=None, exclude=None):
 
 
 def find_director(department):
-    """The department's director: Department.head, else a user with the
-    Director role in the department, else a staff member whose designation
-    is Director / Acting Director (nominal roll)."""
+    """The department's director (Phase B): the director seat
+    (org.director_of); while the seat is empty, Department.head, else a staff
+    member whose designation is Director / Acting Director (nominal roll)."""
     if department is None:
         return None
+    import org
+    director = org.director_of(department)
+    if director is not None:
+        return director
     head = getattr(department, "head", None)
     if head is not None and head.is_active:
         return head
-    return (_find_user_with_role_in_department("director", department)
-            or _find_by_designation(department, 90, 99))
+    return _find_by_designation(department, 90, 99)
 
 
 def find_deputy(department):
@@ -375,29 +379,39 @@ def find_line_head(sender):
     """The sender's line head: the head of their office/unit, else a Division
     Head or Office Head in their department (same office first)."""
     staff = _staff_of(sender)
-    office = staff.office if staff is not None and staff.office_id else None
-    # Office.head is a staff record; the approver is that person's account.
-    head_user = office.head.user if office is not None and office.head_id and office.head.user_id else None
+    # v2.2: offices are units in the Department list; a unit (not a full
+    # department) with a named head routes to that head first.
+    unit = staff.department if staff is not None and staff.department_id else None
+    office = unit if unit is not None and unit.kind != "department" else None
+    head_user = office.head if office is not None and office.head_id else None
+    if head_user is None and staff is not None and staff.office_id:
+        # A legacy Office row not yet merged into a unit still routes to its head.
+        legacy = staff.office
+        if legacy.head_id and legacy.head.user_id and not getattr(legacy, "merged_into_id", None):
+            head_user = legacy.head.user
     if head_user is not None and head_user.is_active and head_user.pk != getattr(sender, "pk", None):
         return head_user
+    # Phase B (B7): the head of the sender's division comes next.
+    division = staff.division if staff is not None and staff.division_id else None
+    if division is not None and division.is_active and division.head_id \
+            and division.head.is_active and division.head_id != getattr(sender, "pk", None):
+        return division.head
     dept = sender_department(sender)
     if dept is None:
         return None
     from django.db.models import Q
+    import org
     qs = (_active_users()
-          .filter(Q(role__code="division-head") | Q(role__code__startswith="office-head"))
+          .filter(org.role_q("division-head", prefix="office-head") | Q(headed_divisions__department=dept))
           .filter(Q(department=dept) | Q(staff_profile__department=dept)))
-    if office is not None:
-        same = qs.filter(staff_profile__office=office).order_by("pk").first()
-        if same is not None:
-            return same
     return qs.order_by("-role__rank", "pk").first()
 
 
 def find_es():
+    import org
     from django.db.models import Q
     return (_active_users()
-            .filter(Q(role__code="executive-secretary")
+            .filter(org.role_q("executive-secretary")
                     | Q(staff_profile__designation__rank__gte=100, staff_profile__is_deleted=False))
             .order_by("-role__rank", "pk")
             .first())
@@ -439,7 +453,8 @@ def resolve_memo_approver(step, memo):
         scope = (step.scope or "requester").strip().lower()
         if scope == "es":
             # No department scope: anyone holding the role.
-            return (_active_users().filter(role__code=step.approver_role.code)
+            import org
+            return (_active_users().filter(org.role_q(step.approver_role.code))
                     .order_by("pk").first())
         if scope == "requester":
             dept = sender_dept
@@ -618,7 +633,12 @@ def resolve_memo_audience(memo):
     from django.contrib.auth import get_user_model
     User = get_user_model()
 
-    base = User.objects.filter(is_active=True)
+    from accounts.selectors import staff_users
+
+    if getattr(memo, "kind", "internal") == "external" or memo.visibility == "no_staff":
+        return User.objects.none()
+
+    base = staff_users()  # Phase 0 (M9): internal memos never reach external users
 
     if memo.sender_id:
         base = base.exclude(pk=memo.sender_id)
@@ -633,8 +653,9 @@ def resolve_memo_audience(memo):
 
     if memo.visibility == memo.ALL_DIRECTORS:
         from django.db.models import Q
+        import org
         return base.filter(
-            Q(role__code="director")
+            Q(directs__isnull=False) | org.role_q("director")
             | Q(staff_profile__designation__rank__gte=90, staff_profile__designation__rank__lt=100,
                 staff_profile__is_deleted=False)
             | Q(headed_departments__isnull=False)
@@ -656,7 +677,100 @@ def resolve_memo_audience(memo):
             pk__in=memo.recipients.values_list("pk", flat=True),
         ).distinct()
 
+    # v2.1 Phase E (M6): staff picked by department, grade range, designation, role.
+    if memo.visibility == memo.STAFF_FILTER:
+        from .memo_audience import staff_matching
+        return staff_matching(memo.staff_filter or {}, exclude=memo.sender_id)
+
+    # v2.1 Phase E (M1): an external memo reaches institutions only.
     return User.objects.none()
+
+
+# ===========================================================================
+# External memos (v2.1 Phase E, M2/M3)
+# ===========================================================================
+EXTERNAL_ROUTE_CODE = "external-memo-es"
+
+
+def external_route():
+    """The route every external / general memo not sent by the ES walks: one
+    Executive Secretary step that always runs. Re-created if someone removed
+    the ES step (the ES gate is not optional)."""
+    from .models import MemoRoute, MemoRouteStep
+
+    route, _ = MemoRoute.objects.get_or_create(
+        code=EXTERNAL_ROUTE_CODE,
+        defaults={"name": "External memo: Executive Secretary approval",
+                  "description": "Memos to institutions leave NBTE only with the Executive Secretary's "
+                                 "approval (v2.1 M3). Used automatically; not matched by rules."},
+    )
+    if not route.is_active:
+        route.is_active = True
+        route.save(update_fields=["is_active", "updated_at"])
+    if not route.steps.filter(approver_kind=MemoRouteStep.APPROVER_ES).exists():
+        pos = (route.steps.order_by("-position").values_list("position", flat=True).first() or 0) + 1
+        MemoRouteStep.objects.create(
+            route=route, position=pos, name="Executive Secretary approval",
+            approver_kind=MemoRouteStep.APPROVER_ES, scope="es", is_optional=False, is_hierarchical=False,
+            instructions="This memo goes to institutions on NBTE's letterhead with your signature. "
+                         "Approve to send it, return it for changes, or reject it.")
+    return route
+
+
+def _is_es_gate(memo, step):
+    return bool(memo.is_outbound and step is not None
+                and step.approver_kind == step.APPROVER_ES)
+
+
+def _deliver_to_institutions(memo, actor, now):
+    """MemoInstitutionRecipient rows, a portal notification for each of the
+    institution's portal users and an e-mail (console in dev). Returns the
+    number of institutions."""
+    from institutions.models import InstitutionUser
+
+    from .memo_audience import memo_institutions
+    from .models import MemoInstitutionRecipient
+
+    institutions = list(memo_institutions(memo))
+    for inst in institutions:
+        MemoInstitutionRecipient.objects.get_or_create(memo=memo, institution=inst,
+                                                       defaults={"delivered_at": now})
+    if not institutions:
+        return 0
+    from django.urls import NoReverseMatch, reverse
+    try:
+        url = reverse("qa_portal:memo", args=[memo.pk], urlconf="qa_core.portal_urls")
+    except NoReverseMatch:  # pragma: no cover
+        url = ""
+    title = f"New memo from NBTE — {memo.reference}"
+    links = (InstitutionUser.unscoped.filter(institution__in=institutions, user__is_active=True)
+             .select_related("user"))
+    emails = []
+    for link in links:
+        try:
+            notify(recipient=link.user, title=title, body=memo.subject, url=url,
+                   category=Notification.MESSAGE,
+                   level=(Notification.WARNING if memo.priority in (memo.HIGH, memo.URGENT)
+                          else Notification.INFO),
+                   actor=actor or memo.sender,
+                   metadata={"memo_id": memo.pk, "reference": memo.reference, "institution": link.institution_id})
+        except Exception:
+            logger.exception("Memo portal notify failed for user %s", link.user_id)
+        if link.user.email:
+            emails.append(link.user.email)
+    if emails:
+        try:
+            from django.core.mail import send_mail
+            from django.conf import settings as dj_settings
+            body = (f"NBTE has sent your institution a memo: {memo.subject}\n\n"
+                    f"Reference: {memo.reference}\nRead it and download the signed letter in the "
+                    f"Quality Assurance Portal under Memos.")
+            for addr in sorted(set(emails)):
+                send_mail(title, body, getattr(dj_settings, "DEFAULT_FROM_EMAIL", None), [addr],
+                          fail_silently=True)
+        except Exception:
+            logger.exception("Memo e-mail to institutions failed for %s", memo.reference)
+    return len(institutions)
 
 
 # ===========================================================================
@@ -668,6 +782,23 @@ def start_chain(memo, *, actor=None):
     first actionable step. Publishes immediately if no route or chain
     is empty after skips.
     """
+    if memo.is_outbound:
+        # v2.1 Phase E (M2, M3): only the ES sends a memo to institutions.
+        # The ES's own memo goes straight out, signed "From the Executive
+        # Secretary"; anyone else's waits for the ES ("Approved by ...").
+        from .memos import can_send_external_memo
+        if can_send_external_memo(memo.sender):
+            from documents.signature import require_signature_for_approval
+
+            require_signature_for_approval(memo.sender)
+            memo.es_signatory = memo.sender
+            memo.es_signed_at = timezone.now()
+            memo.route = None
+            memo.save(update_fields=["es_signatory", "es_signed_at", "route", "updated_at"])
+            return publish_memo(memo, actor=actor or memo.sender)
+        memo.route = external_route()
+        memo.save(update_fields=["route", "updated_at"])
+
     if memo.route_id is None:
         memo.route = route_for_memo(memo)
         if memo.route_id is not None:
@@ -876,6 +1007,14 @@ def _check_actor(memo, step, actor):
     resolved = resolve_memo_approver(step, memo)
     if resolved is not None and resolved.pk == actor.pk:
         return ""
+    if _is_es_gate(memo, step):
+        # v2.1 M2: nobody approves a memo to institutions for the ES - not
+        # even an administrator. A delegated holder of
+        # messaging.send_external_memo may (acting ES).
+        from .memos import can_send_external_memo
+        if can_send_external_memo(actor):
+            return "Approved by the acting Executive Secretary."
+        raise PermissionDenied("Only the Executive Secretary approves a memo to institutions.")
     if actor.is_superuser:
         if resolved is None:
             return "Approved by an administrator because nobody holds this step."
@@ -892,6 +1031,11 @@ def approve_step(memo, actor, comment=""):
     if step is None:
         raise ValidationError("This memo is not awaiting an approval.")
     override_note = _check_actor(memo, step, actor)
+    # v2.1 X23 (owner decision): a Director (or above) approves a memo - which
+    # carries their signature - only once their signature is on file.
+    from documents.signature import require_signature_for_approval
+
+    require_signature_for_approval(actor)
 
     now = timezone.now()
     duration = 0
@@ -910,6 +1054,11 @@ def approve_step(memo, actor, comment=""):
 
     _log(memo, "approved",
          actor=actor, message=f"Approved step '{step.name}'.")
+
+    if _is_es_gate(memo, step):
+        memo.es_signatory = actor
+        memo.es_signed_at = now
+        memo.save(update_fields=["es_signatory", "es_signed_at", "updated_at"])
 
     # Find where we are in the chain and advance past it.
     steps = build_memo_chain(memo)
@@ -1024,6 +1173,11 @@ def publish_memo(memo, *, actor=None):
     if memo.status == memo.PUBLISHED:
         return memo
 
+    if memo.is_outbound and not memo.es_signatory_id:
+        # v2.1 M2: nothing leaves NBTE without the Executive Secretary.
+        raise PermissionDenied("A memo to institutions is published only by or with the approval "
+                               "of the Executive Secretary.")
+
     now = timezone.now()
     memo.status = memo.PUBLISHED
     memo.published_at = now
@@ -1069,9 +1223,12 @@ def publish_memo(memo, *, actor=None):
         except Exception:
             logger.exception("Memo notify failed for user %s", user.pk)
 
+    n_inst = _deliver_to_institutions(memo, actor, now) if memo.is_outbound else 0
+
     _log(memo, "published",
          actor=actor,
-         message=f"Delivered to {len(audience)} recipient(s).")
+         message=(f"Delivered to {len(audience)} recipient(s)"
+                  + (f" and {n_inst} institution(s)." if memo.is_outbound else ".")))
     return memo
 
 
@@ -1127,6 +1284,9 @@ def can_act_on_memo(memo, user, *, admin_override=True):
     actor = resolve_memo_approver(step, memo)
     if actor is not None and actor.pk == user.pk:
         return True
+    if _is_es_gate(memo, step):
+        from .memos import can_send_external_memo
+        return can_send_external_memo(user)
     return bool(admin_override and user.is_superuser)
 
 

@@ -1,0 +1,35 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Request an institution change · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page qa-ob">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow"><a href="{% url 'qa_portal:change_requests' %}">Change requests</a> · NBTE approval</span>
+    <h1 data-qa-focus>Request an institution change</h1>
+    <p>Only the Chief Executive can send a request. NBTE leadership will see it, assign an ICT reviewer, and notify you of the decision. No changes are made until approval.</p>
+  </header>
+  <section class="qa-card qa-ob-card">
+    <form method="post" class="qa-card__body qa-stack" novalidate>
+      {% csrf_token %}
+      {% include "qa_core/partials/_form_errors.html" %}
+      {{ form.change_type.as_hidden }}
+      {% if selected_type == "profile" %}
+        <h2>Proposed institution profile</h2>
+        {% include "qa_core/partials/_form_errors.html" with form=profile_form %}
+        {% for field in profile_form %}{% include "qa_core/partials/_field.html" %}{% endfor %}
+      {% elif selected_type == "management" %}
+        {% for field in form %}{% if field.name == "management_role" or field.name == "title" or field.name == "full_name" or field.name == "email" or field.name == "phone" %}{% include "qa_core/partials/_field.html" %}{% endif %}{% endfor %}
+      {% elif selected_type == "user_invite" %}
+        {% for field in form %}{% if field.name == "first_name" or field.name == "last_name" or field.name == "email" or field.name == "role" or field.name == "job_title" or field.name == "institution_department" or field.name == "grade_level" %}{% include "qa_core/partials/_field.html" %}{% endif %}{% endfor %}
+      {% elif selected_type == "user_remove" %}
+        {% include "qa_core/partials/_field.html" with field=form.membership_id %}
+      {% endif %}
+      {% include "qa_core/partials/_field.html" with field=form.reason %}
+      <div class="btn-group">
+        <button class="btn btn-primary" type="submit">{% icon "send" 16 %} Send to NBTE</button>
+        <a class="btn btn-subtle" href="{% url 'qa_portal:change_requests' %}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -1,57 +1,89 @@
 {% load qa_tags %}
+<div class="c3-page" data-qa-live-url="{% url 'qa_case:live' case.pk %}" data-qa-live-target="#qa-panel" data-qa-live-label="{{ case.reference }}">
 <nav class="qa-crumbs" aria-label="Breadcrumb">
   <a href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">Case Board</a>
   <span aria-hidden="true">/</span><span aria-current="page">{{ case.reference }}</span>
 </nav>
 
-<header class="qa-inst-head">
-  <span class="qa-inst-head__code" aria-hidden="true">{{ inst.code }}</span>
-  <div>
-    <span class="qa-eyebrow">SOP-03 · {{ case.qa_request.qa_type.name|default:"QA case" }}</span>
+<header class="qa-hero c3-hero">
+  <div class="c3-hero__id">
+    <span class="qa-eyebrow">{% icon "layers" 14 "2.4" %} SOP-03 · {{ case.qa_request.qa_type.name|default:"QA case" }}</span>
     <h1 data-qa-focus>{{ inst.name }}</h1>
-    <div class="qa-inst-head__meta">
-      {% for s in current %}<span class="qa-chip qa-tone-pending">{% if s.sop_stage_no %}{{ s.sop_stage_no }} · {% endif %}{{ s.label }}</span>{% empty %}<span class="qa-chip">{% if started %}Closed{% else %}Not started{% endif %}</span>{% endfor %}
+    <div class="c3-hero__meta">
+      <span class="c3-code" title="Institution code">{{ inst.code }}</span>
       <span class="qa-mono">{{ case.reference }}</span>
-      <span>{% icon "building" 14 %} {{ case.owning_department.name|default:"—" }}</span>
+      <span>{% icon "building" 14 %} {{ case.owning_department.name|default:"No owning department" }}</span>
       <span>{% icon "layers" 14 %} {{ case.programme_count }} programme{{ case.programme_count|pluralize }}</span>
       {% if case.qa_request.is_joint_qa %}<span class="qa-chip qa-tone-info" title="A programme on this case is regulated by {% for b in case.qa_request.joint_bodies.all %}{{ b.name }}{% if not forloop.last %}, {% endif %}{% endfor %}">Joint QA</span>{% endif %}
       {% if case.needs_reassignment %}<span class="qa-chip qa-tone-warn">Needs reassignment</span>{% endif %}
     </div>
+    {% if viewer_roles %}<p class="c3-you">{% icon "user" 14 "2.4" %} You are on this case as <strong>{{ viewer_roles|join:" · " }}</strong></p>{% endif %}
+    <div class="qa-hero__actions">
+      {% with a=my_turn.0 %}{% if a %}
+        {% if a.tab != tab and tab != "overview" %}<a class="btn btn-primary" href="?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-get="{% url 'qa_case:detail' case.pk %}?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-target="#qa-panel" hx-push-url="true">{% icon "arrow" 16 "2.4" %} Go to your step</a>
+        {% else %}<a class="btn btn-primary" href="#act-{{ a.stage.code }}">{% icon "arrow" 16 "2.4" %} Go to your step</a>{% endif %}
+      {% endif %}{% endwith %}
+      <a class="btn btn-subtle" href="{% url 'qa_inst:detail' inst.code %}">{% icon "building" 16 %} Institution</a>
+      <a class="btn btn-subtle" href="{% url 'qa_case:summary_pdf' case.pk %}" download>{% icon "download" 16 %} Summary PDF</a>
+    </div>
   </div>
-  <div class="qa-inst-head__tools"><a class="btn btn-subtle" href="{% url 'qa_case:summary_pdf' case.pk %}" download>{% icon "download" 16 %} Case summary (PDF)</a></div>
+  <div class="qa-hero__stats c3-hero__stats" aria-label="Case at a glance">
+    <div class="qa-stat"><strong>{% if progress.current %}{{ progress.current.0.no }}<small>/{{ progress.last_no }}</small>{% elif started and case.completed_at %}{% icon "check" 22 "3" %}{% else %}—{% endif %}</strong><span>{% if progress.current %}Stage now{% elif started and case.completed_at %}Complete{% else %}Not started{% endif %}</span></div>
+    <div class="qa-stat"><strong>{{ progress.done }}<small>/{{ progress.total }}</small></strong><span>Stages done</span></div>
+    {% with a=actions.0 %}{% if a and a.link and a.link.due_at %}<div class="qa-stat{% if a.overdue %} qa-stat--danger{% endif %}"><strong>{% if a.overdue %}Late{% else %}{{ a.link.due_at|date:"j M" }}{% endif %}</strong><span>{% if a.overdue %}Overdue {{ a.link.due_at|timesince }}{% else %}Stage due{% endif %}</span></div>{% endif %}{% endwith %}
+  </div>
 </header>
 
 {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
 {% if monitor %}<div class="qa-readonly-banner" role="status">{% icon "eye" 16 %} Read-only: the ICT monitor can see this case and its tasks but cannot act on it (R-13).</div>{% endif %}
 
 {% if not started %}
-  <section class="qa-card"><div class="qa-card__body qa-stack">
-    {% include "qa_core/partials/_callout.html" with title="SOP-03 has not started" message="This case was opened before the internal workflow existed. Starting it gives the owning department's Director the first task (choose the desk officer)." %}
-    {% if can_start %}<form method="post" action="{% url 'qa_case:start' case.pk %}" hx-post="{% url 'qa_case:start' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "arrow" 16 %} Start SOP-03</button></form>{% endif %}
-  </div></section>
+  <section class="c3-sec c3-start" aria-labelledby="c3-start-h">
+    <header class="c3-sec__head"><span class="c3-sec__num c3-sec__num--key">{% icon "flag" 14 "2.4" %}</span>
+      <div><h2 id="c3-start-h">SOP-03 has not started</h2><p>This case was opened before the internal workflow existed. Starting it gives the owning department's Director the first task: choosing the desk officer.</p></div></header>
+    {% if can_start %}<form method="post" action="{% url 'qa_case:start' case.pk %}" hx-post="{% url 'qa_case:start' case.pk %}" hx-target="#qa-panel" data-qa-stage-pass="start">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "arrow" 16 %} Start SOP-03</button></form>{% endif %}
+  </section>
 {% else %}
-  <section class="qa-card" aria-label="SOP-03 progress"><div class="qa-card__body">
-    {% for st in stepper %}{% if st.state == "current" %}{% with last=stepper|last %}<p class="qa-stepper__summary">Stage {{ st.no }} of {{ last.no }} · <strong>{{ st.label }}</strong></p>{% endwith %}{% endif %}{% endfor %}
-    <ol class="qa-stepper">{% for st in stepper %}<li class="is-{{ st.state }}"{% if st.state == "current" %} aria-current="step"{% endif %}><span class="qa-stepper__dot">{% if st.state == "done" %}✓{% else %}{{ st.no }}{% endif %}</span><span class="qa-stepper__label">{{ st.label }}</span></li>{% endfor %}</ol>
-  </div></section>
-  {% include "accreditation/case/_stage_actions.html" %}
+  {% include "accreditation/case/_progress.html" %}
+  {% for a in my_turn %}{% if a.tab != tab and tab != "overview" %}
+  <div class="c3-turn" role="status">
+    <span class="c3-turn__no" aria-hidden="true">{{ a.stage.sop_stage_no|default:"0" }}</span>
+    <div class="c3-turn__text"><span class="c3-turn__kicker">Your turn{% if a.since %} · waiting {{ a.since }}{% endif %}</span><strong>{{ a.stage.label }}</strong><span>{{ a.guide.what }}</span></div>
+    <a class="btn btn-primary" href="?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-get="{% url 'qa_case:detail' case.pk %}?tab={{ a.tab }}&stage={{ a.stage.code }}" hx-target="#qa-panel" hx-push-url="true">Open {{ a.tab_label }} {% icon "arrow" 14 "2.4" %}</a>
+  </div>
+  {% endif %}{% endfor %}
+  {% if capacity_task_for_user %}
+  <div class="c3-turn c3-turn--capacity" role="status">
+    <span class="c3-turn__no" aria-hidden="true">12</span>
+    <div class="c3-turn__text"><span class="c3-turn__kicker">Your assigned work · Capacity</span><strong>Complete the capacity assessments</strong><span>Stage 13 cannot move to CQAC until all five resource sections are assessed and the Director confirms each programme.</span></div>
+    <a class="btn btn-primary" href="?tab=capacity&stage=post_visit_recommendation" hx-get="{% url 'qa_case:detail' case.pk %}?tab=capacity&stage=post_visit_recommendation" hx-target="#qa-panel" hx-push-url="true">Open Capacity {% icon "arrow" 14 "2.4" %}</a>
+  </div>
+  {% endif %}
 {% endif %}
 
-<nav class="qa-tabs qa-case-tabs" aria-label="Case sections">
+<nav class="c3-tabs" aria-label="Case sections">
   {% for key, label in tabs %}
-    <a href="?tab={{ key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-get="{% url 'qa_case:detail' case.pk %}?tab={{ key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-target="#qa-panel" hx-push-url="true" class="{% if tab == key %}is-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}>{{ label }}{% for a in actions %}{% if a.can and a.tab == key and key != "overview" %}<span class="qa-dot" aria-label="(your stage)"></span>{% endif %}{% endfor %}</a>
+    <a href="?tab={{ key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-get="{% url 'qa_case:detail' case.pk %}?tab={{ key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-target="#qa-panel" hx-push-url="true" class="{% if tab == key %}is-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}>{{ label }}{% for a in my_turn %}{% if a.tab == key and key != "overview" %}<span class="c3-tabs__dot" title="Your step is here"><span class="sr-only">(your step)</span></span>{% endif %}{% endfor %}</a>
   {% endfor %}
 </nav>
-<div class="qa-stack">
-  {% if tab == "cost" %}{% include "accreditation/case/_tab_cost.html" %}
-  {% elif tab == "personnel" %}{% include "accreditation/case/_tab_personnel.html" %}
-  {% elif tab == "visit" %}{% include "accreditation/case/_tab_visit.html" %}
-  {% elif tab == "funds" %}{% include "accreditation/case/_tab_funds.html" %}
-  {% elif tab == "reports" %}{% include "accreditation/case/_tab_reports.html" %}
-  {% elif tab == "capacity" %}{% include "accreditation/case/_tab_capacity.html" %}
-  {% elif tab == "decisions" %}{% include "accreditation/case/_tab_decisions.html" %}
-  {% elif tab == "letters" %}{% include "accreditation/case/_tab_letters.html" %}
-  {% elif tab == "timeline" %}{% include "accreditation/case/_tab_timeline.html" %}
-  {% elif tab == "tasks" %}{% include "accreditation/case/_tab_tasks.html" %}
-  {% else %}{% include "accreditation/case/_tab_overview.html" %}{% endif %}
+
+<div class="c3-body{% if tab == 'decisions' %} c3-body--decisions{% endif %}">
+  {% if tab == "overview" %}{% include "accreditation/case/_tab_overview.html" %}
+  {% else %}
+    {% if tab == "cost" %}{% include "accreditation/case/_tab_cost.html" %}
+    {% elif tab == "personnel" %}{% include "accreditation/case/_tab_personnel.html" %}
+    {% elif tab == "visit" %}{% include "accreditation/case/_tab_visit.html" %}
+    {% elif tab == "funds" %}{% include "accreditation/case/_tab_funds.html" %}
+    {% elif tab == "reports" %}{% include "accreditation/case/_tab_reports.html" %}
+    {% elif tab == "capacity" %}{% include "accreditation/case/_tab_capacity.html" %}
+    {% elif tab == "decisions" %}{% include "accreditation/case/_tab_decisions.html" %}
+    {% elif tab == "letters" %}{% include "accreditation/case/_tab_letters.html" %}
+    {% elif tab == "timeline" %}{% include "accreditation/case/_tab_timeline.html" %}
+    {% elif tab == "tasks" %}{% include "accreditation/case/_tab_tasks.html" %}{% endif %}
+    {% if started %}{% with stage_tab=tab %}{% include "accreditation/case/_stage_actions.html" %}{% endwith %}{% endif %}
+  {% endif %}
+  {% if can_send_back %}
+  <p class="c3-footnote">{% icon "rotate" 14 %} Need Audit to look at the cost again? Use <a href="{% url 'qa_inst:action' inst.code 'accreditation.send_back_to_audit' %}">Send back to Audit</a> — a two-officer action that returns the case to stage 5 with your remark.</p>
+  {% endif %}
+</div>
 </div>

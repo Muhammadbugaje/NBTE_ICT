@@ -39,8 +39,8 @@ class InstitutionView(APIView):
 
         inst = svc.full_institution(request)
         if not pv._profile_editable(request, inst):
-            raise Forbidden("NBTE keeps this record. To change it, contact NBTE — changes are confirmed by two "
-                            "officers.")
+            raise Forbidden("The profile is locked after application submission. The Chief Executive must submit an "
+                            "NBTE change request.")
         sent = body(sp.InstitutionUpdateSerializer, request)
         data = {k: ("" if v is None else v) for k, v in pv._profile_initial(inst).items()}
         data.update({k: ("" if v is None else v) for k, v in sent.items()})
@@ -81,6 +81,8 @@ class InstitutionUsersView(APIView):
         inst = svc.full_institution(request)
         if not pv._can_manage_users(request):
             raise Forbidden("Only your institution administrator can invite users.")
+        if services.institution_team_locked(inst):
+            raise Forbidden("Institution users are locked after application submission. Submit a change request.")
         sent = body(sp.InviteUserSerializer, request)
         form = pv.InviteUserForm({k: ("" if v is None else v) for k, v in sent.items()})
         if not form.is_valid():
@@ -250,6 +252,24 @@ class ApplicationSubmitView(APIView):
         return _application(request)
 
 
+class ApplicationProgrammesSubmitView(APIView):
+    @extend_schema(operation_id="portal_application_programmes_submit", tags=["portal: application"],
+                   request=None, responses={200: sp.ApplicationSerializer, **ERR_400_404})
+    def post(self, request):
+        """Q1: the Chief Executive submits the programme list to NBTE for clearance (X12: CE only)."""
+        from accreditation import onboarding_programmes as op
+        from accreditation import portal_views as apv
+
+        inst = svc.full_institution(request)
+        app = apv._app(request, inst)
+        if app is None:
+            raise Http404
+        with website_rules():
+            op.submit_programmes(app, user=request.user,
+                                 impersonating=bool(getattr(request, "is_impersonating", False)))
+        return _application(request)
+
+
 def _selecting(request, inst):
     from accreditation import portal_views as apv
 
@@ -275,14 +295,18 @@ class ApplicationProgrammesView(APIView):
         if not form.is_valid():
             form_error(form)
         d = form.cleaned_data
-        if Programme.objects.for_user(request.user).filter(institution=inst, name__iexact=d["name"].strip(),
-                                                           level=d["level"]).exists():
-            from rest_framework import serializers
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from rest_framework import serializers
 
-            raise serializers.ValidationError({"name": ["This programme is already on your list."]})
-        with website_rules():
-            inst_services.add_proposed_programme(inst, d["name"].strip(), d["level"], d.get("category"),
-                                                 application=app, user=request.user, streams=d["streams"])
+        from institutions.programme_master import add_programme
+
+        try:
+            with website_rules():
+                add_programme(inst, user=request.user, master=d.get("master"), typed_name=d.get("name") or "",
+                              level=d.get("level"), category=d.get("category"), body=d.get("body"),
+                              application=app, streams=d["streams"])
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"name": exc.messages})
         response = _application(request)
         response.status_code = status.HTTP_201_CREATED
         return response
@@ -299,6 +323,11 @@ class ApplicationProgrammeView(APIView):
         _selecting(request, inst)
         if programme.status != "proposed":
             raise Forbidden("Only a proposed programme can be changed here.")
+        from accreditation import onboarding_programmes as op
+        from accreditation import portal_views as apv
+
+        if op.is_locked(apv._app(request, inst), programme):
+            raise Forbidden("NBTE has cleared this programme; it can no longer be changed.")
         return programme
 
     @extend_schema(operation_id="portal_application_programme_streams", tags=["portal: application"],

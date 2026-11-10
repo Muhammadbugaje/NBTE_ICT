@@ -24,8 +24,58 @@ def _cfg(key, default):
         return default
 
 
+def _on(key, default="1"):
+    return str(_cfg(key, default)).strip().lower() in ("1", "true", "yes", "on")
+
+
+def email_enabled(event):
+    """I6: ``tickets.email.enabled`` (master) AND ``tickets.email.<event>``.
+    In-app notifications are never affected."""
+    if not _on("tickets.email.enabled"):
+        return False
+    if event == "resolved" and not _on("tickets.email.resolution_enabled"):
+        return False  # legacy switch kept working
+    return _on(f"tickets.email.{event}")
+
+
 def _enabled():
-    return str(_cfg("tickets.email.resolution_enabled", "1")) in ("1", "true", "True")
+    return email_enabled("resolved")
+
+
+EVENT_TEXT = {
+    "created": ("New ticket {ref}", "A new ticket was raised for your department: {subject} ({priority})."),
+    "assigned": ("Assigned to you: {ref}", "You have been assigned ticket {ref}: {subject}."),
+    "rating_reminder": ("Please rate {ref}", "Your ticket {ref} ({subject}) was resolved. "
+                        "Please rate the service from 1 to 5 stars."),
+    "funds": ("Funds decision on {ref}", "Finance and the Executive Secretary have decided on the funds "
+              "request for {ref} ({subject}). Open the ticket for the details."),
+}
+
+
+def send_event_email(ticket, event, recipient):
+    """Plain e-mail for one ticket event. Never raises; returns True when sent."""
+    if not email_enabled(event) or event not in EVENT_TEXT:
+        return False
+    to = getattr(recipient, "email", "") or ""
+    if not to:
+        return False
+    title, line = EVENT_TEXT[event]
+    fmt = {"ref": ticket.reference, "subject": ticket.subject, "priority": ticket.get_priority_display()}
+    prefix = _cfg("tickets.email.resolution_subject_prefix", "[NBTE ICT]")
+    site_url = getattr(settings, "SITE_URL", "") or ""
+    link = f"{site_url.rstrip('/')}/tickets/{ticket.pk}/" + ("#rate" if event == "rating_reminder" else "")
+    name = recipient.get_full_name() or to
+    text = (f"Dear {name},\n\n{line.format(**fmt)}\n\nOpen the ticket: {link}\n\n"
+            f"{_cfg('tickets.email.resolution_signoff', 'NBTE')}")
+    try:
+        send_email(subject=f"{prefix} {title.format(**fmt)}", to=to, text_body=text)
+    except EmailDeliveryError as exc:
+        logger.error("Ticket %s e-mail for %s not delivered: %s", event, ticket.reference, exc)
+        return False
+    except Exception:
+        logger.exception("Ticket %s e-mail for %s failed", event, ticket.reference)
+        return False
+    return True
 
 
 def _build_context(ticket):

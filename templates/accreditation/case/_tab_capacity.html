@@ -1,18 +1,59 @@
 {% load qa_tags %}
-<section class="qa-card" aria-labelledby="cap-h">
-  <header class="qa-card__head"><div><h2 id="cap-h">Capacity and resources</h2><p>How many streams each programme's classrooms, laboratories, library and staff can carry (Spec §7). Inputs start from the submitted SSQ; officers check and adjust them, then run the assessment. Each run is kept with the constants and formulas in effect at the time, so changing a setting later never changes a stored result.</p></div></header>
+<section class="qa-card qa-cap-intro" aria-labelledby="cap-h">
+  <header class="qa-card__head">
+    <div>
+      <span class="qa-eyebrow">Capacity review · before CQAC</span>
+      <h2 class="qa-cap__title" id="cap-h">Capacity and resources</h2>
+      <p>Capacity work starts alongside the post-visit report, as soon as the visit is recorded. The assigned desk officer checks and records the verified resources for every programme; the owning department Director then confirms each assessment at Stage 13 before the case can proceed to CQAC.</p>
+    </div>
+  </header>
+  <div class="qa-cap__workflow" aria-label="Capacity assessment and approval steps">
+    <div><span class="qa-cap__step">1</span><strong>Assess · assigned desk officer</strong><p>Complete this work while post-visit reports are being prepared. Check the submitted SSQ against visit evidence; verify and save all five resource sections.</p></div>
+    <div><span class="qa-cap__step">2</span><strong>Confirm · owning department Director</strong><p>Review the saved figures and results for each programme, then confirm the current assessment set.</p></div>
+    <div><span class="qa-cap__step">3</span><strong>Proceed · CQAC</strong><p>Stage 13 cannot move forward until every programme is assessed and Director-confirmed. Any shortfall remains visible to CQAC, the Chairman and ES.</p></div>
+  </div>
+  {% if capacity_assessor %}
+    <p class="qa-cap__assignee"><strong>Assigned assessor:</strong> {{ capacity_assessor|who }}{% if can_run_capacity %} · this assignment is in My Stage Work and a task notification is sent when it opens.{% endif %}</p>
+  {% else %}
+    <p class="qa-cap__assignee qa-cap__assignee--warning" role="status">No desk officer is assigned. Capacity work cannot be completed until the case assignment is corrected.</p>
+  {% endif %}
+  {% if capacity_missing %}
+    <p class="qa-cap__gate qa-cap__gate--pending" role="status"><strong>CQAC gate: not ready.</strong> Complete the missing assessments below. Inadequate results do not block review, but are clearly shown to the Director and decision panel.</p>
+  {% elif capacity_items %}
+    <p class="qa-cap__gate qa-cap__gate--ready" role="status"><strong>All capacity sections are assessed.</strong> The Director must confirm each programme's current assessment before Stage 13 can proceed.</p>
+  {% endif %}
+  {% if not capacity_stage_open %}
+    <p class="qa-cap__timing qa-muted">Assessment entry opens alongside the post-visit report after the visit is recorded. Director confirmation opens at Stage 13.</p>
+  {% endif %}
   {% if capacity_denied %}<div class="qa-card__body"><p class="qa-muted">You do not hold accreditation.view_capacity_assessment.</p></div>{% endif %}
 </section>
+
 {% for item in capacity_items %}
 <section class="qa-card qa-cap" aria-labelledby="cap-{{ item.row.pk }}">
-  <header class="qa-card__head"><div><h2 id="cap-{{ item.row.pk }}">{{ item.row.programme }}</h2>
-    <p>{{ item.row.requested_streams }} stream{{ item.row.requested_streams|pluralize }} asked for · {{ item.row.programme.approved_streams }} approved now{% if item.row.programme.category %} · {{ item.row.programme.category.name }} ({{ item.row.programme.category.students_per_stream }} students per stream){% endif %}</p></div>
-    {% if item.overall %}<span class="qa-chip {% if item.overall.adequate %}qa-tone-success{% else %}qa-tone-danger{% endif %}">{% if item.overall.adequate %}Adequate{% else %}Short: {{ item.overall.short|join:", " }}{% endif %} · {{ item.overall.supportable_streams }} stream{{ item.overall.supportable_streams|pluralize }} supportable ({{ item.overall.assessed }}/{{ item.overall.of }} assessed)</span>{% else %}<span class="qa-chip">Not assessed yet</span>{% endif %}</header>
+  <header class="qa-card__head qa-cap__programme-head">
+    <div>
+      <h2 class="qa-cap__title" id="cap-{{ item.row.pk }}">{{ item.row.programme }}</h2>
+      <p>{{ item.row.requested_streams }} stream{{ item.row.requested_streams|pluralize }} asked for · {{ item.row.programme.approved_streams }} approved now{% if item.row.programme.category %} · {{ item.row.programme.category.name }} ({{ item.row.programme.category.students_per_stream }} students per stream){% endif %}</p>
+    </div>
+    <div class="qa-cap__status">
+      <span class="qa-chip {% if item.assessed_count == item.required_count %}qa-tone-success{% else %}qa-tone-warn{% endif %}">{{ item.assessed_count }}/{{ item.required_count }} sections assessed</span>
+      {% if item.overall %}<span class="qa-chip {% if item.overall.adequate %}qa-tone-success{% else %}qa-tone-danger{% endif %}">{% if item.overall.adequate %}Adequate{% else %}Short: {{ item.overall.short|join:", " }}{% endif %} · {{ item.overall.supportable_streams }} stream{{ item.overall.supportable_streams|pluralize }} supportable</span>{% else %}<span class="qa-chip">Not assessed</span>{% endif %}
+      {% if item.review_current %}<span class="qa-chip qa-tone-success">Director confirmed</span>{% elif item.review %}<span class="qa-chip qa-tone-warn">Director review is stale</span>{% else %}<span class="qa-chip">Awaiting Director review</span>{% endif %}
+    </div>
+  </header>
+
   <div class="qa-cap__kinds">
   {% for k in item.kinds %}
-    <details class="qa-cap__kind"{% if not k.assessment %} open{% endif %}>
-      <summary><span class="qa-cap__kind-title">{{ k.label }}</span>
-        {% if k.assessment %}<span class="qa-chip {{ k.assessment.result.adequacy|tone }}">{{ k.assessment.result.adequacy|capfirst }}</span><span class="qa-small qa-muted">{{ k.assessment.result.supportable_streams }} supportable · {{ k.assessment.result.requested_streams }} asked{% if k.assessment.result.shortfall %} · short by {{ k.assessment.result.shortfall }}{% endif %} · v{{ k.assessment.version }}, {{ k.assessment.computed_at|date:"j M Y" }}</span>{% else %}<span class="qa-small qa-muted">Not run yet</span>{% endif %}</summary>
+    <details class="qa-cap__kind"{% if k.open_by_default %} open{% endif %}>
+      <summary>
+        <span class="qa-cap__summary-title">{{ k.label }}</span>
+        {% if k.assessment %}
+          <span class="qa-chip {{ k.assessment.result.adequacy|tone }}">{{ k.assessment.result.adequacy|capfirst }}</span>
+          <span class="qa-cap__summary-detail">{{ k.assessment.result.supportable_streams }} supportable of {{ k.assessment.result.requested_streams }} asked{% if k.assessment.result.shortfall %} · short by {{ k.assessment.result.shortfall }}{% endif %} · v{{ k.assessment.version }}, {{ k.assessment.computed_at|date:"j M Y" }}</span>
+        {% else %}
+          <span class="qa-chip qa-tone-warn">Required · not assessed</span>
+        {% endif %}
+      </summary>
       <div class="qa-cap__body">
         {% if k.assessment %}
           <dl class="qa-dl qa-cap__result">
@@ -27,22 +68,58 @@
         {% endif %}
         {% if can_run_capacity %}
         <form class="qa-stack qa-cap__form" method="post" action="{% url 'qa_case:capacity_run' case.pk item.row.pk k.kind %}" hx-post="{% url 'qa_case:capacity_run' case.pk item.row.pk k.kind %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="capacity">
-          <div class="qa-cap__fields">{% for f in k.fields %}<div class="qa-field"><label for="cf-{{ item.row.pk }}-{{ k.kind }}-{{ f.key }}">{{ f.label }}{% if f.help %} <span class="qa-muted">({{ f.help }})</span>{% endif %}</label><input class="input" type="number" inputmode="decimal" min="0" step="any" id="cf-{{ item.row.pk }}-{{ k.kind }}-{{ f.key }}" name="{{ f.key }}" value="{{ f.value }}"></div>{% endfor %}</div>
+          <div class="qa-cap__fields">{% for f in k.fields %}<div class="qa-field"><label for="cf-{{ item.row.pk }}-{{ k.kind }}-{{ f.key }}">{{ f.label }}</label>{% if f.help %}<small class="qa-cap__field-help">{{ f.help }}</small>{% endif %}<input class="input" type="number" inputmode="decimal" min="0" step="any" id="cf-{{ item.row.pk }}-{{ k.kind }}-{{ f.key }}" name="{{ f.key }}" value="{{ f.value }}"></div>{% endfor %}</div>
           {% if k.rooms_kind %}
-          <fieldset class="qa-cap__rooms"><legend>{% if k.kind == "classroom" %}Classrooms{% else %}Laboratories and workshops{% endif %} <span class="qa-muted">(one line per size; leave a line empty to ignore it)</span></legend>
+          <section class="qa-cap__rooms" aria-labelledby="cap-rooms-{{ item.row.pk }}-{{ k.kind }}">
+            <header class="qa-cap__rooms-head">
+              <h3 id="cap-rooms-{{ item.row.pk }}-{{ k.kind }}">{% if k.kind == "classroom" %}Classrooms{% else %}Laboratories and workshops{% endif %}</h3>
+              <p>Enter each distinct room size once. Add a row for every different room size.</p>
+            </header>
+            <div class="qa-cap__room-list" data-capacity-room-list>
             {% for r in k.rooms %}<div class="qa-cap__room">
-              <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-l">Name</label><input class="input" id="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-l" name="rooms-{{ forloop.counter0 }}-label" value="{{ r.label }}" maxlength="120"></div>
-              <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-s">{% if k.kind == "classroom" %}Seats{% else %}Places{% endif %}</label><input class="input" type="number" inputmode="numeric" min="0" id="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-s" name="rooms-{{ forloop.counter0 }}-seats" value="{{ r.seats }}"></div>
-              <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-c">Rooms</label><input class="input" type="number" inputmode="numeric" min="0" id="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-c" name="rooms-{{ forloop.counter0 }}-count" value="{{ r.count }}"></div>
+              <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-l">Room / laboratory name</label><input class="input" id="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-l" name="rooms-{{ forloop.counter0 }}-label" value="{{ r.label }}" maxlength="120"></div>
+              <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-s">{% if k.kind == "classroom" %}Seats per room{% else %}Places per room{% endif %}</label><input class="input" type="number" inputmode="numeric" min="0" id="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-s" name="rooms-{{ forloop.counter0 }}-seats" value="{{ r.seats }}"></div>
+              <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-c">Number of rooms</label><input class="input" type="number" inputmode="numeric" min="0" id="rm-{{ item.row.pk }}-{{ k.kind }}-{{ forloop.counter0 }}-c" name="rooms-{{ forloop.counter0 }}-count" value="{{ r.count }}"></div>
             </div>{% endfor %}
-          </fieldset>
+            </div>
+            <template data-capacity-room-template>
+              <div class="qa-cap__room">
+                <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-__row__-l">Room / laboratory name</label><input class="input" id="rm-{{ item.row.pk }}-{{ k.kind }}-__row__-l" name="rooms-__row__-label" maxlength="120"></div>
+                <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-__row__-s">{% if k.kind == "classroom" %}Seats per room{% else %}Places per room{% endif %}</label><input class="input" type="number" inputmode="numeric" min="0" id="rm-{{ item.row.pk }}-{{ k.kind }}-__row__-s" name="rooms-__row__-seats"></div>
+                <div class="qa-field"><label for="rm-{{ item.row.pk }}-{{ k.kind }}-__row__-c">Number of rooms</label><input class="input" type="number" inputmode="numeric" min="0" id="rm-{{ item.row.pk }}-{{ k.kind }}-__row__-c" name="rooms-__row__-count"></div>
+              </div>
+            </template>
+            <button class="btn btn-sm btn-subtle qa-cap__add-room" type="button" data-capacity-add-room{% if k.rooms|length >= 60 %} disabled{% endif %}>+ Add another room size</button>
+          </section>
           {% endif %}
-          <div class="qa-form-actions"><button class="btn btn-primary btn-sm" type="submit">{% icon "check" 14 %} {% if k.assessment %}Re-run{% else %}Run{% endif %} assessment</button></div>
+          <div class="qa-form-actions"><button class="btn btn-primary btn-sm" type="submit">{% icon "check" 14 %} {% if k.assessment %}Save updated assessment{% else %}Run assessment{% endif %}</button></div>
         </form>
         {% endif %}
       </div>
     </details>
   {% endfor %}
   </div>
+
+  {% if can_review_capacity %}
+    {% if item.assessed_count == item.required_count %}
+      {% if item.review_current %}
+        <div class="qa-cap__review-note" role="status"><strong>Confirmed by {{ item.review.reviewed_by|who:"the Director" }}</strong> · {{ item.review.reviewed_at|date:"j M Y, H:i" }}. If any assessment is rerun, this confirmation becomes stale and must be repeated.</div>
+      {% else %}
+        <form class="qa-cap__review" method="post" action="{% url 'qa_case:capacity_review' case.pk item.row.pk %}" hx-post="{% url 'qa_case:capacity_review' case.pk item.row.pk %}" hx-target="#qa-panel">
+          {% csrf_token %}<input type="hidden" name="tab" value="capacity">
+          <p>Review the five assessment results above before confirming. This records your sign-off of the current figures for this programme.</p>
+          <button class="btn btn-primary" type="submit">{% icon "check" 16 %} Confirm capacity review</button>
+        </form>
+      {% endif %}
+    {% else %}
+      <p class="qa-cap__review-note qa-cap__review-note--pending" role="status">Director confirmation is available when every resource section has a current assessment.</p>
+    {% endif %}
+  {% elif item.review_current %}
+    <p class="qa-cap__review-note" role="status"><strong>Director-confirmed:</strong> {{ item.review.reviewed_by|who:"the Director" }} · {{ item.review.reviewed_at|date:"j M Y, H:i" }}.</p>
+  {% elif item.review %}
+    <p class="qa-cap__review-note qa-cap__review-note--pending" role="status">The assessments changed after the Director's review. A new review is required before CQAC.</p>
+  {% endif %}
 </section>
+{% empty %}
+<section class="qa-card"><div class="qa-card__body"><p class="qa-muted">There are no active programmes to assess.</p></div></section>
 {% endfor %}

@@ -1,0 +1,20 @@
+{# v2.1 A1: history timeline. `milestones`; `page` = vertical layout for /history/. #}
+<ol class="history-tl{% if page %} history-tl--page{% endif %}">
+  {% for m in milestones %}
+    <li class="history-tl__item{% if m.is_current %} is-current{% endif %}">
+      <span class="history-tl__year">{{ m.year }}</span>
+      <article class="history-tl__card">
+        {% if page and m.image %}<img class="history-tl__img" src="{{ m.image.url }}" alt="" loading="lazy">{% endif %}
+        <h3>{{ m.title }}</h3>
+        {% if m.body %}<p>{% if page %}{{ m.body|linebreaksbr }}{% else %}{{ m.body|truncatechars:150 }}{% endif %}</p>{% endif %}
+        {% if m.led_by or m.is_placeholder %}
+          <p class="history-tl__led">
+            <span>Led by <b>{{ m.led_by|default:"—" }}</b></span>
+            {% if m.is_placeholder %}<span class="tag-confirm" title="NBTE has not yet confirmed this entry">to confirm</span>{% endif %}
+          </p>
+        {% endif %}
+        {% if not m.is_published %}<p class="history-tl__led"><span class="tag-confirm">hidden</span></p>{% endif %}
+      </article>
+    </li>
+  {% endfor %}
+</ol>

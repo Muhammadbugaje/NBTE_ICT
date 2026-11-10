@@ -96,7 +96,11 @@ urlpatterns = [
     # ---------------------------------------------------------------------
     # User management (Super Admin / HR / anyone with accounts.*_user perms)
     # ---------------------------------------------------------------------
-    path("users/",                 user_views.user_list,           name="user_list"),
+    path("users/",                 user_views.user_list,           name="user_list"),   # NBTE staff (default)
+    path("users/nbte/new/",        user_views.user_create,         name="user_create"),
+    path("users/institutions/",    user_views.user_list_institution, name="user_list_institution"),
+    path("users/institutions/new/", user_views.user_create_institution, name="user_create_institution"),
+    path("users/portal/",          user_views.user_list_external,  name="user_list_external"),
     path("users/<int:pk>/",        user_views.user_detail,         name="user_detail"),
     path("users/<int:pk>/reset/",  user_views.user_reset_password, name="user_reset_password"),
     path("users/<int:pk>/toggle/", user_views.user_toggle_active,  name="user_toggle_active"),

@@ -148,8 +148,9 @@ def build_revenue_history(months=12, now=None):
         return 0
     if PaymentObligation.unscoped.filter(formula_snapshot__demo_history=True).exists():
         return 0
+    from payments.services import finance_director
     director = (User.objects.filter(email__iexact="finance.director@demo.nbte.local").first()
-                or User.objects.filter(role__code="qa-finance-director", is_active=True).order_by("pk").first())
+                or finance_director())
     amounts = [1500000, 2000000, 2750000, 1000000, 4000000, 2000000, 3250000, 2500000, 5000000, 3000000,
                4500000, 6000000]
     made = 0

@@ -47,7 +47,7 @@ class RolePermissionBackend(ModelBackend):
         if user_obj.is_superuser:
             return self.get_all_permissions(user_obj, obj)
         s = permission_sources(user_obj)
-        return (s["role_groups"] | s["user_groups"]) - s["revokes"]
+        return (s["role_groups"] | s["user_groups"] | s.get("office_groups", set())) - s["revokes"]
 
     @staticmethod
     def _compute(user):

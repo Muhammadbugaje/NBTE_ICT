@@ -97,7 +97,17 @@ def bill_detail_payload(request, ob):
         bank = {"bank_name": snap.get("bank_name", ""), "account_name": snap.get("account_name", ""),
                 "account_number": snap.get("account_number", "")}
     exts = config.get("qa.payment.proof_extensions", ["pdf", "jpg", "jpeg", "png"]) or []
+    from payments import services as pay
+
     out.update({
+        "breakdown": [{"code": str(line.get("code", "")), "label": str(line.get("label", "")),
+                       "description": str(line.get("description", "") or ""), "kind": str(line.get("kind", "")),
+                       "amount": money(line["amount"])[0], "amount_display": money(line["amount"])[1]}
+                      for line in ob.breakdown],
+        "chosen_method": ob.chosen_method or "",
+        "methods": [{"code": c, "label": dict(ob.METHOD_CHOICES)[c]} for c in pay.available_methods(ob)]
+        if options["payable"] else [],
+        "gateway_verified": bool(options.get("gateway_verified")),
         "amount_in_words": ob.amount_in_words or "", "amount_paid": paid, "amount_paid_display": paid_display,
         "remita_rrr": ob.remita_rrr or "", "steps": _steps(ob),
         "rejected_reason": (rejected.final_reason or "") if rejected and ob.status == "rejected" else "",
@@ -127,7 +137,7 @@ def bill_detail_payload(request, ob):
                       "reference": a.provider_reference, "amount": money(a.amount)[0],
                       "amount_display": money(a.amount)[1], "status": a.status,
                       "status_label": a.get_status_display(), "created_at": a.created_at,
-                      "failure_reason": a.failure_reason or ""} for a in attempts],
+                      "failure_reason": a.failure_reason or ""} for a in pay.visible_attempts(ob, attempts)],
     })
     return out
 

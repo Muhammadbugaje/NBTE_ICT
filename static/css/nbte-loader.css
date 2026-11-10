@@ -1,0 +1,224 @@
+/* ==========================================================================
+   nbte-loader.css — the NBTE crest loader, on-brand spinners, busy buttons,
+   and the "Add to calendar" menu.
+
+   Bundled UNLAYERED at the end of nbte-core.bundle.css (core/css_bundles.py)
+   so it restyles the layered .spinner / .btn.is-busy primitives.
+
+   Markup: templates/partials/nbte_loader.html
+     <span class="nbte-loader [nbte-loader--sm|--lg]">
+       <span class="nbte-loader__mark">  halo · orbit · comet · crest (cog turns) </span>
+       <span class="nbte-loader__label">Loading…</span>
+     </span>
+   Used by: the page loader (partials/page_loader.html), NBTE.loadingOverlay
+   (htmx "please wait" overlay), and anywhere a full logo makes sense.
+   Small inline indicators keep .spinner (now a green→gold arc) and busy
+   buttons get the same arc with a gold "hinge" dot.
+   Reduced motion (OS or in-app setting): a still crest in a still ring.
+   ========================================================================== */
+
+/* ---- 1. The crest loader ------------------------------------------------- */
+.nbte-loader {
+  --nl-size: 76px;
+  --nl-ring: 3px;
+  --nl-green: var(--primary, #1f6b3e);
+  --nl-gold: var(--gold-400, #d69e2e);
+  display: inline-grid;
+  justify-items: center;
+  gap: var(--space-3, 12px);
+  color: var(--text-muted);
+}
+.nbte-loader--xs { --nl-size: 28px; --nl-ring: 2px; }
+.nbte-loader--sm { --nl-size: 44px; --nl-ring: 2.5px; }
+.nbte-loader--lg { --nl-size: 104px; --nl-ring: 3.5px; }
+
+.nbte-loader__mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--nl-size);
+  height: var(--nl-size);
+}
+.nbte-loader__mark > * { grid-area: 1 / 1; }
+
+/* Soft breathing glow behind the crest */
+.nbte-loader__halo {
+  width: 86%;
+  height: 86%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--nl-green) 26%, transparent) 0%, transparent 68%);
+  animation: nl-halo 2.4s var(--ease-in-out, ease-in-out) infinite;
+}
+
+/* The orbiting arc: transparent tail → green → gold head */
+.nbte-loader__orbit {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 40%,
+              color-mix(in srgb, var(--nl-green) 30%, transparent) 62%, var(--nl-green) 90%, var(--nl-gold) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--nl-ring) - .5px), #000 calc(100% - var(--nl-ring)));
+  mask: radial-gradient(farthest-side, transparent calc(100% - var(--nl-ring) - .5px), #000 calc(100% - var(--nl-ring)));
+  animation: nl-spin 1.15s cubic-bezier(.55, .15, .45, .85) infinite;
+}
+/* Gold comet head riding the arc (same rotation) */
+.nbte-loader__comet {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  animation: nl-spin 1.15s cubic-bezier(.55, .15, .45, .85) infinite;
+}
+.nbte-loader__comet::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--nl-ring) / -2 + .5px);
+  left: 50%;
+  width: calc(var(--nl-ring) * 2.2);
+  height: calc(var(--nl-ring) * 2.2);
+  margin-left: calc(var(--nl-ring) * -1.1);
+  border-radius: 50%;
+  background: var(--nl-gold);
+  box-shadow: 0 0 calc(var(--nl-ring) * 3) color-mix(in srgb, var(--nl-gold) 70%, transparent);
+}
+
+/* The crest: the cog turns, the whole mark breathes gently */
+.nbte-loader__crest {
+  width: 70%;
+  height: auto;
+  filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--nl-green) 22%, transparent));
+  animation: nl-breathe 2.4s var(--ease-in-out, ease-in-out) infinite;
+}
+.nbte-loader__crest .nbte-cog { animation: nbte-cog-turn 7s linear infinite; }
+
+.nbte-loader__label {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: var(--fw-semibold, 600);
+  letter-spacing: .01em;
+  background: linear-gradient(90deg, var(--text-muted) 0%, var(--text-muted) 35%, var(--text) 50%,
+              var(--text-muted) 65%, var(--text-muted) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: nl-shine 2.2s linear infinite;
+}
+.nbte-loader__label:empty { display: none; }
+
+@keyframes nl-spin { to { transform: rotate(1turn); } }
+@keyframes nl-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
+@keyframes nl-halo { 0%, 100% { opacity: .55; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes nl-shine { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+
+/* Reduced motion: a still crest in a full, quiet ring. */
+@media (prefers-reduced-motion: reduce) {
+  .nbte-loader__halo, .nbte-loader__crest, .nbte-loader__crest .nbte-cog, .nbte-loader__label { animation: none !important; }
+  .nbte-loader__orbit { animation: none !important; background: color-mix(in srgb, var(--nl-green) 35%, transparent); }
+  .nbte-loader__comet { display: none; }
+  .nbte-loader__label { color: var(--text-muted); background: none; }
+}
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) :is(.nbte-loader__halo, .nbte-loader__crest, .nbte-loader__crest .nbte-cog, .nbte-loader__label) { animation: none !important; }
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) .nbte-loader__orbit { animation: none !important; background: color-mix(in srgb, var(--nl-green) 35%, transparent); }
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) .nbte-loader__comet { display: none; }
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) .nbte-loader__label { color: var(--text-muted); background: none; }
+
+/* ---- 2. Page loader (partials/page_loader.html; app.js PageLoader) ------ */
+/* Before scripts boot (a slow first load) the loader fades in after 700 ms
+   and gives up after 12 s, so a broken script can never trap the page. Once
+   app.js boots it adds .hidden; PageLoader.show() adds .is-shown on slow
+   navigations and form posts (sign-in included).
+   No panel behind it: only the crest and its ring float over the page.
+   #page-loader beats the layered .page-loader ground (components.css) and
+   the frosted sheet the finish bundles add for .is-shown. */
+#page-loader.page-loader {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+#page-loader.page-loader:not(.hidden):not(.is-shown) {
+  opacity: 1;
+  visibility: visible;
+  animation: nl-pl-in .3s var(--ease-standard, ease) .7s both, nl-pl-out .3s ease 12s forwards;
+}
+@keyframes nl-pl-in { from { opacity: 0; visibility: hidden; } to { opacity: 1; visibility: visible; } }
+@keyframes nl-pl-out { from { opacity: 1; visibility: visible; } to { opacity: 0; visibility: hidden; } }
+.page-loader .nbte-loader__label { min-height: 1.3em; }
+
+/* ---- 3. Global "please wait" overlay (NBTE.loadingOverlay) -------------- */
+/* No card around the crest either — the logo and its ring over the dimmed page. */
+.global-loader { background: color-mix(in srgb, var(--bg) 55%, transparent); }
+
+/* ---- 4. Inline spinner: a green→gold arc (was a grey ring) -------------- */
+.spinner {
+  --sp-w: 2px;
+  border: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 25%, color-mix(in srgb, var(--primary) 45%, transparent) 55%,
+              var(--primary) 88%, var(--gold-400, #d69e2e) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--sp-w) - .5px), #000 calc(100% - var(--sp-w)));
+  mask: radial-gradient(farthest-side, transparent calc(100% - var(--sp-w) - .5px), #000 calc(100% - var(--sp-w)));
+  animation: nl-spin .8s linear infinite;
+}
+.spinner-lg { --sp-w: 3px; }
+.spinner-sm { --sp-w: 2px; }
+
+/* ---- 5. Busy buttons ------------------------------------------------------ */
+/* The arc keeps a gold leading edge and a gold "hinge" dot in the middle
+   (the crest's gold pin), so even the smallest wait looks like NBTE. */
+.btn.is-busy::after {
+  border-color: var(--primary-fg, #fff) var(--gold-400, #d69e2e) transparent transparent;
+  background: radial-gradient(circle, var(--gold-400, #d69e2e) 0 1.6px, transparent 2.2px);
+  animation-name: nl-spin;
+}
+.btn-ghost.is-busy::after,
+.btn-subtle.is-busy::after,
+.btn-outline.is-busy::after { border-color: var(--primary) var(--gold-400, #d69e2e) transparent transparent; }
+
+/* data-busy-text="Signing you in…": spinner + words instead of a blank button */
+.btn { --nbte-busy-fg: var(--text); }
+.btn-primary, .btn-danger, .btn-success { --nbte-busy-fg: var(--primary-fg, #fff); }
+.btn.is-busy.has-busy-text { color: var(--nbte-busy-fg); }
+.btn.is-busy.has-busy-text::after { content: none; }
+.nbte-busy { display: inline-flex; align-items: center; justify-content: center; gap: .55em; }
+.nbte-busy .spinner { width: 1.05em; height: 1.05em; flex-shrink: 0; }
+.btn-primary .nbte-busy .spinner, .btn-danger .nbte-busy .spinner {
+  background: conic-gradient(from 0deg, transparent 0 25%, color-mix(in srgb, currentColor 45%, transparent) 55%,
+              currentColor 88%, var(--gold-400, #d69e2e) 100%);
+}
+
+/* ---- 6. "Add to calendar" menu (partials/add_to_calendar.html) --------- */
+.nbte-cal { position: relative; display: inline-block; vertical-align: middle; }
+.nbte-cal > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: .4em; }
+.nbte-cal > summary::-webkit-details-marker { display: none; }
+.nbte-cal[open] > summary { background: var(--primary-subtle, var(--surface-2)); color: var(--primary-subtle-fg, var(--text)); }
+.nbte-cal__menu {
+  position: absolute;
+  z-index: var(--z-dropdown, 50);
+  inset-inline-end: 0;
+  top: calc(100% + 6px);
+  display: grid;
+  gap: 2px;
+  width: min(300px, 86vw);
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.16));
+  text-align: start;
+  animation: nl-menu-in .16s var(--ease-out, ease-out);
+}
+@keyframes nl-menu-in { from { opacity: 0; transform: translateY(-4px); } }
+.nbte-cal__item { display: grid; gap: 2px; padding: 9px 11px; border-radius: var(--radius-md, 10px); color: var(--text); text-decoration: none; }
+.nbte-cal__item strong { font-size: var(--fs-sm, .875rem); font-weight: var(--fw-semibold, 600); }
+.nbte-cal__item small, .nbte-cal__note { font-size: var(--fs-xs, .75rem); line-height: 1.35; color: var(--text-muted); font-weight: 400; }
+.nbte-cal__item:hover, .nbte-cal__item:focus-visible { background: var(--primary-subtle, var(--surface-2)); text-decoration: none; }
+.nbte-cal__sep { height: 1px; margin: 4px 6px; background: var(--border); }
+.nbte-cal__copy { justify-self: start; margin: 2px 11px 0; padding: 0; border: 0; background: none; color: var(--link, var(--primary)); font: inherit; font-size: var(--fs-xs, .75rem); font-weight: var(--fw-semibold, 600); cursor: pointer; }
+.nbte-cal__copy:hover { text-decoration: underline; }
+.nbte-cal__note { padding: 2px 11px 6px; }
+.nbte-cal-row { display: flex; align-items: center; gap: var(--space-2, 8px); }
+.nbte-cal-row > .qa-rowlink { flex: 1; min-width: 0; }
+.nbte-cal-row > .nbte-cal { flex-shrink: 0; margin-inline-end: var(--space-3, 12px); }
+@media (max-width: 560px) {
+  .nbte-cal-row .nbte-cal__btn span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+}
+@media print { .nbte-cal, .nbte-loader { display: none !important; } }

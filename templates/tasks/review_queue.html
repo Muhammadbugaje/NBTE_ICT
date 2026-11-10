@@ -1,17 +1,25 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static %}{% load icon from qa_tags %}
 {% load tasks_tags %}
 {% block title %}Review queue · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Review queue{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}?v=3">{% endblock %}
-{% block extra_js %}<script src="{% static 'js/tasks.js' %}?v=3" defer></script>{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/tasks.css' %}">{% endblock %}
+{% block extra_js %}<script src="{% static 'js/tasks.js' %}" defer></script>{% endblock %}
 
 {% block content %}
-<div class="tsk-page">
-  <header class="tsk-page-head">
+<div class="tsk-page wk-page" data-qa-area="tasks">
+  <header class="qa-hero nbte-hero wk-hero" data-qa-area="tasks">
     <div>
+      <span class="qa-eyebrow">{% icon "clock" 14 "2.2" %} Tasks · Review queue</span>
       <h1>Review queue</h1>
-      <p>{{ total }} task{{ total|pluralize }} waiting for your review.</p>
+      <p>Finished work waiting for your sign-off. Approve it, or send it back with a note.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'tasks:list' %}" class="btn btn-subtle">{% icon "list" 16 "2.2" %} All tasks</a>
+        <a href="{% url 'tasks:assigned_to_me' %}" class="btn btn-subtle">{% icon "user" 16 "2.2" %} Assigned to me</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat{% if total %} qa-stat--warn{% endif %}"><strong>{{ total|default:0 }}</strong><span>Awaiting review</span></div>
     </div>
   </header>
 

@@ -242,6 +242,13 @@ def _download_link(obj, field_name):
                        'aria-hidden="true">download</span>{}</a>', url, name)
 
 
+def _empty_json_as_default(to_python, db_field):
+    def parse(value):
+        result = to_python(value)
+        return db_field.get_default() if result is None else result
+    return parse
+
+
 class SafeFieldsMixin:
     """Keeps admin forms working with two project conventions:
 
@@ -251,7 +258,10 @@ class SafeFieldsMixin:
       read-only ones show a link through the permission-checked download view.
     * **Institution-scoped models** refuse unscoped reads on their default
       manager, so drop-downs pointing at them read the ``unscoped`` manager
-      (admin is system code, Master Plan §4)."""
+      (admin is system code, Master Plan §4).
+    * **Blank JSON fields** (``JSONField(default=list, blank=True)``) are NOT
+      NULL, but a cleared box parses to ``None``; save the field's default
+      instead of failing with an IntegrityError."""
 
     def _restricted_files(self):
         return [f.name for f in self.model._meta.concrete_fields
@@ -326,7 +336,10 @@ class SafeFieldsMixin:
 
             kwargs["widget"] = forms.ClearableFileInput if db_field.blank else forms.FileInput
             return db_field.formfield(**kwargs)
-        return super().formfield_for_dbfield(db_field, request, **kwargs)
+        field = super().formfield_for_dbfield(db_field, request, **kwargs)
+        if field is not None and isinstance(db_field, models.JSONField) and db_field.blank and not db_field.null:
+            field.to_python = _empty_json_as_default(field.to_python, db_field)
+        return field
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         related = db_field.remote_field.model

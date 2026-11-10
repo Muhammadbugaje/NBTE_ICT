@@ -1,0 +1,70 @@
+{% include "org/_alerts.html" %}
+<div class="org-grid">
+  {% if can_manage_divisions %}
+  <section class="org-card" aria-labelledby="newdiv-h">
+    <h2 id="newdiv-h">New division</h2>
+    <p class="org-muted">The head gets the Division Head permissions while appointed. Capacity is the most open group tasks the division can hold.</p>
+    <form class="org-form" hx-post="{% url 'org:division_create' dept.code %}" hx-target="#org-tab" method="post" action="{% url 'org:division_create' dept.code %}">
+      {% csrf_token %}
+      <label class="org-field">Name<input name="name" required maxlength="150" placeholder="e.g. Technical Support"></label>
+      <div class="org-form org-form--row">
+        <label class="org-field">Head (optional)<select name="head"><option value="">No head yet</option>{% for m in members %}<option value="{{ m.pk }}">{{ m.get_full_name|default:m.email }}</option>{% endfor %}</select></label>
+        <label class="org-field">Capacity (open tasks)<input type="number" name="max_open_tasks" min="0" value="10"></label>
+      </div>
+      <div class="btn-group"><button class="btn btn-primary" type="submit">Create division</button></div>
+    </form>
+  </section>
+  {% endif %}
+  {% for d in divisions %}
+  <article class="org-division org-card" aria-label="{{ d.name }}">
+    <header>
+      <div><h3>{{ d.name }}</h3><span class="org-muted">{{ d.n_members }} member{{ d.n_members|pluralize }} · head: {% if d.head %}{{ d.head.get_full_name|default:d.head.email }}{% else %}none{% endif %}</span></div>
+      {% if d.is_active %}<span class="org-chip is-ok">Active</span>{% else %}<span class="org-chip is-off">Inactive</span>{% endif %}
+    </header>
+    <div>
+      <div class="org-muted">{{ d.open_tasks }} of {{ d.max_open_tasks }} open tasks</div>
+      <div class="org-meter{% if d.max_open_tasks and d.open_tasks >= d.max_open_tasks %} is-full{% endif %}" role="img" aria-label="{{ d.open_tasks }} of {{ d.max_open_tasks }} open tasks"><span style="--fill: {% if d.max_open_tasks %}{% widthratio d.open_tasks d.max_open_tasks 100 %}{% else %}0{% endif %}%"></span></div>
+    </div>
+    {% if can_manage_divisions %}
+    <form class="org-form org-form--row" hx-post="{% url 'org:division_update' dept.code d.pk %}" hx-target="#org-tab" method="post" action="{% url 'org:division_update' dept.code d.pk %}">
+      {% csrf_token %}<input type="hidden" name="op" value="head">
+      <label class="org-field">Head<select name="head"><option value="">No head</option>{% for m in members %}<option value="{{ m.pk }}" {% if d.head_id == m.pk %}selected{% endif %}>{{ m.get_full_name|default:m.email }}</option>{% endfor %}</select></label>
+      <div class="btn-group"><button class="btn btn-subtle" type="submit">Appoint head</button></div>
+    </form>
+    <details class="org-more"><summary>Edit name, capacity or status</summary>
+      <form class="org-form org-form--row" hx-post="{% url 'org:division_update' dept.code d.pk %}" hx-target="#org-tab" method="post" action="{% url 'org:division_update' dept.code d.pk %}">
+        {% csrf_token %}<input type="hidden" name="op" value="save">
+        <label class="org-field">Name<input name="name" value="{{ d.name }}" maxlength="150"></label>
+        <label class="org-field">Capacity<input type="number" name="max_open_tasks" min="0" value="{{ d.max_open_tasks }}"></label>
+        <div class="btn-group"><button class="btn btn-subtle" type="submit">Save</button>
+          <button class="btn btn-ghost" type="submit" name="op" value="toggle">{% if d.is_active %}Deactivate{% else %}Reactivate{% endif %}</button></div>
+      </form>
+    </details>
+    {% endif %}
+  </article>
+  {% empty %}
+  <section class="org-card"><h2>No divisions yet</h2><p class="org-muted">{% if can_manage_divisions %}Create the first division with the form.{% else %}The director has not created divisions yet.{% endif %}</p></section>
+  {% endfor %}
+</div>
+{% if can_manage_divisions and divisions %}
+<section class="org-card org-gap" aria-labelledby="place-h">
+  <h2 id="place-h">Place staff in divisions</h2>
+  <div class="org-table-wrap">
+    <table class="org-table">
+      <thead><tr><th scope="col">Staff</th><th scope="col">Division</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+      <tbody>
+      {% for s in staff_rows %}
+        <tr><td>{{ s.full_name }}</td>
+          <td colspan="2">
+            <form class="org-inline" hx-post="{% url 'org:division_member' dept.code %}" hx-target="#org-tab" method="post" action="{% url 'org:division_member' dept.code %}">
+              {% csrf_token %}<input type="hidden" name="staff" value="{{ s.pk }}">
+              <select class="org-input" name="division" aria-label="Division for {{ s.full_name }}"><option value="">No division</option>{% for d in divisions %}{% if d.is_active %}<option value="{{ d.pk }}" {% if s.division_id == d.pk %}selected{% endif %}>{{ d.name }}</option>{% endif %}{% endfor %}</select>
+              <button class="btn btn-ghost" type="submit">Move</button>
+            </form>
+          </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}

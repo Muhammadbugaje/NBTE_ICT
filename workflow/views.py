@@ -10,8 +10,10 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Prefetch, Q
+from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from qa_core.ui import htmx_fragment  # Phase 0 (N2): fragment URLs
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from urllib.parse import urlencode
@@ -19,7 +21,11 @@ from urllib.parse import urlencode
 
 from core.sorting import apply_sort
 
+import logging
+
 from . import services
+
+logger = logging.getLogger(__name__)
 from .forms import (
     ApproveForm,
     AssignForm,
@@ -295,9 +301,9 @@ def can_see_incoming(user):
     if user.is_superuser:
         return True
     from .access import is_department_request_viewer
+    import org
     return bool(is_department_request_viewer(user) or (
-        user.department_id and user.role_id
-        and user.role.code in DEPARTMENT_LEAD_ROLE_CODES))
+        user.department_id and org.has_role(user, *DEPARTMENT_LEAD_ROLE_CODES)))
 
 
 @login_required
@@ -339,8 +345,9 @@ def incoming(request):
 # Director & admin views
 # ===========================================================================
 def _is_director(user):
-    return bool(user.is_authenticated and user.department_id and user.role_id
-                and user.role.code == "director")
+    """Phase B: the director seat of the user's department (org.is_director)."""
+    import org
+    return bool(user.is_authenticated and user.department_id and org.is_director(user, user.department_id))
 
 
 def _can_see_office_requests(user):
@@ -532,6 +539,10 @@ def raise_request_view(request, type_code=None):
         RequestType.objects.filter(is_active=True),
         code=type_code,
     )
+    # v2.1 Phase D: leave of any type is applied for on its own page
+    # (types, days mode, live preview); POST here still works (API, old links).
+    if request.method == "GET" and type_code == services.LEAVE_TYPE_CODE:
+        return redirect("leave:apply")
 
     if request.method == "POST":
         form = build_request_form(
@@ -638,7 +649,16 @@ def detail(request, pk):
         "resubmit_form": build_resubmit_form(req, request.user) if req.status == Request.RETURNED else None,
         "resubmit_schema_fields": _schema_field_names(req.request_type) if req.status == Request.RETURNED else [],
         "is_closed": req.is_closed,
+        # v2.1 I8 / I9: the ticket trail of a funds request; convert to ticket.
+        "ticket_trail": (req.metadata or {}).get("ticket_trail"),
+        "funded_ticket": req.funded_tickets.first(),
+        "converted_ticket": req.converted_tickets.first(),
     }
+    from tickets.bridge import can_convert_request
+    ctx["can_convert_to_ticket"] = can_convert_request(req, request.user)
+    if ctx["can_convert_to_ticket"]:
+        from tickets.models import TicketCategory
+        ctx["ticket_categories"] = TicketCategory.objects.filter(is_active=True).order_by("sort_order", "name")
     # Link the asset only if the viewer may open it (otherwise a dead link).
     ctx["asset_link_ok"] = False
     if getattr(req, "asset_id", None):
@@ -793,16 +813,49 @@ def attach(request, pk):
 @login_required
 def record_pdf(request, pk):
     req = _require_view(request, pk)
+    if not req.record_pdf and req.is_closed:
+        # v2.1 J1: every closed request (rejected / cancelled too) has its record.
+        try:
+            from .pdf import generate_request_record
+            generate_request_record(req)
+        except Exception:
+            logger.exception("Could not generate the record PDF of %s", req.reference)
     if not req.record_pdf:
         raise Http404("No record PDF has been generated for this request yet.")
-    # Reuse the same permission check as the detail page.
-    return FileResponse(
-        req.record_pdf.open("rb"),
-        content_type="application/pdf",
-        as_attachment=False,
-        filename=req.record_original_name or f"{req.reference}.pdf",
-    )
-    
+    # Phase 0 (U3): the file lives in restricted storage (no /media/ URL);
+    # this view is the only way to it, after the detail page's view check.
+    filename = req.record_original_name or f"{req.reference}.pdf"
+    if settings.USE_X_ACCEL_REDIRECT:
+        from urllib.parse import quote
+
+        response = HttpResponse(content_type="application/pdf")
+        response["X-Accel-Redirect"] = settings.PROTECTED_MEDIA_URL + quote(req.record_pdf.name)
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        return response
+    try:
+        fh = req.record_pdf.open("rb")
+    except FileNotFoundError:
+        raise Http404("The record PDF file is missing; run move_record_pdfs or regenerate it.")
+    return FileResponse(fh, content_type="application/pdf", as_attachment=False, filename=filename)
+
+
+@login_required
+@require_POST
+def convert_to_ticket(request, pk):
+    """v2.1 I9: the receiving department's director turns a fix request into a ticket."""
+    from tickets.bridge import convert_request_to_ticket
+    from tickets.models import TicketCategory
+    req = _require_view(request, pk)
+    category = TicketCategory.objects.filter(pk=request.POST.get("category") or 0, is_active=True).first()
+    try:
+        ticket = convert_request_to_ticket(req, request.user, category, request.POST.get("note", ""))
+    except (PermissionDenied, ValidationError) as exc:
+        messages.error(request, "; ".join(getattr(exc, "messages", None) or [str(exc)]))
+        return redirect("workflow:detail", pk=req.pk)
+    messages.success(request, f"{req.reference} now continues as ticket {ticket.reference}.")
+    return redirect("tickets:detail", pk=ticket.pk)
+
+
 @login_required
 @require_POST
 def delete_request(request, pk):
@@ -918,6 +971,7 @@ from django.views.decorators.http import require_GET
 
 @login_required
 @require_GET
+@htmx_fragment("workflow:detail")
 def timeline_partial(request, pk):
     """Re-render the timeline only — HTMX swaps this into the container."""
     req = _require_view(request, pk)

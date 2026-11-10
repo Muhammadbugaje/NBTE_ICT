@@ -221,6 +221,33 @@ class Task(TimeStampedModel):
     # ---- Bookkeeping ----
     last_reminder_at = models.DateTimeField(null=True, blank=True)
 
+    # ---- Division routing (Phase C: H23, H24, B8) ----
+    DIV_PENDING, DIV_ACCEPTED, DIV_DECLINED = "pending", "accepted", "declined"
+    DIVISION_STATE_CHOICES = [
+        ("", "Not routed"),
+        (DIV_PENDING, "Waiting for the division head"),
+        (DIV_ACCEPTED, "Accepted by the division"),
+        (DIV_DECLINED, "Declined by the division"),
+    ]
+    division = models.ForeignKey(
+        "org.Division", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="tasks", help_text="Group task: routed to a whole division.",
+    )
+    division_state = models.CharField(max_length=10, choices=DIVISION_STATE_CHOICES, blank=True, default="")
+    division_routed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+    )
+    division_routed_at = models.DateTimeField(null=True, blank=True)
+    division_accepted_at = models.DateTimeField(null=True, blank=True)
+    division_note = models.CharField(max_length=500, blank=True)
+
+    # ---- Cross-department bridge (Phase C: H11) ----
+    linked_request = models.ForeignKey(
+        "workflow.Request", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="bridged_tasks",
+        help_text="A cross-department subtask handled as a request in that department's workflow.",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         indexes = [
@@ -230,11 +257,18 @@ class Task(TimeStampedModel):
             models.Index(fields=["due_date"]),
             models.Index(fields=["parent"]),
         ]
+        # Phase B (B10/H1): explicit "see every department's tasks" (ES, super admin).
+        permissions = [("view_all_tasks", "Can see tasks of every department")]
 
     def __str__(self):
         return f"{self.reference} — {self.title}"
 
     # ---- Convenience ----
+    @property
+    def is_group(self):
+        """A division (group) task, as opposed to an individual one (H17)."""
+        return bool(self.division_id)
+
     @property
     def is_container(self):
         return self.subtasks.exists()
@@ -325,6 +359,17 @@ class TaskAssignee(TimeStampedModel):
     accepted_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+
+    # Phase C (H14, H15): the creator confirms or returns each person's part.
+    REVIEW_PENDING, REVIEW_CONFIRMED, REVIEW_RETURNED = "pending", "confirmed", "returned"
+    REVIEW_STATE_CHOICES = [
+        (REVIEW_PENDING, "Waiting for confirmation"),
+        (REVIEW_CONFIRMED, "Confirmed"),
+        (REVIEW_RETURNED, "Returned"),
+    ]
+    review_state = models.CharField(max_length=10, choices=REVIEW_STATE_CHOICES, default=REVIEW_PENDING)
+    review_note = models.CharField(max_length=500, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ("task", "user")

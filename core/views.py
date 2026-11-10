@@ -126,6 +126,23 @@ def landing(request):
     if is_authed:
         ctx["quick_links"] = _landing_quick_links(request.user)
 
+    # ---- v2.1 Phase A: hero from settings (A8), history (A1), past ESs (A3) --
+    from config.context_processors import site_info as _site_info
+    from public.hero import hero_context, history_enabled
+
+    ctx["hero"] = hero_context("home", _site_info(request)["site_info"])
+    ctx["history_enabled"] = history_enabled()
+    if ctx["history_enabled"]:
+        from public.models import HistoryMilestone
+
+        ctx["history"] = list(HistoryMilestone.objects.filter(is_published=True))
+    try:
+        ctx["leadership_more"] = public_services.current_first(ctx["leadership_more"])
+        ctx["previous_es"] = public_services.previous_holders()["es"][:4]
+    except Exception:
+        logger.exception("landing: previous leaders failed")
+        ctx["previous_es"] = []
+
     return render(request, "public/landing.html", ctx)
 
 
@@ -133,8 +150,12 @@ def leadership_page(request):
     """Public leadership page — full portrait grid grouped by section."""
     from public import services as public_services
 
-    ctx = public_services.leadership_page_context()
+    ctx = dict(public_services.leadership_page_context())
+    ctx["leadership"] = public_services.current_first(ctx.get("leadership", []))
+    ctx["previous"] = public_services.previous_holders()          # v2.1 A3/A4
     ctx["is_authed"] = request.user.is_authenticated
+    ctx["can_manage_leadership"] = request.user.is_authenticated and (
+        request.user.has_perm("staff.manage_executive_tenure") or request.user.is_superuser)
     return render(request, "public/leadership.html", ctx)
 
 
@@ -233,19 +254,19 @@ def _module_cards(user):
         count_label="today",
     ))
 
-    # ---- Announcements ----
+    # ---- Announcements (v2.1 L10, T-CONS-3: the announcements app) ----
     ann_count = None
     try:
-        from portal import services as _portal_services
-        ann_count = _portal_services.live_announcements(user=user).count()
+        from announcements.models import Announcement
+        ann_count = Announcement.objects.unread_for(user).count()
     except Exception:
         ann_count = None
     cards.append(_make_card(
         user, key="announcements", label="Announcements",
-        hint="News, notices and updates",
-        url_name="portal:announcement_list",
+        hint="Notices from NBTE management",
+        url_name="announcements:list",
         counter=ann_count,
-        count_label="live",
+        count_label="unread",
     ))
 
     # ---- Events ----
@@ -337,7 +358,7 @@ def _module_cards(user):
     cards.append(_make_card(
         user, key="leadership", label="Leadership",
         hint="Current executives and full history",
-        url_name="staff:public_leadership",
+        url_name="core:leadership_page",
         counter=leadership_count,
         count_label="executives",
     ))
@@ -393,14 +414,15 @@ def _dashboard_for(user):
 
     key = None
     # Superuser or super-admin role → SuperAdmin dashboard (not Director's).
-    if user.is_superuser or (user.role_id and user.role.code == "super-admin"):
+    import org
+    if org.is_super_admin(user):
         key = "superadmin"
     elif user.role_id:
         key = {
             "director":            "director",
             "deputy-director":     "deputy",
             "executive-secretary": "es",
-        }.get(user.role.code)
+        }.get(org.role_code(user))
 
     # Chairman — no dedicated role exists; gate by permission.
     if key is None and user.has_perm("accounts.view_chairman_dashboard"):  # review L1
@@ -600,6 +622,13 @@ def _quick_health():
     return checks
 
 
+def health(request):
+    """Load-balancer / Render health check: 200 once the app can answer at
+    all (DRY_RUN of the DB on purpose — a slow Aiven network must not take
+    the instance out of rotation during cold starts)."""
+    return JsonResponse({"status": "ok", "time": timezone.now().isoformat()})
+
+
 # ---------------------------------------------------------------------------
 # Protected file download
 # ---------------------------------------------------------------------------
@@ -637,6 +666,9 @@ def restricted_file_response(request, obj):
     inline = file_preview.wants_inline(request, ctype)
     ctype = file_preview.text_charset(ctype)
     audit.log("other", obj, actor=request.user, note=file_preview.audit_note(inline))
+    if hasattr(type(obj), "INSTITUTION_PATH"):  # v2.1 P.4 (X7/X8): access event on QA downloads
+        from assignments.access import record_event
+        record_event(request.user, obj, "preview" if inline else "download", request=request)
     if settings.USE_X_ACCEL_REDIRECT:
         response = HttpResponse(content_type=ctype)
         response["X-Accel-Redirect"] = settings.PROTECTED_MEDIA_URL + quote(obj.file.name)
@@ -649,10 +681,10 @@ def restricted_file_response(request, obj):
 # Contact (public)
 # ---------------------------------------------------------------------------
 def _client_ip(request):
-    xff = request.META.get("HTTP_X_FORWARDED_FOR")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
+    # v2.2: the one trusted source (a forged X-Forwarded-For no longer dodges the limit).
+    from core.ratelimit import client_ip
+
+    return client_ip(request)
 
 
 @require_POST

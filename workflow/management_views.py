@@ -22,6 +22,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from accounts.models import Role, User
+from accounts.selectors import staff_users
 from staff.models import Department
 
 from .management_forms import (
@@ -729,7 +730,7 @@ def role_reference(request):
     # Precompute: role_id → list of active users
     users_by_role = {}
     for u in (
-        User.objects.filter(is_active=True, role__isnull=False)
+        staff_users().filter(role__isnull=False)  # Phase 0 (T-SEC-2)
         .select_related("role", "department")
         .order_by("department__name", "first_name", "last_name")
     ):
@@ -806,7 +807,7 @@ def resolution_tester(request):
             .order_by("category__sort_order", "name")
         ),
         "users": (
-            User.objects.filter(is_active=True)
+            staff_users()  # Phase 0 (T-SEC-2)
             .select_related("department", "role")
             .order_by("first_name", "last_name")
         ),

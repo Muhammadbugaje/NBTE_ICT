@@ -26,7 +26,9 @@ from institutions.models import Institution, InstitutionDocument
 from qa_core import flow, references, timeline
 from qa_core.departments import qa_code_of
 
-from .models import Application, ApplicationCycle, DepartmentalClearance
+from django.db.models import Q
+
+from .models import Application, ApplicationCycle, ClearanceDelegate, DepartmentalClearance
 
 logger = logging.getLogger(__name__)
 FLOW = "onboarding"
@@ -71,6 +73,14 @@ def clearances_for_round(app, round_no=None):
 
 
 def public_status(app):
+    if getattr(app, "status", "") == "ssq_submitted":
+        # The application ends at "ssq_submitted"; the institution approval
+        # moves on without it — say where it really is (portal-safe text).
+        from .onboarding_ssq import approval_stage
+
+        public = approval_stage(app).get("public")
+        if public:
+            return public
     return flow.public_label(instance_of(app)) or app.status
 
 
@@ -143,6 +153,7 @@ def submission_blockers(app):
 
 @transaction.atomic
 def submit(app, *, user, declaration=False):
+    inst_services.require_chief_executive(user, "the application")  # X12
     app = Application.unscoped.select_for_update().get(pk=app.pk)
     if not declaration:
         raise ValidationError("Confirm the declaration that the information and documents are true.")
@@ -211,8 +222,10 @@ def on_open_clearance(ctx):
         notify.append(dept)
 
     def _send():
+        from .clearance_access import deciders_for
+
         for dept in notify:
-            users = inst_services.staff_in_department(dept, perm="accreditation.decide_departmental_clearance")
+            users = deciders_for(dept)
             inst_services.notify_role("onboarding.submitted", {"reference": app.reference,
                                                                "institution": app.institution.name},
                                       users, url=f"/qa/applications/clearance/?dept={dept.code}")
@@ -251,12 +264,13 @@ def on_returned(ctx):
 # ---------------------------------------------------------------------------
 def can_decide(clearance, user):
     """(allowed, reason)."""
-    if user is None or not user.is_authenticated or getattr(user, "user_type", "staff") != "staff":
-        return False, "Only NBTE staff decide clearances."
-    if not user.has_perm("accreditation.decide_departmental_clearance"):
-        return False, "You do not hold accreditation.decide_departmental_clearance."
-    if not user.is_superuser and user.department_id != clearance.department_id:
-        return False, f"Only {clearance.department.name} can decide this clearance."
+    from .clearance_access import may_decide_for
+
+    # O10 (T-SEC-7): the director of the clearance department, a named
+    # ClearanceDelegate, the ES or a superuser — never any officer.
+    ok, why = may_decide_for(user, clearance.department)
+    if not ok:
+        return False, why
     if clearance.status != DepartmentalClearance.PENDING:
         return False, f"This clearance is already {clearance.get_status_display().lower()}."
     if clearance.round != clearance.application.round:
@@ -325,6 +339,82 @@ def decide(clearance, *, user, decision, remark="", accept_documents=True, imper
 
 
 # ---------------------------------------------------------------------------
+# Re-upload of a returned document during review (O8, O9 — first slice of X17)
+# ---------------------------------------------------------------------------
+UNDER_REVIEW_STATUSES = ("submitted", "clearance")
+
+
+def reviewing_department_for(inst, kind):
+    for req in inst_services.requirements_for(inst):
+        if req.document_kind_id == kind.pk:
+            return req.reviewing_department
+    return None
+
+
+def reupload_allowed(app, row):
+    """The institution may upload this checklist row now (O8): a returned
+    document always; anything else only while the application is a draft."""
+    if row["state"] == "returned":
+        return True
+    return app is None or app.status == "draft"
+
+
+def on_document_reuploaded(doc, previous, *, user):
+    """``doc`` replaces ``previous`` (which a department returned). While the
+    application is in departmental clearance, put it back in the reviewing
+    department's queue only (the other departments are not touched), tell that
+    department's director (and the officer who returned it), and tell the
+    institution what happens next. Returns the department, or None when the
+    application is not under review (nothing to route)."""
+    inst = doc.institution
+    app = current_application(inst)
+    if app is not None and app.status == "document_review":
+        # v2.1 X17: per-document review — back to the same department, director and analyst.
+        from institutions import document_review
+
+        return document_review.on_document_reuploaded(doc, previous, user=user, application=app)
+    if app is None or app.status not in UNDER_REVIEW_STATUSES:
+        return None
+    dept = reviewing_department_for(inst, doc.kind)
+    if dept is None and previous.reviewed_by_id:
+        dept = getattr(previous.reviewed_by, "department", None)
+    if dept is None:
+        return None
+    if doc.application_id != app.pk:
+        doc.application = app
+        doc.save(update_fields=["application", "updated_at"])
+    now = timezone.now()
+    clearance = (DepartmentalClearance.unscoped.select_for_update()
+                 .filter(application=app, round=app.round, department=dept).order_by("-id").first())
+    if clearance is not None and clearance.status == DepartmentalClearance.PENDING:
+        clearance.resubmitted_at = now
+        clearance.resubmissions = (clearance.resubmissions or 0) + 1
+        clearance.save(update_fields=["resubmitted_at", "resubmissions", "updated_at"])
+    timeline.record(inst, "document.resubmitted", subject=doc, actor=user, visibility="public",
+                    public_text=f"{doc.kind.name} re-uploaded. Sent back to {dept.name} for review. "
+                                "You do not need to resubmit your application.",
+                    internal_text=f"Back in the {dept.name} clearance queue (round {app.round}).")
+    from .clearance_access import department_directors
+
+    recipients = {u.pk: u for u in department_directors(dept)}
+    reviewer = previous.reviewed_by
+    if reviewer is not None and reviewer.is_active and getattr(reviewer, "user_type", "") == "staff" \
+            and reviewer.department_id == dept.pk:
+        recipients.setdefault(reviewer.pk, reviewer)
+    staff_ctx = {"reference": app.reference, "institution": inst.name, "document": doc.kind.name,
+                 "department": dept.name, "version": doc.version}
+
+    def _send():
+        inst_services.notify_role("onboarding.document_resubmitted", staff_ctx, list(recipients.values()),
+                                  url=f"/qa/applications/{app.pk}/")
+        inst_services.notify_institution(inst, "onboarding.document_resubmitted_institution",
+                                         {"reference": app.reference, "document": doc.kind.name,
+                                          "department": dept.name}, url="/application/")
+    transaction.on_commit(_send)
+    return dept
+
+
+# ---------------------------------------------------------------------------
 # Payments drive the fee stages (signal receivers in accreditation.effects)
 # ---------------------------------------------------------------------------
 def _app_for(obligation):
@@ -355,8 +445,28 @@ def payment_settled(obligation):
     if instance is not None and flow.can(instance, "payment_confirmed"):
         flow.transition(instance, "payment_confirmed", None, metadata={"obligation": obligation.reference})
         app.refresh_from_db()
+        if app.status == "document_upload" and instance.flow_version.version >= 3:
+            text = "Your institutional and processing fees are confirmed. Upload the required documents, then ask "
+            text += "the Chief Executive to submit them for departmental review."
+        elif app.status == "fee_confirmed" and instance.flow_version.version == 2:
+            text = "Your processing fee is confirmed. Your application is being submitted automatically."
+        else:
+            text = "Your fee is confirmed. Next: tell NBTE which programmes you will offer."
         timeline.record(app.institution, "application.fee_confirmed", subject=app, visibility="public",
-                        public_text="Your fee is confirmed. Next: tell NBTE which programmes you will offer.")
+                        public_text=text)
+        if app.status == "ssq_in_progress" and instance.flow_version.version >= 3:
+            from . import onboarding_ssq
+
+            # The fee is confirmed whatever happens next: a failure to open the
+            # self-studies (e.g. no published template) must not undo the
+            # payment step. The portal and the staff page then offer a retry.
+            try:
+                onboarding_ssq.open_for_application(app)
+            except Exception as exc:  # noqa: BLE001 — open_for_application is atomic (savepoint)
+                logger.exception("self-studies not opened for %s", app.reference)
+                timeline.record(app.institution, "onboarding.ssq_open_failed", subject=app, visibility="internal",
+                                internal_text="Programme fee confirmed but the self-studies did not open: "
+                                              + " ".join(getattr(exc, "messages", None) or [str(exc)]))
 
 
 def stage_board(app):
@@ -375,7 +485,8 @@ def stage_board(app):
     ]
     order = [m[0] for m in milestones]
     status = app.status
-    position = {"draft": 0, "submitted": 1, "clearance": 1, "institutional_fee_due": 2,
+    position = {"draft": 0, "document_upload": 0, "submitted": 1, "clearance": 1, "document_review": 1,
+                "institutional_fee_due": 2, "fee_due": 2, "cleared_fee_due": 2, "cleared_payment_pending": 2,
                 "payment_pending_confirmation": 2, "fee_confirmed": 3, "programme_selection": 4,
                 "programme_clearance": 5, "programme_fee_due": 5, "programme_payment_pending": 5,
                 "programme_fee_confirmed": 5, "ssq_in_progress": 6, "ssq_submitted": 7}.get(status, 0)
@@ -438,7 +549,19 @@ def clearance_rows(user, *, status="pending", dept_code=""):
     qs = DepartmentalClearance.unscoped.select_related("application", "application__institution",
                                                        "application__institution__ownership", "department",
                                                        "decided_by")
-    if user.is_superuser or user.has_perm("qa_core.view_all_institutions"):
+    from assignments import access
+    if access.assignment_mode():
+        # v2.1 X3/X4: full viewers see every department's queue; everyone else
+        # only their department's rows they lead / are delegated / assigned.
+        if access.full_viewer_everywhere(user):
+            if dept_code:
+                qs = qs.filter(department__code=dept_code)
+        else:
+            mine = DepartmentalClearance.objects.for_user(user).values("pk")
+            delegated = list(ClearanceDelegate.objects.filter(user=user, active=True)
+                             .values_list("department_id", flat=True))
+            qs = qs.filter(Q(pk__in=mine) | Q(department_id__in=delegated))
+    elif user.is_superuser or user.has_perm("qa_core.view_all_institutions"):
         if dept_code:
             qs = qs.filter(department__code=dept_code)
     elif user.department_id:
@@ -450,4 +573,7 @@ def clearance_rows(user, *, status="pending", dept_code=""):
     rows = list(qs.order_by("opened_at"))
     if status == "pending":
         rows = [c for c in rows if c.round == c.application.round]
+        # O9: a re-uploaded document puts its clearance back at the top.
+        rows.sort(key=lambda c: (c.resubmitted_at is None, -(c.resubmitted_at.timestamp())
+                                 if c.resubmitted_at else 0))
     return rows

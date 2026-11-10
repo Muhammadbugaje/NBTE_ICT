@@ -1,0 +1,55 @@
+{% load qa_tags %}
+<div class="rot-modal" role="dialog" aria-modal="true" aria-labelledby="rot-dlg-title">
+  <div class="rot-modal__backdrop" onclick="document.getElementById('rot-dialog').innerHTML=''"></div>
+  <form class="rot-modal__box" method="post" action="{% url 'rotation:assign' %}" hx-post="{% url 'rotation:assign' %}" hx-target="#rot-panel">
+    {% csrf_token %}
+    <input type="hidden" name="job" value="{{ job.key }}">
+    <input type="hidden" name="dept" value="{{ job.department.code }}">
+    <span class="rot-modal__grab" aria-hidden="true"></span>
+    <button type="button" class="rot-modal__close" aria-label="Close" onclick="document.getElementById('rot-dialog').innerHTML=''">{% icon "x" 16 "2.4" %}</button>
+    <div>
+      <span class="rot-a rot-a--{{ job.meta.chip }}">{{ job.meta.label }}</span>
+      <h2 id="rot-dlg-title">{{ job.title }}</h2>
+      <p class="rot-modal__sub">{{ job.detail }} · {{ job.department.name }}</p>
+    </div>
+    {% if error %}<div class="rot-alert" role="alert">{% icon "alert" 16 "2.2" %} {{ error }}</div>{% endif %}
+
+    {% if suggested %}
+    <div class="rot-pick">
+      <span class="rot-av" aria-hidden="true">{{ suggested.initials }}</span>
+      <div><small>Next in rotation</small><b>{{ suggested.name }}</b>
+        <small>{{ suggested.role }} · {{ suggested.open }} open{% if suggested.summary %} · {{ suggested.summary }}{% endif %}</small>
+        {% if suggested.notes or suggested.warnings %}<div class="rot-why">{% for n in suggested.notes %}<span class="rot-chip rot-chip--ok">{{ n }}</span>{% endfor %}{% for w in suggested.warnings %}<span class="rot-chip rot-chip--warn">{{ w }}</span>{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+    {% else %}<div class="rot-alert">Nobody in {{ job.department.name }} passes every rule for this work.</div>{% endif %}
+
+    <fieldset class="rot-choices">
+      <legend class="rot-sec rot-sec--flush">Give it to</legend>
+      {% for r in eligible %}
+      <label class="rot-choice{% if r.suggested %} is-suggested{% endif %}">
+        <input type="radio" name="chosen" value="{{ r.user_id }}"{% if r.user_id == chosen %} checked{% endif %} required>
+        <span class="rot-av" aria-hidden="true">{{ r.initials }}</span>
+        <span><b>{{ r.name }}{% if r.suggested %} · next{% endif %}</b><small>{{ r.role }} · {{ r.open }} open{% if r.notes and not r.suggested %} · {{ r.notes.0 }}{% endif %}{% if r.warnings %} · {{ r.warnings.0 }}{% endif %}</small></span>
+      </label>
+      {% endfor %}
+      {% for r in blocked %}
+      <label class="rot-choice is-blocked">
+        <input type="radio" name="chosen" value="{{ r.user_id }}"{% if not can_override %} disabled{% endif %}{% if r.user_id == chosen %} checked{% endif %}>
+        <span class="rot-av" aria-hidden="true">{{ r.initials }}</span>
+        <span><b>{{ r.name }}</b><small>Not available: {{ r.reasons|join:"; " }}</small></span>
+      </label>
+      {% endfor %}
+      {% if not eligible and not blocked %}<p class="rot-empty">{{ job.department.name }} has no active staff to give this to.</p>{% endif %}
+    </fieldset>
+    {% if blocked and can_override %}<p class="rot-crumbs">You may override a rule: give the reason (it is logged).</p>{% endif %}
+
+    <label class="rot-field">Reason <span class="rot-hint">(needed if you choose someone other than the next in rotation)</span>
+      <textarea name="reason" rows="2" placeholder="e.g. Knows this institution's history">{{ reason }}</textarea>
+    </label>
+    <div class="btn-group btn-group--end">
+      <button type="button" class="btn btn-ghost" onclick="document.getElementById('rot-dialog').innerHTML=''">Cancel</button>
+      <button type="submit" class="btn btn-primary"{% if not eligible and not can_override %} disabled{% endif %}>{% icon "check" 16 "2.4" %} Assign</button>
+    </div>
+  </form>
+</div>

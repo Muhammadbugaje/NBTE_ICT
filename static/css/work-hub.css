@@ -1,0 +1,435 @@
+/* ==========================================================================
+   Work hub — Requests (workflow), Tasks and Tickets pages.
+
+   Every page in these three sections opens with the shared qa-hero
+   (qa-redesign.css) inside a `.wk-page[data-qa-area]` wrapper. This file only
+   adds what those pages need on top of the shared pattern: the section hues,
+   hero meta chips, the stats strip breakpoints, toolbars and a light polish
+   pass over the module styles (workflow.css / tasks.css / tickets.css).
+   Everything is scoped to `.wk-page` so it never leaks into other sections.
+   Loaded last in the "finish" bundle (core/css_bundles.py).
+   ========================================================================== */
+
+/* ---- 1. Section hues (sidebar colours: indigo / blue / orange) ---------- */
+[data-qa-area="requests"] { --qa-hue: var(--qa-c-indigo); --qa-tile: var(--qa-tile-indigo); }
+[data-qa-area="tasks"]    { --qa-hue: var(--qa-c-blue);   --qa-tile: var(--qa-tile-blue); }
+[data-qa-area="tickets"]  { --qa-hue: var(--qa-c-orange); --qa-tile: var(--qa-tile-orange); }
+
+/* ---- 2. Page frame ------------------------------------------------------ */
+.wk-page { min-width: 0; }
+.wk-page--narrow { max-width: 1080px; }
+.wk-page > .qa-hero,
+.wk-page .wk-hero { margin-bottom: 16px; }
+
+/* ---- 3. Hero additions -------------------------------------------------- */
+.wk-hero h1 { overflow-wrap: anywhere; }
+.wk-hero .qa-eyebrow { flex-wrap: wrap; }
+.wk-ref {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.78125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+.wk-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.wk-crumbs .nbte-hero__back + .nbte-hero__back { position: relative; }
+.wk-crumbs + .qa-eyebrow { display: flex; width: fit-content; }
+
+.wk-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.wk-hero-meta .badge,
+.wk-hero-meta .tsk-chip,
+.wk-hero-meta .tk-chip { margin: 0; }
+.wk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid var(--qa-milk-edge, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--text-muted);
+  font-size: 0.78125rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.wk-chip strong { color: var(--text); font-weight: 600; }
+.wk-chip svg { flex: none; color: var(--qa-hue); }
+.wk-chip--info { background: color-mix(in srgb, var(--info) 10%, var(--surface)); color: var(--text); }
+.wk-chip--warn { background: color-mix(in srgb, var(--warning) 14%, var(--surface)); color: var(--text); border-color: transparent; }
+
+/* facts row under the title (requester · date · type …) */
+.wk-hero .wk-hero-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  max-width: none;
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.wk-hero .wk-hero-facts > * {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  text-decoration: none;
+}
+.wk-hero .wk-hero-facts > a { color: var(--qa-hue); font-weight: 500; }
+.wk-hero .wk-hero-facts > a:hover { text-decoration: underline; }
+.wk-hero .wk-hero-facts svg { flex: none; opacity: 0.8; }
+.wk-hero .wk-hero-facts strong { color: var(--text); font-weight: 600; }
+
+/* actions: forms and selects sit inline with the pill buttons */
+.wk-hero .qa-hero__actions form { display: contents; }
+.wk-hero .qa-hero__actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.wk-hero .qa-hero__actions select.input {
+  width: auto;
+  min-height: 36px;
+  padding-block: 4px;
+  border-radius: 999px;
+  font-size: 0.875rem;
+}
+
+/* stat values with a "/max" suffix */
+.wk-hero .qa-stat strong small { margin-inline-start: 1px; color: var(--text-muted); font-size: 0.75em; font-weight: 600; }
+
+/* Detail-page heroes: status tone along the top edge */
+.wk-hero--detail { align-items: start; }
+.wk-hero--detail.is-returned  { --qa-aura: var(--warning); }
+.wk-hero--detail.is-completed { --qa-aura: var(--success); }
+.wk-hero--detail.is-rejected,
+.wk-hero--detail.is-cancelled { --qa-aura: var(--danger); }
+
+/* Task detail: the action bar (timer, accept, mark done…) inside the hero */
+.wk-hero--task .tsk-tmeta { margin-top: 10px; }
+.wk-hero--task .tsk-tbar {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--divider, var(--border));
+  gap: 8px 12px;
+}
+.wk-hero--task .tsk-btn-lg { min-height: 38px; padding: 0 16px; font-size: 0.875rem; }
+.wk-hero--task .tsk-timer-pill { height: 38px; }
+.wk-hero--task .btn-group { gap: 8px; flex-wrap: wrap; }
+
+/* Ticket detail: chips row keeps its own chip styles */
+.tk-hero-v2 .tk-hero-top { margin-bottom: 0; }
+
+/* ---- 4. Stats strip breakpoints ----------------------------------------
+   desktop: one row beside the title · tablet: two columns under it ·
+   phone: stacked rows (label left, number right) so it stays short.     */
+@media (min-width: 641px) and (max-width: 999px) {
+  .wk-hero .qa-hero__stats {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-columns: auto;
+    justify-self: stretch;
+    max-width: 560px;
+  }
+  .wk-hero .qa-hero__stats:has(> :only-child) { grid-template-columns: minmax(0, 1fr); max-width: 280px; }
+  .wk-hero .qa-stat + .qa-stat::before { content: none; }
+  .wk-hero .qa-stat:nth-child(2n)::after { content: ""; position: absolute; inset-inline-start: 0; inset-block: 12px; width: 1px; background: var(--divider); }
+}
+@media (max-width: 640px) {
+  .wk-hero .qa-hero__stats {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 2px 4px;
+    border-radius: 14px;
+  }
+  .wk-hero .qa-stat {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 6px 8px;
+  }
+  .wk-hero .qa-stat strong { order: 2; font-size: 1.0625rem; }
+  .wk-hero .qa-stat span { order: 1; }
+  .wk-hero .qa-stat::after { content: none !important; }
+  .wk-hero .qa-stat + .qa-stat { border-top: 1px solid var(--divider, var(--border)); border-radius: 0; }
+  .wk-hero .wk-hero-facts { gap: 2px 12px; font-size: 0.78125rem; }
+  .wk-hero .qa-hero__actions select.input { flex: 1 1 100%; }
+  .wk-hero--task .tsk-tbar .btn-group > *,
+  .wk-hero--task .tsk-tbar .btn-group form { flex: 1 1 auto; }
+  .wk-hero--task .tsk-tbar .btn-group .tsk-btn { width: 100%; justify-content: center; }
+}
+
+/* ---- 5. Toolbars (tabs + view tools on one line) ------------------------ */
+.wk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  margin-bottom: 14px;
+}
+.wk-toolbar > nav { margin: 0 !important; min-width: 0; max-width: 100%; }
+.wk-toolbar__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wk-toolbar__tools .tsk-view-toggle { margin: 0; }
+
+/* ---- 6. Polish: tabs, filters, lists, tables, pagination, empty states -- */
+/* status tabs — one scrollable row instead of wrapping into a wall */
+.wk-page .wf-tabs,
+.wk-page .tsk-tabs,
+.wk-page .tk-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.wk-page .wf-tabs::-webkit-scrollbar,
+.wk-page .tsk-tabs::-webkit-scrollbar,
+.wk-page .tk-tabs::-webkit-scrollbar { display: none; }
+.wk-page .wf-tab,
+.wk-page .tsk-tab,
+.wk-page .tk-tab { white-space: nowrap; flex: none; }
+
+/* filter bars: one card, aligned controls */
+.wk-page .wf-filters {
+  display: flex;
+  flex-wrap: wrap;
+  width: auto;
+  max-width: none;
+  overflow: visible;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-xs, 0 1px 2px rgba(0, 0, 0, 0.04));
+}
+.wk-page .wf-filters .wf-filter-search { flex: 1 1 260px; min-width: 0; max-width: none; margin: 0; }
+.wk-page .wf-filters .wf-filter-select { flex: 0 1 220px; width: auto; min-width: 160px; margin: 0; }
+.wk-page .wf-filters .btn { flex: none; }
+
+/* request tables: calmer header, clickable rows, tidy cells */
+.wk-page .wf-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow: auto;
+  box-shadow: var(--shadow-xs, 0 1px 2px rgba(0, 0, 0, 0.04));
+}
+.wk-page .wf-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.wk-page .wf-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--text) 3%, var(--surface));
+  color: var(--text-muted);
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.wk-page .wf-table th a { color: inherit; text-decoration: none; }
+.wk-page .wf-table th.is-sorted a { color: var(--qa-hue); }
+.wk-page .wf-table tbody tr[data-href] { cursor: pointer; transition: background-color var(--dur-fast, 0.12s) ease; }
+.wk-page .wf-table tbody tr:hover { background: color-mix(in srgb, var(--qa-hue) 5%, transparent); }
+.wk-page .wf-table tbody td { vertical-align: middle; }
+.wk-page .wf-table tbody td:first-child strong {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.wk-page .wf-table .wf-table-title { font-weight: 600; color: var(--text); }
+.wk-page .wf-table .wf-table-sub { margin-top: 2px; color: var(--text-muted); font-size: 0.78125rem; }
+.wk-page .wf-table td.muted { white-space: nowrap; }
+
+/* pagination: pill group */
+.wk-page .pagination,
+.wk-page .tsk-pagination,
+.wk-page .tk-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 16px 0 4px;
+}
+.wk-page .pagination > a,
+.wk-page .pagination > span,
+.wk-page .tsk-pagination > a,
+.wk-page .tsk-pagination > span,
+.wk-page .tk-pagination > a,
+.wk-page .tk-pagination > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.wk-page .pagination > a:hover,
+.wk-page .tsk-pagination > a:hover,
+.wk-page .tk-pagination > a:hover { border-color: color-mix(in srgb, var(--qa-hue) 40%, var(--border)); color: var(--qa-hue); }
+.wk-page .pagination > .disabled,
+.wk-page .tsk-pagination > .is-disabled,
+.wk-page .tk-pagination > .is-disabled { opacity: 0.45; }
+.wk-page .pagination > .current,
+.wk-page .tsk-pagination > .is-current,
+.wk-page .tk-pagination > .is-current { border-color: transparent; background: transparent; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* empty states: centred card, hue-tinted icon */
+.wk-page .wf-empty,
+.wk-page .tsk-empty,
+.wk-page .tk-empty,
+.wk-page .assigned-requests-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 40px 20px;
+  border: 1px dashed color-mix(in srgb, var(--qa-hue) 28%, var(--border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--qa-hue) 3%, var(--surface));
+  text-align: center;
+}
+.wk-page .wf-empty h3,
+.wk-page .tsk-empty h3,
+.wk-page .tk-empty h3,
+.wk-page .assigned-requests-empty h2 { margin: 6px 0 0; font-size: 1.0625rem; }
+.wk-page .wf-empty p,
+.wk-page .tsk-empty p,
+.wk-page .tk-empty p,
+.wk-page .assigned-requests-empty p { max-width: 46ch; margin: 0 0 8px; color: var(--text-muted); }
+.wk-page .wf-empty-icon,
+.wk-page .tsk-empty-icon,
+.wk-page .tk-empty-icon,
+.wk-page .assigned-requests-empty-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--qa-hue) 12%, transparent);
+  color: var(--qa-hue);
+}
+
+/* request type picker */
+.wk-page .wf-types-grid { gap: 10px; }
+.wk-page .wf-type-card { border-radius: 16px; transition: border-color var(--dur-fast, 0.12s) ease, box-shadow var(--dur-fast, 0.12s) ease, transform var(--dur-fast, 0.12s) ease; }
+.wk-page .wf-type-card:hover { border-color: color-mix(in srgb, var(--qa-hue) 40%, var(--border)); transform: translateY(-1px); }
+.wk-page .wf-type-icon { background: color-mix(in srgb, var(--qa-hue) 12%, transparent); color: var(--qa-hue); }
+.wk-page .section-label { margin-bottom: 8px; }
+
+/* forms (raise request, new task, new ticket) */
+.wk-page .wf-raise-card,
+.wk-page .tsk-form,
+.wk-page .tk-form { max-width: none; }
+
+/* ---- 7. Phones ---------------------------------------------------------- */
+@media (max-width: 640px) {
+  .wk-toolbar { margin-bottom: 10px; }
+  .wk-toolbar__tools { width: 100%; justify-content: space-between; }
+  .wk-page .wf-filters { padding: 8px; border-radius: 14px; }
+  .wk-page .wf-filters .wf-filter-search,
+  .wk-page .wf-filters .wf-filter-select { flex: 1 1 100%; min-width: 0; }
+  .wk-page .wf-table-wrap { border-radius: 14px; }
+  .wk-page .wf-empty,
+  .wk-page .tsk-empty,
+  .wk-page .tk-empty,
+  .wk-page .assigned-requests-empty { padding: 28px 16px; }
+}
+
+/* Four short stats still fit beside the title on wide screens: keep the hero
+   to its compact two-column form there (the site rule stacks them under the
+   text, which is right for long labels but makes these heroes ~40% taller). */
+@media (min-width: 1200px) {
+  .wk-hero:has(> .qa-hero__stats > :nth-child(4)):not(:has(> .qa-hero__stats > :nth-child(5))) { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+  .wk-hero:has(> .qa-hero__stats > :nth-child(4)):not(:has(> .qa-hero__stats > :nth-child(5))) > .qa-hero__stats { justify-self: end; }
+}
+
+/* All requests: the department strip is one scrollable row, not a wall */
+.wk-page .wf-tabs-secondary {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 4px;
+  margin-bottom: 12px;
+  -webkit-mask-image: linear-gradient(90deg, #000 92%, transparent);
+          mask-image: linear-gradient(90deg, #000 92%, transparent);
+}
+.wk-page .wf-tabs-secondary > * { flex: none; white-space: nowrap; }
+
+/* Ticket rows: the reference fits on one line */
+@media (min-width: 721px) {
+  .wk-page .tk-card { grid-template-columns: 116px minmax(0, 1fr) auto; }
+}
+.wk-page .tk-card .tk-ref { white-space: nowrap; }
+
+/* Task / ticket filter bars: one flowing row (search grows, selects size to fit) */
+.wk-page :is(.tk-filters, .tsk-filters) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.wk-page :is(.tk-filters, .tsk-filters) > input[type="search"] { flex: 2 1 240px; min-width: 0; width: auto; }
+.wk-page :is(.tk-filters, .tsk-filters) > select { flex: 1 1 150px; width: auto; min-width: 0; max-width: 260px; }
+@media (max-width: 640px) {
+  .wk-page :is(.tk-filters, .tsk-filters) > input[type="search"] { flex-basis: 100%; }
+  .wk-page :is(.tk-filters, .tsk-filters) > select { flex: 1 1 calc(50% - 4px); max-width: none; }
+}
+
+/* Ticket rows: long state chips wrap inside the reference column */
+.wk-page .tk-card-left { min-width: 0; }
+.wk-page .tk-card-left .tk-chip { max-width: 100%; white-space: normal; line-height: 1.25; }
+
+/* Request tables on phones: each row becomes a compact card
+   (ref · status / subject / priority · raised) instead of a squeezed table */
+@media (max-width: 640px) {
+  .wk-page .wf-table-wrap { overflow: visible; }
+  .wk-page .wf-table,
+  .wk-page .wf-table tbody { display: block; width: 100%; min-width: 0 !important; }
+  .wk-page .wf-table thead { display: none; }
+  .wk-page .wf-table tbody tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "ref . status" "subj subj subj" "prio when when";
+    align-items: center;
+    gap: 6px 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--divider, var(--border));
+  }
+  .wk-page .wf-table tbody tr:last-child { border-bottom: 0; }
+  .wk-page .wf-table tbody td { display: block; padding: 0; border: 0; min-width: 0; }
+  .wk-page .wf-table tbody td:nth-child(1) { grid-area: ref; }
+  .wk-page .wf-table tbody td:nth-child(2) { grid-area: subj; }
+  .wk-page .wf-table tbody td:nth-child(3) { grid-area: status; justify-self: end; }
+  .wk-page .wf-table tbody td:nth-child(4) { grid-area: prio; }
+  .wk-page .wf-table tbody td:nth-child(5) { grid-area: when; justify-self: end; font-size: 0.75rem; }
+  .wk-page .wf-table .wf-table-title { font-size: 0.9375rem; line-height: 1.35; }
+}
+
+/* Division queue: the three per-division counters stay one compact row */
+.wk-page .tsk-panel .tsk-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.wk-page .tsk-panel .tsk-kpi { min-width: 0; padding: 12px 14px; }
+@media (max-width: 640px) {
+  .wk-page .tsk-panel .tsk-kpi { padding: 10px; }
+  .wk-page .tsk-panel .tsk-kpi b { font-size: 1.375rem; }
+  .wk-page .tsk-panel .tsk-kpi span { font-size: 0.71875rem; line-height: 1.3; }
+}
+
+/* Awaiting my action / Assigned requests: align with the other pages
+   (their old wrappers added their own padding and a centred max-width) */
+.wk-page.action-queue-page,
+.wk-page.assigned-requests-page { width: auto; max-width: none; margin: 0; padding: 0; }

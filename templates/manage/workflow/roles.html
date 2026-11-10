@@ -4,27 +4,14 @@
 {% block title %}Roles · Workflow management{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/manage.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/manage.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="wf-page">
-  {% include "manage/workflow/_tabs.html" %}
+  {% include "partials/hero.html" with icon="users" eyebrow="Workflow management · Roles" title="Roles & hierarchy" lede="Roles are listed by rank, highest first; ranks decide who is skipped in hierarchical steps." s1=roles|length s1_label="Roles" s2=departments|length s2_label="Active departments" %}
 
-  <header class="wf-hero">
-    <div class="wf-hero-inner">
-      <div class="wf-hero-icon wf-hero-icon-green">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      </div>
-      <div>
-        <h1>Roles & hierarchy</h1>
-        <p>
-          Ordered by rank — highest first. Ranks drive the rank-aware
-          skipping in chains.
-        </p>
-      </div>
-    </div>
-  </header>
+  {% include "manage/workflow/_tabs.html" %}
 
   <section class="wf-tip-banner">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -47,7 +34,8 @@
         </header>
 
         {% with users=users_by_role|default_if_none:"" %}{% endwith %}
-        {% if users_by_role and users_by_role|length %}{% endif %}
+        {% if users_by_role and users_by_role|length %}
+  {% endif %}
 
         {% for k, v in users_by_role.items %}{% endfor %}
 

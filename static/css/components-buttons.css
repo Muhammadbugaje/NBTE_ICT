@@ -1,0 +1,43 @@
+/* ==========================================================================
+   components-buttons.css — button spacing standard (v2.1 X52, spec §G15).
+   New file for the components layer (A.1 slots it into the @layer order).
+
+   One utility, .btn-group, for every row of two or more buttons. Buttons
+   never carry their own outer margins; the group sets the gap, wraps on
+   small screens and keeps labels on one line.
+   --btn-gap comes from the appearance.button_gap setting (context processor
+   prints it on :root); 8px when unset.
+   ========================================================================== */
+.btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--btn-gap, var(--space-2, 8px)); min-width: 0; }
+.btn-group--end { justify-content: flex-end; }
+.btn-group--between { justify-content: space-between; }
+.btn-group--center { justify-content: center; }
+.btn-group--stack { flex-direction: column; align-items: stretch; }
+.btn-group--nowrap { flex-wrap: nowrap; }
+.btn-group > * { margin: 0; }
+.btn-group > form { display: contents; }
+.btn-group > :where(.btn, .att-btn, .qa-btn, .vv-btn, a, button) { white-space: nowrap; }
+@media (max-width: 480px) {
+  .btn-group--stack-sm { flex-direction: column; align-items: stretch; }
+  .btn-group--stack-sm > * { flex: 1 1 100%; justify-content: center; }
+  /* primary first and full width on phones (design 34) */
+  .btn-group--stack-sm > :where(.btn-primary, .att-btn-primary, .qa-btn--primary, .is-primary) { order: -1; }
+}
+
+/* Safety net (X52): two inline buttons written without a group never touch. */
+:where(.btn, .att-btn, .qa-btn) + :where(.btn, .att-btn, .qa-btn) { margin-inline-start: var(--btn-gap, 8px); }
+/* ... but containers that already space their children keep their own gap. */
+:where(.btn-group, [class*="actions"], [class*="toolbar"], [class*="-seg"], [class*="segmented"], [class*="btn-row"],
+       [role="group"], [role="tablist"], [role="toolbar"], .vv-cta, .att-hero-right, .att-upload-actions,
+       .att-filter-actions, .qa-row, .modal-footer, .dialog-actions)
+  > :where(.btn, .att-btn, .qa-btn) { margin-inline-start: 0; }
+/* full-width buttons stacked one above the other get the same gap vertically */
+:where(.att-btn-full, .btn-block, .btn-full) + :where(.att-btn-full, .btn-block, .btn-full) { margin-inline-start: 0; margin-top: var(--btn-gap, 8px); }
+
+/* ---- X52 sweep: page fixes found with tools/check_buttons.py ------------- */
+/* Attendance home "today" card: Check in now / My attendance touched (owner's report). */
+.att-today-action.btn-group, .att-today-status.btn-group { gap: var(--btn-gap, 8px); }
+/* Attendance year/month toggle: the two options read as one stuck control. */
+.att-switcher-group-toggle { gap: 6px; }
+/* Messages inbox filter chips: 5px on phones; the standard is the group gap. */
+.msg-filter-chips.btn-group { gap: var(--btn-gap, 8px); }

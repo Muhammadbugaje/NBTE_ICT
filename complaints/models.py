@@ -42,6 +42,13 @@ class ComplaintLayer(TimeStampedModel):
     custom_fields = models.JSONField(default=list, blank=True,
                                      help_text='Extra questions: [{"key", "label", "type": "text|textarea|'
                                                'choice|date", "required", "options"}].')
+    # v2.1 X9: the department that handles this category (a matching routing
+    # rule still wins). Blank = the routing rules only (e.g. the institution's
+    # handling department), then qa.complaints.fallback_department.
+    handling_department = models.ForeignKey(
+        "staff.Department", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+        help_text="Blank = the routing rules (e.g. the institution's handling department), then the "
+                  "general triage queue.")
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=100)
 
@@ -52,6 +59,8 @@ class ComplaintLayer(TimeStampedModel):
             ("view_complaint_queue", "Complaints: can see the department complaint queue"),
             ("handle_complaint", "Complaints: can act on a complaint stage"),
             ("assign_complaint", "Complaints: can assign or refer a complaint to someone else"),
+            # v2.1 X11: assign, resolve, return, refer and close (with the director seat check).
+            ("close_complaint", "Complaints: can resolve, return, refer or close a complaint (director)"),
             ("escalate_complaint", "Complaints: can escalate a complaint manually"),
             ("view_internal_messages", "Complaints: can read internal complaint notes"),
             ("view_complaint_reports", "Complaints: can see the SLA dashboard and reports"),
@@ -88,6 +97,7 @@ class RoutingRule(TimeStampedModel):
         ("user", "A named person"),
         ("institution_handling_department", "The institution's handling department"),
         ("desk_officer", "The institution's desk officer (latest QA case)"),
+        ("institution_ict_supervisor", "The institution's ICT supervisor"),  # v2.1 X9
     ]
 
     layer = models.ForeignKey(ComplaintLayer, null=True, blank=True, on_delete=models.CASCADE,
@@ -117,6 +127,7 @@ class RoutingRule(TimeStampedModel):
 class Complaint(InstitutionScopedModelMixin, TimeStampedModel):
     AUDITED = True
     INSTITUTION_PATH = "institution"
+    DEPARTMENT_PATH = "current_department"  # v2.1 X3
     FLOW_STATUS_FIELD = "status"
     OPEN_EXCLUDED = ("closed", "withdrawn")
 
@@ -148,6 +159,11 @@ class Complaint(InstitutionScopedModelMixin, TimeStampedModel):
     resolved_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     reopened_count = models.PositiveSmallIntegerField(default=0)
+    # v2.1 X10/X11: the staff member the handling director assigned (the
+    # stage resolver stays in current_assignee) and when they asked for review.
+    assigned_officer = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL,
+                                         related_name="complaints_assigned")
+    submitted_for_review_at = models.DateTimeField(null=True, blank=True)
     satisfaction = models.PositiveSmallIntegerField(null=True, blank=True, help_text="1–5 from the raiser.")
 
     objects = InstitutionScopedManager()

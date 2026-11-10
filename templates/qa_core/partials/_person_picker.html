@@ -1,0 +1,33 @@
+{% comment %}
+  Person picker (SOP-03 redesign) — one searchable combobox for choosing NBTE people.
+
+  Without JavaScript it is a styled <select> (option text carries rank, department,
+  open work and leave). static/js/person-picker.js turns it into an ARIA combobox +
+  listbox (avatar, name, rank, department, open work, leave flag), a bottom sheet on
+  phones. The server still checks eligibility; options with a `blocked` reason are
+  shown disabled with the reason.
+
+  {% include "qa_core/partials/_person_picker.html" with pp_name="officer" pp_id="desk-officer" pp_label="Desk officer" pp_people=desk_people pp_selected=case.desk_officer_id pp_required=True %}
+
+  pp_people      list from accreditation.case_ui.people(): {pk, name, initials, rank, grade, dept, photo,
+                 tasks, cases, away, blocked, note, suggested}
+  pp_selected    selected pk (single)          pp_selected_list  selected pks (multiple)
+  pp_multiple    True for several people        pp_min           how many are needed (multiple)
+  pp_help        short help under the label     pp_placeholder   "Choose …"
+  pp_noun        "officer" / "person" (for "Add another officer")
+
+  Each person may carry ``status`` (recommended | available | busy | away | locked) and
+  ``reasons`` [(tone, text)] from accreditation.visit_people.rank(); the enhanced panel groups
+  people by status (Recommended first), filters by status and department, and shows the reasons
+  as chips. Locked people are listed (so the reason is visible) but cannot be chosen.
+{% endcomment %}
+<div class="npk{% if pp_multiple %} npk--multi{% endif %}" data-pp{% if pp_min %} data-pp-min="{{ pp_min }}"{% endif %} data-pp-noun="{{ pp_noun|default:'person' }}" data-pp-placeholder="{{ pp_placeholder|default:'Choose a person' }}"{% if pp_dept_label %} data-pp-dept-label="{{ pp_dept_label }}"{% endif %}>
+  <label class="npk__label" id="{{ pp_id }}-label" for="{{ pp_id }}">{{ pp_label }}{% if pp_required %} <span class="qa-req" aria-hidden="true">*</span>{% endif %}</label>
+  {% if pp_help %}<p class="npk__help" id="{{ pp_id }}-help">{{ pp_help }}</p>{% endif %}
+  <select class="input npk__native" id="{{ pp_id }}" name="{{ pp_name }}"{% if pp_multiple %} multiple size="{% if pp_people|length > 6 %}6{% else %}{{ pp_people|length|default:2 }}{% endif %}"{% endif %}{% if pp_required %} required{% endif %}{% if pp_help %} aria-describedby="{{ pp_id }}-help"{% endif %}>
+    {% if not pp_multiple %}<option value="">{{ pp_placeholder|default:"Choose a person" }}…</option>{% endif %}
+    {% for p in pp_people %}<option value="{{ p.pk }}" data-name="{{ p.name }}" data-initials="{{ p.initials }}" data-rank="{{ p.rank }}" data-grade="{{ p.grade }}" data-dept="{{ p.dept }}" {% if p.tasks is not None %}data-tasks="{{ p.tasks }}" {% endif %}data-cases="{{ p.cases }}"{% if p.away %} data-away="{{ p.away }}"{% endif %}{% if p.photo %} data-photo="{{ p.photo }}"{% endif %}{% if p.note %} data-note="{{ p.note }}"{% endif %}{% if p.suggested %} data-suggested="1"{% endif %}{% if p.status %} data-status="{{ p.status }}"{% endif %}{% if p.staff_no %} data-staffno="{{ p.staff_no }}"{% endif %}{% if p.reasons %} data-reasons="{% for tone, text in p.reasons %}{{ tone }}:{{ text }}{% if not forloop.last %}|{% endif %}{% endfor %}"{% endif %}{% if p.blocked %} data-blocked="{{ p.blocked }}" disabled{% endif %}{% if pp_multiple %}{% if p.pk in pp_selected_list %} selected{% endif %}{% elif pp_selected and p.pk == pp_selected %} selected{% endif %}>{% if p.status_label and p.status != "available" %}[{{ p.status_label }}] {% endif %}{{ p.name }}{% if p.rank %} — {{ p.rank }}{% endif %}{% if p.dept %} · {{ p.dept }}{% endif %}{% if p.tasks is not None %} · {{ p.tasks }} open task{{ p.tasks|pluralize }}{% endif %}{% if p.away %} · {{ p.away }}{% endif %}{% if p.blocked %} ({{ p.blocked }}){% endif %}</option>{% endfor %}
+  </select>
+  {% if not pp_people %}<p class="npk__help">Nobody is eligible right now.</p>{% endif %}
+  <p class="npk__error" role="alert" hidden></p>
+</div>

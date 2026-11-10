@@ -7,8 +7,9 @@
   a request is created, when a programme is added, dropped or replaced, and
   at submission.
 * :func:`notify_bodies_for_case` — when the SOP-03 case opens, e-mails each
-  mapped body once and records a ``ProfessionalBodyNotice``. Never raises
-  into the caller: a failed notice must not stop the case from opening.
+  mapped body and notifies its portal accounts once, recording a
+  ``ProfessionalBodyNotice``. Never raises into the caller: a failed notice
+  must not stop the case from opening.
 """
 # scoped-by-caller
 from __future__ import annotations
@@ -25,13 +26,20 @@ logger = logging.getLogger(__name__)
 
 
 def bodies_for_programme(programme):
+    """v2.1 R.4: the programme's own body (master list / chosen) first, plus
+    any legacy name mappings (kept read-only for one release)."""
+    found = set()
+    if getattr(programme, "professional_body_id", None) and programme.professional_body.is_active:
+        found.add(programme.professional_body)
+    master = getattr(programme, "master", None) if getattr(programme, "master_id", None) else None
+    if master is not None:
+        found.update(master.other_bodies.filter(is_active=True))
     key = programme_key(programme.name)
-    if not key:
-        return []
-    rows = (ProgrammeBodyMapping.objects.filter(programme_key=key, is_active=True, body__is_active=True)
-            .select_related("body"))
-    return sorted({m.body for m in rows if m.level_id is None or m.level_id == programme.level_id},
-                  key=lambda b: b.name)
+    if key:
+        rows = (ProgrammeBodyMapping.objects.filter(programme_key=key, is_active=True, body__is_active=True)
+                .select_related("body"))
+        found.update(m.body for m in rows if m.level_id is None or m.level_id == programme.level_id)
+    return sorted(found, key=lambda b: b.name)
 
 
 def bodies_by_programme(programmes):
@@ -87,6 +95,26 @@ def notify_bodies_for_case(case, *, actor=None):
         for body, programmes in sorted(per_body.items(), key=lambda kv: kv[0].name):
             if ProfessionalBodyNotice.unscoped.filter(case=case, body=body).exists():
                 continue
+            portal_notified_at = None
+            portal_recipient_count = 0
+            from config import registry as config
+
+            if body.portal_enabled and config.get("qa.pb.portal_enabled", True):
+                from notifications.services import notify_many
+
+                from institutions.pb_portal import body_users
+
+                recipients = body_users(body)
+                notifications = notify_many(
+                    recipients,
+                    title=f"Joint QA exercise opened: {case.institution.name}",
+                    body=f"NBTE opened {case.reference} for {', '.join(programmes)}. "
+                         "View the programme status on your NBTE professional-body portal.",
+                    url="/pb/",
+                )
+                if notifications:
+                    portal_notified_at = timezone.now()
+                    portal_recipient_count = len(notifications)
             status = ProfessionalBodyNotice.NO_EMAIL
             if body.email:
                 try:
@@ -101,10 +129,20 @@ def notify_bodies_for_case(case, *, actor=None):
                     status = ProfessionalBodyNotice.FAILED
             notice = ProfessionalBodyNotice.unscoped.create(
                 case=case, body=body, email=body.email, programmes=programmes, status=status,
-                sent_at=timezone.now() if status == ProfessionalBodyNotice.SENT else None)
+                sent_at=timezone.now() if status == ProfessionalBodyNotice.SENT else None,
+                portal_notified_at=portal_notified_at, portal_recipient_count=portal_recipient_count)
             sent.append(notice)
-            what = {"sent": "notified by e-mail", "no_email": "has no e-mail on file: contact them directly",
-                    "failed": "could not be e-mailed: contact them directly"}[status]
+            if status == ProfessionalBodyNotice.SENT:
+                what = "notified by e-mail"
+                if portal_notified_at:
+                    what += " and in the professional-body portal"
+            elif portal_notified_at:
+                what = "notified in the professional-body portal; no e-mail is on file"
+            else:
+                what = "has no e-mail or portal contact on file: contact them directly"
+            if status == ProfessionalBodyNotice.FAILED:
+                what = ("e-mail delivery failed; notified in the professional-body portal"
+                        if portal_notified_at else "could not be e-mailed: contact them directly")
             timeline.record(case.institution, "qa_case.body_notified", subject=case, actor=actor,
                             visibility="internal",
                             internal_text=f"Joint QA: {body.name} {what} ({', '.join(programmes)}).")

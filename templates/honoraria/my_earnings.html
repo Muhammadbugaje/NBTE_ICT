@@ -1,0 +1,174 @@
+{% extends base_template|default:"base.html" %}
+{% load static qa_tags %}
+{% block title %}My earnings · {{ portal_name|default:SITE_NAME }}{% endblock %}
+{% block page_title %}My earnings{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/qa.css' %}">
+  <link rel="stylesheet" href="{% static 'css/honoraria.css' %}">
+{% endblock %}
+{% block content %}
+<div class="qa-page earnings-page">
+  <header class="qa-hero nbte-hero earnings-qa-hero" data-qa-area="profile">
+    <div>
+      <span class="qa-eyebrow">{% icon "card" 14 "2.2" %} Honoraria · Personal account</span>
+      <h1 data-qa-focus>My earnings</h1>
+      <p>Track completed payable work, payment scheduling, and your receipt confirmations.</p>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{% if is_resource_person %}{{ schedule_lines|length }}{% else %}{{ entries|length }}{% endif %}</strong><span>{% if is_resource_person %}Schedule line{{ schedule_lines|length|pluralize }}{% elif entries|length == 1 %}Payable item{% else %}Payable items{% endif %}</span></div>
+    </div>
+  </header>
+
+  {% if not is_resource_person %}{% include "partials/profile_tabs.html" %}{% endif %}
+  {% if is_resource_person %}
+    <p class="qa-small"><a class="btn btn-subtle" href="{{ bank_url }}">Manage my payment details</a></p>
+  {% endif %}
+
+  <section class="earnings-summary" aria-label="Earnings totals by payment status">
+    <article class="earnings-stat earnings-stat--accrued">
+      <span class="earnings-stat__label">Awaiting schedule</span>
+      <strong class="earnings-stat__amount">₦{{ totals.accrued|floatformat:2 }}</strong>
+      <span class="earnings-stat__hint">Completed work not yet added to a payment schedule</span>
+    </article>
+    <article class="earnings-stat earnings-stat--scheduled">
+      <span class="earnings-stat__label">Scheduled</span>
+      <strong class="earnings-stat__amount">₦{{ totals.scheduled|floatformat:2 }}</strong>
+      <span class="earnings-stat__hint">Included in a schedule and awaiting payment</span>
+    </article>
+    <article class="earnings-stat earnings-stat--paid">
+      <span class="earnings-stat__label">Payment sent</span>
+      <strong class="earnings-stat__amount">₦{{ totals.paid|floatformat:2 }}</strong>
+      <span class="earnings-stat__hint">Marked paid by Finance; confirm once received</span>
+    </article>
+    <article class="earnings-stat earnings-stat--received">
+      <span class="earnings-stat__label">Receipt confirmed</span>
+      <strong class="earnings-stat__amount">₦{{ totals.received|floatformat:2 }}</strong>
+      <span class="earnings-stat__hint">Payment you have confirmed receiving</span>
+    </article>
+  </section>
+
+  <section class="qa-card earnings-card" aria-labelledby="earnings-list-title">
+    <header class="qa-card__head earnings-card__head">
+      <div>
+        <h2 id="earnings-list-title">Payable work</h2>
+        <p>Amounts and status are recorded against each completed assignment.</p>
+      </div>
+      <span class="qa-chip">{{ entries|length }} item{{ entries|length|pluralize }}</span>
+    </header>
+    <div class="qa-table-wrap earnings-table-wrap">
+      <table class="qa-table earnings-table">
+        <thead>
+          <tr>
+            <th scope="col">Work item</th>
+            <th scope="col">Institution / department</th>
+            <th scope="col">Earned</th>
+            <th scope="col">Amount</th>
+            <th scope="col">Status</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in entries %}
+            <tr class="earnings-row">
+              <td data-label="Work item">
+                <strong>{{ entry.get_kind_display }}</strong>
+                <span class="earnings-table__sub">Rate: {{ entry.rate_key|cut:"_"|title }}</span>
+              </td>
+              <td data-label="Institution / department">
+                {% if entry.institution %}<strong>{{ entry.institution.name }}</strong>{% endif %}
+                {% if entry.institution and entry.department %}<span class="earnings-table__separator">·</span>{% endif %}
+                {% if entry.department %}<span>{{ entry.department.name }}</span>{% endif %}
+                {% if not entry.institution and not entry.department %}<span class="qa-muted">—</span>{% endif %}
+              </td>
+              <td data-label="Earned">{{ entry.accrued_at|date:"j M Y" }}</td>
+              <td data-label="Amount"><strong class="earnings-table__amount">₦{{ entry.amount|floatformat:2 }}</strong></td>
+              <td data-label="Status">
+                <span class="earnings-status earnings-status--{{ entry.status }}">{{ entry.get_status_display }}</span>
+                {% if entry.paid_reference %}<span class="earnings-table__sub">Ref: {{ entry.paid_reference }}</span>{% endif %}
+              </td>
+              <td data-label="Actions" class="earnings-table__action">
+                {% if entry.schedule %}
+                  <a class="btn btn-xs btn-subtle earnings-action" href="{% url 'honoraria_sched:detail' entry.schedule_id %}">View schedule</a>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            {% if not schedule_lines and not unclaimed_records %}
+            <tr class="earnings-empty-row"><td class="earnings-empty" colspan="6">
+              <span class="earnings-empty__mark" aria-hidden="true">₦</span>
+              <strong>No payable work yet</strong>
+              <span>Completed eligible reviews and assessments will appear here with their payment status.</span>
+            </td></tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% if not is_resource_person and schedule_lines %}
+    <section class="qa-card earnings-card" aria-labelledby="payment-history-title">
+      <header class="qa-card__head earnings-card__head">
+        <div><h2 id="payment-history-title">Scheduled payments</h2>
+          <p>Payment values reflect the amounts Finance recorded, including any approved adjustment.</p></div>
+      </header>
+      <div class="qa-table-wrap earnings-table-wrap"><table class="qa-table earnings-table">
+        <thead><tr><th scope="col">Payee / work</th><th scope="col">Schedule</th><th scope="col">Period</th><th scope="col" class="num">Payment amount</th><th scope="col">Status / reference</th><th scope="col">Receipt</th></tr></thead>
+        <tbody>{% for line in schedule_lines %}
+          <tr><td data-label="Payee / work">{{ line.name|default:line.person }} · {{ line.role }}</td>
+            <td data-label="Schedule"><a href="{% url 'honoraria_sched:detail' line.schedule_id %}">{{ line.schedule.reference }}</a></td>
+            <td data-label="Period">{{ line.schedule.period_start|date:"j M Y" }} – {{ line.schedule.period_end|date:"j M Y" }}</td>
+            <td class="num" data-label="Payment amount">₦{{ line.amount|floatformat:2 }}{% if line.amount_override %}<span class="earnings-table__sub">{{ line.note }}</span>{% endif %}</td>
+            <td data-label="Status / reference">{% if line.confirmed_at %}Receipt confirmed{% elif line.paid_at %}Paid · {{ line.payment_reference }}{% else %}{{ line.schedule.get_status_display }}{% endif %}</td>
+            <td data-label="Receipt">{% if line.paid_at and not line.confirmed_at and line.can_confirm %}
+              <form method="post" class="earnings-confirm-form">{% csrf_token %}<input type="hidden" name="line" value="{{ line.pk }}">
+                <button class="btn btn-xs btn-primary earnings-action" type="submit">Confirm receipt</button></form>
+              {% elif line.confirmed_at %}Confirmed {{ line.confirmed_at|date:"j M Y" }}{% else %}<span class="qa-muted">—</span>{% endif %}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+    </section>
+  {% endif %}
+  {% if is_resource_person %}
+    <section class="qa-card earnings-card" aria-labelledby="rp-earnings-title">
+      <header class="qa-card__head earnings-card__head">
+        <div><h2 id="rp-earnings-title">Visit allowances and payments</h2>
+          <p>Completed visit service is listed until Finance includes it in a schedule.</p></div>
+      </header>
+      {% if unclaimed_records %}
+        <div class="qa-table-wrap earnings-table-wrap"><table class="qa-table earnings-table">
+          <thead><tr><th scope="col">Visit / programme</th><th scope="col">Institution</th><th scope="col">Served</th><th scope="col">Visits</th><th scope="col">Estimated amount</th><th scope="col">Status</th></tr></thead>
+          <tbody>{% for record in unclaimed_records %}
+            <tr><td data-label="Visit / programme">{{ record.programme.name|default:record.duty|title }}</td>
+              <td data-label="Institution">{{ record.institution.name|default:"—" }}</td>
+              <td data-label="Served">{{ record.served_from|date:"j M Y" }}{% if record.served_to != record.served_from %} – {{ record.served_to|date:"j M Y" }}{% endif %}</td>
+              <td data-label="Visits">{{ record.visit_count }}</td>
+              <td data-label="Estimated amount">₦{{ record.estimated_amount|floatformat:2 }}</td>
+              <td data-label="Status">Awaiting schedule</td></tr>
+          {% endfor %}</tbody>
+        </table></div>
+      {% endif %}
+      {% if schedule_lines %}
+        <div class="qa-table-wrap earnings-table-wrap"><table class="qa-table earnings-table">
+          <thead><tr><th scope="col">Visit / programme</th><th scope="col">Institution</th><th scope="col">Service dates</th><th scope="col" class="num">Amount</th><th scope="col">Status</th><th scope="col">Receipt</th></tr></thead>
+          <tbody>{% for line in schedule_lines %}
+            <tr><td data-label="Visit / programme">{{ line.role }}</td>
+              <td data-label="Institution">{% for record in line.work_records %}{% if record.institution %}{{ record.institution.name }}{% if not forloop.last %}<br>{% endif %}{% endif %}{% empty %}—{% endfor %}</td>
+              <td data-label="Service dates">{% for record in line.work_records %}{{ record.served_from|date:"j M Y" }}{% if record.served_to != record.served_from %} – {{ record.served_to|date:"j M Y" }}{% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}{{ line.schedule.period_start|date:"j M Y" }} – {{ line.schedule.period_end|date:"j M Y" }}{% endfor %}</td>
+              <td class="num" data-label="Amount">₦{{ line.amount|floatformat:2 }}</td>
+              <td data-label="Status">{% if line.confirmed_at %}Receipt confirmed{% elif line.paid_at %}Paid by Finance{% else %}{{ line.schedule.get_status_display }}{% endif %}</td>
+              <td data-label="Receipt">{% if line.paid_at and not line.confirmed_at %}
+                <form method="post" class="earnings-confirm-form">{% csrf_token %}
+                  <input type="hidden" name="line" value="{{ line.pk }}">
+                  <button class="btn btn-xs btn-primary earnings-action" type="submit">Confirm receipt</button>
+                </form>
+                {% elif line.confirmed_at %}<span>Confirmed {{ line.confirmed_at|date:"j M Y" }}</span>{% else %}<span class="qa-muted">—</span>{% endif %}</td>
+            </tr>
+          {% endfor %}</tbody>
+        </table></div>
+      {% endif %}
+      {% if not unclaimed_records and not schedule_lines %}
+        <div class="qa-card__body"><p class="qa-muted">No visit allowance has been recorded yet. Completed work will appear here.</p></div>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

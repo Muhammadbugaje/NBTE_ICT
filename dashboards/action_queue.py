@@ -162,7 +162,7 @@ def _asset_items(user):
             title=assignment.asset.display_name,
             reference=assignment.asset.asset_tag,
             detail=(
-                f"Held by {assignment.assigned_to.get_full_name() or assignment.assigned_to.email} · "
+                f"Held by {assignment.holder_label} · "
                 f"Due {assignment.expected_return_at:%b %d, %Y}"
             ),
             url=reverse("assets:detail", args=[assignment.asset.asset_tag]),
@@ -177,7 +177,8 @@ def _ticket_items(user):
     from tickets.models import Ticket
     from tickets.views import _visible_tickets_qs
 
-    role_code = user.role.code if user.role_id else ""
+    import org
+    role_code = org.role_code(user)
     tickets = (
         _visible_tickets_qs(user)
         .filter(state=Ticket.ESCALATED, escalation_level__gt=0)
@@ -197,7 +198,7 @@ def _ticket_items(user):
             in_department and level >= 2 and role_code == "deputy-director"
         )
         is_recipient = is_recipient or (
-            in_department and level >= 3 and role_code == "director"
+            in_department and level >= 3 and org.is_director(user, ticket.handling_department_id)
         )
         if not (user.is_superuser or is_recipient):
             continue
@@ -210,6 +211,30 @@ def _ticket_items(user):
             url=reverse("tickets:detail", args=[ticket.pk]),
             priority=ticket.priority,
             timestamp=ticket.escalated_at or ticket.updated_at,
+        ))
+    # v2.1 I4: the opener is asked to rate resolved tickets until rated.
+    from tickets.rating import pending_ratings
+    for ticket in pending_ratings(user, limit=10):
+        items.append(_make_item(
+            source="ticket",
+            title=f"Rate: {ticket.subject}",
+            reference=ticket.reference,
+            detail="Resolved — please rate the service (1 to 5 stars)",
+            url=reverse("tickets:detail", args=[ticket.pk]) + "#rate",
+            priority="normal",
+            timestamp=ticket.resolved_at,
+        ))
+    # Division heads: tickets waiting for them to accept (H23 / I2).
+    for ticket in (Ticket.objects.filter(division__head=user, division_state=Ticket.DIV_PENDING,
+                                         state__in=Ticket.OPEN_STATES).select_related("division")):
+        items.append(_make_item(
+            source="ticket",
+            title=ticket.subject,
+            reference=ticket.reference,
+            detail=f"Routed to {ticket.division.name} — accept or decline",
+            url=reverse("tickets:detail", args=[ticket.pk]),
+            priority=ticket.priority,
+            timestamp=ticket.division_routed_at or ticket.updated_at,
         ))
     return items
 

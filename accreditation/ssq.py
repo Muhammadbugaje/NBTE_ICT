@@ -44,8 +44,12 @@ TABLE_COLUMN_TYPES = ("text", "number", "integer", "date", "choice", "yes_no", "
 VALIDATION_KEYS = {"max_length", "min_length", "min", "max", "pattern", "min_date", "max_date", "max_rows",
                    "min_rows", "max_files"}
 FIELD_KEYS = {"key", "type", "label", "required", "help", "prefill_from", "validation", "options", "document_kind",
-              "catalogue", "columns", "min_rows", "max_rows", "width", "placeholder", "multiple"}
-SECTION_KEYS = {"key", "title", "description", "fields", "department"}
+              "catalogue", "columns", "min_rows", "max_rows", "width", "placeholder", "multiple", "scoring"}
+SECTION_KEYS = {"key", "title", "description", "fields", "department", "scoring"}
+# v2.4: report templates (visit / ICT verification) carry NBTE-only scoring
+# rules; SSQs never do. See accreditation/report_scoring.py.
+SCORING_FIELD_KEYS = {"weight", "points", "on", "group", "evidence_field", "mandatory", "observed_field"}
+SCORING_OUTCOMES = ("interim", "deny", "critical", "major", "minor", "not_met")
 WIDTHS = ("full", "half")
 
 CONTACT_KINDS = ("official_email", "phone", "head_of_institution", "registrar", "bursar", "librarian")
@@ -78,7 +82,7 @@ def validate_schema(schema):
     errors = []
     if not isinstance(schema, dict):
         return ["The schema must be a JSON object with a \"sections\" list."]
-    unknown = set(schema) - {"sections", "intro"}
+    unknown = set(schema) - {"sections", "intro", "scoring", "form"}
     if unknown:
         errors.append(f"Unknown top-level keys: {', '.join(sorted(unknown))}.")
     sections = schema.get("sections")
@@ -195,6 +199,8 @@ def _validate_field(field, where, field_keys, sources, doc_kinds):
                         errors.append(f"{where}, column '{ckey}': give at least two options.")
                     if not str(col.get("label", "")).strip():
                         errors.append(f"{where}, column '{ckey}' needs a label.")
+    if "scoring" in field:
+        errors += _validate_scoring(field, where)
     source = field.get("prefill_from")
     if source:
         if ftype in ("table", "catalogue"):
@@ -205,6 +211,40 @@ def _validate_field(field, where, field_keys, sources, doc_kinds):
             errors.append(f"{where}: a document prefill needs a file field.")
         elif ftype == "file" and not source.startswith("document."):
             errors.append(f"{where}: a file field can only be prefilled from a document.")
+    return errors
+
+
+def _validate_scoring(field, where):
+    errors = []
+    rule = field.get("scoring")
+    if not isinstance(rule, dict):
+        return [f"{where}: 'scoring' must be an object."]
+    extra = set(rule) - SCORING_FIELD_KEYS
+    if extra:
+        errors.append(f"{where}: unknown scoring keys {', '.join(sorted(extra))}.")
+    if "weight" in rule and (not isinstance(rule["weight"], (int, float)) or rule["weight"] < 0):
+        errors.append(f"{where}: the scoring weight must be a number of 0 or more.")
+    values = {v for v, _l in option_pairs(field)}
+    points = rule.get("points")
+    if points is not None:
+        if field["type"] != "choice" or not isinstance(points, dict):
+            errors.append(f"{where}: scoring points need a one-choice field and an object of option → points.")
+        else:
+            for value, pts in points.items():
+                if value not in values:
+                    errors.append(f"{where}: scoring names the unknown option '{value}'.")
+                elif pts is not None and not isinstance(pts, (int, float)):
+                    errors.append(f"{where}: points for '{value}' must be a number (or null = not applicable).")
+    on = rule.get("on")
+    if on is not None:
+        if not isinstance(on, dict):
+            errors.append(f"{where}: scoring 'on' must map option values to an outcome.")
+        else:
+            for value, outcome in on.items():
+                if value not in values:
+                    errors.append(f"{where}: scoring names the unknown option '{value}'.")
+                if outcome not in SCORING_OUTCOMES:
+                    errors.append(f"{where}: outcome '{outcome}' must be one of {', '.join(SCORING_OUTCOMES)}.")
     return errors
 
 
@@ -310,8 +350,17 @@ def catalogue_items(field, programme):
     today = timezone.localdate()
     qs = CatalogueItem.objects.filter(kind=kind, is_active=True, effective_from__lte=today)
     if programme is not None:
+        # v2.4: the programme's list comes from the facilities register when
+        # the register has it (level-aware, refreshed when the register changes).
+        from . import register_link
+
+        register_link.ensure(programme)
+        by_master = (qs.filter(programme_master_id=programme.master_id)
+                     if getattr(programme, "master_id", None) else qs.none())
         by_name = qs.filter(programme_name__iexact=programme.name)
-        if by_name.exists():
+        if by_master.exists():
+            qs = by_master
+        elif by_name.exists():
             qs = by_name
         elif programme.category_id:
             qs = qs.filter(programme_name="", category_id=programme.category_id)
@@ -519,10 +568,38 @@ def display_value(field, value, *, programme=None):
     return str(value)
 
 
-def render_snapshot(template, data, *, programme=None):
+# X35 slice (Phase 0, S-11): what an institution must never see — NBTE's
+# required quantities and the "Short" flags (Phase R adds weights/critical).
+INSTITUTION_HIDDEN_ROW_KEYS = ("required", "short", "weight", "critical")
+AUDIENCES = ("staff", "institution")
+
+
+def for_audience(sections, audience="staff"):
+    """A copy of rendered snapshot ``sections`` fit for ``audience``. Stored
+    submission snapshots keep the staff view; every portal page, partial and
+    portal API response passes them through here with ``institution``."""
+    if audience not in AUDIENCES:
+        raise ValueError(f"Unknown audience {audience!r}")
+    if audience == "staff":
+        return sections
+    out = []
+    for section in sections or []:
+        fields = []
+        for field in section.get("fields", []):
+            field = dict(field)
+            if field.get("type") == "catalogue":
+                field["rows"] = [{k: v for k, v in row.items() if k not in INSTITUTION_HIDDEN_ROW_KEYS}
+                                 for row in field.get("rows") or []]
+            fields.append(field)
+        out.append({**section, "fields": fields})
+    return out
+
+
+def render_snapshot(template, data, *, programme=None, audience="staff"):
     """Sections with labels and display values, frozen into a Submission.
     Catalogue rows carry the item name and required quantity at submission
-    time, so later catalogue edits never change what was submitted."""
+    time, so later catalogue edits never change what was submitted. The
+    ``institution`` audience strips required quantities and "Short" flags."""
     sections = []
     for section in template.sections():
         rows = []
@@ -540,7 +617,9 @@ def render_snapshot(template, data, *, programme=None):
                         short = False
                     entry["rows"].append({"item_id": item.pk, "name": item.name, "unit": item.unit,
                                           "required": str(item.required_quantity), "quantity": have,
-                                          "version": item.version, "short": short})
+                                          "version": item.version, "short": short,
+                                          "weight": str(item.weight), "critical": item.is_critical,
+                                          "min_spec": item.min_spec})
             elif field["type"] == "table":
                 entry["columns"] = [{"key": c["key"], "label": c.get("label", c["key"])}
                                     for c in field.get("columns", [])]
@@ -549,7 +628,7 @@ def render_snapshot(template, data, *, programme=None):
                 entry["value"] = display_value(field, value, programme=programme)
             rows.append(entry)
         sections.append({"key": section["key"], "title": section["title"], "fields": rows})
-    return sections
+    return for_audience(sections, audience)
 
 
 def blank_field(ftype="text"):

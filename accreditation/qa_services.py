@@ -79,7 +79,11 @@ def public_status(req):
 
 
 def ssq_public_status(ssq):
-    return flow.public_label(ssq_instance(ssq)) or ssq.status
+    """The institution-facing SSQ status. Once submitted it follows the real
+    stage at NBTE (assignment, assessment, approval) — ssq_routing.public_stage."""
+    from . import ssq_routing
+
+    return ssq_routing.public_stage(ssq) or flow.public_label(ssq_instance(ssq)) or ssq.status
 
 
 def is_cancellable(req):
@@ -428,6 +432,9 @@ def _stage_list(instance, action):
 
 @transaction.atomic
 def submit(req, *, user, declaration=False):
+    from institutions.services import require_chief_executive
+
+    require_chief_executive(user, "QA requests")  # X12
     req = QARequest.unscoped.select_for_update().get(pk=req.pk)
     if req.status != "draft":
         raise ValidationError("Only a draft request can be submitted.")
@@ -549,6 +556,12 @@ def issue_fee(req, actor=None):
     itself never fails."""
     from payments import services as pay
 
+    from . import onboarding_linear  # started from onboarding with the fee waived: no bill
+
+    if onboarding_linear.fee_waived(req):
+        req.fee_note = "Fee waived: started from the onboarding self-studies (qa.onboarding.auto_request_fee_waived)."
+        req.save(update_fields=["fee_note", "updated_at"])
+        return True
     schedule = req.qa_type.fee_schedule
     code = schedule.code if schedule is not None else "qa_request_processing"
     count = fee_variables(req)["programmes"]
@@ -716,11 +729,20 @@ def on_open_ssqs(ctx):
     """One SSQ (version 1) per active programme, prefilled from the record."""
     req = ctx.subject
     template = req.qa_type.ssq_template
-    if template is None:
-        raise ValidationError(f"No published SSQ template for {req.qa_type.name}.")
+    from . import onboarding_linear
+
+    carried = 0
     for row in req.active_programmes():
         if current_ssq(row) is None:
+            # A programme whose onboarding self-study NBTE cleared never fills an SSQ again.
+            if onboarding_linear.carry_over(row, actor=ctx.actor) is not None:
+                carried += 1
+                continue
+            if template is None:
+                raise ValidationError(f"No published SSQ template for {req.qa_type.name}.")
             create_ssq(row, template, actor=ctx.actor)
+    if carried:
+        onboarding_linear.after_ssqs_opened(req)
     _sync_container(req, "in_progress")
     timeline.record(req.institution, "qa_request.ssq_open", subject=req, visibility="public",
                     public_text=f"Fee confirmed for {req.reference}. Complete the self-study questionnaires.")
@@ -759,7 +781,8 @@ def evidence_counts(ssq):
 
 
 def submit_roles():
-    return _json_list("qa.ssq.submit_roles", ["inst-chief-executive", "inst-admin"])
+    # X12 (Phase 0): only the Chief Executive by default (decision 32 / D-3).
+    return _json_list("qa.ssq.submit_roles", ["inst-chief-executive"])
 
 
 def editable_sections(ssq, user):
@@ -924,8 +947,9 @@ def _touch(ssq, user, field_key):
 def department_users(inst):
     from accounts.models import User
 
-    return list(User.objects.filter(institution=inst, user_type="institution", is_active=True,
-                                    role__code="inst-academic-dept").order_by("first_name"))
+    import org
+    return list(User.objects.filter(org.role_q("inst-academic-dept"), institution=inst, user_type="institution",
+                                    is_active=True).order_by("first_name"))
 
 
 @transaction.atomic
@@ -1018,10 +1042,13 @@ def on_ssq_submitted(ctx):
                 for ev in Evidence.unscoped.filter(ssq=ssq).exclude(status="removed").select_related(
                     "reused_from__kind")]
     version = Submission.unscoped.filter(ssq=ssq).count() + 1
-    Submission.unscoped.create(ssq=ssq, version=version, template_version=ssq.template.version,
-                               data_snapshot=dict(ssq.data or {}), rendered_snapshot=rendered,
-                               evidence_snapshot=evidence, submitted_by=ctx.actor if getattr(ctx.actor, "pk", None)
-                               else None, submitted_at=now)
+    submission = Submission.unscoped.create(
+        ssq=ssq, version=version, template_version=ssq.template.version, data_snapshot=dict(ssq.data or {}),
+        rendered_snapshot=rendered, evidence_snapshot=evidence,
+        submitted_by=ctx.actor if getattr(ctx.actor, "pk", None) else None, submitted_at=now)
+    from . import shortfall  # v2.1 R.2 (X36)
+
+    shortfall.record(submission)
     ssq.submitted_by = ctx.actor if getattr(ctx.actor, "pk", None) else None
     ssq.submitted_at = now
     # The engine mirrors the status after the effects run; the completeness
@@ -1031,14 +1058,30 @@ def on_ssq_submitted(ctx):
     req = ssq.qa_request
     timeline.record(req.institution, "ssq.submitted", subject=ssq, actor=ctx.actor, visibility="public",
                     public_text=f"SSQ for {programme} submitted to NBTE ({req.reference}, version {ssq.version}).")
-    dept = req.institution.handling_department
+    # Routing: record the handling department and the people who assign the
+    # officer (director; heads or the ES when the seat is empty) and tell them.
+    from . import ssq_routing
+
+    from assignments import access as _access
+
+    # X1/X4: in assignment mode reviewers hear of an SSQ only once it is
+    # assigned to them; the director of the handling department (or whoever
+    # stands in) is told to assign an officer (route_on_submit notifies).
+    assignment_mode = _access.assignment_mode()
+    ssq_routing.route_on_submit(ssq, ctx.actor, notify=assignment_mode)
+    dept = ssq_routing.handling_department(ssq)
 
     def _send():
+        recipients = inst_services.staff_in_department(dept, perm="accreditation.review_ssq")
         inst_services.notify_role("ssq.submitted", {
             "institution": req.institution.name, "programme": str(programme), "version": ssq.version,
-            "reference": req.reference}, inst_services.staff_in_department(dept, perm="accreditation.review_ssq"),
-            url=f"/qa/requests/ssq/{ssq.pk}/")
-    transaction.on_commit(_send)
+            "reference": req.reference}, recipients, url=f"/qa/requests/ssq/{ssq.pk}/")
+    if not assignment_mode:
+        transaction.on_commit(_send)
+    if programme.professional_body_id:  # v2.1 R.5 X43
+        from institutions import pb_portal
+
+        transaction.on_commit(lambda: pb_portal.notify_body(programme, "ssq_submitted"))
     advance_request_if_complete(req, ctx.actor)
 
 
@@ -1058,14 +1101,90 @@ def advance_request_if_complete(req, actor):
     return True
 
 
+def requirements_for(ssq):
+    """v2.1 R.6 (X37b): active requirements of every body mapped to the
+    programme, for the programme's level (a requirement with no levels covers
+    all levels)."""
+    from institutions.models import BodyRequirement
+    from institutions.professional_bodies import bodies_for_programme
+
+    programme = ssq.qa_request_programme.programme
+    bodies = bodies_for_programme(programme)
+    if not bodies:
+        return []
+    rows = (BodyRequirement.objects.filter(body__in=bodies, is_active=True)
+            .prefetch_related("levels").order_by("body__name", "sort_order", "code"))
+    return [r for r in rows
+            if not r.levels.exists() or (programme.level_id and r.levels.filter(pk=programme.level_id).exists())]
+
+
+def requirement_checks(ssq):
+    """{requirement_id: BodyRequirementCheck} for this SSQ."""
+    from .models import BodyRequirementCheck
+
+    return {c.requirement_id: c for c in
+            BodyRequirementCheck.unscoped.filter(ssq=ssq).select_related("requirement")}
+
+
+@transaction.atomic
+def save_requirement_checks(ssq, *, user, results):
+    """Record the reviewer's result per requirement.
+
+    ``results`` is ``{requirement_pk: {"result": ..., "remark": ...}}``. Only a
+    reviewer may write; unknown or out-of-scope requirement ids are ignored.
+    """
+    from .models import BodyRequirementCheck
+
+    ok, why = can_review(ssq, user)
+    if not ok:
+        raise PermissionDenied(why)
+    allowed = {r.pk: r for r in requirements_for(ssq)}
+    valid = dict(BodyRequirementCheck.RESULT_CHOICES)
+    saved = []
+    for raw_pk, row in (results or {}).items():
+        try:
+            pk = int(raw_pk)
+        except (TypeError, ValueError):
+            continue
+        requirement = allowed.get(pk)
+        if requirement is None:
+            continue
+        result = (row or {}).get("result") or "not_applicable"
+        if result not in valid:
+            raise ValidationError(f"Unknown result '{result}'.")
+        check, _ = BodyRequirementCheck.unscoped.update_or_create(
+            ssq=ssq, requirement=requirement,
+            defaults={"result": result, "remark": ((row or {}).get("remark") or "").strip(),
+                      "checked_by": user, "checked_at": timezone.now()})
+        saved.append(check)
+    return saved
+
+
 def can_review(ssq, user):
-    if getattr(user, "user_type", "staff") != "staff" or not user.has_perm("accreditation.review_ssq"):
-        return False, "You do not hold accreditation.review_ssq."
+    if (getattr(user, "user_type", "staff") != "staff"
+            or not getattr(user, "is_authenticated", False) or not user.is_active):
+        return False, "Only authorised NBTE staff can review an SSQ."
+    import org
+
     inst = ssq.institution
-    if not (user.is_superuser or user.has_perm("qa_core.view_all_institutions")
-            or user.has_perm("accounts.access_all_departments")
-            or user.department_id == inst.handling_department_id):
-        return False, "This SSQ belongs to another department."
+    privileged = (user.is_superuser or org.is_super_admin(user) or org.is_es(user)
+                  or org.is_director(user, inst.handling_department_id))
+    assigned = False
+    if not privileged:
+        from . import ssq_assign
+        from assignments.models import WorkAssignment
+
+        assignment = ssq_assign.current_assignment(ssq)
+        assigned = bool(assignment and assignment.assignee_id == user.pk
+                        and assignment.status in WorkAssignment.WORKING)
+        if assigned:
+            from . import ssq_routing
+
+            if not ssq_routing.officer_final_decision():
+                return False, ("Submit your assessment: the director of the handling department approves "
+                               "(qa.ssq.officer_final_decision is off).")
+    if not privileged and not assigned:
+        return False, "Only the handling department director or assigned SSQ reviewer may review this SSQ."
     if ssq.status != "submitted" or not ssq.is_current:
         return False, "The SSQ is not waiting for review."
     return True, ""
@@ -1077,14 +1196,48 @@ def accept_ssq(ssq, *, user, remark=""):
     ok, why = can_review(ssq, user)
     if not ok:
         raise PermissionDenied(why)
+    # v2.1 R.6 (X37b): a mandatory professional-body requirement that is not met
+    # forces a return unless the reviewer overrides it with a remark.
+    reqs = requirements_for(ssq)
+    checks = requirement_checks(ssq)
+    blocking = []
+    for requirement in reqs:
+        check = checks.get(requirement.pk)
+        if requirement.is_mandatory and (check is None or check.result == "not_met"):
+            blocking.append(requirement)
+    if blocking and not (remark or "").strip():
+        names = "; ".join(r.text for r in blocking[:3])
+        more = f" (+{len(blocking) - 3} more)" if len(blocking) > 3 else ""
+        raise ValidationError(
+            f"Mandatory professional-body requirement(s) not met: {names}{more}. "
+            "Return the SSQ, or give a remark to override.")
+    from . import shortfall  # v2.1 R.2 (X36): accepting a major shortfall needs a remark
+
+    analysis = shortfall.latest_for(ssq)
+    if analysis is not None and analysis.band == "major" and not (remark or "").strip():
+        raise ValidationError(f"The shortfall score is {analysis.score}% (major). Give a remark to accept it.")
     ssq.reviewed_by, ssq.reviewed_at, ssq.review_remark = user, timezone.now(), remark
     ssq.save(update_fields=["reviewed_by", "reviewed_at", "review_remark", "updated_at"])
     flow.transition(ssq_instance(ssq), "accept", user, remark=remark)
     ssq.refresh_from_db()
+    # v2.1 R.6 (X37b): a body requirement that still needs the body's letter
+    # keeps the programme waiting for it.
+    programme = ssq.qa_request_programme.programme
+    needs_letter = any(
+        requirement.requires_body_letter
+        and (checks.get(requirement.pk) is None
+             or checks[requirement.pk].result in ("partly", "not_met"))
+        for requirement in reqs)
+    if needs_letter and not programme.awaiting_body_letter:
+        programme.awaiting_body_letter = True
+        programme.save(update_fields=["awaiting_body_letter", "updated_at"])
     # Phase 5 (§9): the review completes and writes the reviewer's service row.
     from inspection.services import record_ssq_review
 
     record_ssq_review(ssq, reviewer=user, outcome="accepted")
+    from . import ssq_routing  # the officer's review work closes with the decision
+
+    ssq_routing.close_review_work(ssq, user)
     return ssq
 
 
@@ -1102,6 +1255,9 @@ def return_ssq(ssq, *, user, remark):
     from inspection.services import record_ssq_review
 
     record_ssq_review(ssq, reviewer=user, outcome="returned")
+    from . import ssq_routing  # the officer's review work closes with the decision
+
+    ssq_routing.close_review_work(ssq, user)
     return ssq
 
 

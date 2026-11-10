@@ -17,6 +17,7 @@
     <span class="qa-chip{% if c.closed_at %} qa-tone-neutral{% elif c.status == 'resolved' %} qa-tone-success{% else %} qa-tone-pending{% endif %}" data-qa-announce="Status: {{ current.stage_label|default:c.status }}">{% if current %}{{ current.stage_label }}{% else %}{{ c.status|humanize_code }}{% endif %}</span>
     {% if c.reopened_count %}<span class="qa-chip qa-tone-warn">Reopened ×{{ c.reopened_count }}</span>{% endif %}
     <a class="qa-chip qa-chip--button" href="{% url 'qa_complaints:record_pdf' c.pk %}" download>{% icon "download" 12 "2.4" %} Record (PDF)</a>
+    {% load nbte_calendar %}{% add_to_calendar "complaint" c %}
   </div>
 </header>
 
@@ -89,6 +90,7 @@
           <dl class="qa-meta qa-meta--tight">
             <dt>Department</dt><dd>{{ current.assigned_department.name|default:"—" }}</dd>
             <dt>Handler</dt><dd>{{ current.assigned_to|who:"Department queue" }}</dd>
+            {% if c.assigned_officer_id %}<dt>Officer</dt><dd>{{ c.assigned_officer|who }}</dd>{% endif %}
             {% if current.routed_by %}<dt>Routed by</dt><dd>Rule #{{ current.routed_by.order }}{% if current.routed_by.note %} — {{ current.routed_by.note }}{% endif %}</dd>{% endif %}
           </dl>
         </div>
@@ -106,11 +108,14 @@
           <details class="cx-action{% if forloop.first %} cx-action--primary{% endif %}{% if t.action_code == 'close' %} cx-action--danger{% endif %}"{% if forloop.first and not t.requires_remark %} open{% endif %}>
             <summary>{{ t.label }}</summary>
             <form method="post" action="{% url 'qa_complaints:act' c.pk t.action_code %}" hx-post="{% url 'qa_complaints:act' c.pk t.action_code %}" hx-target="#qa-panel">{% csrf_token %}
+              {% if t.action_code == "assign" %}
+                <div class="qa-field"><label for="cx-of-{{ forloop.counter }}">Officer</label><select class="input" id="cx-of-{{ forloop.counter }}" name="officer" required><option value="">Choose one of your staff…</option>{% for u in officers %}<option value="{{ u.pk }}"{% if u.pk == c.assigned_officer_id %} selected{% endif %}>{{ u|who }}</option>{% endfor %}</select></div>
+              {% endif %}
               {% if t.action_code == "refer" %}
                 <div class="qa-field"><label for="cx-rd-{{ forloop.counter }}">Department</label><select class="input" id="cx-rd-{{ forloop.counter }}" name="refer_department"><option value="">Choose…</option>{% for d in refer_departments %}<option value="{{ d.pk }}">{{ d.name }}</option>{% endfor %}</select></div>
-                {% if refer_people %}<div class="qa-field"><label for="cx-rp-{{ forloop.counter }}">Or a person in your department</label><select class="input" id="cx-rp-{{ forloop.counter }}" name="refer_user"><option value="">—</option>{% for u in refer_people %}<option value="{{ u.pk }}">{{ u|who }}</option>{% endfor %}</select></div>{% endif %}
+                {% if refer_people and not is_director %}<div class="qa-field"><label for="cx-rp-{{ forloop.counter }}">Or a person in your department</label><select class="input" id="cx-rp-{{ forloop.counter }}" name="refer_user"><option value="">—</option>{% for u in refer_people %}<option value="{{ u.pk }}">{{ u|who }}</option>{% endfor %}</select></div>{% endif %}
               {% endif %}
-              <div class="qa-field"><label for="cx-rm-{{ forloop.counter }}">{% if t.action_code == "request_info" %}Your question to the raiser{% elif t.action_code == "resolve" %}What was done (the raiser sees this){% elif t.requires_remark %}Remark{% else %}Remark (optional){% endif %}</label>
+              <div class="qa-field"><label for="cx-rm-{{ forloop.counter }}">{% if t.action_code == "request_info" %}Your question to the raiser{% elif t.action_code == "submit_for_review" %}Your proposed resolution (the director reviews it){% elif t.action_code == "return_to_officer" %}What the officer needs to change{% elif t.action_code == "resolve" %}What was done (the raiser sees this){% elif t.requires_remark %}Remark{% else %}Remark (optional){% endif %}</label>
                 <textarea class="input" id="cx-rm-{{ forloop.counter }}" name="remark" rows="3"{% if t.requires_remark %} required minlength="3"{% endif %}></textarea></div>
               <button class="btn {% if t.action_code == 'close' %}btn-subtle qa-btn-reject{% else %}btn-primary{% endif %} btn-sm" type="submit">{{ t.label }}</button>
             </form>
@@ -118,6 +123,8 @@
         {% endfor %}
       </div>
     </section>
+    {% elif read_only and watch_reason %}
+      {% include "qa_core/partials/_callout.html" with message=watch_reason %}
     {% elif c.is_open and act_why %}
       {% include "qa_core/partials/_callout.html" with message=act_why %}
     {% endif %}

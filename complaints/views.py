@@ -128,6 +128,9 @@ def _detail_ctx(request, complaint, **extra):
                                                  department_id=user.department_id).order_by("first_name")[:200])
         if refer_targets and user.department_id else [],
         "can_escalate": rights["can_escalate"], "can_hold": rights["can_hold"],
+        # v2.1 X9–X11: assign (director), read-only watchers
+        "officers": rights["officers"], "read_only": rights["read_only"], "watch_reason": rights["watch_reason"],
+        "is_director": rights["is_director"], "is_officer": rights["is_officer"],
         "watchers": list(complaint.watchers.all()),
         "escalations": list(Escalation.objects.filter(complaint_stage__complaint=complaint)
                             .select_related("escalated_to", "by", "complaint_stage").order_by("at")),
@@ -186,8 +189,10 @@ def act(request, pk, action):
     try:
         dept = Department.objects.filter(pk=p.get("refer_department") or 0).first()
         person = User.objects.filter(pk=p.get("refer_user") or 0, is_active=True, user_type="staff").first()
+        # X10: the officer is re-validated by the service (own department only).
+        officer = User.objects.filter(pk=p.get("officer") or 0).first() if action == "assign" else None
         services.act(complaint, action, request.user, remark=p.get("remark", ""), refer_department=dept,
-                     refer_user=person)
+                     refer_user=person, officer=officer)
     except (ValidationError, PermissionDenied) as exc:
         return _failed(request, complaint, exc)
     complaint.refresh_from_db()

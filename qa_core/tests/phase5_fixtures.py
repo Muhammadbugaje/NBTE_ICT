@@ -25,6 +25,13 @@ def p5(qa_seed, settings):
 
     settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
     demo.ensure_designations()
+    # v2.1 pins qa.resource_person.min_rank = director for the live system, but
+    # the demo cast's QA personnel are deputy directors (rank 80); with the
+    # director minimum they would be ineligible for every rule/finder test.
+    # Pin a scale where the cast works.
+    from qa_core.tests.phase3_fixtures import set_config
+
+    set_config("qa.resource_person.min_rank", "deputy-director")
     inst = case_demo.ensure_institution(tag=False)
     people, creds = case_demo.ensure_accounts(force_change=False, tag=False)
     case = case_demo.create_case(people, inst)

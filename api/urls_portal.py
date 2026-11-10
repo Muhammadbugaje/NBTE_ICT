@@ -13,11 +13,17 @@ urlpatterns = common_patterns(getattr(settings, "QA_PORTAL_URLCONF", "qa_core.po
 # --- portal (institutions and resource persons) ---
 from .views import portal_complaints as pc  # noqa: E402
 from .views import portal_institution as pi  # noqa: E402
+from .views import portal_memos as pm  # noqa: E402
 from .views import portal_payments as pp  # noqa: E402
 from .views import portal_qa as pq  # noqa: E402
 from .views import portal_rp as pr  # noqa: E402
 
 urlpatterns += [
+    # v2.1 Phase E (M4): memos from NBTE
+    path("memos/", pm.PortalMemosView.as_view(), name="portal_memos"),
+    path("memos/<int:pk>/", pm.PortalMemoDetailView.as_view(), name="portal_memo"),
+    path("memos/<int:pk>/acknowledge/", pm.PortalMemoAcknowledgeView.as_view(), name="portal_memo_acknowledge"),
+    path("memos/<int:pk>/pdf/", pm.PortalMemoPdfView.as_view(), name="portal_memo_pdf"),
     # Institution, users, timeline, inspections
     path("institution/", pi.InstitutionView.as_view(), name="portal_institution"),
     path("institution/options/", pi.InstitutionOptionsView.as_view(), name="portal_institution_options"),
@@ -37,6 +43,8 @@ urlpatterns += [
     path("application/start/", pi.ApplicationStartView.as_view(), name="portal_application_start"),
     path("application/submit/", pi.ApplicationSubmitView.as_view(), name="portal_application_submit"),
     path("application/programmes/", pi.ApplicationProgrammesView.as_view(), name="portal_application_programmes"),
+    path("application/programmes/submit/", pi.ApplicationProgrammesSubmitView.as_view(),
+         name="portal_application_programmes_submit"),
     path("application/programmes/<int:pk>/", pi.ApplicationProgrammeView.as_view(),
          name="portal_application_programme"),
     # QA requests (SOP-02) and the SSQ
@@ -82,6 +90,7 @@ urlpatterns += [
     path("payments/summary/", pp.PaymentsSummaryView.as_view(), name="portal_payments_summary"),
     path("payments/<int:pk>/", pp.PaymentDetailView.as_view(), name="portal_payment"),
     path("payments/<int:pk>/slip/", pp.PaymentSlipView.as_view(), name="portal_payment_slip"),
+    path("payments/<int:pk>/method/", pp.PaymentMethodView.as_view(), name="portal_payment_method"),
     path("payments/<int:pk>/online/", pp.PaymentOnlineView.as_view(), name="portal_payment_online"),
     path("payments/<int:pk>/verify/", pp.PaymentVerifyView.as_view(), name="portal_payment_verify"),
     path("payments/<int:pk>/proof/", pp.PaymentProofView.as_view(), name="portal_payment_proof"),

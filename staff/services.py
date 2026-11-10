@@ -138,6 +138,9 @@ def provision_account_for_staff(staff, password=None, login_url=""):
         return "no_email", None
 
     existing = User.objects.filter(email__iexact=staff.email).first()
+    if existing is not None and getattr(existing, "user_type", "staff") != "staff":
+        # Never link a staff record to an institution / portal account.
+        return "conflict", existing
     if existing is not None:
         try:
             other = existing.staff_profile

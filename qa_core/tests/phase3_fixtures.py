@@ -15,6 +15,14 @@ class NS:
     pass
 
 
+@pytest.fixture
+def department_mode():
+    """Run the test with ``qa.privacy.mode = department`` (what the deployed
+    system runs; a fresh install defaults to ``assignment`` — v2.1 X1). Tests
+    that assert the department-member visibility rule set this explicitly."""
+    set_config("qa.privacy.mode", "department")
+
+
 def set_config(key, value):
     """Change a setting the way the settings screen does (save() clears the
     config cache; a queryset update would not)."""
@@ -103,7 +111,7 @@ def paid_request(p3, django_capture_on_commit_callbacks):
     from accreditation import qa_services as svc
 
     req = make_request(p3)
-    svc.submit(req, user=p3.admin, declaration=True)
+    svc.submit(req, user=p3.ceo, declaration=True)
     with django_capture_on_commit_callbacks(execute=True):
         waive_fee(p3, req)
     req.refresh_from_db()

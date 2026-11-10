@@ -1,0 +1,201 @@
+/* =========================================================================
+   The institution's linear journey (templates/qa_portal/_journey*.html).
+   One stepper: vertical on phones, a horizontal timeline on wider screens.
+   Colours come from tokens.css, so light and dark both work.
+   ========================================================================= */
+.lj {
+  --lj-done: var(--success, #1f7a43);
+  --lj-now: var(--primary, #1f6b3e);
+  --lj-act: var(--warning, #b7791f);
+  --lj-line: var(--border, rgba(0, 0, 0, .09));
+  --lj-muted: var(--text-muted, #5f5f64);
+  --lj-card: var(--surface, #fff);
+  --lj-sunken: var(--surface-sunken, #f0f0f3);
+  margin: 0 0 24px;
+  padding: 22px 22px 20px;
+  border-radius: var(--radius-2xl, 26px);
+  background: var(--lj-card);
+  border: 1px solid var(--lj-line);
+  box-shadow: 0 1px 2px rgba(16, 24, 20, .04), 0 18px 40px -26px rgba(16, 60, 32, .35);
+  color: var(--text, #1d1d1f);
+}
+.lj h2, .lj h3, .lj h4, .lj p { margin: 0; }
+
+/* Header: ring + headline */
+.lj__head { display: flex; align-items: center; gap: 18px; margin-bottom: 20px; }
+.lj__intro { min-width: 0; flex: 1; }
+.lj__eyebrow { font-size: .8rem; font-weight: 600; color: var(--lj-muted); letter-spacing: .01em; margin-bottom: 4px; }
+.lj__eyebrow b { color: var(--text, #1d1d1f); }
+.lj__head h2 { font-size: clamp(1.15rem, 1rem + .8vw, 1.5rem); line-height: 1.25; letter-spacing: -.015em; }
+.lj__who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.lj-who { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px 4px 4px; border-radius: var(--radius-pill, 999px);
+  background: var(--lj-sunken); font-size: .86rem; font-weight: 600; }
+.lj-who i { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-style: normal;
+  font-size: .72rem; font-weight: 800; background: var(--lj-now); color: #fff; }
+.lj-who--you { background: color-mix(in srgb, var(--lj-act) 16%, var(--lj-card)); }
+.lj-who--you i { background: var(--lj-act); }
+.lj-since { font-size: .82rem; color: var(--lj-muted); }
+
+/* Progress ring */
+.lj-ring { position: relative; width: 92px; height: 92px; flex: none; display: grid; place-items: center; }
+.lj-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.lj-ring circle { fill: none; stroke-width: 11; }
+.lj-ring__bg { stroke: var(--lj-sunken); }
+.lj-ring__fg { stroke: var(--lj-done); stroke-linecap: round; transition: stroke-dasharray .8s cubic-bezier(.2, .8, .2, 1); }
+.lj-ring > span { position: relative; text-align: center; line-height: 1; }
+.lj-ring b { display: block; font-size: 1.3rem; letter-spacing: -.03em; }
+.lj-ring small { display: block; font-size: .68rem; color: var(--lj-muted); margin-top: 3px; }
+.lj-ring--sm { width: 60px; height: 60px; }
+.lj-ring--sm b { font-size: .9rem; }
+
+/* The track — vertical (phones) */
+.lj-track { list-style: none; margin: 0 0 20px; padding: 0; display: grid; gap: 0; }
+.lj-step { position: relative; display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start;
+  align-content: start; padding: 0 0 14px; }
+.lj-step::before { content: ""; position: absolute; inset-inline-start: 17px; top: 34px; bottom: 0; width: 2px;
+  background: var(--lj-line); border-radius: 2px; }
+.lj-step:last-child { padding-bottom: 0; }
+.lj-step:last-child::before { display: none; }
+.lj-step.is-done::before { background: var(--lj-done); }
+.lj-step__dot { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 800;
+  font-size: .9rem; background: var(--lj-card); color: var(--lj-muted); border: 2px solid var(--lj-line); position: relative; z-index: 1; }
+.lj-step__text { display: grid; gap: 2px; padding-top: 6px; min-width: 0; }
+.lj-step__text strong { font-size: .95rem; line-height: 1.3; word-break: normal; overflow-wrap: normal; hyphens: manual; }
+.lj-step__text small { font-size: .78rem; color: var(--lj-muted); }
+.lj-step.is-upcoming .lj-step__text strong { color: var(--lj-muted); font-weight: 600; }
+.lj-step.is-done .lj-step__dot { background: var(--lj-done); border-color: var(--lj-done); color: #fff; }
+.lj-step.is-done .lj-step__text small { color: var(--lj-done); font-weight: 600; }
+.lj-step.is-current .lj-step__dot { background: var(--lj-now); border-color: var(--lj-now); color: #fff; }
+.lj-step.is-action .lj-step__dot { background: var(--lj-act); border-color: var(--lj-act); color: #fff; }
+.lj-step.is-current .lj-step__text small, .lj-step.is-action .lj-step__text small { font-weight: 700; color: var(--text, #1d1d1f); }
+.lj-step.is-current .lj-step__dot::after, .lj-step.is-action .lj-step__dot::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid currentColor; opacity: 0;
+  color: var(--lj-now); animation: lj-pulse 2.2s ease-out infinite; }
+.lj-step.is-action .lj-step__dot::after { color: var(--lj-act); }
+@keyframes lj-pulse { 0% { transform: scale(.85); opacity: .7; } 80%, 100% { transform: scale(1.35); opacity: 0; } }
+
+/* Horizontal timeline on wider screens */
+@media (min-width: 900px) {
+  .lj-track { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); overflow-x: auto; padding: 6px 2px 8px;
+    scrollbar-width: thin; }
+  .lj-step { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: 8px; padding: 0 4px; min-width: 76px; }
+  .lj-step::before { inset-inline-start: calc(50% + 22px); inset-inline-end: calc(-50% + 22px); top: 17px; bottom: auto;
+    width: auto; height: 2px; }
+  .lj-step:last-child::before { display: none; }
+  .lj-step__text { padding-top: 0; }
+  .lj-step__text strong { font-size: .8rem; }
+  .lj-step__text small { font-size: .72rem; }
+}
+
+/* The "now" panel: the big what-to-do box + what is happening */
+.lj-now { display: grid; gap: 16px; }
+@media (min-width: 760px) { .lj-now { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } }
+.lj-box { border-radius: var(--radius-xl, 22px); padding: 20px 20px 22px; display: grid; gap: 10px; align-content: start;
+  border: 1px solid var(--lj-line); background: var(--lj-sunken); }
+.lj-box__kicker { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--lj-muted); }
+.lj-box h3 { font-size: 1.25rem; line-height: 1.3; letter-spacing: -.01em; }
+.lj-box p { font-size: 1rem; line-height: 1.6; color: var(--text, #1d1d1f); max-width: 62ch; }
+.lj-box--act { background: color-mix(in srgb, var(--lj-act) 11%, var(--lj-card));
+  border-color: color-mix(in srgb, var(--lj-act) 45%, transparent); border-width: 2px; }
+.lj-box--act .lj-box__kicker { color: color-mix(in srgb, var(--lj-act) 80%, var(--text, #000)); }
+.lj-box--wait { background: color-mix(in srgb, var(--lj-now) 7%, var(--lj-card)); }
+.lj-box--done { background: color-mix(in srgb, var(--lj-done) 10%, var(--lj-card)); }
+.lj-box .btn { justify-self: start; margin-top: 4px; min-height: 48px; }
+.lj-about { padding: 4px 4px 0; display: grid; gap: 8px; align-content: start; }
+.lj-about h3 { font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--lj-muted); }
+.lj-about > p { font-size: 1rem; line-height: 1.6; }
+.lj-facts { margin: 4px 0 0; display: grid; gap: 6px; }
+.lj-facts div { display: flex; gap: 10px; font-size: .9rem; }
+.lj-facts dt { color: var(--lj-muted); min-width: 120px; }
+.lj-facts dd { margin: 0; font-weight: 600; }
+
+/* Per-programme progress */
+.lj-progs__h { margin-top: 8px !important; font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--lj-muted); }
+.lj-progs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lj-progs li { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center; padding: 10px 12px;
+  border-radius: var(--radius-md, 12px); background: var(--lj-sunken); }
+.lj-progs li > span:nth-child(2) { display: grid; gap: 1px; min-width: 0; }
+.lj-progs strong { font-size: .92rem; }
+.lj-progs small { font-size: .8rem; color: var(--lj-muted); }
+.lj-progs__dot { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem; font-weight: 800;
+  background: var(--lj-card); border: 2px solid var(--lj-line); color: var(--lj-muted); }
+.lj-progs .is-done .lj-progs__dot { background: var(--lj-done); border-color: var(--lj-done); color: #fff; }
+.lj-progs .is-current .lj-progs__dot { background: var(--lj-now); border-color: var(--lj-now); color: #fff; }
+.lj-progs .is-action .lj-progs__dot { background: var(--lj-act); border-color: var(--lj-act); color: #fff; }
+.lj-progs .is-action small { color: var(--text, #1d1d1f); font-weight: 600; }
+
+.lj-side { margin-top: 16px; padding: 16px; border-radius: var(--radius-lg, 18px); border: 1px dashed color-mix(in srgb, var(--lj-act) 55%, transparent); display: grid; gap: 10px; }
+.lj-side h3 { display: flex; align-items: center; gap: 8px; font-size: 1rem; }
+
+/* Compact (QA request pages) */
+.lj--compact { padding: 16px 18px 14px; }
+.lj--compact .lj__head { margin-bottom: 12px; flex-wrap: wrap; }
+.lj--compact .lj__head h2 { font-size: 1.08rem; }
+.lj--compact .lj-track { margin-bottom: 0; }
+.lj-compact__do { margin-inline-start: auto; }
+.lj-pill { display: inline-block; padding: 7px 14px; border-radius: var(--radius-pill, 999px); background: var(--lj-sunken);
+  font-size: .86rem; font-weight: 600; color: var(--lj-muted); }
+.lj-pill--done { background: color-mix(in srgb, var(--lj-done) 14%, var(--lj-card)); color: var(--lj-done); }
+@media (max-width: 899px) {
+  .lj--compact .lj-track { grid-auto-flow: column; grid-auto-columns: minmax(64px, 1fr); overflow-x: auto; gap: 0; }
+  .lj--compact .lj-step { grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 0 2px; gap: 6px; }
+  .lj--compact .lj-step::before { inset-inline-start: calc(50% + 20px); inset-inline-end: calc(-50% + 20px); top: 17px;
+    bottom: auto; width: auto; height: 2px; }
+  .lj--compact .lj-step:last-child::before { display: none; }
+  .lj--compact .lj-step__text { padding-top: 0; }
+  .lj--compact .lj-step__text strong { font-size: .72rem; }
+  .lj--compact .lj-step__text small { display: none; }
+}
+
+/* Small phones */
+@media (max-width: 520px) {
+  .lj { padding: 18px 16px; border-radius: var(--radius-xl, 22px); }
+  .lj__head { align-items: flex-start; gap: 14px; }
+  .lj-ring { width: 72px; height: 72px; }
+  .lj-ring b { font-size: 1.05rem; }
+  .lj-box .btn { justify-self: stretch; justify-content: center; }
+  .lj-facts dt { min-width: 96px; }
+}
+
+/* Dark: a touch more contrast on tinted boxes */
+:root[data-theme="dark"] .lj-box--act { background: color-mix(in srgb, var(--lj-act) 20%, var(--lj-card)); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .lj-box--act { background: color-mix(in srgb, var(--lj-act) 20%, var(--lj-card)); }
+}
+
+/* Reduced motion: no pulse, no ring sweep */
+@media (prefers-reduced-motion: reduce) {
+  .lj-step.is-current .lj-step__dot::after, .lj-step.is-action .lj-step__dot::after { animation: none; opacity: .35; transform: scale(1.15); }
+  .lj-ring__fg { transition: none; }
+}
+@media print { .lj-step__dot::after { display: none; } }
+
+/* Phones: the "what you need to do now" box comes straight after the headline,
+   before the full list of steps. */
+@media (max-width: 899px) {
+  .lj:not(.lj--compact) { display: flex; flex-direction: column; }
+  .lj:not(.lj--compact) .lj__head { order: 0; }
+  .lj:not(.lj--compact) .lj-now { order: 1; margin-bottom: 22px; }
+  .lj:not(.lj--compact) .lj-track { order: 2; margin-bottom: 0; }
+  .lj:not(.lj--compact) .lj-side { order: 3; }
+}
+
+/* A self-study NBTE returned for correction (templates/qa_portal/application/ssq.html) */
+.lj-fix { padding: 20px 22px; border-radius: var(--radius-xl, 22px); display: grid; gap: 12px;
+  background: color-mix(in srgb, var(--warning, #b7791f) 11%, var(--surface, #fff));
+  border: 2px solid color-mix(in srgb, var(--warning, #b7791f) 45%, transparent); color: var(--text, #1d1d1f); }
+.lj-fix h2, .lj-fix p { margin: 0; }
+.lj-fix h2 { font-size: 1.25rem; line-height: 1.3; }
+.lj-fix p, .lj-fix li { font-size: 1rem; line-height: 1.6; }
+.lj-fix__kicker { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .06em; color: color-mix(in srgb, var(--warning, #b7791f) 80%, var(--text, #000)); }
+.lj-fix__notes { margin: 0; padding: 14px 16px; border-radius: var(--radius-md, 12px); background: var(--surface, #fff);
+  border-inline-start: 5px solid var(--warning, #b7791f); font-size: 1.05rem; line-height: 1.6; }
+.lj-fix__notes span { display: block; font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted, #5f5f64); margin-bottom: 4px; }
+.lj-fix__steps { margin: 0; padding-inline-start: 22px; display: grid; gap: 4px; }
+.lj-fix .btn { justify-self: start; min-height: 46px; }
+.lj-fix--submit { background: var(--surface, #fff); }
+:root[data-theme="dark"] .lj-fix { background: color-mix(in srgb, var(--warning, #b7791f) 20%, var(--surface, #1c1c1e)); }
+:root[data-theme="dark"] .lj-fix--submit { background: var(--surface, #1c1c1e); }

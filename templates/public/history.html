@@ -1,0 +1,32 @@
+{% extends "base_public.html" %}
+{% load static site_text brand %}
+{% block title %}History · {{ site_info.organisation_name }}{% endblock %}
+{% block meta_description %}How the {{ site_info.organisation_name }} grew from its founding Act into the regulator for technical and vocational education in Nigeria.{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/landing.css' %}">
+{% endblock %}
+{% block body %}
+{% include "public/_subpage_nav.html" %}
+<main class="public-main">
+  <div class="history-page">
+    <span class="section-eyebrow">Our history</span>
+    <h1>{% site_text "home.title.history" %}</h1>
+    <p class="history-lede">{% site_text "home.history.intro" %}</p>
+    {% if can_manage %}
+      <div class="history-preview-note">
+        {% if not history_enabled %}<b>Preview.</b> This page and the home page section are hidden from visitors until the History switch is on.{% else %}You can edit this timeline.{% endif %}
+        <a href="{% url 'config:history' %}">Settings → History timeline</a>
+      </div>
+    {% endif %}
+    {% if milestones %}
+      {% include "public/_history_timeline.html" with page=True %}
+    {% else %}
+      <p class="lead-prev__empty">The history timeline is being prepared.</p>
+    {% endif %}
+    <div class="btn-group history-page__links">
+      <a class="btn btn-ghost" href="{% url 'core:landing' %}">Back to home</a>
+      <a class="btn btn-primary" href="{% url 'core:leadership_page' %}">See the leadership</a>
+    </div>
+  </div>
+</main>
+{% endblock %}

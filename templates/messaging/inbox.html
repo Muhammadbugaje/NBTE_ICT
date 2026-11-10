@@ -1,41 +1,32 @@
 {% extends "base.html" %}
-{% load static %}
+{% load qa_tags %}{% load static %}
 {% load ux_tags %}
 
 {% block title %}Messages · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Messages{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=10">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="msg-page" data-message-list="inbox" data-inbox-live
      data-inbox-updates-url="{% url 'messaging:inbox_updates' %}" data-inbox-kind="{{ inbox_kind }}">
 
-  <header class="msg-hero">
+  <header class="qa-hero nbte-hero msg-qa-hero" data-qa-area="messaging">
     <div>
+      <span class="qa-eyebrow">{% icon "message" 14 "2.2" %} Communication · Messages</span>
       <h1>Messages</h1>
-      <p class="muted">
-        {% if total_unread %}
-          <strong class="msg-unread-count" data-total-unread>{{ total_unread }}</strong> unread ·
-        {% endif %}
-        {{ total_threads }} thread{{ total_threads|pluralize }} in total
-      </p>
+      <p>Direct and group conversations with colleagues. Turn any message into a task or memo from its menu.</p>
+      <div class="qa-hero__actions">
+        <a href="{% url 'messaging:compose' %}" class="btn btn-primary">{% icon "plus" 16 "2.4" %} New message</a>
+        <a href="{% url 'messaging:memo_list' %}" class="btn btn-subtle">{% icon "file" 15 "2.2" %} Memos</a>
+        <a href="{% url 'messaging:archived' %}" class="btn btn-subtle">{% icon "archive" 15 "2.2" %} Archived</a>
+      </div>
     </div>
-    <div class="msg-hero-actions">
-      <a href="{% url 'messaging:memo_list' %}" class="btn btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        Memos
-      </a>
-      <a href="{% url 'messaging:archived' %}" class="btn btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-        Archived
-      </a>
-      <a href="{% url 'messaging:compose' %}" class="btn btn-primary">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New message
-      </a>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat{% if total_unread %} qa-stat--info{% endif %}"><strong class="msg-unread-count" data-total-unread>{{ total_unread|default:0 }}</strong><span>Unread</span></div>
+      <div class="qa-stat"><strong>{{ total_threads }}</strong><span>Conversation{{ total_threads|pluralize }}</span></div>
     </div>
   </header>
 
@@ -58,7 +49,7 @@
   </div>
 
   {# Phase 9: quick filters (All / Unread / Groups / Direct) #}
-  <div class="msg-filter-chips" role="group" aria-label="Show" data-kind-filter>
+  <div class="msg-filter-chips btn-group" role="group" aria-label="Show" data-kind-filter>
     <button type="button" class="msg-filter-chip{% if inbox_kind == 'all' %} is-active{% endif %}" data-kind="all" aria-pressed="{% if inbox_kind == 'all' %}true{% else %}false{% endif %}">All</button>
     <button type="button" class="msg-filter-chip{% if inbox_kind == 'unread' %} is-active{% endif %}" data-kind="unread" aria-pressed="{% if inbox_kind == 'unread' %}true{% else %}false{% endif %}">Unread{% if total_unread %} <span class="msg-chip-count" data-unread-chip>{{ total_unread }}</span>{% endif %}</button>
     <button type="button" class="msg-filter-chip{% if inbox_kind == 'groups' %} is-active{% endif %}" data-kind="groups" aria-pressed="{% if inbox_kind == 'groups' %}true{% else %}false{% endif %}">Groups</button>
@@ -115,6 +106,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/messaging.js' %}?v=5" defer></script>
-<script src="{% static 'js/chat-live.js' %}?v=1" defer></script>
+<script src="{% static 'js/messaging.js' %}" defer></script>
+<script src="{% static 'js/chat-live.js' %}" defer></script>
 {% endblock %}

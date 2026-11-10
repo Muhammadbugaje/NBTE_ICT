@@ -1,0 +1,56 @@
+{% extends base_template %}
+{% load qa_tags static %}
+{% block title %}{{ page_title }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
+<div class="qa-portal-page rf-cancel" id="qa-cancel">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{{ back_url }}" hx-get="{{ back_url }}" hx-target="#qa-main" hx-push-url="true">{{ subject.reference }}</a><span aria-hidden="true">/</span><span aria-current="page">Cancel</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "ban" 14 "2.2" %} {% if kind == "qa_request" %}{{ subject.qa_type.name }}{% else %}Onboarding application{% endif %}</span>
+    <h1 data-qa-focus>{{ page_title }}</h1>
+    <p>Cancelling stops the work on it straight away. Bills you have not paid are cancelled; money you have paid is refunded under NBTE's refund policy.</p>
+  </header>
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not cancelled" message=error %}{% endif %}
+
+  {% if ok %}
+    <div class="qa-callout qa-callout--success" role="status">{% icon "check" 18 "2.4" %}<div><strong>{{ ok.title }}</strong><p>{{ ok.message }}</p></div></div>
+    <div class="qa-form-actions">{% if refund %}<a class="btn btn-primary" href="{% url 'qa_portal:refunds' %}" hx-get="{% url 'qa_portal:refunds' %}" hx-target="#qa-main" hx-push-url="true">{% icon "rotate" 16 %} Follow your refund</a>{% endif %}<a class="btn btn-subtle" href="{{ back_url }}" hx-get="{{ back_url }}" hx-target="#qa-main" hx-push-url="true">Back to {{ subject.reference }}</a></div>
+  {% elif done %}
+    {% include "qa_core/partials/_callout.html" with title="Already cancelled" message=done.reason %}
+    <p><a class="btn btn-subtle" href="{% url 'qa_portal:refunds' %}">See your refunds</a></p>
+  {% elif not cancellable %}
+    {% include "qa_core/partials/_callout.html" with kind="danger" title="This can no longer be cancelled" message="It has been decided, closed or already withdrawn. Contact NBTE if you need help." %}
+  {% else %}
+  <div class="qa-cols">
+    <section class="qa-card" aria-labelledby="cx-h">
+      <header class="qa-card__head"><div><h2 id="cx-h">What you get back</h2><p>Where it is now: <strong>{{ quote.stage_label }}</strong>.</p></div><span class="qa-chip qa-tone-info">{{ quote.percent }}% refund</span></header>
+      <div class="qa-card__body">
+        <div class="qa-bill-line"><span>You have paid</span><span class="qa-num">{{ quote.paid|naira }}</span></div>
+        <div class="qa-bill-line"><span>Admin fee NBTE keeps ({{ quote.percent }}% is refunded)</span><span class="qa-num">− {{ quote.admin_fee|naira }}</span></div>
+        <div class="ib-sum-total"><span>Your refund</span><strong class="qa-num">{{ quote.refund_amount|naira }}</strong></div>
+        {% if quote.pending %}<p class="qa-small qa-muted">A payment of {{ quote.pending|naira }} is still being confirmed by NBTE Finance. If it is confirmed, {{ quote.percent }}% of it is added to your refund.</p>{% endif %}
+        {% if not quote.paid %}<p class="qa-small qa-muted">You have not paid anything yet, so there is nothing to refund. Any unpaid bill is cancelled.</p>{% endif %}
+
+        <form class="qa-form qa-stack" style="margin-top:20px" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#qa-main" hx-trigger="qa:confirmed" data-qa-confirm="{% if quote.refund_amount %}You will get {{ quote.refund_amount|naira }} back ({{ quote.percent }}%). {% endif %}The work stops and this cannot be undone." data-qa-confirm-title="Cancel {{ subject.reference }}?" data-qa-confirm-label="Yes, cancel it" data-qa-confirm-tone="danger" data-qa-require="#cx-reason" data-qa-require-msg="Say why you are cancelling">{% csrf_token %}
+          <div class="qa-field"><label for="cx-reason">Why are you cancelling? <span class="qa-muted">(required)</span></label><textarea class="input" id="cx-reason" name="reason" rows="3" required minlength="5">{{ form.reason }}</textarea></div>
+          {% if quote.refund_amount %}
+          <fieldset class="qa-fieldset rf-bank"><legend>Bank account for the refund <span class="qa-muted">(you can add it later on the Refunds page)</span></legend>
+            <div class="rf-bank__grid">
+              <div class="qa-field"><label for="cx-bank">Bank</label><input class="input" id="cx-bank" name="bank_name" maxlength="120" value="{{ form.bank_name }}" autocomplete="off"></div>
+              <div class="qa-field"><label for="cx-acn">Account name</label><input class="input" id="cx-acn" name="account_name" maxlength="200" value="{{ form.account_name }}" autocomplete="off"></div>
+              <div class="qa-field"><label for="cx-num">Account number (NUBAN)</label><input class="input qa-mono" id="cx-num" name="account_number" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" value="{{ form.account_number }}" autocomplete="off"></div>
+            </div>
+            <p class="qa-small qa-muted">Use your institution's official account. NBTE Finance checks it before paying.</p>
+          </fieldset>
+          {% endif %}
+          <label class="qa-field--check"><input type="checkbox" name="declaration" required{% if form.declaration %} checked{% endif %}> I am authorised to cancel this for {{ subject.institution.name }}. I understand the work stops, unpaid bills are cancelled, and {% if quote.paid %}{{ quote.refund_amount|naira }} ({{ quote.percent }}%) is refunded under the policy below{% else %}nothing is refunded because nothing was paid{% endif %}.</label>
+          <div class="qa-form-actions"><button class="btn btn-danger" type="submit"{% if request.is_impersonating %} disabled{% endif %}>{% icon "ban" 16 %} Cancel {{ subject.reference }}</button><a class="btn btn-subtle" href="{{ back_url }}" hx-get="{{ back_url }}" hx-target="#qa-main" hx-push-url="true">Keep it</a></div>
+        </form>
+      </div>
+    </section>
+    <aside class="qa-stack"><section class="qa-card" aria-labelledby="cx-pol"><header class="qa-card__head"><div><h2 id="cx-pol">Refund policy</h2><p>How much comes back depends on how far NBTE's work has gone.</p></div></header>
+      <div class="qa-card__body">{% include "qa_portal/refunds/_policy.html" with current=quote.band %}</div></section></aside>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

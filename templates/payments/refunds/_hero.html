@@ -1,0 +1,20 @@
+{% load qa_tags %}
+<header class="qa-hero fin-hero rf-hero">
+  <div>
+    <span class="qa-eyebrow">{% icon "rotate" 14 "2.2" %} Finance (QA) · Refunds{% if hero.is_approver and not hero.can_verify %} · {% if hero.requires_es %}Executive Secretary{% else %}Director of Finance{% endif %}{% endif %}</span>
+    <h1 data-qa-focus>{{ rf_title|default:"Refunds" }}</h1>
+    <p>{{ rf_lead|default:"Money returned when a QA request or an onboarding application is cancelled, under the refund policy. Finance verifies the payment and the institution's bank details, the approver decides, then Finance records the payment reference." }}</p>
+    <div class="qa-hero__actions">
+      {% if hero.can_verify and hero.to_verify %}<a class="btn btn-primary" href="{% url 'qa_fin:refunds' %}?status=awaiting_finance" hx-get="{% url 'qa_fin:refunds' %}?status=awaiting_finance" hx-target="#qa-panel" hx-push-url="true">{% icon "shield" 16 "2.4" %} Verify refunds <span class="qa-chip">{{ hero.to_verify }}</span></a>{% endif %}
+      {% if hero.is_approver and hero.awaiting_approval %}<a class="btn btn-primary" href="{% url 'qa_fin:refunds' %}?status=awaiting_approval" hx-get="{% url 'qa_fin:refunds' %}?status=awaiting_approval" hx-target="#qa-panel" hx-push-url="true">{% icon "check" 16 "2.4" %} Approve refunds <span class="qa-chip">{{ hero.awaiting_approval }}</span></a>{% endif %}
+      {% if hero.can_verify and hero.to_pay %}<a class="btn btn-subtle" href="{% url 'qa_fin:refunds' %}?status=approved" hx-get="{% url 'qa_fin:refunds' %}?status=approved" hx-target="#qa-panel" hx-push-url="true">{% icon "bank" 16 %} Record payments <span class="qa-chip">{{ hero.to_pay }}</span></a>{% endif %}
+      <a class="btn btn-subtle" href="/qa/settings/?group=QA+%C2%B7+Fees+%26+refunds">{% icon "key" 16 %} Refund policy settings</a>
+    </div>
+  </div>
+  <div class="qa-hero__stats" aria-label="Summary">
+    <a class="qa-stat{% if hero.to_verify %} qa-stat--warn{% endif %} qa-stat--link" href="{% url 'qa_fin:refunds' %}?status=awaiting_finance" hx-get="{% url 'qa_fin:refunds' %}?status=awaiting_finance" hx-target="#qa-panel" hx-push-url="true"><strong>{{ hero.to_verify }}</strong><span>To verify</span></a>
+    <a class="qa-stat{% if hero.awaiting_approval %} qa-stat--warn{% endif %} qa-stat--link" href="{% url 'qa_fin:refunds' %}?status=awaiting_approval" hx-get="{% url 'qa_fin:refunds' %}?status=awaiting_approval" hx-target="#qa-panel" hx-push-url="true"><strong>{{ hero.awaiting_approval }}</strong><span>Awaiting {% if hero.requires_es %}ES{% else %}Director{% endif %}</span></a>
+    <a class="qa-stat{% if hero.to_pay %} qa-stat--info{% endif %} qa-stat--link" href="{% url 'qa_fin:refunds' %}?status=approved" hx-get="{% url 'qa_fin:refunds' %}?status=approved" hx-target="#qa-panel" hx-push-url="true"><strong>{{ hero.to_pay }}</strong><span>To pay</span></a>
+    <a class="qa-stat qa-stat--success qa-stat--link" href="{% url 'qa_fin:refunds' %}?status=refunded" hx-get="{% url 'qa_fin:refunds' %}?status=refunded" hx-target="#qa-panel" hx-push-url="true"><strong>{{ hero.refunded_total|naira }}</strong><span>Refunded</span></a>
+  </div>
+</header>

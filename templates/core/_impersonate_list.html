@@ -1,0 +1,61 @@
+{% load qa_tags %}{% comment %}Act as user: rows region (#actas-list), swapped by HTMX. One segment only.{% endcomment %}
+<div id="actas-list" class="hr-region">
+  <p class="hr-hint" aria-live="polite">{{ page.total }} active {% if segment == 'institution' %}institution user{{ page.total|pluralize }}{% elif segment == 'external' %}portal account{{ page.total|pluralize }}{% else %}NBTE staff account{{ page.total|pluralize }}{% endif %}{% if f.any %} match{{ page.total|pluralize:"es," }} the filters{% endif %}.</p>
+  {% if page.rows %}
+    <div class="hr-table-wrap" tabindex="0" role="region" aria-label="Accounts (scrolls sideways)">
+      <table class="hr-table">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            {% if segment == 'institution' %}
+            <th scope="col">Account</th>
+            <th scope="col">Portal role</th>
+            {% elif segment == 'external' %}
+            <th scope="col">Type</th>
+            <th scope="col">Organisation</th>
+            <th scope="col">Role</th>
+            {% else %}
+            <th scope="col">Department</th>
+            <th scope="col">Role</th>
+            {% endif %}
+            <th scope="col" class="hr-sticky"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in page.rows %}
+            {% if segment == 'institution' %}{% ifchanged u.institution_id %}
+            <tr class="actas-group"><th scope="rowgroup" colspan="4">{% icon "building" 14 "2.2" %} {{ u.institution.name|default:"No institution" }}{% if u.institution %} <small class="hr-muted">{{ u.institution.code }}{% if u.institution.state %} · {{ u.institution.state.name }}{% endif %}</small>{% endif %}</th></tr>
+            {% endifchanged %}{% endif %}
+            <tr>
+              <td class="hr-cell-primary">
+                <div class="hr-cell-user">
+                  <span class="hr-avatar" aria-hidden="true">{{ u.first_name|slice:":1"|upper }}{{ u.last_name|slice:":1"|upper }}</span>
+                  <span><strong>{{ u.get_full_name|default:u.email }}</strong><small>{{ u.email }}</small></span>
+                </div>
+              </td>
+              {% if segment == 'institution' %}
+              <td data-label="Account">{% with m=u.institution_membership %}{% if m.account_kind == 'chief_executive' %}<span class="hr-chip hr-chip--ok">Chief Executive</span>{% elif m.account_kind == 'ict_head' %}<span class="hr-chip">Head of ICT</span>{% else %}<span class="hr-muted">Portal user</span>{% endif %}{% endwith %}</td>
+              {% elif segment == 'external' %}
+              <td data-label="Type">{{ u.get_user_type_display }}</td>
+              <td data-label="Organisation">{% if u.professional_body %}{{ u.professional_body.name }}{% elif u.institution %}{{ u.institution.name }}{% else %}—{% endif %}</td>
+              {% else %}
+              <td data-label="Department">{{ u.department.name|default:"—" }}</td>
+              {% endif %}
+              <td data-label="Role">{% if u.role %}<span class="hr-chip hr-chip--role">{{ u.role.name }}</span>{% else %}<span class="hr-muted">—</span>{% endif %}</td>
+              <td class="hr-sticky">
+                <form method="post" action="{% url 'core:impersonate_start' u.pk %}" class="btn-group"{% if segment == 'institution' %} target="_blank"{% endif %}>
+                  {% csrf_token %}
+                  <button class="btn btn-ghost btn-sm" type="submit">{% if segment == 'institution' %}{% icon "external" 13 "2.2" %} Open portal as{% else %}Act as{% endif %}</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% include "qa_core/partials/_pagination.html" with page=page target="#actas-list" swap="outerHTML" %}
+  {% else %}
+    {% url 'core:impersonate_pick' as clear_url %}
+    {% include "partials/empty_state.html" with variant="filtered" title="Nobody matches" body="Try another name or filter." action_url=clear_url|add:segment_query action_label="Clear filters" action_class="btn-ghost" only %}
+  {% endif %}
+</div>

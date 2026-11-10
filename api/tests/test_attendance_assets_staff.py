@@ -39,7 +39,7 @@ def test_today_and_check_in(worker, hq, working_day):
     t = c.get(BASE + "attendance/today/").json()
     assert t["can_check_in"] and t["reason"] == "" and not t["checked_in"]
     assert t["locations"][0]["name"] == "NBTE HQ" and t["locations"][0]["radius_meters"] == 250
-    assert t["check_out_supported"] is False
+    assert t["check_out_supported"] is True and t["can_check_out"] is False  # v2.1 G1: check-out exists
     r = c.post(BASE + "attendance/check-in/", {"latitude": HQ[0], "longitude": HQ[1]}, format="json")
     assert r.status_code == 400 and "accuracy" in err(r)["fields"]
     r = c.post(BASE + "attendance/check-in/", {"latitude": HQ[0], "longitude": HQ[1], "accuracy": 900},
@@ -59,7 +59,19 @@ def test_today_and_check_in(worker, hq, working_day):
     r = c.post(BASE + "attendance/check-in/", {"latitude": HQ[0], "longitude": HQ[1], "accuracy": 10},
                format="json")
     assert r.status_code == 400 and err(r)["code"] == "check_in_refused"
-    assert c.post(BASE + "attendance/check-out/").status_code == 501
+    # v2.1 G1/G2 (was a 501 stub): check out by GPS at the office
+    t = c.get(BASE + "attendance/today/").json()
+    assert t["can_check_out"] and t["check_out_reason"] == ""
+    r = c.post(BASE + "attendance/check-out/", {"method": "gps", "latitude": 6.5, "longitude": 3.3,
+                                                "accuracy": 10}, format="json")
+    assert r.status_code == 400 and err(r)["code"] == "check_out_refused"
+    r = c.post(BASE + "attendance/check-out/", {"method": "gps", "latitude": HQ[0], "longitude": HQ[1],
+                                                "accuracy": 10}, format="json")
+    assert r.status_code == 200, r.content
+    assert r.json()["record"]["check_out_at"] and r.json()["record"]["check_out_source"] == "gps"
+    r = c.post(BASE + "attendance/check-out/", {"method": "gps", "latitude": HQ[0], "longitude": HQ[1],
+                                                "accuracy": 10}, format="json")
+    assert r.status_code == 400 and "already" in err(r)["message"]
     hist = c.get(BASE + "attendance/history/").json()
     assert set(hist) == {"results", "next", "previous", "count"}
     assert any(rec["status"] in ("present", "late") for rec in hist["results"])

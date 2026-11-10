@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load static qa_tags %}
+
+{% block title %}New {{ seg.label|lower }} account · User management · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}User management{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/home.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="home-page home-page-narrow">
+  {% url list_url_name as back_url %}
+  <header class="qa-hero nbte-hero">
+    <div>
+      <a class="nbte-hero__back" href="{{ back_url }}">{% icon "back" 14 "2.4" %} {{ seg.label }}</a>
+      <span class="qa-eyebrow">{% icon seg.icon 14 "2.2" %} User management · {{ seg.label }}</span>
+      <h1>{% if segment == 'institution' %}New institution user{% else %}New NBTE staff account{% endif %}</h1>
+      <p>{% if segment == 'institution' %}A QA portal account for one institution. It signs in on the portal only, gets an institution portal role, and receives a set-password link by e-mail.{% else %}A sign-in for the internal NBTE system. The account is always an NBTE staff account in a department, and only NBTE internal roles can be chosen.{% endif %}</p>
+    </div>
+  </header>
+
+  <form method="post" class="home-card um-create" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger mb-4" role="alert">{% for e in form.non_field_errors %}<p>{{ e }}</p>{% endfor %}</div>{% endif %}
+    {% for field in form %}
+      {% if field.is_hidden %}{{ field }}{% else %}
+      <div class="form-group{% if field.errors %} has-error{% endif %}">
+        {% if field.field.widget.input_type == 'checkbox' %}
+          <label class="checkbox-row">{{ field }} {{ field.label }}</label>
+        {% else %}
+          <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span aria-hidden="true">*</span>{% endif %}</label>
+          {{ field }}
+        {% endif %}
+        {% if field.help_text %}<small class="muted">{{ field.help_text }}</small>{% endif %}
+        {% for e in field.errors %}<p class="field-error" role="alert">{{ e }}</p>{% endfor %}
+      </div>
+      {% endif %}
+    {% endfor %}
+    <div class="btn-group">
+      <button type="submit" class="btn btn-primary">{% icon "plus" 16 "2.4" %} Create account</button>
+      <a href="{{ back_url }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

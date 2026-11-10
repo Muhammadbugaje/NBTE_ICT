@@ -2,53 +2,39 @@
 {% load ux_tags %}
 {% load static %}
 {% load workflow_extras %}
+{% load icon who from qa_tags %}
 
 {% block title %}{{ ticket.reference }} · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}{{ ticket.reference }}{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/tickets.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/tickets.css' %}">
 {% endblock %}
 {% block extra_js %}
-  <script src="{% static 'js/tickets.js' %}?v=4" defer></script>
+  <script src="{% static 'js/tickets.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
-<div class="tk-detail">
+<div class="tk-detail wk-page wk-page--detail" data-qa-area="tickets">
 
-  {# ---------- Page head ---------- #}
-  <div class="tk-page-head">
+  {# ---------- Hero (shared qa-hero pattern) ---------- #}
+  <header class="qa-hero nbte-hero wk-hero wk-hero--detail tk-hero-v2" data-state="{{ ticket.state }}" data-qa-area="tickets">
     <div>
-      <a href="{% url 'tickets:list' %}" class="tk-btn tk-btn-ghost mb-3">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        All tickets
-      </a>
-    </div>
-    <div class="tk-page-head-actions">
-      {% if not ticket.is_closed %}
-        <a href="{% url 'tasks:create_from_ticket' ticket.pk %}" class="tk-btn tk-btn-ghost">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Create task from this
-        </a>
-      {% endif %}
-    </div>
-  </div>
-
-  {# ---------- Hero ---------- #}
-  <header class="tk-hero" data-state="{{ ticket.state }}">
-    <div class="tk-hero-top">
-      <span class="tk-hero-ref">{{ ticket.reference }}</span>
+      <a class="nbte-hero__back" href="{% url 'tickets:list' %}">{% icon "back" 14 "2.4" %} All tickets</a>
+      <span class="qa-eyebrow">{% icon "help" 14 "2.2" %} Tickets · <span class="wk-ref">{{ ticket.reference }}</span></span>
+      <h1>{{ ticket.subject }}</h1>
+      <div class="wk-hero-meta tk-hero-top">
       <span class="tk-chip tk-chip-state-{{ ticket.state }}"><span class="tk-chip-dot"></span>{{ ticket.get_state_display }}</span>
       <span class="tk-chip tk-chip-prio-{{ ticket.priority }}">{{ ticket.get_priority_display }}</span>
       <span class="tk-chip tk-chip-cat">{{ ticket.category.name }}</span>
       {% if ticket.sla_resolution_overdue %}<span class="tk-chip tk-chip-sla-danger">SLA overdue</span>{% endif %}
       {% if ticket.escalation_level %}<span class="tk-chip tk-chip-sla-warn">Escalated L{{ ticket.escalation_level }}</span>{% endif %}
       {% if requires_director_signoff %}<span class="tk-chip tk-chip-sla-warn">Director sign-off</span>{% endif %}
-    </div>
-
-    <h1>{{ ticket.subject }}</h1>
-
-    <div class="tk-hero-meta">
+      {% if ticket.division %}<span class="tk-chip tk-chip-division" data-division-state="{{ ticket.division_state }}">{{ ticket.division.name }}{% if ticket.division_state == 'pending' %} · awaiting head{% endif %}</span>{% endif %}
+      {% if ticket.funds_state %}<span class="tk-chip tk-chip-funds-{{ ticket.funds_state }}">Funds {{ ticket.get_funds_state_display|lower }}</span>{% endif %}
+    
+      </div>
+      <div class="tk-hero-meta wk-hero-facts">
       <span class="tk-hero-meta-item">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         <strong>{{ ticket.raised_by.get_full_name|default:ticket.raised_by.email }}</strong>
@@ -81,6 +67,19 @@
           Reopened {{ ticket.reopen_count }}×
         </span>
       {% endif %}
+    </div>
+      <div class="qa-hero__actions">
+        <a href="{% url 'tickets:report_pdf' ticket.pk %}" class="btn btn-subtle" target="_blank" rel="noopener" data-report-pdf>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Report (PDF)
+      </a>
+        {% if not ticket.is_closed %}
+        <a href="{% url 'tasks:create_from_ticket' ticket.pk %}" class="btn btn-subtle">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create task from this
+        </a>
+      {% endif %}
+      </div>
     </div>
   </header>
 
@@ -127,6 +126,77 @@
           </div>
         {% endif %}
       </section>
+
+      {% if ticket.is_closed %}
+        <div class="tk-closed-banner" role="status" data-closed-readonly>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <div class="min-w-0"><strong>This ticket is {{ ticket.get_state_display|lower }}.</strong>
+            <p>It is a read-only record now: no new comments or files. <a href="{% url 'tickets:report_pdf' ticket.pk %}" target="_blank" rel="noopener">Download the report (PDF)</a>.</p></div>
+        </div>
+      {% endif %}
+
+      {# --- Path taken (I10) --- #}
+      <section class="tk-block" id="path">
+        <h2 class="tk-block-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M6 16V9a4 4 0 0 1 4-4h5"/></svg>
+          Path taken <span class="tk-count">{{ path|length }} step{{ path|length|pluralize }}</span>
+        </h2>
+        <ol class="tk-path">
+          {% for e in path %}
+            <li class="tk-path-step tk-path-{{ e.kind }}">
+              <span class="tk-path-dot" aria-hidden="true"></span>
+              <div class="min-w-0">
+                <div class="tk-path-head"><strong>{{ e.label }}</strong>
+                  <span class="tk-path-when">{{ e.created_at|date:"M j · H:i" }}</span></div>
+                <div class="tk-path-msg">{{ e.message }}{% if e.metadata.request_id %} · <a href="{% url 'workflow:detail' e.metadata.request_id %}">{{ e.metadata.request_reference }}</a>{% endif %}</div>
+                <div class="tk-path-by">{{ e.actor|who:"System" }}</div>
+              </div>
+            </li>
+          {% endfor %}
+        </ol>
+        {% if ticket.source_request %}<p class="tk-para">Converted from request <a href="{% url 'workflow:detail' ticket.source_request.pk %}">{{ ticket.source_request.reference }}</a>.</p>{% endif %}
+      </section>
+
+      {% if ticket.funds_state %}
+        <section class="tk-block tk-funds" data-funds-state="{{ ticket.funds_state }}">
+          <h2 class="tk-block-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>
+            Funds
+          </h2>
+          <dl class="tk-kv">
+            <dt>Request</dt><dd>{% if ticket.funds_request %}<a href="{% url 'workflow:detail' ticket.funds_request.pk %}">{{ ticket.funds_request.reference }}</a> · {{ ticket.funds_request.get_status_display }}{% else %}—{% endif %}</dd>
+            <dt>Amount</dt><dd>₦{{ ticket.funds_amount|floatformat:"2g" }}</dd>
+            <dt>Decision</dt><dd><span class="tk-chip tk-chip-funds-{{ ticket.funds_state }}">{{ ticket.get_funds_state_display }}</span></dd>
+            {% if ticket.funds_decision_note %}<dt>Reason</dt><dd>{{ ticket.funds_decision_note }}</dd>{% endif %}
+          </dl>
+          {% if ticket.funds_state == 'requested' %}<p class="tk-para">Finance and the Executive Secretary see this ticket's full trail on the request. The ticket waits until they decide, then returns to its handler.</p>{% endif %}
+        </section>
+      {% endif %}
+
+      {% if asset_panel %}
+        <section class="tk-block tk-asset-panel" id="asset">
+          <h2 class="tk-block-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Asset
+          </h2>
+          {% if asset_grant %}
+            <p class="tk-grant-note" data-asset-grant>Temporary access while you handle this ticket{% if asset_grant.expires_at %} (until it closes, at the latest {{ asset_grant.expires_at|date:"M j, Y" }}){% endif %}.</p>
+          {% endif %}
+          <dl class="tk-kv">
+            <dt>Asset</dt><dd><a href="{% url 'assets:detail' asset_panel.asset.asset_tag %}">{{ asset_panel.asset.asset_tag }}</a> · {{ asset_panel.asset.display_name }}</dd>
+            <dt>State</dt><dd>{{ asset_panel.asset.get_state_display }}</dd>
+            {% if asset_panel.asset.current_location %}<dt>Location</dt><dd>{{ asset_panel.asset.current_location }}</dd>{% endif %}
+            <dt>Held by</dt><dd>{% for h in asset_panel.holders %}{{ h.holder_label }}{% if not forloop.last %}, {% endif %}{% empty %}Nobody{% endfor %}</dd>
+          </dl>
+          {% if asset_panel.past_tickets or asset_panel.issues %}
+            <h3 class="tk-sub">History</h3>
+            <ul class="tk-asset-history">
+              {% for t in asset_panel.past_tickets %}<li><a href="{% url 'tickets:detail' t.pk %}">{{ t.reference }}</a> {{ t.subject }} <span class="tk-text-subtle">· {{ t.get_state_display }}</span></li>{% endfor %}
+              {% for i in asset_panel.issues %}<li>{{ i.summary }} <span class="tk-text-subtle">· {{ i.reported_at|date:"M j, Y" }}{% if i.is_resolved %} · resolved{% endif %}</span></li>{% endfor %}
+            </ul>
+          {% endif %}
+        </section>
+      {% endif %}
 
       {# --- Timeline (SSE) --- #}
       <section class="tk-block">
@@ -185,6 +255,9 @@
           <p class="tk-empty-note">No comments yet.</p>
         {% endif %}
 
+        {% if ticket.is_closed %}
+          <p class="tk-empty-note" data-closed-note>This ticket is closed. Reopen it to add comments or files.</p>
+        {% endif %}
         {% if can_comment %}
           <form method="post" action="{% url 'tickets:comment' ticket.pk %}" class="tk-composer">
             {% csrf_token %}
@@ -337,6 +410,68 @@
         </div>
       {% endif %}
 
+      {# --- Division (I2 / H23) --- #}
+      {% if flags.can_accept_division %}
+        <div class="tk-side-card tk-side-card-highlight" data-division-decision>
+          <h3 class="tk-side-card-title">{{ ticket.division.name }}: accept?</h3>
+          <p class="tk-para">Routed to your division{% if ticket.division_routed_by %} by {{ ticket.division_routed_by.get_full_name|default:ticket.division_routed_by.email }}{% endif %}. Accepting shares it with every member of the division.</p>
+          <div class="btn-group btn-group--stack">
+            <form method="post" action="{% url 'tickets:division_accept' ticket.pk %}">{% csrf_token %}
+              <button type="submit" class="tk-btn tk-btn-primary tk-btn-full">Accept for the division</button></form>
+          </div>
+          <form method="post" action="{% url 'tickets:division_decline' ticket.pk %}" class="mt-2">{% csrf_token %}
+            <input type="text" name="reason" placeholder="Reason, if you decline" required>
+            <div class="btn-group mt-2"><button type="submit" class="tk-btn tk-btn-ghost tk-btn-full">Decline</button></div>
+          </form>
+        </div>
+      {% endif %}
+      {% if flags.can_route %}
+        <div class="tk-side-card" data-route-card>
+          <h3 class="tk-side-card-title">Route to a division</h3>
+          {% if divisions %}
+            <form method="post" action="{% url 'tickets:route' ticket.pk %}">{% csrf_token %}
+              <select name="division" class="input" required>
+                <option value="">— Choose a division —</option>
+                {% for d in divisions %}<option value="{{ d.pk }}"{% if d.pk == ticket.division_id %} selected{% endif %}>{{ d.name }} · {{ d.load_label }}{% if not d.head_id %} · no head{% endif %}</option>{% endfor %}
+              </select>
+              <input type="text" name="note" placeholder="Optional note for the head">
+              <div class="btn-group mt-2"><button type="submit" class="tk-btn tk-btn-primary tk-btn-full">Route</button></div>
+              <span class="tk-field-hint mt-1">The head accepts first; then the division's members see the ticket.</span>
+            </form>
+          {% else %}
+            <p class="tk-para">{{ ticket.handling_department.name }} has no divisions yet.</p>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# --- Rate (I4) --- #}
+      {% if flags.can_rate and ticket.state == 'closed' %}
+        <div class="tk-side-card tk-side-card-highlight" id="rate" data-rate-card>
+          <h3 class="tk-side-card-title">Rate this ticket</h3>
+          <form method="post" action="{% url 'tickets:rate' ticket.pk %}">{% csrf_token %}
+            <div class="tk-stars" data-star-rating data-target="id_tk_rate_value">
+              <span class="tk-star" data-value="1">★</span><span class="tk-star" data-value="2">★</span><span class="tk-star" data-value="3">★</span><span class="tk-star" data-value="4">★</span><span class="tk-star" data-value="5">★</span>
+            </div>
+            <input type="hidden" name="rating" id="id_tk_rate_value" value="5">
+            <textarea name="comment" placeholder="Optional feedback…"></textarea>
+            <div class="btn-group mt-2"><button type="submit" class="tk-btn tk-btn-primary tk-btn-full">Send rating</button></div>
+          </form>
+        </div>
+      {% endif %}
+
+      {# --- Request funds (I8) --- #}
+      {% if flags.can_request_funds %}
+        <div class="tk-side-card" data-funds-card>
+          <h3 class="tk-side-card-title">Request funds</h3>
+          <p class="tk-para">Money needed to finish? This becomes a request that Finance and the ES approve with this ticket's full trail. The ticket continues after their decision.</p>
+          <form method="post" action="{% url 'tickets:request_funds' ticket.pk %}">{% csrf_token %}
+            <input type="text" name="amount" inputmode="decimal" placeholder="Amount (₦), e.g. 45000" required>
+            <textarea name="purpose" placeholder="What is the money for?" required></textarea>
+            <div class="btn-group mt-2"><button type="submit" class="tk-btn tk-btn-ghost tk-btn-full">Request funds</button></div>
+          </form>
+        </div>
+      {% endif %}
+
       {# --- Actions --- #}
       {% if can_assign or can_start or can_await or can_resolve or can_close or can_reopen or can_cancel %}
         <div class="tk-side-card">
@@ -405,7 +540,7 @@
           {% endif %}
 
           {% if can_close %}
-            <div class="tk-action-section">
+            <div class="tk-action-section" id="rate">
               <span class="tk-action-label">Close & rate</span>
               <form method="post" action="{% url 'tickets:close' ticket.pk %}">
                 {% csrf_token %}

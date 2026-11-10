@@ -19,7 +19,7 @@ def test_fresh_database_full_seed_is_complete_and_idempotent(settings):
     out = io.StringIO()
     call_command("seed_startup", "--with-demo", stdout=out, stderr=io.StringIO())
     text = out.getvalue()
-    for code in ("executive-secretary", "director", "qa-finance-director", "ict-qa-monitor", "qa-settings-admin",
+    for code in ("executive-secretary", "director", "ict-qa-monitor", "qa-settings-admin",
                  "inst-admin", "resource-person"):
         assert Role.objects.filter(code=code).exists(), code
     for name in ("QA Desk", "Complaints Handlers", "Complaints Admin", "Finance – Approvals"):

@@ -101,9 +101,13 @@ def switch(request):
 
 
 def qa_home(request):
+    """Where "switch to QA" lands: the QA home (v2.1 N1) for anyone who can
+    use the QA workspace; otherwise the first QA screen the user can open."""
     from .context_processors import qa_nav
 
     nav = qa_nav(request).get("qa_nav") or {}
+    if nav.get("show"):
+        return reverse("qa:home")
     for key, name in (("qa_cases", "qa_case:board"), ("qa_requests", "qa_req:list"),
                       ("institutions", "qa_inst:list"), ("applications", "qa_app:list"),
                       ("inspection", "qa_insp:inspections"), ("finance", "qa_fin:queue"),

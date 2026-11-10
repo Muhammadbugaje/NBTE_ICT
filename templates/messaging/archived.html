@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% load static %}
+{% load qa_tags %}{% load static %}
 {% load ux_tags %}
 
 {% block title %}Archived · {{ SITE_NAME }}{% endblock %}
 {% block page_title %}Archived messages{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/messaging.css' %}?v=8">
+  <link rel="stylesheet" href="{% static 'css/messaging.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -17,13 +17,15 @@
     Inbox
   </a>
 
-  <header class="msg-hero">
+  <header class="qa-hero nbte-hero msg-qa-hero" data-qa-area="messaging">
     <div>
-      <h1>Archived</h1>
-      <p class="muted">
-        {{ threads|length }} archived thread{{ threads|length|pluralize }}.
-        Click <strong>Unarchive</strong> to bring a thread back into your inbox.
-      </p>
+      <a class="nbte-hero__back" href="{% url 'messaging:inbox' %}">{% icon "back" 14 "2.4" %} Messages</a>
+      <span class="qa-eyebrow">{% icon "archive" 14 "2.2" %} Communication · Archived</span>
+      <h1>Archived conversations</h1>
+      <p>Conversations you put away. Choose <strong>Unarchive</strong> to bring one back into your inbox.</p>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <div class="qa-stat"><strong>{{ threads|length }}</strong><span>Archived</span></div>
     </div>
   </header>
 
@@ -100,5 +102,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/messaging.js' %}?v=4" defer></script>
+<script src="{% static 'js/messaging.js' %}" defer></script>
 {% endblock %}

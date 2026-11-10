@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, views_analytics
 
 app_name = "attendance"
 
@@ -21,4 +21,12 @@ urlpatterns = [
     path("export/pdf/",            views.export_pdf,             name="export_pdf"),
     path("export/all/excel/",      views.export_all_excel,       name="export_all_excel"),
     path("sample/",                views.download_sample,        name="download_sample"),
+    # v2.1 Phase D
+    path("check-out/api/",         views.check_out_api,          name="check_out_api"),
+    path("scan/<str:token>/",      views.scan,                   name="scan"),
+    path("office/<int:pk>/screen/", views.office_screen,         name="office_screen"),
+    path("office/<int:pk>/qr/",    views.office_qr,              name="office_qr"),
+    path("analytics/",             views_analytics.analytics_page,    name="analytics"),
+    path("analytics/person/<int:user_id>/", views_analytics.person, name="analytics_person"),
+    path("analytics/export/",      views_analytics.export,       name="analytics_export"),
 ]

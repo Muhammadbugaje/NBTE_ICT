@@ -8,3 +8,4 @@ class InstitutionsConfig(AppConfig):
 
     def ready(self):
         from . import handlers  # noqa: F401  (registers the §6 action handlers)
+        from . import tvet_handlers  # noqa: F401  (Part 1c: professional bodies and programmes, X47)

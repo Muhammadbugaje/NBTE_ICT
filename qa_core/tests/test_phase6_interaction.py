@@ -84,7 +84,7 @@ def test_internal_pages_carry_the_tab_bar_and_design_layer(qa_seed, make_user):
     c = Client()
     c.force_login(make_user("director.dpap@nbte.local", role="director", dept="dpap"))
     html = c.get("/home/").content.decode()
-    assert 'class="app-tabbar"' in html and "css/apple.css" in html and "js/apple.js" in html
+    assert 'class="app-tabbar"' in html and ("css/apple.css" in html or "css/nbte-finish.bundle.css" in html) and "js/apple.js" in html
     assert 'data-drawer-toggle="app-sidebar"' in html
     qa = c.get("/qa/cases/").content.decode()
     assert ">Cases<" in qa and ">Requests<" in qa  # the QA workspace tabs

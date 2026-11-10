@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Import facilities from Word · {{ SITE_NAME }}{% endblock %}
+{% block page_title %}Facilities &amp; equipment{% endblock %}
+{% block content %}
+<div class="fe">
+  <a href="{% url 'facilities:index' %}">← Facilities &amp; equipment</a>
+  <header class="fe-hero"><div><span class="fe-eyebrow">Import</span><h1>Import the curricula Word files</h1>
+    <p>Upload one programme's “List of minimum resources / physical facilities and equipment” (.docx) or the whole set as a .zip. Every facility and item is read — including sub-headings and ND/HND quantities — and you see New / Changed / Unchanged before anything is saved.</p></div></header>
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+  <form class="card fe-card" method="post" enctype="multipart/form-data">{% csrf_token %}
+    <label for="fe-file"><strong>Word file or .zip</strong></label>
+    <input id="fe-file" class="input" type="file" name="file" accept=".docx,.zip" required>
+    <p class="muted">Tip: for a quick change to a few numbers, open the programme and type in the table; for many changes, export to Excel, edit and import the Excel file.</p>
+    <button class="btn btn-primary" type="submit">Read and preview</button>
+  </form>
+</div>
+{% include "facilities/_styles.html" %}
+{% endblock %}

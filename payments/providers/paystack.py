@@ -65,8 +65,11 @@ class PaystackProvider(PaymentProvider):
     def _call(self, method, path, payload=None):
         if self.is_simulated():
             return simulator.paystack(method, path, payload)
-        headers = {"Authorization": f"Bearer {self.secret()}"}
-        return http_json(method, f"{settings.PAYSTACK_BASE_URL}{path}", payload=payload, headers=headers)
+        if not self.secret():
+            from .base import ProviderConfigError
+            raise ProviderConfigError("PAYSTACK_SECRET_KEY is not set.")
+        return http_json(method, f"{settings.PAYSTACK_BASE_URL}{path}", payload=payload,
+                         headers={"Authorization": f"Bearer {self.secret()}"})
 
     def initiate(self, obligation, payer, amount, *, request=None, attempt=None, callback_url=""):
         charge = self.charge_for(amount)
@@ -102,7 +105,7 @@ class PaystackProvider(PaymentProvider):
         return VerificationResult(paid=ok, status=str(data.get("status") or body.get("message") or status),
                                   amount=amount, reference=data.get("reference", attempt.provider_reference),
                                   message=str(data.get("gateway_response") or body.get("message") or ""),
-                                  raw=redact(body))
+                                  raw=redact(body), currency=str(data.get("currency") or ""))
 
     # -- webhooks ------------------------------------------------------------
     def signature_for(self, raw_body):

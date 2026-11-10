@@ -1,0 +1,36 @@
+{% extends base_template %}
+{% load qa_tags %}
+{% block title %}Institutions · {{ body.acronym|default:body.name }} · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page">
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} Professional body portal</span>
+    <h1 data-qa-focus>Institutions</h1>
+    <p>The institutions running programmes under {{ body.name }}, and where each programme stands. Programme names and stages only — SSQ content stays with NBTE.</p>
+  </header>
+  {% include "qa_portal/pb/_tabs.html" with section_key="institutions" %}
+  {% if rows %}
+  <section class="qa-card qa-mt" aria-labelledby="pb-inst-h">
+    <header class="qa-card__head"><div><h2 id="pb-inst-h">{{ rows|length }} institution{{ rows|length|pluralize }}</h2><p>Open a programme for its letters and request history.</p></div></header>
+    <ul class="qa-rowlist qa-stack" role="list">
+      {% for row in rows %}
+      <li class="qa-rowlink qa-rowlink--nobadge qa-stack-sm">
+        <span class="qa-rowlink__main">
+          <span class="qa-rowlink__title">{{ row.institution.name }}</span>
+          <span class="qa-rowlink__meta">{{ row.programmes|length }} programme{{ row.programmes|length|pluralize }}{% if row.institution.ownership %} · {{ row.institution.ownership.name }}{% endif %}</span>
+        </span>
+        <ul class="qa-minilist" role="list">
+          {% for pr in row.programmes %}
+          <li><a class="qa-minilink" href="{% url 'qa_portal:pb_programme' pr.programme.pk %}">{{ pr.programme.name }}
+            <span class="qa-chip{% if pr.stage == 'awaiting_letter' %} qa-tone-warn{% elif pr.stage == 'approved' %} qa-tone-success{% elif pr.stage == 'visit' %} qa-tone-info{% endif %}">{{ pr.label }}</span></a></li>
+          {% endfor %}
+        </ul>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% else %}
+  <p class="qa-muted qa-small qa-mt">No institution runs a programme under your body yet. Send a request from the Requests tab to have NBTE put a programme under {{ body.acronym|default:body.name }}.</p>
+  {% endif %}
+</div>
+{% endblock %}

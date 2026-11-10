@@ -34,8 +34,9 @@ from .models import (
 )
 from .nominal_roll import MODES, NominalRollImporter
 from .promotions import (
-    PromotionError, apply_promotion, can_rollback, cascade_set, next_step, plan_promotion,
-    rollback_promotion, target_choices,
+    PromotionError, apply_promotion, can_override_step, can_rollback, cascade_set, eligibility,
+    eligible_staff, idfilter, levels, overdue_staff, plan_promotion, rollback_promotion,
+    target_choices,
 )
 
 User = get_user_model()
@@ -47,8 +48,11 @@ UPLOAD_DIR = "staff/imports/uploads"
 
 
 def scoped_staff(user):
+    from accounts.audience import nbte_staff_records_q
+
     return scope_to_department(
-        Staff.objects.select_related("department", "designation", "state", "state_of_origin", "office"),
+        Staff.objects.select_related("department", "designation", "state", "state_of_origin", "office")
+        .filter(nbte_staff_records_q()),
         user)
 
 
@@ -341,8 +345,12 @@ def nominal_roll_credentials(request, pk):
 
 
 # ===========================================================================
-# PROMOTIONS
+# PROMOTIONS (B.9: D2-D12)
 # ===========================================================================
+PROMO_TABS = (("eligible", "Eligible"), ("overdue", "Overdue"), ("all", "All"), ("history", "History"))
+ID_FILTER_KEY = "promotion_id_filter"
+
+
 def _years_in_post(d):
     if not d:
         return None
@@ -357,38 +365,110 @@ def _selected_staff(request, data):
     return list(scoped_staff(request.user).filter(pk__in=ids))
 
 
-@login_required
-def promotions(request):
+def _id_filter(request):
+    info = request.session.get(ID_FILTER_KEY)
+    return info if isinstance(info, dict) and info.get("ids") else None
+
+
+def _promotion_list(request):
+    """The filtered, tabbed staff list (shared list contract: search + three
+    facets + ID list + pagination with Show all)."""
+    from qa_core import ui
+
     user = request.user
-    _require(user, "staff.promote_staff")
-    qs = scoped_staff(user).order_by("department__name", "-designation__rank", "last_name")
+    tab = request.GET.get("tab") or "eligible"
+    if tab not in ("eligible", "overdue", "all"):
+        tab = "eligible"
+    base = scoped_staff(user)
     f_dept = request.GET.get("department", "")
     f_office = request.GET.get("office", "")
     f_desig = request.GET.get("designation", "")
     q = (request.GET.get("q") or "").strip()
     if f_dept.isdigit():
-        qs = qs.filter(department_id=int(f_dept))
-    if f_office.isdigit():
-        qs = qs.filter(office_id=int(f_office))
+        base = base.filter(department_id=int(f_dept))
+    if f_office.isdigit():   # v2.2: offices are units in the Department list
+        base = base.filter(department_id=int(f_office))
     if f_desig.isdigit():
-        qs = qs.filter(designation_id=int(f_desig))
+        base = base.filter(designation_id=int(f_desig))
     if q:
-        qs = qs.filter(Q(first_name__icontains=q) | Q(last_name__icontains=q)
-                       | Q(employee_no__icontains=q))
-    page = Paginator(qs, 50).get_page(request.GET.get("page"))
-    for s in page.object_list:
+        base = base.filter(Q(first_name__icontains=q) | Q(last_name__icontains=q)
+                           | Q(employee_no__icontains=q))
+    id_info = _id_filter(request)
+    unmatched = []
+    if id_info:
+        base, unmatched = idfilter.match(base, id_info["ids"])
+    counts = {"eligible": eligible_staff(base).count(), "overdue": overdue_staff(base).count(),
+              "all": base.count()}
+    qs = {"eligible": eligible_staff, "overdue": overdue_staff}.get(tab, lambda x: x)(base)
+    qs = qs.order_by("department__name", "-designation__rank", "last_name", "first_name")
+    page = ui.paginate(request, qs)
+    today = timezone.localdate()
+    for s in page["rows"]:
         s.years_in_post = _years_in_post(s.date_present_appointment)
-    scope = scoped_staff(user)
-    return render(request, "staff/promotions/index.html", {
-        "page": page,
+        s.elig = eligibility(s, today)
+    return {
+        "tab": tab, "tabs": PROMO_TABS, "counts": counts, "page": page,
         "filters_active": bool(f_dept or f_office or f_desig or q),
         "f_dept": f_dept, "f_office": f_office, "f_desig": f_desig, "q": q,
+        "id_filter": id_info, "id_unmatched": unmatched,
+        "min_years": levels.min_years_for(), "grace_days": levels.overdue_grace_days(),
+    }
+
+
+@login_required
+def promotions(request):
+    from qa_core import ui
+
+    user = request.user
+    _require(user, "staff.promote_staff")
+    if request.GET.get("tab") == "history":
+        return redirect("staff:promotion_history")
+    ctx = _promotion_list(request)
+    scope = scoped_staff(user)
+    ctx.update({
         "departments": Department.objects.filter(pk__in=scope.values("department_id")).order_by("name"),
-        "offices": Office.objects.filter(is_active=True).order_by("name"),
+        "offices": Department.objects.none(),   # v2.2: merged into departments
         "designations": Designation.objects.filter(pk__in=scope.values("designation_id")).order_by("-rank", "name"),
-        "targets": Designation.objects.filter(is_active=True).order_by("-rank", "name"),
+        "targets": Designation.objects.filter(is_active=True).order_by("-rank", "name")
+                   if can_override_step(user) else [],
+        "can_override": can_override_step(user),
         "today": timezone.localdate(),
     })
+    return ui.render_qa(request, "staff/promotions/index.html", ctx,
+                        partials={"promo-list": "staff/promotions/_list.html"})
+
+
+@login_required
+@require_POST
+def promotion_id_filter(request):
+    """Upload an .xlsx of employee IDs to filter the list (D6); ?clear=1 removes it."""
+    _require(request.user, "staff.promote_staff")
+    back = reverse("staff:promotions") + "?tab=" + (request.POST.get("tab") or "all")
+    if request.POST.get("clear"):
+        request.session.pop(ID_FILTER_KEY, None)
+        messages.info(request, "Employee ID filter removed.")
+        return redirect(back)
+    f = request.FILES.get("file")
+    if not f:
+        messages.error(request, "Choose an Excel file (.xlsx) with the employee IDs.")
+        return redirect(back)
+    if f.size > MAX_UPLOAD or not f.name.lower().endswith((".xlsx", ".xlsm")):
+        messages.error(request, "Upload an .xlsx file under 15 MB.")
+        return redirect(back)
+    try:
+        ids = idfilter.read_ids(f)
+    except idfilter.IdFilterError as exc:
+        messages.error(request, str(exc))
+        return redirect(back)
+    matched, unmatched = idfilter.match(scoped_staff(request.user), ids)
+    request.session[ID_FILTER_KEY] = {"ids": ids, "name": f.name[:120]}
+    msg = f"{matched.count()} of {len(ids)} employee IDs matched."
+    if unmatched:
+        msg += " Not found: " + ", ".join(unmatched[:10]) + ("…" if len(unmatched) > 10 else "")
+        messages.warning(request, msg)
+    else:
+        messages.success(request, msg)
+    return redirect(back)
 
 
 def _plan_from_post(request):
@@ -396,17 +476,17 @@ def _plan_from_post(request):
     roots = _selected_staff(request, data)
     if not roots:
         raise PromotionError("Select at least one staff member.")
-    target_id = data.get("target")
-    if not (target_id and target_id.isdigit()):
-        raise PromotionError("Choose the designation to promote to.")
-    target = get_object_or_404(Designation, pk=int(target_id), is_active=True)
+    target = None
+    if data.get("mode") == "target":
+        target_id = data.get("target")
+        if not (target_id and target_id.isdigit()):
+            raise PromotionError("Choose the designation to promote to.")
+        target = get_object_or_404(Designation, pk=int(target_id), is_active=True)
     cascade = data.get("cascade") == "on"
-    plan = plan_promotion(roots, target, cascade=cascade, scope=scoped_staff(request.user))
-    if cascade and data.get("cascade_mode") == "same":
-        for c in plan.cascaded:
-            c.to_designation = target
-            from .promotions import grade_for
-            c.to_grade, c.grade_autofilled = grade_for(target, c.from_grade)
+    scope_kind = "grade" if data.get("cascade_scope") == "grade" else "department"
+    plan = plan_promotion(roots, target, cascade=cascade, cascade_scope=scope_kind,
+                          scope=scoped_staff(request.user), actor=request.user,
+                          override_reason=data.get("override_reason", ""))
     try:
         effective = date.fromisoformat(data.get("effective_date") or "")
     except ValueError:
@@ -425,7 +505,7 @@ def promotion_preview(request):
         plan, effective, reason, error = None, None, "", str(exc)
     ctx = {"plan": plan, "effective": effective, "reason": reason, "error": error,
            "post": request.POST}
-    if request.headers.get("X-Requested-With") == "fetch":
+    if request.headers.get("X-Requested-With") == "fetch" or request.headers.get("HX-Request"):
         return render(request, "staff/promotions/preview_modal.html", ctx)
     return render(request, "staff/promotions/preview_page.html", ctx)
 
@@ -436,16 +516,21 @@ def promotion_cascade_count(request):
     _require(request.user, "staff.promote_staff")
     roots = _selected_staff(request, request.GET)
     scope = scoped_staff(request.user)
+    scope_kind = "grade" if request.GET.get("cascade_scope") == "grade" else "department"
     root_ids = {r.pk for r in roots}
     others = set()
     for r in roots:
-        others.update(s.pk for s in cascade_set(r, scope) if s.pk not in root_ids)
+        others.update(s.pk for s in cascade_set(r, scope, scope_kind) if s.pk not in root_ids)
     tiers = sorted({r.designation.name for r in roots if r.designation_id})
+    grades = sorted({r.grade_level for r in roots if r.grade_level})
     lowest = min([r.designation.rank for r in roots if r.designation_id] or [0])
-    allowed = list(target_choices(roots).values_list("pk", flat=True)) if roots else []
-    return JsonResponse({"count": len(others), "tiers": tiers, "lowest_rank": lowest,
-                         "allowed_targets": allowed,
-                         "next": {str(r.pk): getattr(next_step(r.designation), "pk", None) for r in roots}})
+    allowed = list(target_choices(roots, request.user).values_list("pk", flat=True)) if roots else []
+    nxt = {}
+    for r in roots:
+        step = levels.next_level(r)
+        nxt[str(r.pk)] = step.designation.pk if step else None
+    return JsonResponse({"count": len(others), "tiers": tiers, "grades": grades, "scope": scope_kind,
+                         "lowest_rank": lowest, "allowed_targets": allowed, "next": nxt})
 
 
 @login_required
@@ -453,8 +538,9 @@ def promotion_cascade_count(request):
 def promotion_apply(request):
     _require(request.user, "staff.promote_staff")
     back = request.POST.get("next") or reverse("staff:promotions")
-    if not back.startswith("/"):
-        back = reverse("staff:promotions")
+    from core.urlsafe import safe_next
+
+    back = safe_next(request, back, reverse("staff:promotions"))
     try:
         plan, effective, reason = _plan_from_post(request)
         result = apply_promotion(plan, effective_date=effective, reason=reason,
@@ -467,6 +553,8 @@ def promotion_apply(request):
     msg = f"{n} promotion{'s' if n != 1 else ''} saved"
     if cascaded:
         msg += f" ({cascaded} by cascade)"
+    if plan.skipped:
+        msg += f"; {len(plan.skipped)} not promoted"
     if result.notified:
         msg += f"; {result.notified} notification{'s' if result.notified != 1 else ''} sent"
     messages.success(request, msg + ".")
@@ -501,13 +589,17 @@ def promotion_history(request):
     page = Paginator(qs, 50).get_page(request.GET.get("page"))
     reversed_ids = set(Promotion.objects.filter(reverses__in=[p.pk for p in page.object_list])
                        .values_list("reverses_id", flat=True))
+    may_rollback = user.is_superuser or user.has_perm("staff.rollback_promotion")
     for p in page.object_list:
         p.was_reversed = p.pk in reversed_ids
-        p.rollback_ok, p.rollback_why = (False, "Already rolled back.") if p.was_reversed else can_rollback(p)
+        p.rollback_ok, p.rollback_why = ((False, "Already rolled back.") if p.was_reversed
+                                         else can_rollback(user, p))
     approvers = User.objects.filter(
         pk__in=Promotion.objects.exclude(approved_by=None).values("approved_by")).order_by("first_name")
     return render(request, "staff/promotions/history.html", {
         "page": page,
+        "tab": "history", "tabs": PROMO_TABS,
+        "may_rollback": may_rollback,
         "filters_active": bool(f_from or f_to or f_dept or f_approver),
         "f_from": f_from, "f_to": f_to, "f_dept": f_dept, "f_approver": f_approver,
         "departments": Department.objects.filter(
@@ -522,6 +614,9 @@ def promotion_rollback(request, pk):
     _require(request.user, "staff.promote_staff")
     promo = get_object_or_404(
         Promotion.objects.filter(staff_id__in=scoped_staff(request.user).values("pk")), pk=pk)
+    ok, why = can_rollback(request.user, promo)
+    if not ok and why.startswith("Only the Executive Secretary"):
+        raise PermissionDenied(why)
     try:
         reversal = rollback_promotion(promo, reason=request.POST.get("reason", ""), approver=request.user)
     except PromotionError as exc:
@@ -529,8 +624,10 @@ def promotion_rollback(request, pk):
     else:
         messages.success(request, f"Promotion rolled back: {reversal.staff.full_name} is "
                                   f"{reversal.to_designation.name} again.")
-    return redirect(request.POST.get("next") if (request.POST.get("next") or "").startswith("/")
-                    else reverse("staff:promotion_history"))
+    nxt = request.POST.get("next") or ""
+    from core.urlsafe import safe_next
+
+    return redirect(safe_next(request, nxt, reverse("staff:promotion_history")))
 
 
 # ===========================================================================
@@ -677,15 +774,17 @@ def staff_transfer(request, pk):
     except ValueError:
         effective = timezone.localdate()
     dept = Department.objects.filter(pk=int(dept_id), is_active=True).first() if dept_id.isdigit() else None
-    office = Office.objects.filter(pk=int(office_id), is_active=True).first() if office_id.isdigit() else None
-    if dept is None and office is None:
-        messages.error(request, "Choose the department or office to transfer to.")
+    if dept is None and office_id.isdigit():   # v2.2: an "office" is a unit in the Department list
+        dept = Department.objects.filter(pk=int(office_id), is_active=True).first()
+    office = None
+    if dept is None:
+        messages.error(request, "Choose the department or unit to transfer to.")
         return redirect(back)
     if not reason:
         messages.error(request, "Give a reason for the transfer (e.g. the posting letter reference).")
         return redirect(back)
     new_dept = dept or staff.department
-    new_office = office if office is not None else (None if dept and dept != staff.department else staff.office)
+    new_office = None
     if new_dept == staff.department and new_office == staff.office:
         messages.info(request, f"{staff.full_name} is already there — nothing changed.")
         return redirect(back)

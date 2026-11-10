@@ -1,0 +1,31 @@
+{% include "org/_alerts.html" %}
+<div class="org-grid">
+  <section class="org-card" aria-labelledby="grant-h">
+    <h2 id="grant-h">Grant a permission</h2>
+    <p class="org-muted">You can grant only permissions on the allowed list that you hold yourself, to staff of this department, for a limited time. Every grant is audited and expires on its own.</p>
+    {% if grantable %}
+    <form class="org-form" hx-post="{% url 'org:access_grant' dept.code %}" hx-target="#org-tab" method="post" action="{% url 'org:access_grant' dept.code %}">
+      {% csrf_token %}
+      <label class="org-field">Staff member<select name="user" required><option value="">Choose…</option>{% for m in members %}<option value="{{ m.pk }}">{{ m.get_full_name|default:m.email }}{% if m.role %} · {{ m.role.name }}{% endif %}</option>{% endfor %}</select></label>
+      <label class="org-field">Permission<select name="permission" required><option value="">Choose…</option>{% for g in grantable %}<option value="{{ g.permission.pk }}">{{ g.description|default:g.permission.name }} (≤ {{ g.max_duration_days|default:max_days }} days)</option>{% endfor %}</select></label>
+      <div class="org-form org-form--row">
+        <label class="org-field">Days<input type="number" name="days" min="1" max="365" placeholder="{{ max_days }}"></label>
+        <label class="org-field">Scope<select name="scope"><option value="department">Department</option><option value="division">Division</option></select></label>
+      </div>
+      <label class="org-field">Reason<input name="reason" required maxlength="255" placeholder="e.g. Covering approvals during my leave"></label>
+      <div class="btn-group"><button class="btn btn-primary" type="submit">Grant</button></div>
+    </form>
+    {% else %}<p class="org-muted">There is nothing on the allowed list that you hold yet.</p>{% endif %}
+  </section>
+  <section class="org-card" aria-labelledby="active-h">
+    <h2 id="active-h">Active grants ({{ grants|length }})</h2>
+    <ul class="org-list">
+      {% for g in grants %}
+      <li><div><strong>{{ g.user.get_full_name|default:g.user.email }}</strong>
+          <div class="org-muted">{{ g.permission.name }} · {% if g.expires_at %}until {{ g.expires_at|date:"j M Y" }}{% else %}no end date{% endif %}{% if g.granted_by %} · by {{ g.granted_by.get_full_name|default:g.granted_by.email }}{% endif %}</div></div>
+        <form class="btn-group" hx-post="{% url 'org:access_revoke' dept.code g.pk %}" hx-target="#org-tab" hx-confirm="Remove this permission now?" method="post" action="{% url 'org:access_revoke' dept.code g.pk %}">
+          {% csrf_token %}<input type="hidden" name="reason" value="Revoked on the department page"><button class="btn btn-ghost" type="submit">Revoke</button></form></li>
+      {% empty %}<li class="org-muted">No temporary grants in this department.</li>{% endfor %}
+    </ul>
+  </section>
+</div>

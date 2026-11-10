@@ -181,7 +181,10 @@ def test_blank_side_is_filled_from_the_other_never_wiped(depts):
 def test_seeded_roles_get_cross_department_right_only_where_intended():
     call_command("seed_roles")
     def can(code): return Role.objects.get(code=code).permissions.filter(codename="access_all_departments").exists()
-    assert can("director") and can("deputy-director") and can("super-admin") and can("office-head-admin")
+    # Phase B (B10/T-SEC-3): only the ES and super admin cross departments;
+    # directors, deputies and office heads see their own department.
+    assert can("executive-secretary") and can("super-admin")
+    assert not can("director") and not can("deputy-director") and not can("office-head-admin")
     assert not can("office-head-ts") and not can("officer") and not can("staff")
 
 
@@ -191,7 +194,8 @@ def test_seed_roles_sync_adds_missing_perms_to_existing_roles_without_removing()
     role.permissions.clear()
     extra = Permission.objects.get(codename="view_staffattachment"); role.permissions.add(extra)
     call_command("seed_roles")                                        # without --sync: untouched
-    assert not role.permissions.filter(codename="access_all_departments").exists()
+    assert not role.permissions.filter(codename="view_staff").exists()
     call_command("seed_roles", "--sync")
-    assert role.permissions.filter(codename="access_all_departments").exists()
+    assert role.permissions.filter(codename="view_staff").exists()
+    assert not role.permissions.filter(codename="access_all_departments").exists()  # Phase B (B10)
     assert role.permissions.filter(pk=extra.pk).exists()              # nothing removed

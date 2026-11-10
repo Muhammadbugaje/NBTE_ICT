@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Branding · Settings{% endblock %}
+{% block page_title %}Branding{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/settings.css' %}">{% endblock %}
+{% block content %}
+<div class="settings-page sh brand-settings">
+  <header class="settings-hero">
+    <span class="settings-eyebrow">Settings</span>
+    <h1>Branding</h1>
+    <p>Choose which NBTE mark appears in each place. The built-in marks are the redrawn SVG crest (with a dark version), a one-colour crest, the app icon and the wordmark. You can upload your own PNG, JPEG or WebP and choose it for any place.</p>
+    <div class="btn-group">
+      <a class="btn btn-ghost" href="{% url 'config:settings' %}">All settings</a>
+      <a class="btn btn-ghost" href="{% url 'config:history' %}">History timeline</a>
+    </div>
+  </header>
+
+  <div id="brand-slots">{% include "config/_branding_slots.html" %}</div>
+
+  <section class="sh-section" aria-labelledby="brand-upload-title">
+    <header class="sh-section__head"><div>
+      <h2 id="brand-upload-title">Upload a logo</h2>
+      <p>PNG, JPEG or WebP, up to 2 MB. Add a second image for dark backgrounds if the first one is dark. SVG uploads are not accepted for security; ask the developers to add an SVG as a built-in mark.</p>
+    </div></header>
+    <form class="sh-section__body brand-upload" method="post" action="{% url 'config:branding_upload' %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="sh-row"><div><label class="sh-row__title" for="brand-name">Name</label></div>
+        <div class="sh-row__control"><input class="input" id="brand-name" name="name" maxlength="80" required></div></div>
+      <div class="sh-row"><div><label class="sh-row__title" for="brand-image">Image (light backgrounds)</label></div>
+        <div class="sh-row__control"><input class="input" id="brand-image" type="file" name="image" accept="image/png,image/jpeg,image/webp" required></div></div>
+      <div class="sh-row"><div><label class="sh-row__title" for="brand-image-dark">Image for dark backgrounds (optional)</label></div>
+        <div class="sh-row__control"><input class="input" id="brand-image-dark" type="file" name="image_dark" accept="image/png,image/jpeg,image/webp"></div></div>
+      <div class="sh-row"><div><span class="sh-row__title">Wide lockup</span><span class="sh-row__desc">Tick for a crest-and-name wordmark.</span></div>
+        <div class="sh-row__control"><label class="sh-switch"><input type="checkbox" name="is_wordmark" value="1"><span class="sh-switch__track" aria-hidden="true"></span><span class="sh-switch__label">Wordmark</span></label></div></div>
+      <div class="sh-section__foot"><div class="btn-group btn-group--end"><button class="btn btn-primary" type="submit">Upload</button></div></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

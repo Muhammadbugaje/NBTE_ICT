@@ -80,46 +80,98 @@ def create_asset(*, category, created_by=None, owner_department=None,
 # ===========================================================================
 # Assign / Return
 # ===========================================================================
-@transaction.atomic
-def assign_asset(*, asset, to_user, by_user, condition="good",
-                 location="", notes="", expected_return_at=None):
-    """Open a new AssetAssignment for `asset` and set the current custodian.
+def _sync_custodian(asset):
+    """``current_custodian`` mirrors the one open individual hand-off; shared
+    and department assets have no single custodian (their holders are the
+    open AssetAssignment rows)."""
+    custodian = None
+    if asset.assignment_mode == Asset.MODE_INDIVIDUAL:
+        row = asset.assignments.filter(returned_at__isnull=True, assigned_to__isnull=False).first()
+        custodian = row.assigned_to if row else None
+    if asset.current_custodian_id != (custodian.pk if custodian else None):
+        asset.current_custodian = custodian
+        asset.save(update_fields=["current_custodian", "updated_at"])
 
-    Refuses if the asset is already held by someone else, or if it's not in
-    a state that permits hand-off.
+
+@transaction.atomic
+def set_assignment_mode(*, asset, mode, by_user):
+    """K1/K2: switch how the asset is held. Only while nobody holds it, so
+    the custody ledger never mixes modes."""
+    if mode not in dict(Asset.ASSIGNMENT_MODE_CHOICES):
+        raise ValidationError("Unknown assignment mode.")
+    if mode == asset.assignment_mode:
+        return asset
+    if asset.open_assignments().exists():
+        raise ValidationError("Return the asset from every holder before changing how it is held.")
+    old = asset.assignment_mode
+    asset.assignment_mode = mode
+    asset.save(update_fields=["assignment_mode", "updated_at"])
+    audit.log("assignment_mode", asset, actor=by_user, changes={"assignment_mode": {"old": old, "new": mode}})
+    return asset
+
+
+@transaction.atomic
+def assign_asset(*, asset, to_user=None, by_user, condition="good",
+                 location="", notes="", expected_return_at=None, department=None):
+    """Open a new AssetAssignment.
+
+    * individual mode: one holder; refused while someone holds it;
+    * shared mode (K2): several open rows, one per person; the same person twice is refused;
+    * department mode (K1): one open row with ``department`` and no person.
     """
     if asset.state not in ("new", "in_service"):
         raise ValidationError(
             f"Asset {asset.asset_tag} is in state '{asset.get_state_display()}' "
             f"and cannot be assigned."
         )
-    if asset.open_assignment() is not None:
-        current = asset.open_assignment()
-        raise ValidationError(
-            f"Asset {asset.asset_tag} is already assigned to "
-            f"{current.assigned_to.get_full_name() or current.assigned_to.email}."
-        )
+    mode = asset.assignment_mode
+    open_rows = asset.open_assignments()
+    if mode == Asset.MODE_DEPARTMENT:
+        department = department or (getattr(to_user, "department", None) if to_user is not None else None)
+        if department is None:
+            raise ValidationError("Choose the department this asset is assigned to.")
+        if open_rows.exists():
+            raise ValidationError(f"Asset {asset.asset_tag} is already assigned to "
+                                  f"{open_rows.first().holder_label}. Return it first.")
+        to_user = None
+    elif to_user is None:
+        raise ValidationError("Choose the person who receives the asset.")
+    elif mode == Asset.MODE_SHARED:
+        if open_rows.filter(assigned_to=to_user).exists():
+            raise ValidationError(f"{to_user.get_full_name() or to_user.email} already shares this asset.")
+        department = None
+    else:
+        current = open_rows.first()
+        if current is not None:
+            raise ValidationError(f"Asset {asset.asset_tag} is already assigned to {current.holder_label}.")
+        department = None
 
     assignment = AssetAssignment.objects.create(
         asset=asset,
         assigned_to=to_user,
+        department=department,
         assigned_by=by_user,
         expected_return_at=expected_return_at,
         condition_on_assign=condition,
         location_on_assign=location,
         notes=notes,
     )
-    asset.current_custodian = to_user
-    asset.save(update_fields=["current_custodian", "updated_at"])
+    _sync_custodian(asset)
     audit.log("assign", asset, actor=by_user,
-              changes={"current_custodian_id": {"new": to_user.pk}})
+              changes={"holder": {"new": to_user.pk if to_user else f"department:{department.pk}"},
+                       "mode": mode})
     return assignment
 
 
 @transaction.atomic
-def return_asset(*, asset, by_user, condition_on_return="good", notes=""):
-    """Close the open assignment and clear the current custodian."""
-    assignment = asset.open_assignment()
+def return_asset(*, asset, by_user, condition_on_return="good", notes="", assignment=None):
+    """Close one open assignment (``assignment``; default: the only / first
+    open one). Returning one holder's share of a shared asset leaves the
+    other holders' shares open (K2)."""
+    if assignment is None:
+        assignment = asset.open_assignment()
+    elif assignment.asset_id != asset.pk or assignment.returned_at is not None:
+        raise ValidationError("That hand-off is not open on this asset.")
     if assignment is None:
         raise ValidationError(f"Asset {asset.asset_tag} is not currently assigned.")
 
@@ -133,16 +185,15 @@ def return_asset(*, asset, by_user, condition_on_return="good", notes=""):
 
     # Update asset state based on condition
     new_state = asset.state
-    if condition_on_return in ("poor",):
+    if condition_on_return in ("poor", "damaged"):
         new_state = "damaged"
-    elif condition_on_return == "damaged":
-        new_state = "damaged"
-
-    asset.current_custodian = None
-    asset.state = new_state
-    asset.save(update_fields=["current_custodian", "state", "updated_at"])
+    if new_state != asset.state:
+        asset.state = new_state
+        asset.save(update_fields=["state", "updated_at"])
+    _sync_custodian(asset)
     audit.log("return", asset, actor=by_user,
-              changes={"current_custodian_id": {"old": assignment.assigned_to_id, "new": None},
+              changes={"holder": {"old": assignment.assigned_to_id or f"department:{assignment.department_id}",
+                                  "new": None},
                        "state": {"new": new_state}})
     return assignment
 

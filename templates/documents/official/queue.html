@@ -1,0 +1,45 @@
+{% extends "qa_core/_shell.html" %}
+{% load static qa_tags %}
+{% block qa_title %}Official letters to upload{% endblock %}
+{% block qa_page_title %}Official letters{% endblock %}
+{% block panel %}<link rel="stylesheet" href="{% static 'css/scan.css' %}"><link rel="stylesheet" href="{% static 'css/official-letters.css' %}">
+<div class="sv-page dr-page ol-page" data-qa-area="official_letters">
+  <header class="qa-hero dr-hero">
+    <div>
+      <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} Issued documents · official copies</span>
+      <h1 data-qa-focus>Official letters to upload</h1>
+      <p>Letters NBTE issued automatically as <strong>provisional</strong> that still need their signed official copy. Upload the signed copy yourself, or assign a staff member to prepare it — they send the draft back here for you to review and upload. Target: {{ sla }} day{{ sla|pluralize }} from the provisional letter.{% if directed and not full %} You see the institutions handled by {{ directed.name }}.{% endif %}</p>
+      <div class="qa-hero__actions">
+        {% if stats.draft_ready %}<a class="btn btn-primary" href="?state=draft_ready">{% icon "check" 16 "2.2" %} Review {{ stats.draft_ready }} draft{{ stats.draft_ready|pluralize }}</a>{% endif %}
+        {% if stats.overdue %}<a class="btn {% if stats.draft_ready %}btn-subtle{% else %}btn-primary{% endif %}" href="?overdue=1">{% icon "alert" 16 "2.2" %} {{ stats.overdue }} overdue</a>{% endif %}
+        <a class="btn btn-subtle" href="{% url 'documents_register:list' %}?status=provisional">{% icon "qr" 16 "2.2" %} Issued documents register</a>
+      </div>
+    </div>
+    <div class="qa-hero__stats" aria-label="Summary">
+      <a class="qa-stat qa-stat--link" href="{% url 'documents_register:official_letters' %}"><strong>{{ stats.total }}</strong><span>Waiting for official copy</span></a>
+      <a class="qa-stat qa-stat--warn qa-stat--link" href="?state=waiting"><strong>{{ stats.waiting }}</strong><span>No one assigned</span></a>
+      <a class="qa-stat qa-stat--info qa-stat--link" href="?state=with_staff"><strong>{{ stats.with_staff }}</strong><span>With staff</span></a>
+      <a class="qa-stat qa-stat--success qa-stat--link" href="?state=draft_ready"><strong>{{ stats.draft_ready }}</strong><span>Draft ready</span></a>
+      <a class="qa-stat qa-stat--danger qa-stat--link" href="?overdue=1"><strong>{{ stats.overdue }}</strong><span>Overdue</span></a>
+    </div>
+  </header>
+
+  <section class="sv-card dr-card" aria-label="Letters">
+    <header class="dr-card__head">
+      <div><h2>Queue</h2><p class="sv-note">Oldest first. Open a letter to assign it, review a draft or upload the signed official copy.</p></div>
+    </header>
+    <form class="sv-filters dr-filters" role="search" method="get" hx-get="{% url 'documents_register:official_letters' %}" hx-target="#ol-panel" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit, change from:select, change from:input[type=checkbox], search from:input[type=search]">
+      <label class="dr-search"><span class="sr-only">Search letters</span>{% icon "search" 16 "2.2" %}
+        <input type="search" name="q" value="{{ filters.q }}" placeholder="Institution, reference or title" autocomplete="off"></label>
+      <label class="sr-only" for="ol-state">Step</label>
+      <select id="ol-state" name="state">{% for k, label in state_filters %}<option value="{{ k }}"{% if filters.state == k %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      {% if full and departments %}<label class="sr-only" for="ol-dept">Department</label>
+      <select id="ol-dept" name="dept"><option value="">All departments</option>{% for pk, name in departments %}<option value="{{ pk }}"{% if filters.dept == pk %} selected{% endif %}>{{ name }}</option>{% endfor %}</select>{% endif %}
+      <label class="ol-check"><input type="checkbox" name="overdue" value="1"{% if filters.overdue %} checked{% endif %}> Overdue only</label>
+      <button class="btn btn-primary" type="submit">{% icon "search" 16 "2.2" %} Filter</button>
+      {% if filtered %}<a class="btn btn-subtle" href="{% url 'documents_register:official_letters' %}">{% icon "x" 16 "2.2" %} Clear</a>{% endif %}
+    </form>
+    {% include "documents/official/_rows.html" %}
+  </section>
+</div>
+{% endblock %}

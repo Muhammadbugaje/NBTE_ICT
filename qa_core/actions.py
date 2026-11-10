@@ -18,6 +18,18 @@ Hard rules (not configurable — they are the point of the control):
   initiation ("stale — please re-initiate"); it is never applied over newer
   data;
 * one open pending action per (action, target) at a time.
+
+Three layers (v2.1 X47) for the TVET Support groups (``institutions.tvet_access``):
+``qa.tvet_support.<group>.layers`` = 1 (apply at once), 2 (initiate + confirm,
+default) or 3 (initiate + confirm + approve). The confirmer and approver are
+different people, never the initiator, of the same or higher rank; a director
+approves only items initiated in their own department unless they are the
+configured approver. ``.confirmers`` / ``.approvers`` choose who may act:
+``{"mode": "permission"}`` (default), ``{"mode": "users", "emails": [...]}``,
+``{"mode": "group", "name": "..."}`` or ``{"mode": "role", "codes": [...]}``;
+``.approver_is_director`` (bool) requires the initiator's own director. The ES
+and super admin apply their own changes at once (audited) and may confirm or
+approve anything.
 """
 from __future__ import annotations
 
@@ -139,6 +151,71 @@ def _rank(user):
     return getattr(role, "rank", 0) or 0
 
 
+# ---------------------------------------------------------------------------
+# X47: TVET Support groups — layers, who may confirm / approve, rank rules
+# ---------------------------------------------------------------------------
+def _group(code):
+    try:
+        from institutions.tvet_access import group_of
+    except Exception:  # pragma: no cover
+        return None
+    return group_of(code)
+
+
+def _cfg(key, default):
+    import json
+
+    import config
+    value = config.get(key, None)
+    if value in (None, ""):
+        return default
+    if isinstance(default, dict) and isinstance(value, str):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return default
+    return value
+
+
+def layers_for(policy):
+    """1, 2 or 3 layers for ``policy`` (TVET Support groups read their setting)."""
+    group = _group(policy.action_code)
+    if group is None:
+        return 2 if policy.requires_second_officer else 1
+    try:
+        n = int(_cfg(f"qa.tvet_support.{group}.layers", 2))
+    except (TypeError, ValueError):
+        n = 2
+    return min(3, max(1, n))
+
+
+def _is_top(user):
+    import org
+    return bool(user is not None and getattr(user, "is_authenticated", False) and user.is_active
+                and (user.is_superuser or org.is_es(user) or org.is_super_admin(user)))
+
+
+def approve_permission(policy):
+    perm = policy.initiate_permission or ""
+    return perm.replace(".initiate_", ".approve_", 1) if ".initiate_" in perm else ""
+
+
+def _chosen(pa, user, step):
+    """(configured_explicitly, allowed) for ``step`` ("confirmers" / "approvers")."""
+    group = _group(pa.policy_id)
+    spec = _cfg(f"qa.tvet_support.{group}.{step}", {"mode": "permission"}) if group else {"mode": "permission"}
+    mode = str((spec or {}).get("mode", "permission"))
+    if mode == "users":
+        emails = {str(e).lower() for e in spec.get("emails", [])}
+        return True, (user.email or "").lower() in emails
+    if mode == "group":
+        return True, user.groups.filter(name=spec.get("name", "")).exists()
+    if mode == "role":
+        return True, bool(user.role_id and user.role.code in set(spec.get("codes", [])))
+    perm = pa.policy.confirm_permission if step == "confirmers" else approve_permission(pa.policy)
+    return False, bool(not perm or user.has_perm(perm))
+
+
 def _target_queryset_for_lock(target):
     model = type(target)
     manager = getattr(model, "unscoped", None) or model._base_manager
@@ -166,10 +243,15 @@ def visible_to(user):
         "policy", "initiated_by", "decided_by", "scope_department", "content_type")
     if user is None or not user.is_authenticated or getattr(user, "user_type", "staff") != "staff":
         return qs.none()
-    if (user.is_superuser or user.has_perm("accounts.access_all_departments")
+    if (user.is_superuser or _is_top(user) or user.has_perm("accounts.access_all_departments")
             or user.has_perm("qa_core.confirm_any_department")):
         return qs
     mine = Q(initiated_by=user)
+    # X47: items waiting for this person's confirmation or approval, wherever they sit.
+    tvet_codes = [p.action_code for p in ActionPolicy.objects.all() if _group(p.action_code) is not None
+                  and ((p.confirm_permission and user.has_perm(p.confirm_permission))
+                       or (approve_permission(p) and user.has_perm(approve_permission(p))))]
+    mine |= Q(policy_id__in=tvet_codes, status=PendingAction.PENDING)
     if not user.department_id:
         return qs.filter(mine)
     confirmable = [p.action_code for p in ActionPolicy.objects.all()
@@ -217,6 +299,8 @@ def can_decide(pa, user, *, impersonating=False):
         return False, "You cannot confirm while impersonating another user."
     if user.pk == pa.initiated_by_id:
         return False, "You started this change, so a different officer must confirm it."
+    if _group(pa.policy_id) is not None:
+        return _can_decide_tvet(pa, user)
     if policy.confirm_permission and not user.has_perm(policy.confirm_permission):
         return False, "You do not hold the permission needed to confirm this change."
     if not user.is_superuser and _rank(user) < policy.confirmer_min_rank:
@@ -226,6 +310,32 @@ def can_decide(pa, user, *, impersonating=False):
             and not user.has_perm("qa_core.confirm_any_department")
             and user.department_id != pa.scope_department_id):
         return False, "This change belongs to another department."
+    return True, ""
+
+
+def _can_decide_tvet(pa, user):
+    """X47 rules for the confirm and approve layers (initiator already excluded)."""
+    import org
+    approving = pa.stage == "approve"
+    verb = "approve" if approving else "confirm"
+    if approving and user.pk == pa.confirmed_by_id:
+        return False, "You confirmed this change, so a different officer must approve it."
+    if _is_top(user):
+        return True, ""
+    explicit, allowed = _chosen(pa, user, "approvers" if approving else "confirmers")
+    if not allowed:
+        return False, f"You are not allowed to {verb} this change."
+    initiator = pa.initiated_by
+    if _rank(user) < _rank(initiator):
+        return False, f"Only someone of the same or higher rank than the initiator can {verb} this change."
+    if approving:
+        group = _group(pa.policy_id)
+        if str(_cfg(f"qa.tvet_support.{group}.approver_is_director", "false")).lower() in ("1", "true", "yes"):
+            director = org.director_of(initiator.department_id) if initiator.department_id else None
+            if director is None or director.pk != user.pk:
+                return False, "This change must be approved by the initiator's own director."
+        elif not explicit and org.is_director(user) and not org.is_director(user, initiator.department_id):
+            return False, "A director approves only changes started in their own department."
     return True, ""
 
 
@@ -349,7 +459,11 @@ def initiate(code, *, actor, target=None, payload=None, reason="", impersonating
         audit.log(audit._action("state_change"), pa, actor=actor,
                   changes={"status": {"new": pa.status}}, note=f"initiated {code}")
 
-        if not policy.requires_second_officer:
+        tvet = _group(code) is not None
+        if (tvet and _is_top(actor)) or layers_for(policy) == 1 or (not tvet and not policy.requires_second_officer):
+            if tvet and _is_top(actor):  # X47: the ES / super admin's own change applies at once
+                audit.log(audit._action("state_change"), pa, actor=actor, changes={"layers": "skipped"},
+                          note="applied at once (ES / super admin)")
             _apply(pa, actor, decided_by=actor)
             return pa
 
@@ -366,16 +480,59 @@ def confirm(pa, user, *, remark="", impersonating=False):
         ok, reason = can_decide(pa, user, impersonating=impersonating)
         if not ok:
             raise PermissionDenied(reason)
+        event = getattr(_REGISTRY.get(pa.policy_id), "document_event", "")
+        if event:  # v2.1 X23/X24: the confirmer signs the generated letter - ask for a signature first
+            from documents.issue import precheck
+
+            precheck(event, user)
+        if pa.stage == "confirm" and layers_for(pa.policy) == 3:
+            # X47: confirmed — now waiting for a third person to approve.
+            pa.stage = "approve"
+            pa.confirmed_by, pa.confirmed_at = user, timezone.now()
+            pa.confirm_remark = (remark or "").strip()
+            pa.save(update_fields=["stage", "confirmed_by", "confirmed_at", "confirm_remark", "updated_at"])
+            audit.log(audit._action("state_change"), pa, actor=user,
+                      changes={"stage": {"old": "confirm", "new": "approve"}}, note="confirmed; awaiting approval")
+            transaction.on_commit(lambda: _notify_step(pa, "confirmed"))
+            return pa
+        if pa.stage == "confirm":
+            pa.confirmed_by, pa.confirmed_at = user, timezone.now()
+            pa.confirm_remark = (remark or "").strip()
         pa.status = PendingAction.CONFIRMED
         pa.decided_by = user
         pa.decided_at = timezone.now()
         pa.decision_remark = (remark or "").strip()
-        pa.save(update_fields=["status", "decided_by", "decided_at", "decision_remark", "updated_at"])
+        pa.save(update_fields=["status", "decided_by", "decided_at", "decision_remark", "confirmed_by",
+                               "confirmed_at", "confirm_remark", "updated_at"])
         audit.log(audit._action("state_change"), pa, actor=user,
-                  changes={"status": {"old": "pending", "new": "confirmed"}}, note="confirmed")
+                  changes={"status": {"old": "pending", "new": "confirmed"}},
+                  note="approved" if pa.stage == "approve" else "confirmed")
         _apply(pa, user, decided_by=user)
     _notify_decided(pa)
     return pa
+
+
+def approve(pa, user, *, remark="", impersonating=False):
+    """The third layer (X47). Same rules and effect as ``confirm`` at the approve stage."""
+    if pa.stage != "approve":
+        raise ValidationError("This change is not waiting for approval.")
+    return confirm(pa, user, remark=remark, impersonating=impersonating)
+
+
+def trail(pa):
+    """[(when, who, what)] for one pending action: initiated, confirmed, approved / rejected, applied."""
+    rows = [(pa.initiated_at, pa.initiated_by, "Initiated")]
+    if pa.confirmed_at:
+        rows.append((pa.confirmed_at, pa.confirmed_by, "Confirmed" + (f": {pa.confirm_remark}" if pa.confirm_remark else "")))
+    if pa.decided_at and pa.status in (pa.REJECTED,):
+        rows.append((pa.decided_at, pa.decided_by, f"Rejected: {pa.decision_remark}"))
+    elif pa.decided_at and pa.stage == "approve":
+        rows.append((pa.decided_at, pa.decided_by, "Approved" + (f": {pa.decision_remark}" if pa.decision_remark else "")))
+    if pa.applied_at:
+        rows.append((pa.applied_at, pa.decided_by or pa.initiated_by, "Applied"))
+    elif pa.status == pa.FAILED:
+        rows.append((pa.updated_at, None, f"Could not be applied: {pa.failure_detail}"))
+    return rows
 
 
 def _apply(pa, actor, *, decided_by):
@@ -534,6 +691,22 @@ def _notify_created(pa):
 
 def _notify_decided(pa):
     _dispatch(pa, "pending_action.decided", {"initiator": [pa.initiated_by]})
+
+
+def _notify_step(pa, what):
+    """X47: tell the initiator each step, and the approvers when it is their turn."""
+    try:
+        from notifications.services import notify
+        url = _url(pa)
+        who = pa.confirmed_by.get_full_name() if pa.confirmed_by_id else "A confirmer"
+        notify(pa.initiated_by, title=f"{pa.reference} {what}",
+               body=f"{who} confirmed '{pa.target_label or pa.policy.label}'. It now waits for approval.", url=url,
+               actor=pa.confirmed_by)
+        for user in eligible_confirmers(pa):
+            notify(user, title=f"Approval needed: {pa.reference}",
+                   body=f"{pa.policy.label} — {pa.target_label}. Confirmed by {who}.", url=url, actor=pa.confirmed_by)
+    except Exception:  # pragma: no cover
+        logger.exception("Could not notify the X47 step for %s", pa.reference)
 
 
 def _timeline(pa, target, actor):

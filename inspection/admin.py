@@ -10,8 +10,9 @@ from core.admin_base import (
 )
 
 from .models import (
-    Inspection, InspectionTeamMember, PostVisitPersonnel, PostVisitReport, QAMapping, QAPersonnel, ReportEndorsement,
-    ResourcePerson, ResourcePersonDiscipline, ResourcePersonFile, ServiceRecord, SSQReviewAssignment,
+    Inspection, InspectionTeamMember, PostVisitMemberReport, PostVisitMemberReview, PostVisitPersonnel,
+    PostVisitReport, QAMapping, QAPersonnel, ReportEndorsement, ResourcePerson, ResourcePersonDiscipline,
+    ResourcePersonFile, ServiceRecord, SSQReviewAssignment,
 )
 
 
@@ -72,6 +73,8 @@ for _model, _cols in (
         (InspectionTeamMember, ("inspection", "staff", "role_on_team", "confirmed_by_division_director")),
         (PostVisitPersonnel, ("inspection", "staff", "resource_person", "role_on_team", "duty", "planned",
                               "attended")),
+        (PostVisitMemberReport, ("report", "attendee", "author", "status", "submitted_at", "reviewed_by")),
+        (PostVisitMemberReview, ("member_report", "action", "actor", "at")),
         (ReportEndorsement, ("report", "layer", "action", "actor", "at")),
 ):
     admin.site.register(_model, type(f"{_model.__name__}Admin", (UnscopedReadOnlyModelAdmin,),

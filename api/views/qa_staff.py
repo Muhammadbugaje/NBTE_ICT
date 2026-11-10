@@ -552,6 +552,60 @@ class ClearanceDecideView(QAView):
             "message": message, "clearance": svc.clearance_detail(clearance, request.user, request)}).data)
 
 
+# ---------------------------------------------------------------------------
+# Phase 0 (Q2): onboarding programme clearance — accreditation.onboarding_programmes
+# ---------------------------------------------------------------------------
+def _programme_item(item):
+    app = item["app"]
+    return {"application": {"id": app.pk, "reference": app.reference, "status": app.status,
+                            "institution": app.institution.name, "institution_code": app.institution.code},
+            "department": item["department"].name if item["department"] is not None else "",
+            "round": app.programme_round, "waiting_days": item["waiting_days"], "can_clear": item["can_clear"],
+            "reason": item["why"],
+            "programmes": [{"id": r.pk, "programme": r.programme.name,
+                            "level": r.programme.level.name if r.programme.level_id else "",
+                            "streams": r.programme.requested_streams, "status": r.status, "remark": r.remark}
+                           for r in item["reviews"]]}
+
+
+class ProgrammeClearanceListView(QAView):
+    """Onboarding programme lists for my department (NTIRD by default)."""
+
+    section = "applications"
+
+    @extend_schema(operation_id="qa_onboarding_programmes_list",
+                   parameters=[OpenApiParameter("status", str, description="pending (default) | all")],
+                   responses={200: ser.QAProgrammeClearanceSerializer(many=True)})
+    def get(self, request):
+        from accreditation import onboarding_programmes as op
+
+        status_ = request.query_params.get("status", "pending")
+        items = op.queue(request.user, status="all" if status_ == "all" else "pending")
+        return paged(items, request, self, _programme_item, ser.QAProgrammeClearanceSerializer)
+
+
+class ProgrammeClearanceDecideView(QAView):
+    """Clear or return one programme (remark required to return)."""
+
+    section = "applications"
+
+    @extend_schema(operation_id="qa_onboarding_programme_decide", request=ser.QAClearanceDecideSerializer,
+                   responses={200: ser.QAProgrammeClearanceSerializer, **ACTION_ERRORS})
+    def post(self, request, pk):
+        from accreditation import onboarding_programmes as op
+
+        review = op.load_review(pk)
+        if review is None:
+            raise Http404
+        item = next((i for i in op.queue(request.user, status="all") if i["app"].pk == review.application_id), None)
+        if item is None:
+            raise Http404
+        data = body(ser.QAClearanceDecideSerializer, request)
+        call(op.decide, review, user=request.user, decision=data["decision"], remark=data.get("remark", ""))
+        item = next(i for i in op.queue(request.user, status="all") if i["app"].pk == review.application_id)
+        return Response(ser.QAProgrammeClearanceSerializer(_programme_item(item)).data)
+
+
 # ===========================================================================
 # QA requests and SSQ review (SOP-02)
 # ===========================================================================
@@ -704,6 +758,28 @@ class SSQDecideView(QAView):
                                                  "ssq": svc.ssq_detail(ssq, request.user, request)}).data)
 
 
+class SSQAssignView(QAView):
+    """Assign a submitted SSQ to one officer — accreditation.ssq_assign.assign (same rules as the website)."""
+
+    section = "requests"
+
+    @extend_schema(operation_id="qa_ssq_assign", request=ser.QASSQAssignSerializer,
+                   responses={200: ser.QASSQResultSerializer, **ACTION_ERRORS})
+    def post(self, request, pk):
+        from accounts.models import User
+        from accreditation import ssq_assign
+
+        ssq = _ssq_or_404(request, pk)
+        data = body(ser.QASSQAssignSerializer, request)
+        officer = User.objects.filter(pk=data.get("officer") or 0, is_active=True).first()
+        wa = call(ssq_assign.assign, ssq, by=request.user, officer=officer,
+                  accept_suggestion=data.get("accept_suggestion", False), reason=data.get("reason", ""))
+        ssq = _ssq_or_404(request, pk)
+        name = wa.assignee.get_full_name() or wa.assignee.email
+        return Response(ser.QASSQResultSerializer({"message": f"Assigned to {name}.",
+                                                 "ssq": svc.ssq_detail(ssq, request.user, request)}).data)
+
+
 # ===========================================================================
 # Complaints
 # ===========================================================================
@@ -799,8 +875,13 @@ class ComplaintActView(_ComplaintAction):
             raise serializers.ValidationError({"remark": ["This action needs a remark."]})
         dept = Department.objects.filter(pk=data.get("refer_department") or 0).first()
         person = User.objects.filter(pk=data.get("refer_user") or 0, is_active=True, user_type="staff").first()
+        officer = None
+        if data["action"] == "assign":  # v2.1 X10: the service re-checks the department rule
+            officer = User.objects.filter(pk=data.get("officer") or 0).first()
+            if officer is None:
+                raise serializers.ValidationError({"officer": ["Choose the officer to assign."]})
         call(csvc.act, complaint, data["action"], request.user, remark=data.get("remark", ""),
-             refer_department=dept, refer_user=person)
+             refer_department=dept, refer_user=person, officer=officer)
         complaint = _complaint_or_404(request, pk)
         return self._respond(request, pk, f"Done. {complaint.reference} is now: "
                                           f"{(complaint.status or '').replace('_', ' ')}.")

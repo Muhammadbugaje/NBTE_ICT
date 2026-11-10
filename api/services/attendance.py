@@ -36,7 +36,9 @@ def record_item(rec):
             "check_in_at": iso(rec.check_in_at), "location": rec.location.name if rec.location_id else None,
             "distance_meters": rec.distance_meters, "source": rec.source,
             "source_display": rec.get_source_display(),
-            "detail": services.record_detail(rec) if rec.status in services.NEUTRAL_STATUSES else ""}
+            "detail": services.record_detail(rec) if rec.status in services.NEUTRAL_STATUSES else "",
+            "status_label": rec.status_label, "check_out_at": iso(rec.check_out_at),
+            "check_out_source": rec.check_out_source or "", "missing_checkout": rec.missing_checkout}
 
 
 def my_locations(user):
@@ -52,8 +54,11 @@ def today(user):
     from attendance import codes, services
     from attendance.models import AttendanceRecord
 
+    from attendance import checkout
+
     day = timezone.localdate()
     reason = services.check_in_block_reason(user, day)
+    out_reason, _rec = checkout.checkout_state(user, day)
     record = (AttendanceRecord.objects.filter(user=user, date=day).select_related("location").first())
     return {
         "date": day,
@@ -67,7 +72,9 @@ def today(user):
         "manual_check_in_enabled": bool(codes.manual_checkin_enabled()),
         "office_code_enabled": bool(codes.manual_checkin_enabled()),
         "office_code_reason": codes.code_check_in_block_reason(user, day),
-        "check_out_supported": False,
+        "check_out_supported": True,
+        "can_check_out": not out_reason,
+        "check_out_reason": out_reason,
     }
 
 
@@ -90,8 +97,8 @@ def history_queryset(user, year, month=None, status=""):
 
 
 def _tally(t):
-    return {k: t[k] for k in ("present", "late", "absent", "excused", "holiday", "on_leave", "credited",
-                              "expected")} | {"percent": t["pct"]}
+    return {k: t[k] for k in ("present", "late", "absent", "excused", "holiday", "on_leave", "on_duty",
+                              "missing_checkout", "credited", "expected")} | {"percent": t["pct"]}
 
 
 def summary(user):
