@@ -10,7 +10,7 @@ request's URLconf) and before anything that calls `reverse()`.
 from django.conf import settings
 from django.urls import set_urlconf
 
-from .hosts import is_portal_request
+from .hosts import PORTAL_MOUNT, is_portal_request
 
 
 class QAPortalHostMiddleware:
@@ -19,7 +19,7 @@ class QAPortalHostMiddleware:
 
     def __call__(self, request):
         # 1. WORKAROUND FOR RENDER: Allow the QA portal via the /qa-portal/ path
-        if request.path.startswith("/qa-portal/"):
+        if request.path == PORTAL_MOUNT or request.path.startswith(PORTAL_MOUNT + "/"):
             request.is_qa_portal = True
             return self.get_response(request)
 

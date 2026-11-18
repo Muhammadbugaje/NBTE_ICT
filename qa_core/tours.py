@@ -868,6 +868,14 @@ def boot(request, *, host, institution=None):
     tours = tours_for_request(request, host=host, institution=institution)
     if not tours:
         return None
+    # Where the portal is mounted by path (Render: /qa-portal/), tour data keeps
+    # its plain paths; the browser puts this in front of every link it follows.
+    try:
+        from .hosts import portal_mount
+
+        base = portal_mount(request) if host == "portal" else ""
+    except Exception:  # a guide must never break a page
+        base = ""
     state = seen(user)
     touched = set(state["done"]) | set(state["dismissed"])
     impersonating = bool(getattr(request, "is_impersonating", False))
@@ -876,14 +884,17 @@ def boot(request, *, host, institution=None):
         # One welcome per place: offer the one that starts on this very page (staff have a
         # main-system welcome and a QA-workspace welcome), else the first not yet seen.
         here = (request.path or "/").rstrip("/") + "/"
+        if base and (here == base + "/" or here.startswith(base + "/")):
+            here = here[len(base):] or "/"
         waiting = [t for t in tours if t.get("auto") and t["id"] not in touched]
         auto = next((t["id"] for t in waiting if t["start"] == here), "") or (waiting[0]["id"] if waiting else "")
     # The address is only a cache key: the view works the list out again from the signed-in user.
     key = hashlib.sha1("|".join([VERSION, str(user.pk), host] + [t["id"] + t["start"] + t.get("next", "")
                                                                  for t in tours]).encode()).hexdigest()[:14]
-    return {"dataUrl": f"{DATA_URL}?v={key}", "count": len(tours), "seen": state, "autostart": auto,
-            "saveUrl": DATA_URL, "canSave": not impersonating, "host": host,
-            "helpUrl": "/how-to/" if host == "portal" else ("/qa/guides/" if can_use_qa(request) else "")}
+    help_url = "/how-to/" if host == "portal" else ("/qa/guides/" if can_use_qa(request) else "")
+    return {"dataUrl": f"{base}{DATA_URL}?v={key}", "count": len(tours), "seen": state, "autostart": auto,
+            "saveUrl": f"{base}{DATA_URL}", "canSave": not impersonating, "host": host, "base": base,
+            "helpUrl": f"{base}{help_url}" if help_url else ""}
 
 
 def data(request, *, host):

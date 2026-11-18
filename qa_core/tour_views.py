@@ -15,9 +15,9 @@ from . import tours
 
 def _host(request):
     try:
-        from .hosts import is_portal_request
+        from .hosts import is_portal_page
 
-        return "portal" if is_portal_request(request) else "staff"
+        return "portal" if is_portal_page(request) else "staff"
     except Exception:
         return "staff"
 

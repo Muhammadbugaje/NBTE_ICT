@@ -17,11 +17,22 @@ register = template.Library()
 def _host(context):
     request = context.get("request")
     try:
-        from qa_core.hosts import is_portal_request
+        from qa_core.hosts import is_portal_page
 
-        return "portal" if is_portal_request(request) else "staff"
+        return "portal" if is_portal_page(request) else "staff"
     except Exception:
         return "staff"
+
+
+def _mount(context):
+    """``"/qa-portal"`` when the portal is served by path (Render), else ``""``."""
+    request = context.get("request")
+    try:
+        from qa_core.hosts import portal_mount
+
+        return portal_mount(request) if request is not None else ""
+    except Exception:
+        return ""
 
 
 @register.inclusion_tag("partials/tour_boot.html", takes_context=True)
@@ -62,6 +73,10 @@ def tour_guides(context, guide=None, host=None, audience=None, variant="list", l
             pass
     if limit:
         rows = rows[:limit]
+    base = _mount(context)
+    if base:
+        # Tour data is written without the mount, so the links need it added.
+        rows = [dict(r, url=f"{base}{r.get('url', '')}") for r in rows]
     return {"tour_rows": rows, "tour_variant": variant, "tour_signed_in": signed_in, "tour_guide": guide}
 
 

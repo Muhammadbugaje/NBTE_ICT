@@ -44,6 +44,35 @@ def is_portal_request(request):
     return _api_dev_door_header(request)  # Phase 9
 
 
+# The path the portal is mounted at when host routing is not available (Render:
+# see qa_core/middleware.py and nbte_ict/urls.py). Links built from tour data are
+# written without it, so anything that answers "where is the portal" must add it.
+PORTAL_MOUNT = "/qa-portal"
+
+
+def portal_mount(request):
+    """``"/qa-portal"`` for a request that came in under that path, else ``""``.
+
+    On a properly hosted deployment the portal has its own host and this is
+    always blank; on Render the same site serves it under ``/qa-portal/``."""
+    path = (getattr(request, "path_info", "") or getattr(request, "path", "") or "")
+    if path == PORTAL_MOUNT or path.startswith(PORTAL_MOUNT + "/"):
+        return PORTAL_MOUNT
+    return ""
+
+
+def is_portal_page(request):
+    """Is this a portal page? True on the portal host *and* under ``/qa-portal/``.
+
+    ``QAPortalHostMiddleware`` settles this for every request in
+    ``request.is_qa_portal`` (including the path workaround used on Render), so
+    use that flag when it is there; fall back to the host check otherwise."""
+    flag = getattr(request, "is_qa_portal", None)
+    if flag is not None:
+        return bool(flag)
+    return is_portal_request(request)
+
+
 def _api_dev_door_header(request):
     """Phase 9 (mobile API), development only: a phone on the LAN reaches the
     dev server by IP, not by qa.localhost, so `X-NBTE-Door: portal` on an

@@ -64,7 +64,21 @@
   function rich(s) { return esc(s).replace(/\*([^*]+)\*/g, '<strong>$1</strong>'); }
   function plain(s) { return String(s || '').replace(/\*/g, ''); }
   function normPath(p) { p = String(p || '/').split('?')[0].split('#')[0]; return p.charAt(p.length - 1) === '/' ? p : p + '/'; }
-  function herePath() { return normPath(W.location.pathname); }
+  /* When the portal is served by path (Render: /qa-portal/), tour data keeps its
+     plain paths. herePath() compares them without the mount; withBase() puts it
+     back on every link the engine follows. */
+  var BASE = String(BOOT.base || '').replace(/\/+$/, '');
+  function withBase(u) {
+    u = String(u || '');
+    if (!BASE || !u || u.charAt(0) !== '/' || /^\/\//.test(u)) return u;
+    if (u === BASE || u.indexOf(BASE + '/') === 0 || u.indexOf(BASE + '?') === 0) return u;
+    return BASE + u;
+  }
+  function herePath() {
+    var p = W.location.pathname;
+    if (BASE && (p === BASE || p.indexOf(BASE + '/') === 0)) p = p.slice(BASE.length) || '/';
+    return normPath(p);
+  }
   function reducedMotion() {
     var m = D.documentElement.getAttribute('data-motion');
     if (m === 'off' || m === 'reduced') return true;
@@ -212,7 +226,7 @@
     // Begin on the tour's own page unless the first step can already be shown here.
     if (!opts.resume && i === 0 && herePath() !== startPath && !(s0 && (s0.path || s0.path_re) && pathOk(s0))) {
       store.set(LS_ACTIVE, { id: id, i: 0, t: now() });
-      W.location.assign(tour.start);
+      W.location.assign(withBase(tour.start));
       return true;
     }
     lastFocus = D.activeElement;
@@ -240,7 +254,7 @@
       if (normPath(step.url) === herePath()) return go(i + 1, 1);
       store.set(LS_ACTIVE, { id: run.tour.id, i: i + 1, t: now() });
       hideOverlay();
-      W.location.assign(step.url);
+      W.location.assign(withBase(step.url));
       return;
     }
     run.mode = 'waiting';
@@ -272,7 +286,7 @@
     if (!pathOk(step)) {
       if (step.path) {
         store.set(LS_ACTIVE, { id: run.tour.id, i: j, t: now() });
-        hideOverlay(); W.location.assign(step.path); return;
+        hideOverlay(); W.location.assign(withBase(step.path)); return;
       }
       store.set(LS_ACTIVE, { id: run.tour.id, i: j, t: now() });
       run.i = j; hideOverlay(); W.history.back(); run.mode = 'waiting'; run.dir = -1; setDeadline(step); return;
@@ -441,7 +455,7 @@
       '<div class="nt-card__foot"><span class="nt-card__count">' + (c.total ? 'Step ' + c.n + ' of ' + c.total : '') + '</span><span class="nt-card__btns">';
     (c.buttons || []).forEach(function (b) {
       var inner = (b.icon && !b.after ? icon(b.icon, 15) : '') + '<span>' + esc(b.label) + '</span>' + (b.icon && b.after ? icon(b.icon, 15) : '');
-      if (b.act === 'link') html += '<a class="nt-btn' + (b.primary ? ' nt-btn--primary' : '') + '" data-nt="link" href="' + esc(b.url) + '">' + inner + '</a>';
+      if (b.act === 'link') html += '<a class="nt-btn' + (b.primary ? ' nt-btn--primary' : '') + '" data-nt="link" href="' + esc(withBase(b.url)) + '">' + inner + '</a>';
       else html += '<button type="button" class="nt-btn' + (b.primary ? ' nt-btn--primary' : '') + '" data-nt="' + b.act + '"' + (b.id ? ' data-id="' + esc(b.id) + '"' : '') + '>' + inner + '</button>';
     });
     html += '</span></div>';
