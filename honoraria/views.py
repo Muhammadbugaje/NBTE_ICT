@@ -169,8 +169,8 @@ def _date(raw):
         return None
 
 
-SCHEDULE_FILTERS = [("all", "All"), ("draft", "Awaiting approval"), ("approved", "Approved"), ("paid", "Paid"),
-                    ("cancelled", "Withdrawn")]
+SCHEDULE_FILTERS = [("all", "All"), ("draft", "Draft"), ("awaiting_es", "With the ES"),
+                    ("approved", "Approved — ready to pay"), ("paid", "Paid"), ("cancelled", "Withdrawn")]
 
 
 def _schedule_list_extras(request, schedules):
@@ -184,7 +184,7 @@ def _schedule_list_extras(request, schedules):
     if show not in counts:
         show = "all"
     total = {status: sum((r.total for r in rows if r.status == status), Decimal("0"))
-             for status in ("draft", "approved", "paid")}
+             for status in ("draft", "awaiting_es", "approved", "paid")}
     return {"schedules": [r for r in rows if show == "all" or r.status == show], "show": show,
             "filters": [(k, label, counts[k]) for k, label in SCHEDULE_FILTERS], "totals": total,
             "can_view_all": sched.can_view_all(request.user)}
@@ -213,6 +213,8 @@ def _is_file_pay_officer(user, schedule):
 
 @login_required
 def schedule_detail(request, pk):
+    from . import files as hf
+
     schedule = get_object_or_404(sched.PaymentSchedule.objects.all(), pk=pk)
     lines = sched.lines_for(request.user, schedule)
     if (not sched.can_view_all(request.user) and schedule.honorarium_file_id
@@ -239,20 +241,35 @@ def schedule_detail(request, pk):
         can_pay = bool(details_by_line and funding_accounts.exists())
     for line in lines:
         line.can_confirm = bool(
-            line.paid_at and (line.user_id == request.user.pk
-                              or getattr(line.resource_person, "user_id", None) == request.user.pk))
+            line.paid_at and not line.confirmed_at and (line.user_id == request.user.pk
+                                                        or getattr(line.resource_person, "user_id", None)
+                                                        == request.user.pk))
     paid_line_count = sum(1 for line in lines if line.paid_at is not None)
+    unpaid_line_count = sum(1 for line in lines if line.paid_at is None)
+    is_file_batch = bool(schedule.honorarium_file_id)
+    disputes = [line for line in lines if line.paid_at and line.disputed_at]
+    import org
+
     response = render(request, "honoraria/schedule_detail.html", {
         "schedule": schedule, "lines": lines,
-        "can_approve": sched.can_approve(request.user) and schedule.status == "draft",
+        "can_approve": (sched.can_approve(request.user) and schedule.status == "draft"
+                        and not is_file_batch),
         "can_pay": can_pay,
+        "can_send_to_es": hf.can_send_to_es(request.user, schedule),
+        "can_es_decide": hf.can_es_decide(request.user, schedule),
+        "can_print": bool(is_finance_director and schedule.status in ("draft", "awaiting_es", "approved")
+                          and unpaid_line_count),
+        "is_es": org.is_es(request.user),
+        "is_file_batch": is_file_batch,
         "is_finance_director": is_finance_director,
         "has_lines": lines.exists(),
         "missing_accounts": missing_accounts,
         "funding_accounts": funding_accounts,
         "can_confirm": paid_line_count > 0,
         "paid_line_count": paid_line_count,
+        "unpaid_line_count": unpaid_line_count,
         "line_count": len(lines),
+        "disputes": disputes, "dispute_count": len(disputes),
         "error": request.GET.get("error", ""),
     })
     if details_by_line:
@@ -295,17 +312,21 @@ def schedule_approve(request, pk):
 @require_POST
 def schedule_pay(request, pk):
     schedule = get_object_or_404(sched.PaymentSchedule.objects.all(), pk=pk)
+    scope = request.POST.get("scope") or "selected"
+    line_ids = None if scope == "all" else request.POST.getlist("lines")
     try:
         sched.mark_paid(
             schedule, user=request.user,
             funding_account_id=request.POST.get("funding_account"),
             payment_reference=request.POST.get("payment_reference"),
-            line_ids=request.POST.getlist("lines"),
+            line_ids=line_ids,
             amounts={key.removeprefix("amount_"): value for key, value in request.POST.items()
                      if key.startswith("amount_")},
         )
     except (PermissionDenied, ValidationError) as exc:
-        messages.error(request, str(exc))
+        messages.error(request, " ".join(getattr(exc, "messages", [str(exc)])))
+    else:
+        messages.success(request, "Payment recorded. Each selected payee was asked to confirm receipt.")
     return redirect("honoraria_sched:detail", pk=schedule.pk)
 
 
@@ -457,14 +478,22 @@ def income_report(request):
 @require_http_methods(["GET", "POST"])
 def my_earnings(request):
     if request.method == "POST":
+        action = request.POST.get("action") or "confirm"
         if request.POST.get("line"):
             line = get_object_or_404(sched.payee_lines_for(request.user), pk=request.POST.get("line"))
             try:
-                sched.confirm_receipt(line, user=request.user)
+                if action == "dispute":
+                    sched.dispute_receipt(line, user=request.user, note=request.POST.get("note", ""))
+                else:
+                    sched.confirm_receipt(line, user=request.user)
             except (PermissionDenied, ValidationError) as exc:
                 messages.error(request, " ".join(getattr(exc, "messages", [str(exc)])))
             else:
-                messages.success(request, "Receipt confirmed.")
+                if action == "dispute":
+                    messages.warning(request, "Thank you. Finance has been told the money did not arrive and "
+                                              "will see your note.")
+                else:
+                    messages.success(request, "Receipt confirmed.")
             return redirect("honoraria_earnings:list")
         entry = get_object_or_404(sched.earnings_for(request.user), pk=request.POST.get("entry"))
         try:
@@ -518,8 +547,10 @@ def my_earnings(request):
             (line.amount for line in schedule_lines if line.confirmed_at), Decimal("0"))
     for line in schedule_lines:
         line.can_confirm = bool(
-            line.paid_at and (line.user_id == request.user.pk
-                              or getattr(line.resource_person, "user_id", None) == request.user.pk))
+            line.paid_at and not line.confirmed_at and (line.user_id == request.user.pk
+                                                        or getattr(line.resource_person, "user_id", None)
+                                                        == request.user.pk))
+        line.can_dispute = bool(line.can_confirm and not line.disputed_at)
     context = {
         "entries": entries, "totals": totals,
         "schedule_lines": schedule_lines,

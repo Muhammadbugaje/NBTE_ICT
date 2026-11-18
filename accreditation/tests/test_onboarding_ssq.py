@@ -87,7 +87,7 @@ def test_sop01_self_study_submission_is_immutable_and_requires_ce(
     ict_department = Department.objects.get(code="ict")
     ict_department.director = ict_director
     ict_department.save(update_fields=["director"])
-    with pytest.raises(ValidationError, match="Complete and submit every programme self-study"):
+    with pytest.raises(ValidationError, match="not every programme self-study has been submitted"):
         ApproveInstitutionHandler().validate(proposed_inst, {})
 
     studies = onboarding_ssq.open_for_application(app)
@@ -122,7 +122,10 @@ def test_sop01_self_study_submission_is_immutable_and_requires_ce(
     with pytest.raises(ValidationError, match="read-only"):
         onboarding_ssq.save_fields(study, _complete_study(study), user=inst_user)
 
-    ApproveInstitutionHandler().validate(proposed_inst, {})
+    # Submitted is not enough: every self-study must also be cleared (v2.3: clearing
+    # them is what makes the institution "Cleared for QA").
+    with pytest.raises(ValidationError, match="self-studies are cleared"):
+        ApproveInstitutionHandler().validate(proposed_inst, {})
 
 
 @pytest.mark.django_db

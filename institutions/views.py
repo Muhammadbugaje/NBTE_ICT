@@ -97,6 +97,8 @@ def action_menu(user, institution=None):
             "confirm_url": (reverse("qa:pending_list") + f"?status=pending&action={policy.action_code}")
             if policy.requires_second_officer else "",
             "summary": getattr(handler, "summary", "") or policy.description,
+            # action cards: who confirms (templates/institutions/_list_panel.html)
+            "confirm_rank": policy.confirmer_min_rank, "same_dept": policy.same_department_required,
         })
     order = [NI, TS]
     return [{"group": g, "items": groups[g]} for g in order if g in groups]
@@ -284,8 +286,24 @@ def _oversight_context(user, inst):
                 suggestion = s.suggested.user if s.suggested is not None else None
             except Exception:
                 suggestion = None
+    from assignments import supervision
+
+    previous = None
+    live = []
+    if current is None:
+        previous = supervision.previous_supervisor(inst)
+        live = supervision.open_work(inst)
+        # An approved institution that starts something new (a QA request, a
+        # case) gets a supervisor again — the director sees who had it before.
+        if not can_assign and live and ict and _can_assign_oversight(user):
+            can_assign = True
+            from accounts.audience import nbte_staff_users_q
+
+            candidates = list(User.objects.filter(nbte_staff_users_q())
+                              .filter(Q(department=ict) | Q(staff_profile__department=ict))
+                              .select_related("role").distinct().order_by("first_name", "last_name", "email"))
     return {"oversight_assignment": current, "oversight_candidates": candidates, "oversight_suggestion": suggestion,
-            "can_assign_oversight": can_assign}
+            "can_assign_oversight": can_assign, "oversight_previous": previous, "oversight_live": live}
 
 
 @require(can_view_institutions)
@@ -297,7 +315,10 @@ def assign_oversight(request, code):
     from qa_core.departments import qa_department
 
     inst = _institution_or_404(request, code)
-    if not _can_assign_oversight(request.user) or inst.status not in ("proposed", "under_review"):
+    from assignments import supervision
+
+    if not _can_assign_oversight(request.user) or (
+            inst.status not in ("proposed", "under_review") and not supervision.open_work(inst)):
         raise Http404
     ict = qa_department("ict")
     target = User.objects.filter(pk=request.POST.get("assignee"), is_active=True, user_type=User.STAFF).filter(
@@ -340,13 +361,9 @@ def _close_oversight_task(request, inst):
 
 @require(lambda user: can_view_institutions(user) or change_requests_service.is_ict_reviewer(user))
 def change_request_list(request):
-    if change_requests_service.is_lead(request.user):
-        rows = InstitutionChangeRequest.unscoped.select_related("institution", "requested_by", "assigned_to")
-    elif change_requests_service.is_ict_reviewer(request.user):
-        rows = InstitutionChangeRequest.unscoped.filter(assigned_to=request.user).select_related(
-            "institution", "requested_by", "assigned_to")
-    else:
+    if not (change_requests_service.is_lead(request.user) or change_requests_service.is_ict_reviewer(request.user)):
         raise Http404
+    rows = change_requests_service.visible_requests(request.user)
     return render_qa(request, "institutions/change_requests.html",
                      {"requests": rows, "can_assign": change_requests_service.is_lead(request.user)})
 
@@ -354,13 +371,10 @@ def change_request_list(request):
 @require(lambda user: can_view_institutions(user) or change_requests_service.is_ict_reviewer(user))
 @require_http_methods(["GET", "POST"])
 def change_request_detail(request, pk):
-    row = InstitutionChangeRequest.unscoped.select_related(
-        "institution", "requested_by", "assigned_to", "assigned_by", "decided_by").filter(pk=pk).first()
+    row = change_requests_service.visible_request(request.user, pk)
     if row is None:
         raise Http404
     is_lead = change_requests_service.is_lead(request.user)
-    if not is_lead and row.assigned_to_id != request.user.pk:
-        raise Http404
     if request.method == "POST":
         try:
             if request.POST.get("action") == "assign" and is_lead:

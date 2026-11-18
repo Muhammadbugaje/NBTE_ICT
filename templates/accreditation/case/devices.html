@@ -1,0 +1,67 @@
+{% extends "qa_core/_shell.html" %}
+{% load qa_tags %}
+{% comment %}v2.3 (mockup 4): declined and defective devices, linked to the SSQ declaration.{% endcomment %}
+{% block qa_title %}Devices register · {{ case.reference }}{% endblock %}
+{% block qa_page_title %}QA cases (SOP-03){% endblock %}
+{% block panel %}
+<div class="v3-page">
+  <nav class="qa-crumbs" aria-label="Breadcrumb">
+    <a href="{% url 'qa_case:board' %}">Case board</a><span aria-hidden="true">/</span>
+    <a href="{% url 'qa_case:detail' case.pk %}">{{ case.reference }}</a><span aria-hidden="true">/</span>
+    <span aria-current="page">Devices register</span>
+  </nav>
+  <header class="v3-head">
+    <div>
+      <p class="v3-head__kicker">{{ inst.name }}</p>
+      <h1 data-qa-focus>Devices register</h1>
+      <p class="v3-head__lede">What the institution declared on its self-study against what the team found on the visit. Items the institution declared as not working are never penalised; items found not working are a shortfall; items declared but missing are falsified and fined.</p>
+    </div>
+    <a class="btn btn-subtle" href="{% url 'qa_case:detail' case.pk %}?tab=reports">{% icon "arrow" 15 %} Back to the case</a>
+  </header>
+
+  <section class="v3-kpis" aria-label="Summary">
+    <div class="v3-kpi"><strong>{{ count_declared }}</strong><span>Declared not working</span></div>
+    <div class="v3-kpi v3-kpi--warn"><strong>{{ count_declined }}</strong><span>Found not working on the visit</span></div>
+    <div class="v3-kpi v3-kpi--bad"><strong>{{ count_falsified }}</strong><span>Declared, not found (falsified)</span></div>
+    <div class="v3-kpi"><strong>{{ fines|naira }}</strong><span>Fines worked out</span></div>
+  </section>
+
+  {% if not total %}
+  <section class="v3-empty">
+    <span class="v3-empty__icon" aria-hidden="true">{% icon "box" 22 %}</span>
+    <h2>No findings yet</h2>
+    <p>The visit team records what it finds in section D of each programme's visit report. This register fills itself from there.</p>
+  </section>
+  {% else %}
+  <div class="v3-toolbar">
+    <div class="v3-seg" role="tablist" aria-label="Show">
+      <a role="tab" href="?show=issues" class="{% if show != 'all' %}is-on{% endif %}" aria-selected="{% if show != 'all' %}true{% else %}false{% endif %}">Issues only</a>
+      <a role="tab" href="?show=all" class="{% if show == 'all' %}is-on{% endif %}" aria-selected="{% if show == 'all' %}true{% else %}false{% endif %}">All {{ total }} items</a>
+    </div>
+  </div>
+  <div class="v3-table-card">
+    <table class="v3-table">
+      <caption class="sr-only">Devices: declared against found</caption>
+      <thead><tr><th scope="col">Item</th><th scope="col">Programme</th><th scope="col" class="num">Declared working</th><th scope="col" class="num">Declared not working</th><th scope="col" class="num">Found working</th><th scope="col" class="num">Found not working</th><th scope="col">Outcome</th></tr></thead>
+      <tbody>
+      {% for f in rows %}
+        <tr class="v3-row--{{ f.device_outcome }}">
+          <td data-label="Item"><strong>{{ f.name }}</strong>{% if f.remark %}<small class="v3-sub">{{ f.remark }}</small>{% endif %}</td>
+          <td data-label="Programme">{{ f.report.qa_request_programme.programme }}</td>
+          <td data-label="Declared working" class="num">{{ f.declared_quantity|floatformat:"-1" }}</td>
+          <td data-label="Declared not working" class="num">{{ f.declared_not_working|floatformat:"-1" }}</td>
+          <td data-label="Found working" class="num">{{ f.found_quantity|floatformat:"-1" }}</td>
+          <td data-label="Found not working" class="num">{{ f.found_not_working|floatformat:"-1" }}</td>
+          <td data-label="Outcome"><span class="v3-pill v3-pill--{{ f.device_outcome }}">{{ f.device_outcome_label }}</span>
+            {% if f.device_outcome == "falsified" and f.report.fine_obligation_id %}<a class="v3-sub" href="{% url 'qa_fin:obligation' f.report.fine_obligation_id %}">Open the bill</a>{% endif %}
+            <a class="v3-sub" href="{% url 'qa_insp:report' f.report_id %}">Visit report</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="qa-muted">No device issues: everything declared was found working.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

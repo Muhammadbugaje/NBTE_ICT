@@ -168,6 +168,25 @@
 
   document.addEventListener("submit", markSubmitting);
   window.addEventListener("pageshow", restoreAfterHistoryNavigation);
+  /* Bank transfer: "I have paid" on the last pay step opens the proof form
+     (details#qa-proof), scrolls to it and puts the cursor in the first field. */
+  document.addEventListener("click", function (event) {
+    var trigger = event.target.closest && event.target.closest("[data-qa-open-proof]");
+    if (!trigger) return;
+    var proof = document.getElementById("qa-proof");
+    if (!proof) return;
+    event.preventDefault();
+    proof.open = true;
+    var calm = false;
+    try { calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+    proof.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" });
+    proof.classList.remove("is-flash");
+    void proof.offsetWidth;
+    proof.classList.add("is-flash");
+    var first = proof.querySelector("input:not([type=hidden]), select, textarea");
+    if (first) window.setTimeout(function () { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, calm ? 0 : 350);
+  });
+
   window.addEventListener("popstate", syncPortalSection);
   document.addEventListener("htmx:afterSwap", function (event) {
     syncPortalSection();

@@ -66,6 +66,14 @@ def _request_or_404(request, pk):
             if can_review_cqac_evidence(case, request.user):
                 req = (QARequest.unscoped.select_related("institution__handling_department", "qa_type", "cycle")
                        .filter(pk=pk).first())
+    if req is None and request.user.has_perm("accreditation.clear_qa_programmes"):
+        # Programme clearance can sit with another department (NTIRD): its
+        # clearer may open the request while it waits for them.
+        cand = (QARequest.unscoped.select_related("institution__handling_department", "qa_type", "cycle")
+                .filter(pk=pk, status="programme_clearance").first())
+        if cand is not None and svc.can_clear(cand, request.user)[0]:
+            req = cand
+            req._clearance_view = True
     if req is None:
         raise Http404
     return req
@@ -104,7 +112,11 @@ GROUPS = {"draft": ("draft",), "clearance": ("submitted", "programme_clearance")
 @require_GET
 def request_list(request):
     user = request.user
-    qs = QARequest.objects.for_user(user).select_related("institution", "qa_type").order_by("-created_at")
+    qs = QARequest.objects.for_user(user)
+    clearing = [r.pk for r in svc.clearance_queue(user)]
+    if clearing:  # requests another department handles but this user clears
+        qs = QARequest.unscoped.filter(pk__in=set(qs.values_list("pk", flat=True)) | set(clearing))
+    qs = qs.select_related("institution", "qa_type").order_by("-created_at")
     f = request.GET
     group = f.get("stage", "")
     if group in GROUPS:
@@ -133,7 +145,9 @@ def request_list(request):
 
 def _detail_context(request, req, **extra):
     user = request.user
-    rows = list(QARequestProgramme.objects.for_user(user).filter(qa_request=req)
+    row_manager = QARequestProgramme.unscoped if getattr(req, "_clearance_view", False) else \
+        QARequestProgramme.objects.for_user(user)
+    rows = list(row_manager.filter(qa_request=req)
                 .select_related("programme__level", "programme__category", "replaced_by__programme")
                 .order_by("status", "programme__name"))
     ssqs = []
@@ -324,7 +338,10 @@ def _queue_context(request, params=None):
 
     dept_ids = set(base.values_list("qa_request_programme__qa_request__institution__handling_department_id",
                                     flat=True))
+    tab_counts = {"submitted": stats["waiting"], **{k: stats[k] for k in ("unassigned", "assessing", "approval", "overdue")}}
     return {"page": page, "filters": f, "status": status, "statuses": SSQ_FILTERS,
+            # tabs with a live count where the stage is "at NBTE" (the others are history, not work)
+            "tabs": [(value, label, tab_counts.get(value)) for value, label in SSQ_FILTERS],
             "types": QAType.objects.order_by("sort_order"), "levels": _levels(),
             "departments": Department.objects.filter(pk__in=[d for d in dept_ids if d]).order_by("name"),
             "counts": stats, "sla_days": ssq_routing._int("qa.ssq.stage_sla_days", 5),

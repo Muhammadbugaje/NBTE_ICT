@@ -1,14 +1,22 @@
 {% load qa_tags %}
 {% if page.rows %}
-<div class="qa-table-wrap"><table class="qa-table">
-  <thead><tr><th scope="col">Body</th><th scope="col">Contact</th><th scope="col" class="qa-num">Programmes</th><th scope="col" class="qa-num">Cases told</th><th scope="col">Status</th></tr></thead>
-  <tbody>{% for b in page.rows %}<tr>
-    <td><a href="{% url 'qa_pb:body_detail' b.pk %}" hx-get="{% url 'qa_pb:body_detail' b.pk %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ b.name }}</strong></a>{% if b.acronym %}<br><span class="qa-small qa-muted">{{ b.acronym }}</span>{% endif %}</td>
-    <td>{{ b.contact_person|default:"—" }}<br>{% if b.email %}<span class="qa-small qa-muted">{{ b.email }}</span>{% else %}<span class="qa-small qa-chip qa-tone-warn">No e-mail</span>{% endif %}</td>
-    <td class="qa-num">{{ b.mapping_count }}</td>
-    <td class="qa-num">{{ b.case_count }}</td>
-    <td>{% if b.is_active %}<span class="qa-small">Active</span>{% else %}<span class="qa-small qa-muted">Inactive</span>{% endif %}</td>
-  </tr>{% endfor %}</tbody>
-</table></div>
+<ul class="pb-cards" role="list">
+  {% for b in page.rows %}
+  <li><a class="pb-card{% if not b.is_active %} is-inactive{% endif %}" href="{% url 'qa_pb:body_detail' b.pk %}" hx-get="{% url 'qa_pb:body_detail' b.pk %}" hx-target="#qa-panel" hx-push-url="true">
+    <span class="pb-card__top">
+      <span class="pb-badge" aria-hidden="true">{% if b.acronym %}{{ b.acronym|slice:":5" }}{% else %}{{ b.name|initials }}{% endif %}</span>
+      <span class="pb-card__id"><strong class="pb-card__name">{{ b.name }}</strong>
+        <span class="pb-card__sub">{% if b.acronym %}{{ b.acronym }}{% endif %}{% if b.acronym and b.contact_person %} · {% endif %}{{ b.contact_person }}</span></span>
+      {% if b.is_active %}<span class="qa-chip qa-tone-success">Active</span>{% else %}<span class="qa-chip">Inactive</span>{% endif %}
+    </span>
+    <span class="pb-card__stats">
+      <span><strong>{{ b.mapping_count }}</strong> programme{{ b.mapping_count|pluralize }} mapped</span>
+      <span><strong>{{ b.case_count }}</strong> joint case{{ b.case_count|pluralize }}</span>
+    </span>
+    <span class="pb-card__foot">{% if b.email %}<span class="pb-card__mail">{% icon "mail" 14 %} {{ b.email }}</span>{% else %}<span class="qa-chip qa-tone-warn">No e-mail: notices cannot be sent</span>{% endif %}
+      <span class="pb-card__go">Open {% icon "arrow" 14 "2.2" %}</span></span>
+  </a></li>
+  {% endfor %}
+</ul>
 {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
 {% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "shield" 28 %}</span><h3 class="nbte-empty-state__title">{% if filters.q or filters.status or filters.level or filters.contact %}No bodies match these filters{% else %}No professional bodies yet{% endif %}</h3><p class="nbte-empty-state__body">{% if can_manage %}Add a body, or import the list from Excel.{% else %}The Curriculum Department adds them.{% endif %}</p></div>{% endif %}

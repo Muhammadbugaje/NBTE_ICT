@@ -158,6 +158,24 @@
               </form>
             {% endif %}
           </section>
+        {% elif v4 and app.status == "ssq_submitted" %}
+          {# v2.3 (SOP order): clearing the last self-study clears the institution for QA and opens its first QA request (SOP-02); the institution is approved only when that first SOP-03 case completes. #}
+          <section class="pp-act" id="qa-ssq" aria-labelledby="qa-onboarding-approval-h">
+            <span class="pp-act__kicker">{% icon "shield" 13 "2.4" %} Onboarding (SOP-01)</span>
+            {% if inst.status == "approved" %}
+              <h2 id="qa-onboarding-approval-h">Onboarding complete — {{ inst.name }} is approved</h2>
+              <p>Your first accreditation case finished and NBTE approved your institution. Add programmes, renew accreditation or ask for a visit from QA requests.</p>
+              <div class="qa-form-actions"><a class="btn btn-primary btn-lg" href="{% url 'qa_portal:qa_requests' %}">{% icon "arrow" 16 "2.4" %} Open QA requests</a></div>
+            {% elif inst.cleared_for_qa_at %}
+              <h2 id="qa-onboarding-approval-h">Cleared for quality assurance</h2>
+              <p>NBTE cleared every self-study. Your first quality-assurance request (SOP-02) is open; the accreditation visit and decision follow (SOP-03). Your institution is approved when that case is complete.</p>
+              <div class="qa-form-actions"><a class="btn btn-primary btn-lg" href="{% if first_request %}{% url 'qa_portal:qa_request' first_request.pk %}{% else %}{% url 'qa_portal:qa_requests' %}{% endif %}">{% icon "arrow" 16 "2.4" %} Open your QA request</a></div>
+            {% else %}
+              <h2 id="qa-onboarding-approval-h">NBTE is reviewing your self-studies</h2>
+              <p><span class="qa-chip qa-tone-info">{{ self_study_stage.public|default:"Under review by NBTE" }}</span></p>
+              <p>Each programme's self-study is checked by NBTE. When all are cleared you are cleared for quality assurance and your first QA request opens. Nothing to do now — we'll notify you.</p>
+            {% endif %}
+          </section>
         {% elif v3 and app.status == "ssq_submitted" %}
           <section class="pp-act" id="qa-ssq" aria-labelledby="qa-onboarding-approval-h">
             <span class="pp-act__kicker">{% icon "shield" 13 "2.4" %} Self-studies sent</span>

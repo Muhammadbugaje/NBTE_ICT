@@ -180,6 +180,13 @@ def save_findings(report, *, user, rows):
             if found_value in (None, "") and existing is not None:
                 found_value = existing.found_quantity
             found = Decimal(str(found_value or 0))
+            declared_nw = Decimal(str((ssq_quantities or {}).get(f"d{item.pk}", 0) if item is not None else 0) or 0)
+            found_nw_value = row.get("found_not_working")
+            if found_nw_value in (None, "") and existing is not None:
+                found_nw_value = existing.found_not_working
+            found_nw = Decimal(str(found_nw_value or 0))
+            if found_nw < 0 or found < 0:
+                raise ValueError
         except (ArithmeticError, ValueError):
             raise ValidationError(f"{name}: quantities must be numbers.") from None
         falsified = bool(row.get("is_falsified")) or (declared > 0 and found == 0)
@@ -188,6 +195,7 @@ def save_findings(report, *, user, rows):
             "kind": row.get("kind") if row.get("kind") in dict(CatalogueItem.KIND_CHOICES)
             else (item.kind if item else CatalogueItem.EQUIPMENT),
             "declared_quantity": declared, "found_quantity": found, "is_falsified": falsified,
+            "declared_not_working": declared_nw, "found_not_working": found_nw,
             "remark": (row.get("remark") or "").strip()[:255],
         }
         if item is not None:
@@ -310,7 +318,8 @@ def catalogue_rows(report):
         items.extend(engine.catalogue_items({"catalogue": {"kind": kind}}, programme)[:400 - len(items)])
     existing = {f.item_id: f for f in VisitFinding.unscoped.filter(report=report)}
     declared = _declared_quantities(report)
-    return [{"item": it, "finding": existing.get(it.pk), "declared": declared.get(str(it.pk), "")} for it in items]
+    return [{"item": it, "finding": existing.get(it.pk), "declared": declared.get(str(it.pk), ""),
+             "declared_not_working": declared.get(f"d{it.pk}", "")} for it in items]
 
 
 def _declared_quantities(report):
@@ -334,3 +343,13 @@ def _ssq_declared_quantities(report):
 
 __all__ = ["record_gps", "catalogue_rows", "distance_km", "submitted_ssq", "panel", "panel_people", "declarations", "declare", "missing_declarations", "conflicting", "prefill",
            "save_report", "save_findings", "fine_amount", "raise_fine"]
+
+
+def findings_of_case(case):
+    """v2.3: every catalogue finding on ``case``'s visit, for the devices
+    register (the caller has already opened the case)."""
+    from .models import VisitFinding
+
+    return list(VisitFinding.unscoped.filter(report__inspection__case=case)
+                .select_related("report__qa_request_programme__programme", "report__fine_obligation", "item")
+                .order_by("report__qa_request_programme__programme__name", "kind", "name"))

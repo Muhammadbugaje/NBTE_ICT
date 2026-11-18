@@ -1,9 +1,12 @@
 {% load qa_tags %}
 {% include "inspection/_subnav.html" with section="finder" %}
+<div class="vx vx-insp">
 <header class="qa-hero"><div>
-  <span class="qa-eyebrow">{% icon "search" 14 "2.4" %} Edit QA Mapping · §9 "Available for the next visit"</span>
+  <span class="qa-eyebrow">{% icon "search" 14 "2.4" %} Inspection · Who is free for the next visit</span>
   <h1 data-qa-focus>Availability finder</h1>
-  <p>Only people who pass every rule are listed, ranked by fewest visits this year, longest since last served, then rating (<span class="qa-mono">qa.matching.rank_score</span>). <strong>Map</strong> books the person at once (nobody else can book them for these dates) and sends the mapping to a second officer; the rules are checked again when it is confirmed.</p>
+  <p>Find who can be sent on a visit. Pick the case, programme, duty and dates; the list shows only people who pass every rule, best match first.</p>
+  <ol class="vx-chain" aria-label="How it works"><li class="vx-t-blue">1 · Choose case and dates</li><li class="vx-t-teal">2 · Pick a person</li><li class="vx-t-amber">3 · Map — dates held at once</li><li class="vx-t-green">4 · Director, then ES, approve in <a href="{% url 'qa_insp:mappings' %}">Mappings</a></li></ol>
+  <p class="vx-hint">Ranking: fewest visits this year, longest since last served, then rating (<span class="qa-mono">qa.matching.rank_score</span>). The rules are checked again when the mapping is confirmed.</p>
 </div></header>
 {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
 <section class="qa-card" aria-label="What the mapping is for">
@@ -20,7 +23,8 @@
   {% if need %}
     <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "inspection/_finder_rows.html" %}</div>
   {% else %}
-    <div class="qa-card__body"><p class="qa-muted">Choose a case (its visit dates are used when it has them), the programme and the duty.</p>
+    <div class="qa-card__body"><div class="vx-empty vx-empty--slim"><span class="vx-empty__icon vx-t-blue" aria-hidden="true">{% icon "search" 24 "2" %}</span><h3>Start by choosing a case</h3><p>Then pick the programme and the duty. The case's own visit dates are used when it has them.</p></div>
       <details class="qa-rules"><summary>The rules</summary><ol class="qa-small">{% for code, name, setting in rules %}<li><strong>{{ name }}</strong>{% if setting %} — <span class="qa-mono">{{ setting }}</span>{% endif %}</li>{% endfor %}</ol></details></div>
   {% endif %}
 </section>
+</div>

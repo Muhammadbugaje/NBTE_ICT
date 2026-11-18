@@ -194,7 +194,13 @@ def invite_to_portal(rp, *, actor, request=None):
     if user is None:
         if User.objects.filter(email__iexact=rp.email).exists():
             raise ValidationError(f"{rp.email} already has an account.")
-        first, _, last = rp.full_name.partition(" ")
+        words = rp.full_name.split()
+        # Leading titles ("Dr.", "Engr", "Prof") are not a first name.
+        while len(words) > 2 and words[0].rstrip(".").lower() in (
+                "dr", "mr", "mrs", "ms", "miss", "prof", "professor", "engr", "arc", "barr", "alhaji",
+                "alhaja", "hajiya", "chief", "mallam", "malam", "pharm", "rev", "hon"):
+            words = words[1:]
+        first, last = (words[0] if words else ""), " ".join(words[1:])
         user = User(email=rp.email, first_name=first[:150], last_name=last[:150] or "-", user_type="resource_person",
                     role=Role.objects.filter(code="resource-person").first(), is_active=True)
         user.set_unusable_password()
@@ -837,6 +843,32 @@ def member_report_counts(report):
                 counts["pending"] += 1
     counts["awaiting_review"] = counts["submitted"]
     return counts
+
+
+def member_digest(report):
+    """v2.3: the Team Lead's starting point. Accepted attendee reports merged
+    section by section (each line credited to its author), the most common
+    recommendation, and how many reports went in. Skipped and unreviewed
+    contributions are left out; the Team Lead still edits everything."""
+    from collections import Counter
+
+    rows = list(PostVisitMemberReport.unscoped.filter(report=report, status="accepted")
+                .select_related("author").order_by("attendee_id", "pk"))
+    sections, summaries, votes = {}, [], Counter()
+    for row in rows:
+        who = (row.author.get_full_name() or row.author.email) if row.author_id else "Attendee"
+        for key, text in (row.findings or {}).items():
+            text = (text or "").strip()
+            if text:
+                sections.setdefault(key, []).append(f"{who}: {text}")
+        if (row.summary or "").strip():
+            summaries.append(f"{who}: {row.summary.strip()}")
+        if row.recommendation:
+            votes[row.recommendation] += 1
+    top = votes.most_common()
+    recommendation = top[0][0] if top and (len(top) == 1 or top[0][1] > top[1][1]) else ""
+    return {"count": len(rows), "findings": {k: "\n".join(v) for k, v in sections.items()},
+            "summary": "\n".join(summaries), "recommendation": recommendation, "votes": dict(votes)}
 
 
 def member_reports_ready(report):

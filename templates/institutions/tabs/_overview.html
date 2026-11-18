@@ -64,7 +64,13 @@
       <header class="qa-card__head"><h2 id="ov-oversight">ICT oversight</h2></header>
       <div class="qa-card__body qa-stack">
         {% if oversight_assignment %}<p class="qa-small">Current supervisor: <strong>{{ oversight_assignment.assignee|who }}</strong></p>
-        {% else %}<p class="qa-small qa-muted">No ICT supervisor has been assigned yet.</p>{% endif %}
+        {% else %}<p class="qa-small qa-muted">No ICT supervisor is assigned{% if oversight_live %} — open now: {{ oversight_live|join:", " }}{% endif %}.</p>{% endif %}
+        {% if can_assign_oversight and oversight_previous and not oversight_assignment %}
+        <div class="qa-callout qa-callout--info" role="note"><div><strong>Previously supervised by {{ oversight_previous|who }}</strong>
+          <p class="qa-small">They saw this institution through its last piece of work. Assign them again to keep continuity, or choose someone else below.</p>
+          <form method="post" action="{% url 'qa_inst:assign_oversight' inst.code %}">{% csrf_token %}<input type="hidden" name="assignee" value="{{ oversight_previous.pk }}">
+            <button type="submit" class="btn btn-primary btn-sm">Assign {{ oversight_previous.get_short_name|default:oversight_previous|who }} again</button></form></div></div>
+        {% endif %}
         {% if can_assign_oversight %}
         <form method="post" action="{% url 'qa_inst:assign_oversight' inst.code %}" class="qa-stack">
           {% csrf_token %}

@@ -38,6 +38,28 @@ TABS = [("overview", "Overview"), ("cost", "Cost sheet"), ("personnel", "Personn
         ("funds", "Fund release"), ("reports", "Reports"), ("capacity", "Capacity"), ("decisions", "Decisions"),
         ("letters", "Letters"), ("timeline", "Timeline"), ("tasks", "Tasks")]
 
+# v2.3 redesign: eleven views grouped under seven top-level sections. The
+# tab keys (and every ?tab= link) are unchanged; a section with more than one
+# view shows a second, smaller row of choices.
+TAB_GROUPS = [("overview", "Overview", ("overview",)),
+              ("money", "Money", ("cost", "funds")),
+              ("team", "Team & tasks", ("personnel", "tasks")),
+              ("visit", "Visit", ("visit",)),
+              ("reports", "Reports", ("reports", "capacity")),
+              ("decisions", "Decision", ("decisions", "letters")),
+              ("history", "History", ("timeline",))]
+
+
+def tab_groups(tab, my_turn_tabs=()):
+    labels = dict(TABS)
+    out = []
+    for key, label, keys in TAB_GROUPS:
+        out.append({"key": key, "label": label, "first": keys[0], "active": tab in keys,
+                    "dot": any(k in my_turn_tabs and k != "overview" for k in keys),
+                    "subs": [{"key": k, "label": labels[k], "active": k == tab, "dot": k in my_turn_tabs}
+                             for k in keys]})
+    return out
+
 
 def can_view_capacity(user):
     return bool(user.is_superuser or user.has_perm("accreditation.view_capacity_assessment"))
@@ -94,37 +116,72 @@ def _user(pk):
 # ===========================================================================
 # Case Board
 # ===========================================================================
+CLOSED_STATUS = "closed"
+
+# The Case Board's four phases (owner feedback: "group it into like 4"). Every
+# SOP-03 stage code sits in exactly one; a status that is in none (not started
+# yet, or a stage added later) falls into the first phase.
+BOARD_PHASES = [
+    ("setup", "Set up the case", "Stage 1", ("case_opened", "assign_supervising_staff", "assign_audit_officer",
+                                              "assign_finance_officer", "assign_ict_officer", "supervisors_assigned")),
+    ("cost", "Cost & personnel", "Stages 2–7", ("generate_cost", "add_personnel", "confirm_personnel",
+                                                "audit_personnel_cost", "confirm_audit_cost", "es_approve_cost")),
+    ("visit", "The visit", "Stages 8–12", ("add_visit_details", "confirm_visit_details", "es_approve_visit",
+                                           "request_fund_release", "post_visit_report")),
+    ("decision", "Decision", "Stages 13–17", ("post_visit_recommendation", "cqac_recommendation",
+                                              "cqac_chair_approval", "es_final_approval", "programme_auto_update")),
+]
+
+
 @require(cs.can_view_cases)
 @require_GET
 def board(request):
+    """Active cases in four phase columns; finished cases in their own list below."""
     user = request.user
     f = request.GET
-    qs = cs.filter_cases(cs.visible_cases(user), q=f.get("q"), department=f.get("department"),
-                         flag=f.get("flag"))
-    cases = cs.decorate_cases(list(qs[:600]))
-    mine_only = f.get("mine") == "1"
-    columns = []
-    for key, label, codes in cs.STAGE_GROUPS:
-        columns.append({"key": key, "label": label, "codes": codes, "cards": []})
-    not_started = {"key": "new", "label": "Not started", "codes": ("",), "cards": []}
+    visible = cs.visible_cases(user)
+    qs = cs.filter_cases(visible, q=f.get("q"), department=f.get("department"), flag=f.get("flag"))
+    # ?view=mine|overdue (the chips); ?mine=1 is the older spelling and still works.
+    view = f.get("view") if f.get("view") in ("mine", "overdue") else ("mine" if f.get("mine") == "1" else "")
+
+    # Completed cases: a separate, paginated list (never loaded into the grid).
+    done_q = (f.get("cq") or "").strip()
+    done_qs = qs.filter(status=CLOSED_STATUS).select_related("qa_request__qa_type").order_by("-completed_at", "-pk")
+    if done_q:
+        done_qs = done_qs.filter(Q(reference__icontains=done_q) | Q(institution__name__icontains=done_q)
+                                 | Q(institution__code__iexact=done_q))
+    done = paginate(request, done_qs)
+    ctx = {"done": done, "done_q": done_q, "filters": f, "view": view}
+    if request.headers.get("HX-Target") == "case-done":
+        return render_qa(request, "accreditation/case/board.html", ctx,
+                         {"case-done": "accreditation/case/_board_completed.html"})
+
+    now = timezone.now()
+    cases = cs.decorate_cases(list(qs.exclude(status=CLOSED_STATUS)[:600]), now=now)
+    columns = [{"key": key, "label": label, "range": stages, "cards": [], "overdue": 0}
+               for key, label, stages, _codes in BOARD_PHASES]
+    phase_of = {code: i for i, (_k, _l, _s, codes) in enumerate(BOARD_PHASES) for code in codes}
+    counts = {"all": 0, "mine": 0, "overdue": 0}
     for case in cases:
-        if mine_only and user not in case.holders:
+        mine = user in case.holders
+        counts["all"] += 1
+        counts["mine"] += int(mine)
+        counts["overdue"] += int(case.overdue)
+        if (view == "mine" and not mine) or (view == "overdue" and not case.overdue):
             continue
-        for col in columns:
-            if case.status in col["codes"]:
-                col["cards"].append(case)
-                break
-        else:
-            not_started["cards"].append(case)
-    if not_started["cards"]:
-        columns.insert(0, not_started)
+        case.days_here = (now - case.stage_since).days if case.stage_since else None
+        col = columns[phase_of.get(case.status, 0)]
+        col["cards"].append(case)
+        col["overdue"] += int(case.overdue)
+    for col in columns:  # overdue first, then the longest wait
+        col["cards"].sort(key=lambda c: (not c.overdue, -(c.days_here or 0)))
     from staff.models import Department
 
-    ctx = {"columns": columns, "filters": f, "total": sum(len(c["cards"]) for c in columns),
-           "departments": Department.objects.filter(pk__in=cs.visible_cases(user).values("owning_department"))
-           .order_by("name"),
-           "monitor": cs.is_monitor(user), "queue_count": len(cs.my_stage_links(user)),
-           "can_batch": can_batch(user) and not cs.is_monitor(user)}
+    ctx.update({"columns": columns, "total": sum(len(c["cards"]) for c in columns), "counts": counts,
+                "overdue_total": counts["overdue"],
+                "departments": Department.objects.filter(pk__in=visible.values("owning_department")).order_by("name"),
+                "monitor": cs.is_monitor(user), "queue_count": len(cs.my_stage_links(user)),
+                "can_batch": can_batch(user) and not cs.is_monitor(user)})
     return render_qa(request, "accreditation/case/board.html", ctx,
                      {"qa-panel": "accreditation/case/_board_panel.html",
                       "case-board": "accreditation/case/_board_columns.html"})
@@ -218,6 +275,8 @@ def _detail_ctx(request, case, *, tab=None, focus="", **extra):
     ctx["viewer_roles"] = ui.viewer_roles(case, user, bundle["tracking_ict"])
     ctx["can_remind"] = ui.can_remind(case, user, bundle["tracking_ict"])
     ctx["my_turn"] = [a for a in actions if a["can"]]
+    ctx["tab_groups"] = tab_groups(tab, {a["tab"] for a in ctx["my_turn"]})
+    ctx["tab_group"] = next((g for g in ctx["tab_groups"] if g["active"]), ctx["tab_groups"][0])
     ctx["tracking_ict_ids"] = [u.pk for u in bundle["tracking_ict"]]
     ctx["desk_help"] = (f"Builds the cost sheet, personnel list and visit details. "
                         f"Grade level {ctx['grade_min']}–{ctx['grade_max']} (R-20).")
@@ -278,6 +337,14 @@ def _detail_ctx(request, case, *, tab=None, focus="", **extra):
             ctx["reassign_people"] = ui.people(ctx["reassign_choices"], suggest=False)
         if tab == "overview":  # the case cockpit
             ctx["journey"] = ui.journey(case, ctx["stepper"], links)
+            # v2.3: finished steps fold away; only a leading run of done steps folds
+            lead = 0
+            for st in ctx["journey"]:
+                if st["state"] != "done":
+                    break
+                lead += 1
+            ctx["journey_done"], ctx["journey_rest"] = ctx["journey"][:lead], ctx["journey"][lead:]
+            ctx["journey_done_steps"] = sum(1 for st in ctx["journey_done"] if st.get("no"))
             ctx["inst_card"] = ui.institution_card(case)
             try:
                 from inspection import services as insp
@@ -375,6 +442,11 @@ def _detail_ctx(request, case, *, tab=None, focus="", **extra):
         ctx["can_director_approve"] = cc.is_handling_director(case, user)
         ctx["can_es_approve"] = cc.is_es(user)
         ctx["is_owning_director"] = cc.is_owning_department_director(case, user)
+        # v2.3 (owner decision 2): the Division Director chooser for the owning Director.
+        ctx["division_director"] = cs.division_director_of(case)
+        ctx["can_set_division_director"] = cs.can_set_division_director(case, user) and not cs.is_monitor(user)
+        if ctx["can_set_division_director"] and tab == "overview":
+            ctx["division_director_candidates"] = cs.division_director_candidates(case)
         ctx["can_apply_change"] = cc.can_apply(case, ctx["open_change"], user)[0] if ctx["open_change"] else False
         ctx["earlier_stages"] = cc.earlier_stages(case)
         visit_row = bundle.get("visit")
@@ -476,6 +548,10 @@ def _decisions_ctx(request, case, current):
            "all_decisions": dec.all_decisions(case)}
     if stage_code:
         stage = dec.STAGE_OF_FLOW[stage_code]
+        # v2.3: a blind decider (Chairman / ES still to decide) sees no earlier decisions yet.
+        if not dec.reveal_earlier(case, stage, user):
+            ctx["all_decisions"] = [d for d in ctx["all_decisions"] if d.stage == stage]
+            ctx["earlier_hidden"] = True
         ok, why = dec.can_decide(case, user, stage)
         can_review_evidence = False
         if stage_code in ("cqac_recommendation", "cqac_chair_approval", "es_final_approval"):
@@ -532,9 +608,35 @@ def _reassign_choices():
         .select_related("role", "department").order_by("department__name", "first_name")[:400])
 
 
-@require_or_404(cs.can_view_cases)
+def _visit_for_team_member(user, case_pk):
+    """The inspection of this case that ``user`` is on the visit team of, if any."""
+    from assignments.models import WorkAssignment as WA
+    from django.contrib.contenttypes.models import ContentType
+
+    try:
+        from inspection.models import Inspection
+    except Exception:  # pragma: no cover
+        return None
+    ids = list(Inspection.unscoped.filter(case_id=case_pk).values_list("pk", flat=True))
+    if not ids:
+        return None
+    ct = ContentType.objects.get_for_model(Inspection)
+    wa = (WA.objects.filter(assignee=user, kind__in=(WA.VISIT_PANEL, WA.VISIT_LEAD), subject_ct=ct,
+                            subject_id__in=[str(i) for i in ids]).order_by("-assigned_at").first())
+    return int(wa.subject_id) if wa is not None else None
+
+
 @require_GET
 def detail(request, pk):
+    # Visit team members cannot open the case cockpit; send them to their visit
+    # instead of a bare 404 (they arrive here from links and notifications).
+    if not (request.user.is_authenticated and cs.can_view_cases(request.user)) or \
+            not cs.visible_cases(request.user).filter(pk=pk).exists():
+        visit = _visit_for_team_member(request.user, pk) if request.user.is_authenticated else None
+        if visit is not None:
+            messages.info(request, "You are on the visit team for this case — here is your visit.")
+            return redirect("qa_insp:inspection", visit)
+        raise Http404
     case = _case_or_404(request, pk)
     if set(cs.current_stages(case)).intersection({"post_visit_report", "post_visit_recommendation"}):
         from . import capacity
@@ -876,6 +978,21 @@ def desk_officer(request, case):
 @require_POST
 @writer
 @_guarded
+def division_director(request, case):
+    """v2.3: the owning Director chooses (or clears) the case's Division Director."""
+    raw = request.POST.get("director", "")
+    person = _user(raw) if raw else None
+    if raw and person is None:
+        raise ValidationError("Choose an active member of staff.")
+    cs.set_division_director(case, user=request.user, director=person)
+    return _respond(request, case, ok=("Saved", f"Division Director: {person.get_full_name() or person.email}"
+                                       if person else "The Director confirms stages 4 and 9."), tab="overview")
+
+
+@require_or_404(cs.can_view_cases)
+@require_POST
+@writer
+@_guarded
 def supervisor(request, case, kind):
     if kind not in ("audit", "finance", "ict"):
         raise Http404
@@ -1200,6 +1317,7 @@ def drift(request):
     from qa_core.models import TaskLinkDriftReport
 
     page = paginate(request, TaskLinkDriftReport.objects.order_by("-run_at"))
+    page["rows"] = _drift_decorate(list(page["rows"]))
     return render_qa(request, "accreditation/case/drift.html",
                      {"page": page, "can_run": request.user.is_superuser or request.user.has_perm(
                          "qa_core.reassign_qa_task"), "monitor": cs.is_monitor(request.user),
@@ -1214,8 +1332,100 @@ def _drift_summary():
     runs = TaskLinkDriftReport.objects.order_by("-run_at")
     latest = runs.first()
     last_repair = runs.filter(dry_run=False).first()
+    if latest:
+        _drift_decorate([latest])
     return {"latest": latest, "last_repair": last_repair, "runs_total": runs.count(),
             "runs_with_drift": runs.filter(Q(opened__gt=0) | Q(closed__gt=0)).count()}
+
+
+# Presentation only: turn the stored detail dicts into readable findings (plain label, the
+# record's name instead of "model#id", and links to pages that already exist).
+_DRIFT_SUBJECT_URLS = {"qacase": ("qa_case:detail", "pk", "Open the case"),
+                       "institution": ("qa_inst:detail", "code", "Open the institution"),
+                       "complaint": ("qa_complaints:detail", "pk", "Open the complaint"),
+                       "postvisitreport": ("qa_insp:report", "pk", "Open the report")}
+
+
+def _drift_subject(raw):
+    """("institution#15") -> (label, url, link label); falls back to the raw text."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.urls import NoReverseMatch
+
+    model_name, _sep, object_id = str(raw or "").partition("#")
+    if not object_id:
+        return str(raw or ""), "", ""
+    try:
+        model = ContentType.objects.filter(model=model_name).first().model_class()
+        obj = getattr(model, "unscoped", model._base_manager).filter(pk=object_id).first()
+    except Exception:  # noqa: BLE001 (a stale content type must never break the page)
+        model, obj = None, None
+    kind = (model._meta.verbose_name if model else model_name).capitalize()
+    if obj is None:
+        return f"{kind} #{object_id}", "", ""
+    label = f"{kind}: {getattr(obj, 'reference', '') or obj}"
+    name, attr, link_label = _DRIFT_SUBJECT_URLS.get(model_name, ("", "", ""))
+    url = ""
+    if name:
+        try:
+            url = reverse(name, args=[getattr(obj, attr)])
+        except NoReverseMatch:
+            url = ""
+    return label, url, link_label
+
+
+def _drift_decorate(reports):
+    """Attach `task_findings` / `people_findings` (lists of dicts) to each report."""
+    from tasks.models import Task
+
+    refs = {d.get("task") for r in reports for d in (r.details or []) if isinstance(d, dict) and d.get("task")}
+    task_ids = dict(Task.objects.filter(reference__in=refs).values_list("reference", "pk")) if refs else {}
+    cache = {}
+    for r in reports:
+        r.task_findings, r.people_findings = [], []
+        for d in r.details or []:
+            if not isinstance(d, dict):
+                continue
+            kind, why = d.get("kind", ""), str(d.get("why", ""))
+            f = {"kind": kind, "why": why, "stage": d.get("stage", ""), "task": d.get("task", ""), "links": []}
+            if kind in ("orphaned", "missing"):
+                raw = d.get("subject", "")
+                if raw not in cache:
+                    cache[raw] = _drift_subject(raw)
+                f["subject"], url, link_label = cache[raw]
+                if kind == "orphaned":
+                    f["title"] = "Left-over task" if r.dry_run else "Left-over task closed"
+                    f["plain"] = ("This task is still open although its stage is finished."
+                                  if r.dry_run else "This task was still open although its stage was finished, so it was closed.")
+                else:
+                    f["title"] = "Stage with no task" if r.dry_run else "Missing task opened"
+                    f["plain"] = ("Nobody has a task for this stage, so the case could sit unnoticed."
+                                  if r.dry_run else "Nobody had a task for this stage, so one was opened for the person who must act.")
+                f["tone"] = "amber" if r.dry_run else "green"
+                f["state"] = "Needs repair" if r.dry_run else "Fixed"
+                if f["task"] in task_ids:
+                    f["links"].append((reverse("tasks:detail", args=[task_ids[f["task"]]]), f"Open task {f['task']}"))
+                if url:
+                    f["links"].append((url, link_label))
+                r.task_findings.append(f)
+            else:
+                subject = str(d.get("subject", ""))
+                f["title"], f["tone"], f["state"] = (kind or "note").capitalize(), "violet", "For you to review"
+                f["subject"] = subject
+                f["plain"] = "Their existing work continues, but they cannot be given new work until this is resolved."
+                from urllib.parse import quote
+
+                if subject.startswith("resource person "):
+                    name = subject[len("resource person "):]
+                    f["subject"] = name
+                    f["links"].append((reverse("qa_insp:rp_list") + "?eligibility=lapsed&q=" + quote(name),
+                                       "Open in Resource persons"))
+                elif subject.startswith("QA personnel "):
+                    name = subject[len("QA personnel "):]
+                    f["subject"] = name
+                    f["links"].append((reverse("qa_insp:personnel") + "?q=" + quote(name.split(" (")[0]),
+                                       "Open in QA personnel"))
+                r.people_findings.append(f)
+    return reports
 
 
 @require(can_view_drift)
@@ -1230,6 +1440,7 @@ def drift_run(request):
     dry = request.POST.get("dry_run") == "1"
     report = reconcile(dry_run=dry)
     page = paginate(request, TaskLinkDriftReport.objects.order_by("-run_at"))
+    page["rows"] = _drift_decorate(list(page["rows"]))
     response = render(request, "accreditation/case/_drift_panel.html",
                       {"page": page, "can_run": True, "monitor": False, **_drift_summary()})
     return toast(response, "success", "Reconciliation " + ("checked (dry run)" if dry else "run"),
@@ -1360,3 +1571,78 @@ def batch(request):
         return toast(response, "success", f"Batch {result['key']} approved",
                      f"{len(result['decided'])} programme(s); {len(result['moved'])} case(s) sent to the ES.")
     return response
+
+
+# ===========================================================================
+# v2.3 Phase 2 (owner decision 3): frozen versions and dated notes
+# ===========================================================================
+@require_or_404(cs.can_view_cases)
+@require_GET
+def versions_page(request, pk):
+    """Every version frozen on this case (by rollbacks), newest first."""
+    from . import versions as ver
+
+    case = _case_or_404(request, pk)
+    items = list(ver.versions_for(case))
+    groups = {}
+    for v in items:
+        groups.setdefault((v.object_label, v.object_id), []).append(v)
+    selected = None
+    vid = request.GET.get("v")
+    if vid and vid.isdigit():
+        selected = next((v for v in items if v.pk == int(vid)), None)
+    if selected is None and items:
+        selected = items[0]
+    ctx = {"case": case, "inst": case.institution, "versions": items, "selected": selected,
+           "rows": ver.readable(selected) if selected else [], "can_append": ver.can_append(request.user, case),
+           "group_count": len(groups)}
+    return render_qa(request, "accreditation/case/versions.html", ctx)
+
+
+@require_or_404(cs.can_view_cases)
+@require_POST
+@writer
+def version_note(request, pk, version_id):
+    from . import versions as ver
+
+    case = _case_or_404(request, pk)
+    version = ver.version_of(case, version_id)
+    if version is None:
+        raise Http404
+    from django.contrib import messages
+
+    try:
+        ver.append_note(version, request.user, request.POST.get("text", ""))
+        messages.success(request, "Note added. It is dated and signed; the frozen version itself is unchanged.")
+    except (ValidationError, PermissionDenied) as exc:
+        messages.error(request, f"Note not added: {_msg(exc)}")
+    return redirect(f"{reverse('qa_case:versions', args=[case.pk])}?v={version.pk}")
+
+
+# ===========================================================================
+# v2.3 (mockup 4): declined and defective devices register
+# ===========================================================================
+@require_or_404(cs.can_view_cases)
+@require_GET
+def devices_page(request, pk):
+    """Every catalogue item checked on this case's visit, grouped by outcome:
+    declared not working (honest, never fined), declined on the visit (found
+    not working: a shortfall), falsified (declared, not there: a fine)."""
+    from .models import VisitFinding
+
+    from . import visit_report
+
+    case = _case_or_404(request, pk)
+    findings = visit_report.findings_of_case(case)
+    groups = {VisitFinding.FALSIFIED: [], VisitFinding.DECLINED: [], VisitFinding.DECLARED_DEFECTIVE: [],
+              VisitFinding.CONSISTENT: []}
+    for f in findings:
+        groups[f.device_outcome].append(f)
+    fines = sum((f.report.fines_total or 0) for f in {g.report_id: g for g in findings}.values()) if findings else 0
+    show = request.GET.get("show", "issues")
+    rows = findings if show == "all" else [f for f in findings if f.device_outcome != VisitFinding.CONSISTENT]
+    ctx = {"case": case, "inst": case.institution, "rows": rows, "show": show, "total": len(findings),
+           "count_falsified": len(groups[VisitFinding.FALSIFIED]),
+           "count_declined": len(groups[VisitFinding.DECLINED]),
+           "count_declared": len(groups[VisitFinding.DECLARED_DEFECTIVE]), "fines": fines}
+    return render_qa(request, "accreditation/case/devices.html", ctx)

@@ -173,7 +173,7 @@ def test_view_all_holders(world):
     from accounts.models import Role, User
     from assignments import view_all
     from django.contrib.auth.models import Group, Permission
-    perm = Permission.objects.get(codename="view_all_institutions")
+    perm = Permission.objects.get(codename="view_all_institutions", content_type__app_label="qa_core")
     view_all.apply()
     roles = set(Role.objects.filter(permissions=perm).values_list("code", flat=True))
     assert roles <= {"executive-secretary", "super-admin"}

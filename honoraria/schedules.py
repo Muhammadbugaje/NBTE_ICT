@@ -132,11 +132,17 @@ def can_view_finance_report(user):
 
 
 def payment_details(schedule, *, user, lines=None):
-    """Release confirmed payee bank details to the Finance Director only."""
+    """Release confirmed payee bank details to the Finance Director only.
+
+    Allowed while the batch is still being prepared (so Finance can print the
+    payment list for the ES), while it is with the ES, and after approval
+    while lines remain unpaid. Every release is logged by ``disbursement``.
+    """
     if not can_pay(user):
         raise PermissionDenied("Only the Director of Finance may view payee bank details.")
-    if schedule.status != "approved":
-        raise ValidationError("Payee bank details are available only for an approved schedule.")
+    if schedule.status not in ("draft", "awaiting_es", "approved"):
+        raise ValidationError("Payee bank details are available only for a batch being prepared, awaiting ES "
+                              "approval or approved.")
     from . import disbursement
 
     lines = list(lines if lines is not None else schedule.lines.filter(paid_at__isnull=True))
@@ -307,6 +313,9 @@ def build_schedule(period_start, period_end, *, user, title="", payee_keys=None)
     schedule = PaymentSchedule.objects.create(
         reference=hon_references.issue(
             "honoraria", unique_check=lambda ref: PaymentSchedule.objects.filter(reference=ref).exists()),
+        payment_reference=hon_references.issue(
+            "honoraria_teller",
+            unique_check=lambda ref: PaymentSchedule.objects.filter(payment_reference=ref).exists()),
         title=(title or f"Honoraria {period_start:%b %Y}").strip()[:200],
         period_start=period_start, period_end=period_end, created_by=user)
     internal = {}
@@ -437,7 +446,9 @@ def mark_paid(schedule, *, user, funding_account_id, payment_reference, line_ids
         raise ValidationError("Choose an active, verified NBTE bank account.")
     payment_reference = str(payment_reference or "").strip()
     if not payment_reference:
-        raise ValidationError("Enter the bank transfer or batch payment reference.")
+        payment_reference = hon_references.issue(
+            "honoraria_teller",
+            unique_check=lambda ref: PaymentSchedule.objects.filter(payment_reference=ref).exists())
     if len(payment_reference) > 100:
         raise ValidationError("The payment reference must be 100 characters or fewer.")
     _details, missing = payment_details(schedule, user=user, lines=selected)
@@ -542,7 +553,8 @@ def mark_paid(schedule, *, user, funding_account_id, payment_reference, line_ids
 
 @transaction.atomic
 def confirm_receipt(line, *, user):
-    """The payee confirms the money reached them (X34)."""
+    """The payee confirms the money reached them (X34). A dispute they raised
+    earlier is cleared: they have now seen the money."""
     line = PaymentScheduleLine.objects.select_for_update().select_related(
         "schedule", "resource_person__user").get(pk=line.pk)
     payee_user_id = (getattr(line.resource_person, "user_id", None)
@@ -553,9 +565,52 @@ def confirm_receipt(line, *, user):
         raise ValidationError("The schedule has not been marked paid yet.")
     line.confirmed_at = timezone.now()
     line.confirmed_by = user
-    line.save(update_fields=["confirmed_at", "confirmed_by", "updated_at"])
+    line.disputed_at = line.disputed_by = None
+    line.dispute_note = ""
+    line.save(update_fields=["confirmed_at", "confirmed_by", "disputed_at", "disputed_by", "dispute_note",
+                             "updated_at"])
     HonorariumEntry.objects.filter(schedule_lines=line, status=HonorariumEntry.PAID).update(
         status=HonorariumEntry.RECEIVED, received_at=line.confirmed_at, updated_at=line.confirmed_at)
+    return line
+
+
+@transaction.atomic
+def dispute_receipt(line, *, user, note):
+    """The payee says the recorded payment never reached their account. Finance
+    sees it on the batch with the note; nothing is marked received."""
+    line = PaymentScheduleLine.objects.select_for_update().select_related(
+        "schedule", "resource_person__user").get(pk=line.pk)
+    payee_user_id = (getattr(line.resource_person, "user_id", None)
+                     if line.resource_person_id else line.user_id)
+    if payee_user_id != getattr(user, "pk", None):
+        raise PermissionDenied("Only the payee can report a payment.")
+    if line.paid_at is None:
+        raise ValidationError("Finance has not recorded this payment yet.")
+    if line.confirmed_at:
+        raise ValidationError("You already confirmed receiving this payment.")
+    note = " ".join(str(note or "").split())
+    if len(note) < 5:
+        raise ValidationError("Explain what happened (at least 5 characters); Finance sees it.")
+    line.disputed_at = timezone.now()
+    line.disputed_by = user
+    line.dispute_note = note[:255]
+    line.save(update_fields=["disputed_at", "disputed_by", "dispute_note", "updated_at"])
+    schedule = line.schedule
+    from payments.services import final_approvers
+    from notifications.services import notify
+
+    payee = line.resource_person.full_name if line.resource_person_id else (
+        getattr(line.user, "get_full_name", lambda: "")() or getattr(line.user, "email", ""))
+    people = [p for p in final_approvers() if p is not None]
+    if line.paid_by_id and line.paid_by_id not in {p.pk for p in people}:
+        people.append(line.paid_by)
+    url = f"/qa/finance/honoraria/{schedule.pk}/"
+    title = "A payee says the honorarium did not arrive"
+    body = (f"{payee} reports that ₦{line.amount:,.2f} ({line.payment_reference or schedule.payment_reference}) "
+            f"did not reach their account: {line.dispute_note}")
+    for person in people:
+        transaction.on_commit(lambda person=person: notify(
+            person, title=title, body=body, url=url, level="warning"))
     return line
 
 

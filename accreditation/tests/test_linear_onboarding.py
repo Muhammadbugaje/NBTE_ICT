@@ -59,13 +59,13 @@ def _cleared(w):
     linear.clear(w.study, by=w.director)
 
 
-def _approved(w, capture):
-    from accreditation import onboarding_linear as linear
-    _cleared(w)
-    pa = linear.approve_institution(w.app, by=w.director)
+def _cleared_for_qa(w, capture):
+    """v2.3 (owner decision 1): clearing the last self-study ends SOP-01 — the
+    institution is "Cleared for QA" and its first QA request starts at once.
+    There is no director approval + ES confirmation step any more."""
     with capture(execute=True):
-        pa = linear.confirm_approval(pa, by=w.es)
-    return pa
+        _cleared(w)
+    w.inst.refresh_from_db()
 
 
 def test_submit_routes_each_self_study_to_the_handling_director(w):
@@ -134,47 +134,34 @@ def test_officer_sends_to_director_who_clears(w):
     linear.clear(w.study, by=w.director)
     stage = review_stage(w.study)
     assert stage["code"] == "cleared" and "Cleared by NBTE" in stage["public"]
-    assert linear.ready_for_approval(w.app)
+    w.inst.refresh_from_db()
+    assert w.inst.cleared_for_qa_at is not None and w.inst.status != "approved"
+    assert not linear.ready_for_approval(w.app)       # nothing left to approve in SOP-01
 
 
-def test_ready_for_approval_card_and_director_initiates_the_action(w, client_for):
+def test_cleared_for_qa_shows_no_approval_card(w, client_for, django_capture_on_commit_callbacks):
+    """v2.3: once cleared, nobody is asked to "Approve institution" — the
+    approval comes with the ES's final decision on the first SOP-03 case."""
     from accreditation import onboarding_linear as linear
-    from qa_core.models import PendingAction
+    from qa_core.models import TimelineEvent
 
-    _cleared(w)
-    actions = linear.next_actions(w.director)
-    approve = [a for a in actions if a["kind"] == "approve"]
-    assert approve and "has cleared everything" in approve[0]["title"]
-    assert approve[0]["button_label"] == "Approve institution"
-    # The QA home and the application page show the card.
+    _cleared_for_qa(w, django_capture_on_commit_callbacks)
+    assert w.inst.status_label == "Cleared for QA"
+    assert not [a for a in linear.next_actions(w.director) if a["kind"] in ("approve", "confirm")]
+    assert not [a for a in linear.next_actions(w.es) if a["kind"] in ("approve", "confirm")]
     client = client_for(w.director)
-    assert b"has cleared everything" in client.get("/qa/").content
-    assert b"Approve institution" in client.get(f"/qa/applications/{w.app.pk}/").content
-    # One click (POST) initiates institutions.approve_institution with the director as initiator.
-    r = client.post(approve[0]["post_url"], {"next": "/qa/"})
-    assert r.status_code == 302
-    pa = PendingAction.objects.get(policy_id="institutions.approve_institution", status=PendingAction.PENDING)
-    assert pa.initiated_by_id == w.director.pk
-    assert not [a for a in linear.next_actions(w.director) if a["kind"] == "approve"]
-    confirm = [a for a in linear.next_actions(w.es) if a["kind"] == "confirm"]
-    assert confirm and confirm[0]["pa_id"] == pa.pk and confirm[0]["reject_url"]
-    # The ES rejects with a reason → the director's card comes back.
-    linear.reject_approval(pa, by=w.es, remark="Recheck the category.")
-    assert [a for a in linear.next_actions(w.director) if a["kind"] == "approve"]
+    assert b"Approve institution" not in client.get(f"/qa/applications/{w.app.pk}/").content
+    assert TimelineEvent.unscoped.filter(institution=w.inst, event_code="onboarding.cleared_for_qa").exists()
 
 
-def test_es_confirm_approves_and_starts_the_qa_request_fee_billed(w, django_capture_on_commit_callbacks):
-    from accreditation import onboarding_linear as linear, qa_services
+def test_clearing_starts_the_qa_request_fee_billed(w, django_capture_on_commit_callbacks):
+    from accreditation import qa_services
     from accreditation.models import SSQ, OnboardingQAStart, QACase, QARequest, Submission
-    from accreditation.onboarding_ssq import review_stage
     from notifications.models import Notification
     from qa_core import flow
 
-    pa = _approved(w, django_capture_on_commit_callbacks)
-    assert pa.status == pa.APPLIED, pa.failure_detail
-    w.inst.refresh_from_db()
-    assert w.inst.status == "approved"
-    assert review_stage(w.study)["code"] == "approved"
+    _cleared_for_qa(w, django_capture_on_commit_callbacks)
+    assert w.inst.status != "approved" and w.inst.cleared_for_qa_at is not None
     start = OnboardingQAStart.objects.get(application=w.app)
     assert start.error == "" and start.qa_request is not None and not start.fee_waived
     req = QARequest.unscoped.get(pk=start.qa_request_id)
@@ -204,7 +191,7 @@ def test_fee_waived_goes_straight_to_the_case_and_new_programmes_still_need_an_s
                                          defaults={"value": "true", "value_type": "bool"})
     invalidate("qa.onboarding.auto_request_fee_waived")
     assert linear.auto_fee_waived()
-    _approved(w, django_capture_on_commit_callbacks)
+    _cleared_for_qa(w, django_capture_on_commit_callbacks)
     req = OnboardingQAStart.objects.get(application=w.app).qa_request
     req.refresh_from_db()
     assert req.status == "in_workflow" and QACase.unscoped.filter(qa_request=req).exists()

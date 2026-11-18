@@ -1,6 +1,8 @@
 """What other apps call. Never sends in the request/response cycle (doc 31 §6)."""
 import logging
 import math
+
+from django.conf import settings
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -52,6 +54,15 @@ def queue_email(subject, recipients, template_name, context=None, category="gene
         log.pk, category, len(recipients), planned.isoformat(),
     )
     # Only enqueue once the surrounding transaction (if any) has committed.
+    if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False) and not getattr(settings, "EMAIL_DELIVERY_INLINE", False):
+        # No Celery worker here (dev without Redis): an "eager" task would run
+        # inside the request and make the page wait on the mail provider.
+        # Hand it to the background pool instead.
+        from core import background
+
+        background.submit(send_email_task.apply, args=(log.pk, subject, recipients, html, text),
+                          label=f"email {log.pk}")
+        return log
     transaction.on_commit(lambda: send_email_task.apply_async(
         args=(log.pk, subject, recipients, html, text), countdown=countdown))
     return log

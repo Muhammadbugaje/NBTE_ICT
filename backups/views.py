@@ -327,3 +327,53 @@ def schedule_save(request):
         messages.info(request, "Nothing changed.")
     return _back("bk-schedule")
 
+
+
+ARTEFACT_LABELS = {  # v2.3 (Phase 4): the three formats, in words people use
+    "database": ("Database dump", "Full disaster recovery (pg_dump custom format / SQLite file)."),
+    "media": ("Media ZIP", "Every public upload, with its folder paths kept."),
+    "protected_media": ("Protected files ZIP", "QA uploads and letters, with their folder paths kept."),
+    "workbook": ("Excel workbook", "One sheet per table, natural keys, no secrets — readable, and re-importable "
+                                   "table by table through the Data Hub."),
+    "settings": ("Settings snapshot", "The settings catalogue and lookups (JSON)."),
+}
+
+
+@login_required
+@require_GET
+def artefact(request, pk, kind):
+    """v2.3 (Phase 4): download one artefact of a backup (decrypted when the
+    server holds the key). Every download is written to the audit log."""
+    _require(request, "view_backups")
+    run = get_object_or_404(BackupRun, pk=pk)
+    names = {a["kind"]: a for a in (run.manifest or {}).get("artefacts", [])}
+    if kind not in names or kind not in ARTEFACT_LABELS:
+        raise Http404("This backup has no such file.")
+    import tempfile
+    from pathlib import Path
+
+    from django.http import FileResponse
+
+    workdir = Path(tempfile.mkdtemp(prefix="nbte-artefact-"))
+    try:
+        manifest = engine.fetch_run(run, workdir, lambda *_: None)
+        problems = engine.verify_files(manifest, workdir, lambda *_: None, expected_manifest_hash=run.manifest_hash)
+        if problems:
+            raise Http404("The stored copy failed its checksum: " + "; ".join(problems))
+        plain = engine.decrypt_all({"artefacts": [names[kind]]}, workdir, lambda *_: None)
+    except engine.BackupFailed as exc:
+        shutil.rmtree(workdir, ignore_errors=True)
+        messages.error(request, f"Could not prepare the download: {exc}")
+        return redirect("backups:history")
+    path = plain[kind]
+    engine._audit("backup.artefact_downloaded", run, request.user, f"{kind} ({path.name})")
+    handle = open(path, "rb")
+
+    class _Cleanup(FileResponse):
+        def close(self):
+            super().close()
+            shutil.rmtree(workdir, ignore_errors=True)
+
+    ext = "".join(Path(path.name.replace(".enc", "")).suffixes) or ""
+    response = _Cleanup(handle, as_attachment=True, filename=f"{run.label}-{kind}{ext}")
+    return response

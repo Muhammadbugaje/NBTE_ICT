@@ -25,7 +25,7 @@ QA_TYPES = [
      ["approval_to_commence", "resource_inspected", "interim"], False, False, False),
     ("reaccreditation", "Reaccreditation",
      "Renewal for accredited programmes whose accreditation expires within the reassessment window "
-     "(qa.programme.reassessment_window_months) or has expired.",
+     "or has already expired.",
      ["accredited", "interim", "expired"], True, False, False),
     ("validation", "Validation", "Validation visit for an accredited programme.", ["accredited"], False, False, False),
     ("verification", "Verification", "Verification of facts reported by an institution.",

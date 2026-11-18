@@ -1,0 +1,491 @@
+/* ==========================================================================
+   apple-polish.css — one finishing layer for a calm, softly rounded look.
+
+   Not bundled: linked after confirm-glass.css in templates/base.html and
+   templates/qa_portal/base_portal.html, so equal-specificity rules here win
+   over the bundles. Source: walkthrough/ui-audit.md (sections A, B, C).
+
+   Rules kept by this file (ui-audit.md, section D):
+   · Visual properties only (radius, shadow, colour, padding, type). No
+     transform / filter / overflow on #qa-panel or on HTMX swap targets.
+   · No z-index changes on floating layers; .nt-* (tour) is not restyled.
+   · Every colour is a token or is declared for light, system-dark and
+     [data-theme="dark"].
+   · New transitions are switched off under reduced motion.
+   · Glass (backdrop-filter) only on layers that float over the page.
+   · The whole file is inside @media screen, so printed pages are untouched.
+   ========================================================================== */
+@media screen {
+
+/* ---- 0. Tokens ------------------------------------------------------------ */
+:root {
+  /* A1 radius scale: chip 10, field/row 14, card 22, hero 28, pill 999 */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 24px;
+  --radius-2xl: 28px;
+  --ux-radius: 22px;
+  --ux-radius-sm: 14px;
+  --pp-radius: 22px;
+  --qa-radius-card: 22px;
+  --qa-radius-hero: 28px;
+
+  /* A2 elevation: the confirm-glass three-layer stack, at card strength */
+  --shadow-sm: 0 0 0 .5px rgba(0, 0, 0, .05), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px -12px rgba(0, 0, 0, .08);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, .06), 0 14px 32px -12px rgba(0, 0, 0, .16);
+  --ux-shadow: var(--shadow-sm);
+  --ux-shadow-hover: var(--shadow-md);
+  --pp-shadow: var(--shadow-sm);
+  --pp-shadow-lg: var(--shadow-md);
+  --qa-shadow-soft: var(--shadow-sm);
+
+  /* polish-only tokens */
+  --ap-hero-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 20px 40px -24px color-mix(in srgb, var(--primary-strong, #134326) 55%, transparent);
+  --ap-glass: color-mix(in srgb, var(--surface) 82%, transparent);
+  --ap-fill: rgba(118, 118, 128, .10);
+  --ap-fill-hover: rgba(118, 118, 128, .14);
+  --ap-fill-strong: rgba(118, 118, 128, .16);
+  --ap-track: rgba(118, 118, 128, .12);
+  --ap-row-hover: rgba(118, 118, 128, .06);
+  --ap-seg: #ffffff;
+  --ap-seg-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04);
+  --ap-field-focus: #ffffff;
+  --ap-accent-soft: color-mix(in srgb, var(--primary) 12%, transparent);
+  --ap-accent-ink: var(--primary-subtle-fg, var(--primary));
+  --ap-warn-soft: color-mix(in srgb, var(--warning, #b7791f) 14%, transparent);
+  --ap-info-soft: color-mix(in srgb, var(--info, #2563eb) 12%, transparent);
+  --ap-danger-soft: color-mix(in srgb, var(--danger, #d92d33) 12%, transparent);
+  --ap-btn-top: color-mix(in srgb, var(--primary) 88%, #fff);
+  --ap-ring: color-mix(in srgb, var(--primary) 26%, transparent);
+  --ease-ios: cubic-bezier(.32, .72, 0, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --shadow-sm: 0 0 0 .5px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .5);
+    --shadow-md: 0 1px 2px rgba(0, 0, 0, .45), 0 14px 32px -12px rgba(0, 0, 0, .6);
+    --ap-hero-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 20px 40px -24px rgba(0, 0, 0, .7);
+    --ap-fill: rgba(120, 120, 128, .24);
+    --ap-fill-hover: rgba(120, 120, 128, .32);
+    --ap-fill-strong: rgba(120, 120, 128, .36);
+    --ap-track: rgba(120, 120, 128, .24);
+    --ap-row-hover: rgba(120, 120, 128, .12);
+    --ap-seg: rgba(99, 99, 102, .9);
+    --ap-seg-shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 0 0 .5px rgba(255, 255, 255, .08);
+    --ap-field-focus: #111113;
+    --ap-accent-soft: color-mix(in srgb, var(--primary) 22%, transparent);
+    --ap-btn-top: color-mix(in srgb, var(--primary) 90%, #fff);
+  }
+}
+:root[data-theme="dark"] {
+  --shadow-sm: 0 0 0 .5px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .5);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, .45), 0 14px 32px -12px rgba(0, 0, 0, .6);
+  --ap-hero-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 20px 40px -24px rgba(0, 0, 0, .7);
+  --ap-fill: rgba(120, 120, 128, .24);
+  --ap-fill-hover: rgba(120, 120, 128, .32);
+  --ap-fill-strong: rgba(120, 120, 128, .36);
+  --ap-track: rgba(120, 120, 128, .24);
+  --ap-row-hover: rgba(120, 120, 128, .12);
+  --ap-seg: rgba(99, 99, 102, .9);
+  --ap-seg-shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 0 0 .5px rgba(255, 255, 255, .08);
+  --ap-field-focus: #111113;
+  --ap-accent-soft: color-mix(in srgb, var(--primary) 22%, transparent);
+  --ap-btn-top: color-mix(in srgb, var(--primary) 90%, #fff);
+}
+/* the portal and the case board keep their own radius variables */
+body.qa-portal.pp { --pp-radius: 22px; --pp-shadow: var(--shadow-sm); --pp-shadow-lg: var(--shadow-md); }
+.c3-page { --c3-radius: 22px; }
+@media (max-width: 791px) { .c3-page { --c3-radius: 18px; } }
+
+/* ---- 1. Radius and elevation (A1, A2, C2, C7) ----------------------------- */
+.home-hero, .ux-hero, .ix-hero, .qa-hero, .nbte-hero,
+.qa-portal .qa-page-head,
+body.qa-portal.pp .qa-main .qa-page-head,
+body.qa-portal.pp .qa-main .pp-hero { border-radius: var(--radius-2xl); }
+
+.qa-card, .ux-card, .kpi-card, .ux-stat, .qa-prog-card, .form-section, .side-card, .vx-actcard,
+body.qa-portal.pp .qa-main .qa-card,
+body.qa-portal.pp .qa-main .qa-prog-card { border-radius: var(--radius-lg); }
+
+.qa-card, .ux-card, .kpi-card, .ux-stat, .qa-prog-card,
+body.qa-portal.pp .qa-main .qa-card,
+body.qa-portal.pp .qa-main .qa-prog-card { border-color: var(--border); box-shadow: var(--shadow-sm); }
+
+/* dark green heroes: a soft lift instead of the dark green smudge */
+.home-hero, .ux-hero, .ix-hero,
+body.qa-portal.pp .qa-main .qa-page-head,
+body.qa-portal.pp .qa-main .pp-hero { box-shadow: var(--ap-hero-shadow), inset 0 1px 0 rgba(255, 255, 255, .12); }
+
+@media (max-width: 640px) {
+  .home-hero, .ux-hero, .ix-hero, .qa-hero, .qa-page .qa-hero, .nbte-hero,
+  .qa-portal .qa-page-head,
+  body.qa-portal.pp .qa-main .qa-page-head,
+  body.qa-portal.pp .qa-main .pp-hero { border-radius: 24px; }
+}
+
+/* ---- 2. Things that looked broken (B 1, 2, 3, 42, 43) --------------------- */
+/* (B2) The "More" chevron never lies on a tab label: the strip fades out
+   earlier and the button gets a solid surface with a soft edge. */
+.hs-wrap > .hs-strip.hs-can-r {
+  mask-image: linear-gradient(90deg, #000 calc(100% - 104px), transparent calc(100% - 40px));
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 104px), transparent calc(100% - 40px));
+}
+.hs-wrap > .hs-strip.hs-can-l {
+  mask-image: linear-gradient(90deg, transparent 40px, #000 104px);
+  -webkit-mask-image: linear-gradient(90deg, transparent 40px, #000 104px);
+}
+.hs-wrap > .hs-strip.hs-can-l.hs-can-r {
+  mask-image: linear-gradient(90deg, transparent 40px, #000 104px, #000 calc(100% - 104px), transparent calc(100% - 40px));
+  -webkit-mask-image: linear-gradient(90deg, transparent 40px, #000 104px, #000 calc(100% - 104px), transparent calc(100% - 40px));
+}
+.hs-btn {
+  min-width: 32px;
+  height: 32px;
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: 0 0 0 .5px var(--ncg-edge, rgba(0, 0, 0, .08)), 0 1px 2px rgba(0, 0, 0, .08), 0 6px 16px -6px rgba(0, 0, 0, .22);
+}
+/* the sticky institution strip sat above its own chevron (z-index 10 over 2),
+   so a click on "More" landed on the tab underneath */
+.hs-wrap > .hs-btn { z-index: calc(var(--z-raised, 10) + 1); }
+.hs-btn--l { left: 5px; }
+.hs-btn--r { right: 5px; }
+
+/* (B1) Reminder card: a small glass panel, the same material as the dialog. */
+.rc-card {
+  width: min(304px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--ncg-hairline, var(--border));
+  border-radius: 22px;
+  background: var(--ap-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 0 0 .5px var(--ncg-edge, rgba(0, 0, 0, .08)), var(--ncg-shadow, var(--shadow-lg));
+}
+.rc-card__head { padding: 0 0 8px 4px; }
+.rc-card__title { letter-spacing: -.01em; }
+.rc-card__close { background: var(--ncg-fill, var(--surface-2)); }
+.rc-card__close:hover { background: var(--ncg-fill-hover, var(--surface-sunken)); }
+.rc-card__list { gap: 6px; }
+.rc-item { padding: 8px; border-radius: 14px; background: var(--ncg-inset, var(--surface-2)); }
+.rc-item__ic { border-radius: 10px; }
+.rc-item__btn { min-height: 28px; padding: 0 12px; border: 0; background: var(--ncg-fill, var(--surface)); font-size: 12px; }
+.rc-item__btn:hover { background: var(--ncg-fill-hover, var(--surface-sunken)); }
+.rc-item__btn--primary, .rc-item__btn--primary:hover { background: var(--primary); color: var(--primary-fg); }
+.rc-item__btn--primary:hover { filter: brightness(1.08); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .rc-card { background: var(--ncg-glass-solid, var(--surface)); }
+}
+/* (B42) Phones: the card spans the width above the tab bar, so "Guide me"
+   (tour.js moves it when the two would touch) steps above it instead of
+   lying half under it. */
+@media (max-width: 640px) {
+  .rc-card { left: 12px; right: 12px; width: auto; padding: 10px; border-radius: 20px; }
+  .rc-item { padding: 6px 8px; }
+}
+
+/* (B3, B43, A14) Live pill: the Guide-me shell. While everything is fine it
+   is only a small round dot in the corner, so it does not lie on a select or
+   the last table column; it opens into the full pill on hover / focus and
+   whenever it has something to say (new updates, updating, slow, offline).
+   Nothing is hidden with display:none and the click target stays in place. */
+.qa-live-pill {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  background: var(--surface-glass-strong, var(--surface));
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, .35), 0 1px 3px rgba(0, 0, 0, .12);
+  letter-spacing: -.01em;
+}
+.qa-live-pill[data-state="idle"] {
+  min-height: 28px;
+  gap: 0;
+  padding: 0 9px;
+  inset-inline-end: max(6px, env(safe-area-inset-right, 0px));
+  opacity: .9;
+}
+.qa-live-pill[data-state="idle"] .qa-live-pill__text { max-width: 0; opacity: 0; }
+.qa-live-pill[data-state="idle"]:is(:hover, :focus-visible) { gap: 8px; padding: 0 12px; opacity: 1; }
+.qa-live-pill[data-state="idle"]:is(:hover, :focus-visible) .qa-live-pill__text { max-width: 12em; opacity: 1; }
+.qa-live-pill:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+/* ---- 3. Buttons, fields, chips (A5, A6, A7, C3, C4) ----------------------- */
+/* Base primitives go in the shared "components" layer, after the bundle's own
+   rules: they replace the defaults, while every page-specific rule (layered
+   with more specificity, or unlayered) keeps winning exactly as before. */
+@layer components {
+  .btn-primary {
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, 0) 62%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 1px 2px rgba(0, 0, 0, .12), 0 6px 14px -8px color-mix(in srgb, var(--primary) 62%, transparent);
+  }
+  .btn-primary:hover {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 1px 2px rgba(0, 0, 0, .14), 0 10px 20px -8px color-mix(in srgb, var(--primary) 66%, transparent);
+  }
+  .btn-ghost { border-color: transparent; background-color: var(--ap-fill-hover); }
+  .btn-ghost:hover { background-color: var(--ap-fill-strong); }
+  .btn-sm { min-height: 36px; padding-inline: 14px; font-size: .8125rem; }
+
+  .input,
+  textarea.input,
+  select.input {
+    border-color: transparent;
+    border-radius: var(--radius-md);
+    background-color: var(--ap-fill);
+    transition: border-color var(--dur) var(--ease-standard), box-shadow var(--dur) var(--ease-standard), background-color var(--dur) var(--ease-standard);
+  }
+  .input:hover { border-color: transparent; background-color: var(--ap-fill-hover); }
+  .input:focus { border-color: var(--primary); background-color: var(--ap-field-focus); box-shadow: 0 0 0 4px var(--ap-ring); }
+  .input.error:focus,
+  .input[aria-invalid="true"]:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 22%, transparent); }
+}
+@media (pointer: coarse) {
+  .btn-sm { min-height: 40px; }
+}
+/* the finish layer pinned fields to 10px / 12px */
+.input, select.input, textarea.input,
+.profile-form .input,
+.qa-page .qa-toolbar .input, .qa-page .qa-toolbar select.input,
+.qa-actform .qa-field .input, .qa-actform .qa-field select.input,
+body.qa-portal.pp .qa-main .qa-toolbar .input { border-radius: var(--radius-md); }
+
+.profile-form .input,
+.qa-page .qa-toolbar .input, .qa-page .qa-toolbar select.input,
+.qa-actform .qa-field .input, .qa-actform .qa-field select.input {
+  border-color: transparent;
+  background-color: var(--ap-fill);
+  box-shadow: none;
+}
+.profile-form .input:hover,
+.qa-page .qa-toolbar .input:hover,
+.qa-actform .qa-field .input:hover { border-color: transparent; background-color: var(--ap-fill-hover); }
+.profile-form .input:focus,
+.qa-page .qa-toolbar .input:focus,
+.qa-actform .qa-field .input:focus {
+  border-color: var(--primary);
+  background-color: var(--ap-field-focus);
+  box-shadow: 0 0 0 4px var(--ap-ring);
+}
+.qa-page .qa-toolbar .qa-check { background: var(--ap-fill); }
+.input[type="date"]::-webkit-calendar-picker-indicator,
+.input[type="time"]::-webkit-calendar-picker-indicator { opacity: .55; }
+/* 16px text on phones stops iOS zooming into a field */
+@media (max-width: 640px) {
+  .qa-page .qa-toolbar .input, .qa-page .qa-toolbar select.input, .profile-form .input { font-size: 1rem; }
+}
+
+.qa-chip { min-height: 24px; padding: 0 10px; font-size: .75rem; font-weight: 600; letter-spacing: 0; }
+.qa-chip, .badge, .ux-chip { font-variant-numeric: tabular-nums; }
+
+/* ---- 4. Tabs and filter chips (A9, C5, B 23, 30, 32) ---------------------- */
+/* Segmented control: grey track, white raised thumb. Solid green stays for
+   primary buttons only. aria-selected / aria-current / .is-active are the
+   same hooks as before. */
+.c3-tabs {
+  padding: 4px;
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text) 7%, var(--surface-glass-strong, var(--surface)));
+  box-shadow: 0 0 0 .5px var(--border);
+}
+.c3-tabs a { min-height: 36px; padding: 6px 14px; border-radius: var(--radius-pill); }
+.c3-tabs a:hover { background: var(--ap-fill); }
+.c3-tabs a.is-active { background: var(--ap-seg); color: var(--text); box-shadow: var(--ap-seg-shadow); }
+.c3-tabs a.is-active .c3-tabs__dot { background: var(--warning); }
+
+.qa-tabs.ix-tabs,
+.hs-wrap:has(> .ix-tabs) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--text) 7%, var(--surface-glass-strong, var(--surface)));
+  box-shadow: 0 0 0 .5px var(--border);
+}
+.hs-wrap > .qa-tabs.ix-tabs { background: transparent; box-shadow: none; }
+.qa-tabs.ix-tabs { padding: 4px; }
+.qa-tabs.ix-tabs a.is-active,
+.qa-tabs.ix-tabs a[aria-current="page"] { background: var(--ap-seg); color: var(--text); box-shadow: var(--ap-seg-shadow); }
+.qa-tabs.ix-tabs a.is-active svg,
+.qa-tabs.ix-tabs a[aria-current="page"] svg { color: var(--primary); }
+
+/* Inspection section bar: one scrolling row (the phone layout, at every
+   width) instead of two wrapped rows; one colour for the icons. */
+.vx-insp-nav.qa-insp-nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; border-radius: var(--radius-pill); padding: 4px; gap: 4px; }
+.vx-insp-nav.qa-insp-nav::-webkit-scrollbar { display: none; }
+.vx-insp-nav a { flex: 0 0 auto; }
+.vx-insp-nav__icon { background: transparent; color: currentColor; }
+.vx-insp-nav a.is-active .vx-insp-nav__icon { background: transparent; color: var(--primary); }
+.vx-insp-nav a.is-active { box-shadow: var(--ap-seg-shadow); }
+
+/* Filter chips: the chosen one is a quiet tint, not a solid green pill. */
+.ux-filter.is-active, .ux-filter[aria-pressed="true"],
+.msg-filter-chip.is-active,
+.cb-chip input:checked + span {
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  background: var(--ap-accent-soft);
+  color: var(--ap-accent-ink);
+  box-shadow: none;
+}
+.ux-filter.is-active b, .ux-filter[aria-pressed="true"] b,
+.msg-filter-chip.is-active .msg-chip-count { background: color-mix(in srgb, var(--primary) 16%, transparent); color: inherit; }
+.ux-filter:hover, .msg-filter-chip:hover { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); }
+.ux-filter b, .cb-chip b { font-weight: 600; }
+.cb-chip input:not(:checked) + span b { opacity: .7; }
+
+/* ---- 5. Heroes (A11, C1, B 4, 10, 17, 18, 25, 28) ------------------------- */
+/* (B) light hero for lists, files and forms: one pale-green sheen. The area
+   colour stays in the small icon tile. Status-coloured heroes keep theirs. */
+.qa-hero { --qa-aura: var(--primary); }
+.qa-hero::before { opacity: .55; }
+
+/* (A) green hero: one soft sheen; the gold glow is turned down */
+.ux-hero::before, .ix-hero__art::before { opacity: .5; }
+body.qa-portal.pp .qa-main .qa-page-head,
+body.qa-portal.pp .qa-main .pp-hero {
+  background:
+    radial-gradient(60% 120% at 100% 110%, rgba(232, 182, 72, .2), transparent 62%),
+    radial-gradient(70% 140% at 0% 0%, rgba(70, 182, 115, .5), transparent 60%),
+    linear-gradient(125deg, #1d6a3c 0%, #155230 48%, #0f3a22 100%);
+}
+.home-hero { padding: 22px 26px; background: var(--ux-hero, var(--primary-solid)); }
+.home-hero .btn-ghost,
+.ux-hero .btn-ghost, .ux-hero .btn-subtle { border-color: transparent; background: rgba(255, 255, 255, .16); }
+.home-hero .btn-ghost:hover,
+.ux-hero .btn-ghost:hover, .ux-hero .btn-subtle:hover { background: rgba(255, 255, 255, .24); }
+/* institution code: glass tile with white text instead of a gold block */
+.ix-hero__code {
+  color: #fff;
+  background: rgba(255, 255, 255, .16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 0 0 1px rgba(255, 255, 255, .14);
+}
+/* portal hero: links are white and underlined (not yellow), copy stays narrow */
+body.qa-portal.pp .qa-main :is(.qa-page-head, .pp-hero) a:not(.btn) {
+  color: #fff;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, .5);
+  text-underline-offset: 3px;
+}
+body.qa-portal.pp .qa-main .qa-page-head p,
+body.qa-portal.pp .qa-main .pp-hero p { max-width: 62ch; }
+/* eyebrow icon: white glass instead of the gold disc */
+body.qa-portal.pp .qa-main .qa-page-head .qa-eyebrow > svg,
+body.qa-portal.pp .qa-main .qa-page-head .qa-eyebrow > .qa-tile,
+body.qa-portal.pp .qa-main .pp-hero__eyebrow > svg { background: rgba(255, 255, 255, .2); color: #fff; }
+
+/* one title voice (A3, C8) */
+.ux-hero h1, .ix-hero h1, .qa-hero h1, .home-hero-greeting h1 { font-weight: 700; letter-spacing: -.022em; }
+body.qa-portal.pp .qa-main .qa-page-head h1,
+body.qa-portal.pp .qa-main .pp-hero h1 { font-size: clamp(1.6rem, 2.4vw, 2.125rem); font-weight: 700; letter-spacing: -.022em; }
+
+/* ---- 6. Side menu and top bar (A10, B 45) --------------------------------- */
+/* Sidebar icons keep their own colours (owner preference, 15 Nov 2026):
+   only the corner radius and the focus ring are polished here. */
+.app-sidebar .app-nav-item { border-radius: 12px; }
+.app-sidebar .app-nav-item:focus-visible,
+.app-nav .app-nav-group-head:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* portal menu: the yellow marker becomes a small white pill */
+/* notification count: a clean ring in the bar's own colour */
+.notif-badge { border-color: var(--surface); }
+
+/* ---- 7. Cards, stats, tables, empty states (A8, A12, C2, C6) --------------- */
+/* no coloured top rules or side bars; the tone moves to a small dot */
+.ux-card--accent { border-top: 0; }
+.ux-stat::before { inset: 14px 14px auto auto; width: 8px; height: 8px; border-radius: 50%; }
+.qa-prog-card,
+body.qa-portal.pp .qa-main .qa-prog-card { border-inline-start-width: 1px; border-inline-start-color: var(--border); }
+.qh--v23 .qh-card[class*="vx-t-"] { border-top: 0; background: var(--surface); }
+.kpi-card-active { border-color: var(--border); box-shadow: var(--shadow-sm), inset 0 0 0 1px color-mix(in srgb, var(--primary) 30%, transparent); }
+.home-dashboard-cta { border-color: var(--border); background: var(--surface); box-shadow: var(--shadow-sm); }
+.ann-banner { border-color: color-mix(in srgb, var(--ann-c) 22%, transparent); }
+
+.qa-table th { font-size: .75rem; font-weight: 600; color: var(--text-subtle); }
+.qa-table tbody tr:hover { background: var(--ap-row-hover); }
+.qa-table td, .qa-table th { font-variant-numeric: tabular-nums; }
+
+.qa-page .nbte-empty-state, .qa-page .qa-empty { padding-block: 56px; }
+.nbte-empty-state__icon { width: 64px; height: 64px; border-radius: 22px; background: var(--ap-accent-soft); color: var(--ap-accent-ink); }
+.nbte-empty-state--filtered .nbte-empty-state__icon { background: var(--ap-fill); color: var(--text-subtle); }
+.qa-page .nbte-empty-state__body { max-width: 38ch; }
+
+
+/* ---- 7b. Page details (B 11, 18, 20, 21, 32, 36, 37, 38, 40) -------------- */
+/* task rows: one quiet label colour; the hue stays on the icon tile.
+   Red (overdue / returned) keeps its colour because it is a status. */
+:root :is(.wx-verb, .wx-verb--gold, .wx-verb--blue, .wx-verb--violet):not(.wx-verb--red) { color: var(--text-subtle); }
+.ux-kicker { color: var(--text-subtle); }
+/* "Next up": the standard card with a small chip, not a gold outline */
+.ux-next { border-color: var(--border); }
+.ux-next .ux-kicker {
+  display: inline-flex;
+  width: fit-content;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--ap-accent-soft);
+  color: var(--ap-accent-ink);
+  font-size: .71875rem;
+}
+/* case board columns: a soft tray, no outline */
+.cb-col { border-color: transparent; background: var(--ap-row-hover); }
+/* earnings journey: neutral steps, the live one in the brand tint */
+.vx-earn__step { border-top: 1px solid var(--border); }
+.vx-earn__step.is-live {
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  background: var(--ap-accent-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+.vx-earn__no { background: var(--ap-fill-strong); color: var(--text-muted); }
+.vx-earn__step.is-live .vx-earn__no { background: var(--primary); color: var(--primary-fg); }
+/* finder "how it works" ribbon: one neutral chip */
+.vx-chain li { background: var(--ap-fill); color: var(--text-muted); }
+/* portal tiles: one icon tone */
+body.pp .pp-tile[class*="pp-hue--"] { --ic-bg: var(--primary-subtle); --ic-fg: var(--primary); }
+/* portal menu: the marker beside the current page is a small white pill */
+body.pp .pp-nav__link.is-active::before { inset-inline-start: -9px; inset-block: 12px; width: 3px; border-radius: 3px; background: rgba(255, 255, 255, .78); }
+/* profile tabs: soft "Add" badge */
+.pf-tabs__badge { background: var(--ap-warn-soft); color: var(--warning-fg); }
+
+/* HR pages (leave, attendance): the plain title block becomes the light hero */
+.hrd-head {
+  padding: 22px 26px;
+  border-radius: var(--radius-2xl);
+  background:
+    radial-gradient(60% 120% at 100% 0%, color-mix(in srgb, var(--primary) 12%, transparent), transparent),
+    var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.hrd-eyebrow { color: var(--text-subtle); }
+/* leave types: one even 8px rhythm (labels were block-level inside the row) */
+.lv-type { display: inline-flex; margin: 0; }
+.lv-rules li { background: var(--ap-fill); }
+.lv-rules li.is-strong { background: var(--ap-warn-soft); }
+.lv-preview { border-color: transparent; border-radius: var(--radius-md); background: var(--ap-row-hover); color: var(--text-muted); }
+.lv-balance div { border-radius: var(--radius-md); background: var(--ap-row-hover); }
+.lv-balance strong { font-size: 1.375rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .hrd-head { padding: 18px; border-radius: 24px; } }
+
+/* case stage: the "Locked until: ..." reason sits on its own line under the button */
+.c3-decide__btns small[id^="why-"] { display: block; max-width: 36ch; margin-top: 6px; line-height: 1.35; }
+
+/* ---- 8. Type and rhythm (A3, A4) ------------------------------------------ */
+body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+.ux-stat, .kpi-card, .qa-hero__stats, .amount { font-variant-numeric: tabular-nums; }
+.ux-hero, .ix-hero, .home-hero { margin-bottom: 24px; }
+
+/* ---- 9. Toasts, focus, selection, scrollbars (A13, A16) ------------------- */
+.toast {
+  border: 1px solid var(--ncg-hairline, var(--border));
+  border-radius: 20px;
+  background: var(--ap-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 0 0 .5px var(--ncg-edge, rgba(0, 0, 0, .08)), var(--ncg-shadow, var(--shadow-lg));
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .toast { background: var(--surface); }
+}
+::selection { background: color-mix(in srgb, var(--primary) 24%, transparent); }
+.app-sidebar, .app-nav, .qa-table-wrap, .table-wrap { scrollbar-width: thin; scrollbar-color: rgba(118, 118, 128, .4) transparent; }
+
+/* ---- Reduced motion: nothing new moves ------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .input, textarea.input, select.input { transition: none; }
+}
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) :is(.input, textarea.input, select.input) { transition: none; }
+
+} /* @media screen */

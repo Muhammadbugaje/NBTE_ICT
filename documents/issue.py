@@ -325,6 +325,8 @@ def build_spec(doc, tpl, *, paragraphs=None, facts=None, signers=(), addressee=N
         "qr_url": verify_url(doc.token) if tpl.requires_qr else "", "short_code": doc.short_code,
         "provisional": doc.provisional, "watermark": watermark_setting(),
         "footer_hint": f"Verify: {scan_url()} · {doc.short_code}", "cc": cc,
+        # v2.3 (Phase 3): letters and invitations always fit on one page.
+        "fit_one_page": any(word in (doc.kind or "") for word in ("letter", "invitation", "outcome")),
     }
 
 

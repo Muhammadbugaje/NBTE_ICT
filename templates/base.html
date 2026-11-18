@@ -11,6 +11,10 @@
   {# Phase 6 design layer: loaded last so it restyles the shared primitives. #}
   {% css_bundle "finish" %}
   {% block extra_css_last %}{% endblock %}
+  <link rel="stylesheet" href="{% static 'css/ux-affordance.css' %}">{# scroll affordance, reminder card, institution tabs #}
+  <link rel="stylesheet" href="{% static 'css/motion-plus.css' %}">{# shared micro-interactions on existing classes (not bundled) #}
+  <link rel="stylesheet" href="{% static 'css/confirm-glass.css' %}">{# Liquid Glass confirm dialog + modal surface (not bundled, loaded last) #}
+  <link rel="stylesheet" href="{% static 'css/apple-polish.css' %}">{# UI polish layer: radius, elevation, fields, tabs, heroes (not bundled, loaded last) #}
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' class="{% if request.is_impersonating %}impersonating{% endif %}">
   <a class="skip-link" href="#app-content">Skip to main content</a>
@@ -60,8 +64,7 @@
     <div class="app-main">
       {% include "partials/topbar.html" %}
       <main class="app-content m-page" id="app-content" tabindex="-1">
-        {% if request.user.is_authenticated %}{% include "partials/profile_nudge.html" %}{% endif %}
-        {% if request.user.is_authenticated %}{% load platform_banners %}{% platform_banners %}{% endif %}{# v2.1 X23/X33 #}
+        {% if request.user.is_authenticated %}{% include "partials/profile_nudge.html" %}{% endif %}{# data for the request interrupt only; the banner moved to the reminder card #}
         {% block content %}{% endblock %}
       </main>
       <footer class="app-footer">
@@ -70,6 +73,9 @@
       </footer>
     </div>
   </div>
+
+  {# Profile / bank / signature reminders: one small corner card (static/js/ux-affordance.js). v2.1 X23/X33 + Phase 8 #}
+  {% if request.user.is_authenticated %}{% include "partials/reminder_card.html" %}{% endif %}
 
   {% if request.user.is_authenticated %}{% include "partials/mobile_tabbar.html" %}{% endif %}
 
@@ -85,6 +91,7 @@
 {% include "portal/_category_modal.html" %}
 
   <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+  <script src="{% static 'js/boost-guard.js' %}" defer></script>{# v2.3 P1 (D9): failed boosted links load as full pages #}
   <script src="{% static 'js/app.js' %}" defer></script>
   <script src="{% static 'js/network-guard.js' %}" defer></script>
   <script src="{% static 'js/motion.js' %}" defer></script>{# v2.1 A9 motion kit #}
@@ -97,8 +104,11 @@
   <script src="{% static 'js/tickets.js' %}" defer></script>
   <script src="{% static 'js/memo.js' %}" defer></script>
   <script src="{% static 'js/apple.js' %}" defer></script>
+  <script src="{% static 'js/ux-affordance.js' %}" defer></script>
   {% include "partials/ux_scripts.html" %}
   {% block extra_js %}{% endblock %}
   <script src="{% static 'js/polish.js' %}" defer></script>
+  <script src="{% static 'js/motion-plus.js' %}" defer></script>{# htmx swap-in fade, details reveal #}
+  {% load tour_tags %}{% tour_boot %}{# guided tours ("Guide me"): qa_core/tours.py #}
 </body>
 </html>

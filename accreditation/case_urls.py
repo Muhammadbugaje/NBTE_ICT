@@ -22,6 +22,7 @@ urlpatterns = [
     path("<int:pk>/desk-officer/", views.desk_officer, name="desk_officer"),
     path("<int:pk>/assign/", views.assign, name="assign"),
     path("<int:pk>/supervisor/<str:kind>/", views.supervisor, name="supervisor"),
+    path("<int:pk>/division-director/", views.division_director, name="division_director"),  # v2.3
     path("<int:pk>/cost/lines/", views.cost_add, name="cost_add"),
     path("<int:pk>/cost/people/", views.cost_people, name="cost_people"),  # SOP-03: ranked Person picker
     path("<int:pk>/cost/calculate/", views.cost_calc, name="cost_calc"),  # v2.2 X39
@@ -53,4 +54,8 @@ urlpatterns = [
     path("<int:pk>/capacity/<int:row_id>/<str:kind>/", views.capacity_run, name="capacity_run"),
     path("<int:pk>/decisions/", views.decisions_save, name="decisions_save"),
     path("<int:pk>/letters/<int:letter_id>/regenerate/", views.letter_regenerate, name="letter_regenerate"),
+    # v2.3: frozen versions (rollbacks) with dated notes
+    path("<int:pk>/versions/", views.versions_page, name="versions"),
+    path("<int:pk>/devices/", views.devices_page, name="devices"),  # v2.3 devices register
+    path("<int:pk>/versions/<int:version_id>/note/", views.version_note, name="version_note"),
 ]

@@ -1,6 +1,7 @@
-"""v2.3: one honorarium file per institution (SOP-01 -> SOP-03), the pay
-officer -> DoF one-click approval -> payee confirmation flow, and the
-"no active reference format" fix."""
+"""v2.3/v2.4: one honorarium file per institution (SOP-01 -> SOP-03), the pay
+officer prepares -> DoF reviews and sends to the ES -> ES approves -> DoF pays
+(all or some) -> payee confirms or disputes flow, and the "no active reference
+format" fix."""
 import datetime
 from decimal import Decimal
 
@@ -157,9 +158,11 @@ def test_external_resource_person_ssq_and_visit_rates(world, make_user, django_c
 
 
 # ---------------------------------------------------------------------------
-# 2. pay officer prepares (masked) -> DoF approves with one click -> payee confirms
+# 2. pay officer prepares (masked) -> DoF sends to the ES -> ES approves ->
+#    DoF pays -> payee confirms
 # ---------------------------------------------------------------------------
-def test_pay_officer_prepares_dof_approves_payee_confirms(world, client, django_capture_on_commit_callbacks):
+def test_pay_officer_prepares_dof_sends_to_es_es_approves_payee_confirms(world, client,
+                                                                        django_capture_on_commit_callbacks):
     from honoraria import files, schedules
     from honoraria.models import BankDetailsLog, HonorariumEntry, HonorariumFileLine
     from notifications.models import Notification
@@ -188,7 +191,7 @@ def test_pay_officer_prepares_dof_approves_payee_confirms(world, client, django_
     assert client.post("/qa/finance/honoraria/roller/bank/", {"payee": f"user:{world.officer.pk}"}).status_code == 403
     assert not BankDetailsLog.objects.filter(action=BankDetailsLog.REVEALED, actor=world.pay_officer).exists()
 
-    # He prepares the batch; the DoF is asked to approve.
+    # He prepares the batch; the DoF is asked to review it and send it to the ES.
     with django_capture_on_commit_callbacks(execute=True):
         r = client.post(f"/qa/finance/honoraria/files/{file.pk}/prepare/",
                         {"line": [line.pk], "funding_account": funding.pk, "payment_reference": "TRF-001"})
@@ -199,27 +202,56 @@ def test_pay_officer_prepares_dof_approves_payee_confirms(world, client, django_
     assert batch.status == "draft" and batch.honorarium_file == file and batch.total == Decimal("10000")
     assert batch.reference.startswith("NBTE-HON-")
     assert HonorariumEntry.objects.get(pk=line.entry_id).status == HonorariumEntry.SCHEDULED
-    assert Notification.objects.filter(recipient=world.dof, title__startswith="Approve honoraria").exists()
+    assert Notification.objects.filter(recipient=world.dof, title__startswith="Review honoraria").exists()
     # The roller can no longer pick the same work (no double payment).
     with pytest.raises(ValidationError):
         schedules.build_schedule(datetime.date(2000, 1, 1), datetime.date.today(), user=world.dof,
                                  payee_keys=[("user", world.officer.pk)])
-    # The pay officer cannot approve.
+    # Neither the pay officer nor the ES may send; only the DoF.
     with pytest.raises(PermissionDenied):
-        files.approve_and_pay(batch, user=world.pay_officer)
+        files.send_to_es(batch, user=world.pay_officer)
+    with pytest.raises(PermissionDenied):
+        files.send_to_es(batch, user=world.es)
 
-    # DoF: one click -> approved, paid, ledger, payee told "Paid — please confirm receipt".
+    # DoF: review -> send to the ES. Nothing is paid yet.
     client.force_login(world.dof)
     with django_capture_on_commit_callbacks(execute=True):
-        r = client.post(f"/qa/finance/honoraria/batch/{batch.pk}/approve/", {})
+        r = client.post(f"/qa/finance/honoraria/batch/{batch.pk}/send/", {"remark": "Please approve"})
     assert r.status_code == 302
     batch.refresh_from_db()
     line.refresh_from_db()
-    assert batch.status == "paid" and batch.approved_by == world.dof and batch.payment_reference == "TRF-001"
+    assert batch.status == "awaiting_es" and batch.sent_to_es_by == world.dof
+    assert line.status == HonorariumFileLine.PREPARED
+    assert batch.paid_at is None and not batch.lines.filter(paid_at__isnull=False).exists()
+    assert Notification.objects.filter(recipient=world.es, title__startswith="Approve honoraria").exists()
+    # The DoF cannot jump the gate.
+    with pytest.raises(ValidationError):
+        files.pay_batch(batch, user=world.dof, funding_account_id=funding.pk, payment_reference="TRF-001")
+
+    # ES: approve. It comes back to the DoF to pay.
+    client.force_login(world.es)
+    with django_capture_on_commit_callbacks(execute=True):
+        r = client.post(f"/qa/finance/honoraria/batch/{batch.pk}/es-approve/", {"remark": "Checked"})
+    assert r.status_code == 302
+    batch.refresh_from_db()
+    line.refresh_from_db()
+    assert batch.status == "approved" and batch.approved_by == world.es and batch.es_decided_by == world.es
+    assert batch.es_remark == "Checked"
+    assert Notification.objects.filter(recipient=world.dof, title__startswith="ES approved").exists()
+
+    # DoF: pay everyone. Ledger posted, payee told "Paid — please confirm receipt".
+    client.force_login(world.dof)
+    with django_capture_on_commit_callbacks(execute=True):
+        r = client.post(f"/qa/finance/honoraria/batch/{batch.pk}/pay/",
+                        {"scope": "all", "funding_account": funding.pk, "payment_reference": "TRF-001"})
+    assert r.status_code == 302
+    batch.refresh_from_db()
+    line.refresh_from_db()
+    assert batch.status == "paid" and batch.payment_reference == "TRF-001"
     assert line.status == HonorariumFileLine.PAID
     assert LedgerJournal.objects.filter(key__startswith=f"hon:{batch.reference}:", source="honorarium").exists()
     assert Notification.objects.filter(recipient=world.officer, title="Paid — please confirm receipt").exists()
-    assert Notification.objects.filter(recipient=world.pay_officer, title__startswith="Approved and paid").exists()
+    assert Notification.objects.filter(recipient=world.pay_officer, title__startswith="Paid").exists()
 
     # The payee confirms; the file is settled.
     schedules.confirm_receipt(line.schedule_line, user=world.officer)
@@ -243,15 +275,91 @@ def test_prepare_needs_confirmed_bank_details_and_dof_can_do_it_alone(world, dja
     _bank(world.officer)
     funding = _funding()
     batch = files.prepare_batch(file, user=world.dof, line_ids=[line.pk])
+    # The teller number is auto-issued at preparation and is not the batch reference.
+    assert batch.payment_reference.startswith("NBTE-TEL-")
+    assert batch.payment_reference != batch.reference
     # Withdraw and prepare again: the line is ready again, nothing doubled.
     files.cancel_batch(batch, user=world.dof)
     line.refresh_from_db()
     assert line.status == HonorariumFileLine.PENDING
     batch = files.prepare_batch(file, user=world.dof, line_ids=[line.pk])
-    with django_capture_on_commit_callbacks(execute=True):
-        files.approve_and_pay(batch, user=world.dof, funding_account_id=funding.pk)
+    files.send_to_es(batch, user=world.dof)
+    files.es_approve(batch, user=world.es)
+    # The DoF may still edit the teller number when recording the payment.
+    files.pay_batch(batch, user=world.dof, funding_account_id=funding.pk, payment_reference="TELLER-EDIT-1")
     batch.refresh_from_db()
-    assert batch.status == "paid" and batch.payment_reference == batch.reference
+    line.refresh_from_db()
+    assert batch.status == "paid" and batch.payment_reference == "TELLER-EDIT-1"
+    assert line.schedule_line.payment_reference == "TELLER-EDIT-1"
+
+
+def test_es_can_return_a_file_batch_with_a_note(world, client, django_capture_on_commit_callbacks):
+    from honoraria import files
+    from notifications.models import Notification
+
+    with django_capture_on_commit_callbacks(execute=True):
+        _complete_work(world.inst, "document_analysis", world.officer)
+    file, _ = files.sync(world.inst)
+    _bank(world.officer)
+    batch = files.prepare_batch(file, user=world.dof, line_ids=list(file.lines.values_list("pk", flat=True)))
+    files.send_to_es(batch, user=world.dof)
+
+    # Only the ES (not the DoF or the pay officer) may decide, and a reason is required.
+    with pytest.raises(PermissionDenied):
+        files.es_return(batch, user=world.dof, remark="Take it back")
+    with pytest.raises(ValidationError):
+        files.es_return(batch, user=world.es, remark="no")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        files.es_return(batch, user=world.es, remark="The visit rate is wrong for this officer")
+    batch.refresh_from_db()
+    assert batch.status == "draft" and batch.es_decided_by == world.es
+    assert batch.es_remark == "The visit rate is wrong for this officer"
+    assert Notification.objects.filter(recipient=world.dof,
+                                       title__startswith="ES returned the honoraria batch").exists()
+
+    # The DoF sees the note and can send it again.
+    client.force_login(world.dof)
+    page = client.get(f"/qa/finance/honoraria/{batch.pk}/")
+    assert page.status_code == 200 and b"The visit rate is wrong" in page.content
+
+
+def test_dof_pays_some_payees_now_and_the_rest_later(world, django_capture_on_commit_callbacks):
+    from honoraria import files
+    from honoraria.models import HonorariumFileLine
+
+    with django_capture_on_commit_callbacks(execute=True):
+        _complete_work(world.inst, "document_analysis", world.officer)
+        _complete_work(world.inst, "document_analysis", world.reviewer, subject=world.reviewer)
+    file, _ = files.sync(world.inst)
+    _bank(world.officer)
+    _bank(world.reviewer)
+    funding = _funding()
+    batch = files.prepare_batch(file, user=world.dof,
+                                line_ids=list(file.lines.values_list("pk", flat=True)))
+    files.send_to_es(batch, user=world.dof)
+    files.es_approve(batch, user=world.es)
+    schedule_lines = list(batch.lines.order_by("pk"))
+    assert len(schedule_lines) == 2
+
+    with django_capture_on_commit_callbacks(execute=True):
+        files.pay_batch(batch, user=world.dof, funding_account_id=funding.pk,
+                        payment_reference="PART-1", line_ids=[schedule_lines[0].pk])
+    batch.refresh_from_db()
+    files.reconcile(file)
+    assert batch.status == "approved"       # one line still unpaid on the same batch
+    assert batch.lines.filter(paid_at__isnull=False).count() == 1
+    assert batch.lines.filter(paid_at__isnull=True).count() == 1
+    statuses = set(file.lines.values_list("status", flat=True))
+    assert statuses == {HonorariumFileLine.PAID, HonorariumFileLine.APPROVED}
+
+    with django_capture_on_commit_callbacks(execute=True):
+        files.pay_batch(batch, user=world.dof, funding_account_id=funding.pk,
+                        payment_reference="PART-2", line_ids=[schedule_lines[1].pk])
+    batch.refresh_from_db()
+    files.reconcile(file)
+    assert batch.status == "paid"
+    assert set(file.lines.values_list("status", flat=True)) == {HonorariumFileLine.PAID}
 
 
 def test_dof_es_admin_may_reveal_bank_number_and_it_is_logged(world, client):
@@ -262,6 +370,111 @@ def test_dof_es_admin_may_reveal_bank_number_and_it_is_logged(world, client):
     r = client.post("/qa/finance/honoraria/roller/bank/", {"payee": f"user:{world.officer.pk}"})
     assert r.status_code == 200 and b"0123456789" in r.content
     assert BankDetailsLog.objects.filter(action=BankDetailsLog.REVEALED, actor=world.dof).exists()
+
+
+def test_payee_can_dispute_and_then_confirm_receipt(world, client, django_capture_on_commit_callbacks):
+    from honoraria import files, schedules
+    from notifications.models import Notification
+
+    with django_capture_on_commit_callbacks(execute=True):
+        _complete_work(world.inst, "document_analysis", world.officer)
+    file, _ = files.sync(world.inst)
+    _bank(world.officer)
+    funding = _funding()
+    batch = files.prepare_batch(file, user=world.dof, line_ids=list(file.lines.values_list("pk", flat=True)))
+    files.send_to_es(batch, user=world.dof)
+    files.es_approve(batch, user=world.es)
+    with django_capture_on_commit_callbacks(execute=True):
+        files.pay_batch(batch, user=world.dof, funding_account_id=funding.pk, payment_reference="TRF-DISP")
+    line = batch.lines.get()
+
+    # Only the payee can report it, and they must say what happened.
+    with pytest.raises(PermissionDenied):
+        schedules.dispute_receipt(line, user=world.dof, note="Not mine to report")
+    with pytest.raises(ValidationError):
+        schedules.dispute_receipt(line, user=world.officer, note="no")
+    with django_capture_on_commit_callbacks(execute=True):
+        schedules.dispute_receipt(line, user=world.officer, note="Money is not in my account yet")
+    line.refresh_from_db()
+    assert line.disputed_by == world.officer and line.dispute_note == "Money is not in my account yet"
+    assert Notification.objects.filter(
+        recipient=world.dof, title="A payee says the honorarium did not arrive").exists()
+
+    # Finance sees it on the batch and on the file.
+    client.force_login(world.dof)
+    batch_page = client.get(f"/qa/finance/honoraria/{batch.pk}/")
+    assert batch_page.status_code == 200 and b"Payee says not received" in batch_page.content
+    assert b"Money is not in my account yet" in batch_page.content
+    file_page = client.get(f"/qa/finance/honoraria/files/{file.pk}/")
+    assert b"Money is not in my account yet" in file_page.content
+
+    # The payee later confirms; the dispute is cleared and the entry is received.
+    from honoraria.models import HonorariumEntry
+
+    schedules.confirm_receipt(line, user=world.officer)
+    line.refresh_from_db()
+    assert line.confirmed_at and not line.disputed_at and not line.dispute_note
+    assert HonorariumEntry.objects.get(schedule_lines=line).status == HonorariumEntry.RECEIVED
+
+
+def test_payment_list_print_and_csv_are_dof_only_and_logged(world, client):
+    from honoraria import files
+    from honoraria.models import BankDetailsLog
+
+    with django_capture_on_commit_callbacks(execute=True):
+        _complete_work(world.inst, "document_analysis", world.officer)
+    file, _ = files.sync(world.inst)
+    _bank(world.officer)
+    batch = files.prepare_batch(file, user=world.dof, line_ids=list(file.lines.values_list("pk", flat=True)))
+
+    client.force_login(world.dof)
+    page = client.get(f"/qa/finance/honoraria/batch/{batch.pk}/print/")
+    assert page.status_code == 200
+    assert b"0123456789" in page.content and batch.payment_reference.encode() in page.content
+    csv_response = client.get(f"/qa/finance/honoraria/batch/{batch.pk}/export/")
+    assert csv_response.status_code == 200
+    assert csv_response["Content-Type"].startswith("text/csv")
+    body = csv_response.content.decode()
+    assert "0123456789" in body and "V23 Bank" in body
+    assert BankDetailsLog.objects.filter(action=BankDetailsLog.RELEASED, actor=world.dof).count() >= 2
+
+    # A pay officer, an ES and an unrelated reviewer may not print payee bank details.
+    for user in (world.pay_officer, world.es, world.reviewer):
+        client.force_login(user)
+        assert client.get(f"/qa/finance/honoraria/batch/{batch.pk}/print/").status_code == 403
+        assert client.get(f"/qa/finance/honoraria/batch/{batch.pk}/export/").status_code == 403
+
+    # Paid batches no longer expose bank details.
+    files.send_to_es(batch, user=world.dof)
+    files.es_approve(batch, user=world.es)
+    client.force_login(world.dof)
+    files.pay_batch(batch, user=world.dof, funding_account_id=_funding().pk, payment_reference="TRF-CLOSE")
+    assert client.get(f"/qa/finance/honoraria/batch/{batch.pk}/print/").status_code == 404
+
+
+def test_es_gate_applies_only_to_file_batches(world):
+    from django.contrib.contenttypes.models import ContentType
+
+    from honoraria import files, schedules
+    from honoraria.models import HonorariumEntry
+
+    HonorariumEntry.objects.create(
+        payee_user=world.officer, kind=HonorariumEntry.DOCUMENT_ANALYSIS,
+        source_ct=ContentType.objects.get_for_model(world.officer), source_id="classic-es-gate",
+        rate_key="honoraria.rate.internal_item", rate=Decimal("10000"), amount=Decimal("10000"))
+    _bank(world.officer)
+    classic = schedules.build_schedule(datetime.date(2000, 1, 1), datetime.date.today(), user=world.dof)
+    assert classic.honorarium_file_id is None
+    assert not files.can_send_to_es(world.dof, classic)
+    assert not files.can_es_decide(world.es, classic)
+    with pytest.raises(PermissionDenied):
+        files.send_to_es(classic, user=world.dof)
+    with pytest.raises(PermissionDenied):
+        files.es_approve(classic, user=world.es)
+    # The classic DoF flow still works: approve, then pay.
+    schedules.approve(classic, user=world.dof)
+    classic.refresh_from_db()
+    assert classic.status == "approved"
 
 
 def test_pages_render_for_finance_and_hide_from_others(world, client, django_capture_on_commit_callbacks):
@@ -287,11 +500,14 @@ def test_missing_reference_format_is_recreated_and_never_blocks(world):
     from honoraria import references
     from qa_core.models import ReferenceFormat
 
-    ReferenceFormat.objects.filter(code__in=("honoraria", "honoraria_file")).delete()
+    ReferenceFormat.objects.filter(code__in=("honoraria", "honoraria_file", "honoraria_teller")).delete()
     ref = references.issue("honoraria")
     assert ref.startswith(f"NBTE-HON-{timezone.localdate().year}-")
     assert ReferenceFormat.objects.filter(code="honoraria", is_active=True).exists()
     assert ReferenceFormat.objects.filter(code="honoraria_file").exists()
+    assert ReferenceFormat.objects.filter(code="honoraria_teller").exists()
+    teller = references.issue("honoraria_teller")
+    assert teller.startswith(f"NBTE-TEL-{timezone.localdate().year}-")
     # Switched off in Settings -> References: a unique fallback, still no error.
     ReferenceFormat.objects.filter(code="honoraria").update(is_active=False)
     first, second = references.issue("honoraria"), references.issue("honoraria")
@@ -319,6 +535,6 @@ def test_migration_seed_set_creates_formats():
     from honoraria.references import ensure_formats
     from qa_core.models import ReferenceFormat
 
-    ReferenceFormat.objects.filter(code__in=("honoraria", "honoraria_file")).delete()
-    assert ensure_formats() == 2
+    ReferenceFormat.objects.filter(code__in=("honoraria", "honoraria_file", "honoraria_teller")).delete()
+    assert ensure_formats() == 3
     assert ensure_formats() == 0

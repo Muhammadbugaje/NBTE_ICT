@@ -1,0 +1,406 @@
+/* =========================================================================
+   ux-affordance.css — loaded as a plain <link> after the "finish" bundle from
+   templates/base.html and templates/qa_portal/base_portal.html (not bundled).
+   Behaviour: static/js/ux-affordance.js.
+
+     1. Horizontal scroll affordance for tab / chip strips  (.hs-*)
+     2. Reminder corner card (profile, signature, bank)     (.rc-*)
+     3. Institution file tab strip                          (.ix-tabs)
+
+   Colours come from the semantic tokens (tokens.css), so dark mode follows.
+   ========================================================================= */
+
+/* ------------------------------------------------ 1. scroll affordance */
+/* The script wraps a strip in .hs-wrap only once it really overflows, and
+   moves the strip's outer margin / flex / sticky behaviour onto the wrapper,
+   so strips that fit are never touched. */
+.hs-wrap {
+  position: relative;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+.hs-wrap--inline { display: inline-block; vertical-align: middle; }
+.hs-wrap > .hs-strip {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  /* the wrapper carries the outer spacing */
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+.hs-wrap > .hs-strip::-webkit-scrollbar { display: none; }
+
+/* Edge fades: only on the side(s) that still have content. A mask works on
+   any background, light or dark. */
+.hs-wrap > .hs-strip.hs-can-r {
+  mask-image: linear-gradient(90deg, #000 calc(100% - 56px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 56px), transparent);
+}
+.hs-wrap > .hs-strip.hs-can-l {
+  mask-image: linear-gradient(90deg, transparent, #000 56px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 56px);
+}
+.hs-wrap > .hs-strip.hs-can-l.hs-can-r {
+  mask-image: linear-gradient(90deg, transparent, #000 56px, #000 calc(100% - 56px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 56px, #000 calc(100% - 56px), transparent);
+}
+.hs-wrap > .hs-strip.hs-dragging { cursor: grabbing; scroll-behavior: auto; user-select: none; -webkit-user-select: none; }
+.hs-wrap > .hs-strip.hs-dragging * { pointer-events: none; }
+
+/* Floating chevrons */
+.hs-btn {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-50%) scale(.8);
+  transition: opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard),
+              visibility 0s linear var(--dur-fast), background var(--dur-fast) var(--ease-standard);
+  -webkit-tap-highlight-color: transparent;
+}
+.hs-btn--l { left: 4px; }
+.hs-btn--r { right: 4px; }
+.hs-btn svg { flex: none; width: 16px; height: 16px; }
+.hs-btn.is-on {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(-50%) scale(1);
+  transition-delay: 0s;
+}
+.hs-btn:hover { background: var(--surface-2); color: var(--primary); }
+.hs-btn.is-on:active { transform: translateY(-50%) scale(.92); }
+.hs-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* Tall scrollers (boards): keep the chevrons near the top, in view. */
+.hs-wrap--tall > .hs-btn { top: 28px; }
+
+/* One-time "More →" hint on the right chevron. */
+.hs-btn__label { display: inline-block; max-width: 0; overflow: hidden; white-space: nowrap; }
+.hs-btn.is-hint { color: var(--primary); animation: hs-hint-ring 1.3s var(--ease-standard) 2; }
+.hs-btn.is-hint .hs-btn__label { animation: hs-hint-label 2.8s var(--ease-standard) 1 both; }
+.hs-btn.is-hint svg { animation: hs-hint-nudge 1.3s var(--ease-standard) 2; }
+@keyframes hs-hint-label {
+  0%, 100% { max-width: 0; padding-inline-start: 0; }
+  18%, 80% { max-width: 4em; padding-inline-start: 10px; }
+}
+@keyframes hs-hint-ring {
+  0% { box-shadow: var(--shadow-md), 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
+  70%, 100% { box-shadow: var(--shadow-md), 0 0 0 9px color-mix(in srgb, var(--primary) 0%, transparent); }
+}
+@keyframes hs-hint-nudge {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(3px); }
+}
+@media (pointer: coarse) {
+  .hs-btn { min-width: 28px; height: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hs-btn, .hs-btn.is-on { transition: none; }
+  .hs-btn.is-hint, .hs-btn.is-hint svg, .hs-btn.is-hint .hs-btn__label { animation: none; }
+}
+@media print { .hs-btn { display: none; } }
+
+/* ------------------------------------------------ 2. reminder corner card */
+.rc-card {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  z-index: calc(var(--z-drawer) - 3);
+  width: min(320px, calc(100vw - 24px));
+  padding: 10px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug, 1.35);
+  transform-origin: 100% 100%;
+  animation: rc-in 320ms var(--ease-emphasized) both;
+}
+.rc-card[hidden] { display: none; }
+.rc-card.is-leaving { animation: rc-out 220ms var(--ease-standard) both; pointer-events: none; }
+@keyframes rc-in { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes rc-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(10px) scale(.97); } }
+
+.rc-card__head { display: flex; align-items: center; gap: 8px; padding: 0 2px 8px 4px; }
+.rc-card__badge {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--warning-subtle);
+  color: var(--warning-fg);
+  font-size: var(--fs-2xs, 11px);
+  font-weight: var(--fw-bold);
+}
+.rc-card__title { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.rc-card__close {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.rc-card__close:hover { background: var(--surface-2); color: var(--text); }
+.rc-card__close:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.rc-card__ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; }
+.rc-card__ring circle { fill: none; stroke-width: 2.5; }
+.rc-card__ring-track { stroke: var(--border); }
+.rc-card__ring-bar {
+  stroke: var(--primary);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 260ms linear, stroke var(--dur-fast) var(--ease-standard);
+}
+.rc-card.is-paused .rc-card__ring-bar { stroke: var(--text-subtle); }
+
+.rc-card__list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.rc-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px 7px 7px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.rc-item__ic {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: var(--info-subtle);
+  color: var(--info-fg);
+}
+.rc-item--warn .rc-item__ic { background: var(--warning-subtle); color: var(--warning-fg); }
+.rc-item__text { display: grid; min-width: 0; }
+.rc-item__text strong { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-item__text span {
+  color: var(--text-muted);
+  font-size: var(--fs-2xs, 11px);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.rc-item__actions { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.rc-item__actions form { display: contents; margin: 0; }
+.rc-item__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-2xs, 11px);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard);
+}
+.rc-item__btn:hover { background: var(--surface-sunken); color: var(--text); text-decoration: none; }
+.rc-item__btn--primary { border-color: transparent; background: var(--primary); color: var(--primary-fg); }
+.rc-item__btn--primary:hover { background: var(--primary-hover); color: var(--primary-fg); }
+.rc-item__btn:active { transform: scale(.96); }
+.rc-item__btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+/* Phones / tablets: sit above the floating tab bar. */
+@media (max-width: 1023px) {
+  .rc-card {
+    right: 12px;
+    bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 78px);
+    width: min(300px, calc(100vw - 24px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-card, .rc-card.is-leaving { animation: none; }
+  .rc-card__ring-bar, .rc-item__btn { transition: none; }
+}
+@media print { .rc-card { display: none !important; } }
+
+/* ------------------------------------------------ 3. institution file tabs */
+/* Pill tabs with icons on a frosted bar that stays under the top bar while
+   the file scrolls. Works with the scroll affordance above (when wrapped,
+   the script moves the sticky behaviour to .hs-wrap). */
+.qa-tabs.ix-tabs {
+  position: sticky;
+  top: calc(var(--topbar-offset-bottom, var(--topbar-h, 64px)) + 8px);
+  z-index: var(--z-raised);
+  gap: 4px;
+  padding: 5px;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-glass-strong, var(--surface));
+  -webkit-backdrop-filter: saturate(1.6) blur(18px);
+  backdrop-filter: saturate(1.6) blur(18px);
+  box-shadow: var(--shadow-sm);
+}
+.qa-tabs.ix-tabs a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 36px;
+  padding: 0 .95rem;
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  box-shadow: none;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard),
+              transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+  -webkit-tap-highlight-color: transparent;
+}
+.qa-tabs.ix-tabs a svg { flex: none; opacity: .7; color: currentColor; transition: opacity var(--dur-fast) var(--ease-standard); }
+.qa-tabs.ix-tabs a:hover { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); }
+.qa-tabs.ix-tabs a:hover svg { opacity: 1; }
+.qa-tabs.ix-tabs a:active { transform: scale(.96); }
+.qa-tabs.ix-tabs a.is-active,
+.qa-tabs.ix-tabs a[aria-current="page"] {
+  background: var(--primary);
+  color: var(--primary-fg);
+  font-weight: var(--fw-semibold);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 6px 14px -6px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+.qa-tabs.ix-tabs a.is-active svg,
+.qa-tabs.ix-tabs a[aria-current="page"] svg { opacity: 1; color: currentColor; }
+.qa-tabs.ix-tabs a:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* While the section is loading, the pill you pressed breathes. */
+.qa-tabs.ix-tabs a.htmx-request { animation: ix-tab-load 1s var(--ease-standard) infinite; }
+@keyframes ix-tab-load { 50% { opacity: .65; } }
+@media (max-width: 767px) {
+  .qa-tabs.ix-tabs { top: calc(var(--topbar-offset-bottom, var(--topbar-h, 64px)) + 6px); }
+  .qa-tabs.ix-tabs a { min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qa-tabs.ix-tabs a, .qa-tabs.ix-tabs a svg { transition: none; }
+  .qa-tabs.ix-tabs a:active { transform: none; }
+  .qa-tabs.ix-tabs a.htmx-request { animation: none; }
+}
+@media print { .qa-tabs.ix-tabs { position: static; } }
+
+/* When the strip overflows, the frosted bar moves to the wrapper so the edge
+   fade only softens the tabs, never the bar itself (it is sticky and content
+   scrolls underneath). */
+.hs-wrap:has(> .ix-tabs) {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-glass-strong, var(--surface));
+  -webkit-backdrop-filter: saturate(1.6) blur(18px);
+  backdrop-filter: saturate(1.6) blur(18px);
+  box-shadow: var(--shadow-sm);
+}
+.hs-wrap > .qa-tabs.ix-tabs {
+  border: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+/* Phones: one line per reminder, so the card stays small. */
+@media (max-width: 640px) {
+  .rc-card { padding: 8px 8px 6px; }
+  .rc-card__head { padding-bottom: 6px; }
+  .rc-item { padding: 5px 6px; }
+  .rc-item__text span { display: none; }
+}
+
+/* ------------------------------------------------ 4. floating widgets keep clear
+   "Guide me" (tour.js sets --nt-clear) and the reminder card (--rc-clear, set
+   by ux-affordance.js while the card is showing) float over the page. The page
+   gets that much empty space below the footer, so the last row can always be
+   scrolled clear of them. The Live pill steps above the reminder card. */
+html:has(.qa-live-pill) { --live-clear: 56px; }
+.app-footer, .qa-footer {
+  margin-bottom: max(var(--nt-clear, 0px), var(--rc-clear, 0px), var(--live-clear, 0px));
+}
+html.rc-on .qa-live-pill { inset-block-end: calc(max(16px, env(safe-area-inset-bottom, 0px)) + var(--rc-clear, 0px)); }
+@media (max-width: 1023px) {
+  html.rc-on .qa-live-pill { inset-block-end: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 78px + var(--rc-clear, 0px)); }
+}
+@media print { .app-footer, .qa-footer { margin-bottom: 0; } }
+
+/* ------------------------------------------------ 5. consistency fixes
+   (a) Meters. qa-live.css re-uses the class name .qa-progress for its top
+   loading bar (fixed, opacity 0, fill width 0) and is linked after the meter
+   styles, so every in-page meter (required documents, SLA, upload progress)
+   was invisible. Anything inside the page is a meter again. */
+:is(main, .qa-card, .qa-meter, .qa-sla, form) .qa-progress {
+  display: block;
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  height: 6px;
+  opacity: 1;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-sunken, var(--surface-3));
+}
+:is(main, .qa-card, .qa-meter, .qa-sla, form) .qa-progress[hidden] { display: none; }
+:is(main, .qa-card, .qa-meter, .qa-sla, form) .qa-progress > span {
+  display: block;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--pct, 0%);
+  height: auto;
+  border-radius: inherit;
+  background: var(--primary);
+  box-shadow: none;
+}
+.qa-meter .qa-progress { height: 8px; }
+.qa-sla .qa-progress { height: 5px; }
+.qa-meter.is-complete .qa-progress > span { background: var(--success); }
+
+/* (b) Portal payments: the three summary tiles no longer stretch to the
+   chart's height (tall empty boxes); they keep their own height. */
+body.pp .pp-pay-top { align-items: start; }
+body.pp .pp-pay-top .ux-stats { align-content: start; }
+/* the Refunds link keeps its icon on the same line */
+.pp-page .qa-page-head p.qa-small > a { display: inline-flex; align-items: center; gap: 6px; }
+.pp-page .qa-page-head p.qa-small > a svg { flex: none; }
+
+/* (c) A status chip inside a stacked card body keeps its own width
+   (it used to stretch into a full-width bar, e.g. "Active"). */
+.qa-stack > .qa-chip { justify-self: start; align-self: flex-start; width: fit-content; }

@@ -8,7 +8,7 @@
   <div>
     <span class="ux-hero__eyebrow">Finance · Honoraria</span>
     <h1 data-qa-focus>Honoraria payment schedules</h1>
-    <p>Every payment batch — prepared from an institution's honorarium file or from Who's next — built from the rates in Settings → Honoraria. Finance approves, records the transfer, and each payee confirms receipt.</p>
+    <p>Every payment batch — prepared from an institution's honorarium file or from Who's next — built from the rates in Settings → Honoraria. Finance reviews and sends file batches to the Executive Secretary; after approval Finance records the transfer, and each payee confirms receipt.</p>
   </div>
   {% if can_view_report %}<div class="ux-hero__actions"><a class="btn btn-primary" href="{% url 'honoraria_sched:files' %}">Institution files</a><a class="btn btn-ghost" href="{% url 'honoraria_sched:income' %}">Income vs expenditure</a></div>{% endif %}
 </header>
@@ -18,7 +18,8 @@
 
 {% if can_view_all %}
 <div class="ux-stats">
-  <a class="ux-stat ux-stat--blue" href="?show=draft"><span class="ux-stat__label">Awaiting approval</span><span class="ux-stat__value">{{ totals.draft|naira }}</span><span class="ux-stat__hint">Draft batches</span></a>
+  <a class="ux-stat ux-stat--blue" href="?show=draft"><span class="ux-stat__label">Drafts</span><span class="ux-stat__value">{{ totals.draft|naira }}</span><span class="ux-stat__hint">Not yet sent to the ES</span></a>
+  <a class="ux-stat ux-stat--violet" href="?show=awaiting_es"><span class="ux-stat__label">With the ES</span><span class="ux-stat__value">{{ totals.awaiting_es|naira }}</span><span class="ux-stat__hint">Awaiting approval</span></a>
   <a class="ux-stat ux-stat--gold" href="?show=approved"><span class="ux-stat__label">Approved, not yet paid</span><span class="ux-stat__value">{{ totals.approved|naira }}</span><span class="ux-stat__hint">Record the transfer</span></a>
   <a class="ux-stat ux-stat--teal" href="?show=paid"><span class="ux-stat__label">Paid</span><span class="ux-stat__value">{{ totals.paid|naira }}</span><span class="ux-stat__hint">All time</span></a>
 </div>
@@ -32,12 +33,12 @@
     <ul class="ux-list">
       {% for s in schedules %}
       <li class="ux-row{% if s.status == 'cancelled' %} ux-row--done{% endif %}">
-        <span class="ux-row__icon{% if s.status == 'draft' %} ux-row__icon--blue{% elif s.status == 'approved' %} ux-row__icon--gold{% elif s.status == 'cancelled' %} ux-row__icon--red{% endif %}" aria-hidden="true">₦</span>
+        <span class="ux-row__icon{% if s.status == 'draft' %} ux-row__icon--blue{% elif s.status == 'awaiting_es' %} ux-row__icon--blue{% elif s.status == 'approved' %} ux-row__icon--gold{% elif s.status == 'cancelled' %} ux-row__icon--red{% endif %}" aria-hidden="true">₦</span>
         <div class="ux-row__main">
           <a class="ux-row__title" href="{% url 'honoraria_sched:detail' s.pk %}">{{ s.title|default:s.reference }}</a>
           <div class="ux-row__meta"><span class="qa-mono">{{ s.reference }}</span><span>{{ s.period_start|date:"j M" }} – {{ s.period_end|date:"j M Y" }}</span>
             {% if s.honorarium_file %}<a href="{% url 'honoraria_sched:file' s.honorarium_file.pk %}">{{ s.honorarium_file.reference }}</a>{% endif %}
-            {% if s.status == "draft" %}<span class="ux-chip ux-chip--blue">Awaiting approval</span>{% elif s.status == "approved" %}<span class="ux-chip ux-chip--gold">Approved</span>{% elif s.status == "paid" %}<span class="ux-chip ux-chip--green">Paid {{ s.paid_at|date:"j M" }}</span>{% else %}<span class="ux-chip">{{ s.get_status_display }}</span>{% endif %}</div>
+            {% if s.status == "draft" %}<span class="ux-chip ux-chip--blue">Draft</span>{% elif s.status == "awaiting_es" %}<span class="ux-chip ux-chip--violet">With the ES</span>{% elif s.status == "approved" %}<span class="ux-chip ux-chip--gold">Approved — ready to pay</span>{% elif s.status == "paid" %}<span class="ux-chip ux-chip--green">Paid {{ s.paid_at|date:"j M" }}</span>{% else %}<span class="ux-chip">{{ s.get_status_display }}</span>{% endif %}</div>
         </div>
         <div class="ux-row__actions"><span class="uxf-sched-amount">{{ s.total|naira }}</span><a class="btn btn-sm btn-subtle" href="{% url 'honoraria_sched:detail' s.pk %}">Open</a></div>
       </li>

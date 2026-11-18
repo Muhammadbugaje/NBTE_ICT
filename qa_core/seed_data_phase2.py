@@ -447,6 +447,14 @@ TEMPLATES = [
     ("onboarding.cleared", "in_app", "All departments cleared {{ reference }}",
      "Your institutional processing fee is now due. Open Payments to download the slip or pay online.",
      "Tells the institution clearance is complete."),
+    ("onboarding.cleared_for_qa", "in_app", "{{ institution }} is cleared for quality assurance",
+     "Onboarding is complete ({{ reference }}). NBTE will now arrange the quality assurance visit. Your institution "
+     "is approved when the Executive Secretary gives final approval.",
+     "v2.3: tells the institution onboarding is complete (approval comes at the end of SOP-03)."),
+    ("onboarding.cleared_for_qa", "email", "NBTE: {{ institution }} is cleared for quality assurance",
+     "<p>Onboarding application <strong>{{ reference }}</strong> is complete.</p><p>NBTE will now arrange the "
+     "quality assurance visit. Your institution is approved when the Executive Secretary gives final approval.</p>",
+     "v2.3: e-mail when onboarding is complete."),
     ("payment.issued", "in_app", "New bill: {{ description }}",
      "{{ reference }} for {{ amount }} is due by {{ due }}. Download the slip or pay online from Payments.",
      "Tells institution users a bill was issued."),
@@ -534,6 +542,8 @@ RULES = [  # event, recipient kind, template code, channel
     ("onboarding.returned", "institution_users", "onboarding.returned", "in_app"),
     ("onboarding.returned", "institution_users", "onboarding.returned", "email"),
     ("onboarding.cleared", "institution_users", "onboarding.cleared", "in_app"),
+    ("onboarding.cleared_for_qa", "institution_users", "onboarding.cleared_for_qa", "in_app"),
+    ("onboarding.cleared_for_qa", "institution_users", "onboarding.cleared_for_qa", "email"),
     ("payment.issued", "institution_users", "payment.issued", "in_app"),
     ("payment.issued", "institution_users", "payment.issued", "email"),
     ("payment.claimed", "role", "payment.claimed", "in_app"),

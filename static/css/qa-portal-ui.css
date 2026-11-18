@@ -520,91 +520,141 @@
   line-height: 1.4;
 }
 
+/* Payment status: a plain vertical stepper. 28px markers, one hairline
+   connector through their centres, no gradients. done = solid green + white
+   check, now = amber ring with a soft pulse, todo = neutral outline. */
 .qa-portal .qa-pstatus > .qa-stl {
   gap: 0;
-  padding: 20px 20px 22px;
+  padding: 18px 20px 20px;
 }
 
 .qa-portal .qa-pstatus .qa-stl__i {
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 0 12px;
-  padding-bottom: 14px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 0 14px;
+  align-items: start;
+  padding-bottom: 20px;
+}
+
+.qa-portal .qa-pstatus .qa-stl__i:last-child {
+  padding-bottom: 0;
 }
 
 .qa-portal .qa-pstatus .qa-stl__i::before {
-  left: 17px;
-  top: 38px;
-  bottom: 0;
+  left: 13px;
+  top: 32px;
+  bottom: 4px;
   width: 2px;
-  background: color-mix(in srgb, var(--text) 13%, var(--surface));
+  border-radius: 2px;
+  background: var(--border-strong, var(--border));
 }
 
 .qa-portal .qa-pstatus .qa-stl__i.is-done::before {
-  background: color-mix(in srgb, var(--qa-c-green) 44%, var(--border));
+  background: var(--qa-c-green, var(--success));
 }
 
-.qa-portal .qa-pstatus .qa-stl__dot {
+.qa-portal .qa-pstatus .qa-stl .qa-stl__dot {
+  /* ".qa-stl span { display: block }" used to win here and push the icon into the corner */
+  display: grid;
+  place-items: center;
+  margin: 0;
+  position: relative;
   z-index: 1;
-  width: 34px;
-  height: 34px;
-  border: 1px solid color-mix(in srgb, var(--text) 14%, var(--surface));
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--border-strong, var(--border));
   border-radius: 50%;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--surface) 82%, transparent), color-mix(in srgb, var(--text) 5%, var(--surface)));
-  color: var(--text-muted);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.58), 0 2px 6px rgba(18,28,24,.1);
+  background: var(--surface);
+  color: var(--text-subtle, var(--text-muted));
+  box-shadow: none;
 }
 
-.qa-portal .qa-pstatus .qa-stl__i.is-done .qa-stl__dot {
-  border-color: color-mix(in srgb, var(--qa-c-green) 38%, transparent);
-  background:
-    radial-gradient(circle at 32% 20%, rgba(255,255,255,.48), transparent 58%),
-    linear-gradient(145deg, color-mix(in srgb, var(--qa-c-green) 80%, white), var(--qa-c-green));
+.qa-portal .qa-pstatus .qa-stl .qa-stl__dot svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.qa-portal .qa-pstatus .qa-stl .qa-stl__i.is-done .qa-stl__dot {
+  border-color: var(--qa-c-green, var(--success));
+  background: var(--qa-c-green, var(--success));
   color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 2px 8px color-mix(in srgb, var(--qa-c-green) 24%, transparent);
+  box-shadow: none;
 }
 
-.qa-portal .qa-pstatus .qa-stl__i.is-now .qa-stl__dot {
-  border-color: color-mix(in srgb, var(--qa-c-amber) 46%, transparent);
-  background:
-    radial-gradient(circle at 32% 20%, rgba(255,255,255,.5), transparent 58%),
-    linear-gradient(145deg, color-mix(in srgb, var(--qa-c-amber) 74%, white), var(--qa-c-amber));
-  color: #352500;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 0 0 4px color-mix(in srgb, var(--qa-c-amber) 13%, var(--surface)), 0 2px 8px color-mix(in srgb, var(--qa-c-amber) 22%, transparent);
+.qa-portal .qa-pstatus .qa-stl .qa-stl__i.is-now .qa-stl__dot {
+  border: 2px solid var(--qa-c-amber, var(--warning));
+  background: color-mix(in srgb, var(--qa-c-amber, var(--warning)) 12%, var(--surface));
+  color: color-mix(in srgb, var(--qa-c-amber, var(--warning)) 62%, var(--text));
+  box-shadow: none;
+}
+
+.qa-portal .qa-pstatus .qa-stl__i.is-now .qa-stl__dot::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px solid var(--qa-c-amber, var(--warning));
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  animation: qa-stl-pulse 2.2s ease-out infinite;
+}
+
+@keyframes qa-stl-pulse {
+  0% { opacity: .55; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(1.5); }
 }
 
 .qa-portal .qa-pstatus .qa-stl__i > div {
-  align-self: stretch;
+  align-self: start;
   min-width: 0;
-  padding: 8px 11px;
-  border: 1px solid color-mix(in srgb, var(--qa-c-green) 13%, var(--border));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--qa-c-green) 3.5%, var(--surface));
-}
-
-.qa-portal .qa-pstatus .qa-stl__i.is-now > div {
-  border-color: color-mix(in srgb, var(--qa-c-amber) 34%, var(--border));
-  background: color-mix(in srgb, var(--qa-c-amber) 8%, var(--surface));
+  padding: 4px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
 }
 
 .qa-portal .qa-pstatus .qa-stl b {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
   color: var(--text);
-  font-size: .8125rem;
-  font-weight: 700;
-  line-height: 1.4;
+  font-size: .875rem;
+  font-weight: 650;
+  line-height: 1.43;
 }
 
-.qa-portal .qa-pstatus .qa-stl span {
-  margin-top: 2px;
+.qa-portal .qa-pstatus .qa-stl__i.is-todo b {
   color: var(--text-muted);
-  font-size: .75rem;
+  font-weight: 600;
+}
+
+.qa-portal .qa-pstatus .qa-stl__i.is-now b::after {
+  content: "Now";
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--qa-c-amber, var(--warning)) 18%, var(--surface));
+  color: color-mix(in srgb, var(--qa-c-amber, var(--warning)) 55%, var(--text));
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  line-height: 1.5;
+}
+
+.qa-portal .qa-pstatus .qa-stl__i > div > span {
+  margin-top: 1px;
+  color: var(--text-muted);
+  font-size: .78125rem;
   line-height: 1.45;
 }
 
-.qa-portal .qa-pstatus .qa-stl__dot svg {
-  width: 15px;
-  height: 15px;
+@media (prefers-reduced-motion: reduce) {
+  .qa-portal .qa-pstatus .qa-stl__i.is-now .qa-stl__dot::after { animation: none; }
 }
+html[data-motion="off"] .qa-portal .qa-pstatus .qa-stl__i.is-now .qa-stl__dot::after,
+html[data-motion="reduced"] .qa-portal .qa-pstatus .qa-stl__i.is-now .qa-stl__dot::after { animation: none; }
 
 @media (max-width: 767px) {
   .qa-portal {

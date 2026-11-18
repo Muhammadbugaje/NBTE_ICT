@@ -182,16 +182,21 @@ def _requirements_ctx(request, **extra):
         qs = qs.filter(name__icontains=q)
     programme_names = sorted(set(CatalogueItem.objects.exclude(programme_name="")
                                  .values_list("programme_name", flat=True)))
+    master_names = ProgrammeMaster.objects.filter(is_active=True).values_list("name", flat=True).order_by("name")[:400]
+    from core import importdiff
+
+    spec = importdiff.get_spec("curriculum_requirements")
     ctx = {
         **_nav_ctx(request, "requirements"),
         "page": paginate(request, qs),
         "filters": f,
-        "items": list(qs[:300]),
         "programmes": programme_names,
-        "master_names": list(ProgrammeMaster.objects.filter(is_active=True).values_list(
-            "name", flat=True).order_by("name")[:400]),
+        # The one programme list the add form offers: the master list plus any
+        # name already in the catalogue (so the form needs no free-text name).
+        "programme_options": sorted(set(master_names) | set(programme_names), key=str.lower),
         "kinds": CatalogueItem.KIND_CHOICES,
         "show": show,
+        "can_import": bool(spec is not None and spec.can_use(request.user)),
     }
     ctx.update(extra)
     return ctx
@@ -202,7 +207,25 @@ def _requirements_ctx(request, **extra):
 def requirements(request):
     ctx = _requirements_ctx(request)
     return render_qa(request, "institutions/programmes/requirements.html", ctx,
-                     {"qa-panel": "institutions/programmes/_requirements_panel.html"})
+                     {"qa-panel": "institutions/programmes/_requirements_panel.html",
+                      "req-rows": "institutions/programmes/_requirements_rows.html"})
+
+
+def _requirements_done(request, kind, title, body="", **params):
+    """Answer an add / retire. HTMX: a toast, and on success the list is
+    reloaded in place (an error leaves the form as typed). No JS: redirect."""
+    import json
+
+    from django.http import HttpResponse
+
+    dest = _filtered("qa_programmes:requirements", **params)
+    if request.headers.get("HX-Request", "").lower() == "true":
+        response = HttpResponse(status=204)
+        if kind != "error":
+            response["HX-Location"] = json.dumps({"path": dest, "target": "#qa-panel"})
+    else:
+        response = redirect(dest)
+    return toast(response, kind, title, body)
 
 
 def _catalogue_perm(user):
@@ -216,18 +239,22 @@ def requirements_add(request):
     from institutions.models import ProgrammeCategory
 
     p = request.POST
+    # One programme control: the add form posts the chosen programme as
+    # ``programme_name``; an older form (or a filtered page) may send ``programme``.
+    programme_name = (p.get("programme_name") or p.get("programme") or "").strip()
     try:
         category = ProgrammeCategory.objects.filter(pk=p.get("category") or 0).first()
-        item = create_item(user=request.user, category=category, programme_name=p.get("programme_name", ""),
+        item = create_item(user=request.user, category=category, programme_name=programme_name,
                            kind=p.get("kind", ""), name=p.get("name", ""),
                            required_quantity=p.get("required_quantity", ""), unit=p.get("unit", "no."),
                            weight=p.get("weight", ""), min_spec=p.get("min_spec", ""),
                            is_critical=p.get("is_critical") == "on")
     except (ValidationError, PermissionDenied) as exc:
-        return _rejected(exc, "qa_programmes:requirements", "Not added", programme=p.get("programme_name", ""))
-    return toast(redirect(_filtered("qa_programmes:requirements", programme=item.programme_name or "")),
-                 "success", f"{item.name} added",
-                 "A new requirement version; SSQs already submitted keep the figures they were opened with.")
+        return _requirements_done(request, "error", "Not added",
+                                  "; ".join(getattr(exc, "messages", None) or [str(exc)]), programme=programme_name)
+    return _requirements_done(request, "success", f"{item.name} added",
+                              "SSQs already submitted keep the figures they were opened with.",
+                              programme=item.programme_name or "")
 
 
 @require(_catalogue_perm)  # type: ignore[arg-type]
@@ -241,6 +268,7 @@ def requirements_retire(request, pk):
     try:
         retire_item(item, user=request.user)
     except (ValidationError, PermissionDenied) as exc:
-        return _rejected(exc, "qa_programmes:requirements", "Not retired", programme=name)
-    return toast(redirect(_filtered("qa_programmes:requirements", programme=name)),
-                 "success", "Requirement retired", "Existing quantitative targets keep it.")
+        return _requirements_done(request, "error", "Not retired",
+                                  "; ".join(getattr(exc, "messages", None) or [str(exc)]), programme=name)
+    return _requirements_done(request, "success", "Requirement retired", "SSQs already submitted keep it.",
+                              programme=name)

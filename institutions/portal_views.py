@@ -7,6 +7,7 @@ from __future__ import annotations
 import datetime
 
 from django import forms
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login
 from django.core.exceptions import ValidationError
@@ -656,8 +657,25 @@ def _upload_lock_reason(request, inst, row):
         from accreditation import onboarding_v3
 
         if onboarding_v3.document_upload_blocked(app):
-            return "Uploads unlock after NBTE Finance confirms the institutional and processing fees."
+            return _lock_reason_for(app, row)
     return ""
+
+
+def _lock_reason_for(app, row):
+    """Why uploads are closed, in the words that match where the application is."""
+    if row.get("state") in ("accepted", "approved", "cleared"):
+        return ""   # nothing to do on an approved document — no lock banner
+    status = app.status
+    if status == "draft":
+        return "Uploads open as soon as your Chief Executive signs the declaration on the Application page."
+    if status in ("fee_due", "payment_pending_confirmation"):
+        return "Uploads unlock after NBTE Finance confirms the institutional and processing fees."
+    if status in ("document_review", "submitted", "clearance"):
+        return ("Your documents are with NBTE for review. You can replace one only if NBTE returns it — "
+                "it then reopens here with the reviewer's remark.")
+    if status == "withdrawn":
+        return "This application was cancelled."
+    return "Your documents have been reviewed and are now locked."
 
 
 @institution_required
@@ -741,8 +759,13 @@ class RegistrationForm(DynamicFormMixin, InstitutionProfileFields):
     ce_full_name = forms.CharField(max_length=150, label="Chief Executive's full name")
     ce_email = forms.EmailField(label="Chief Executive's e-mail")
     ce_phone = forms.CharField(max_length=30, label="Chief Executive's phone")
-    password1 = forms.CharField(label="Password", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
-    password2 = forms.CharField(label="Confirm password", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+    # render_value: a server-side error elsewhere must not silently blank both
+    # password boxes — the next press of Register was then blocked by the
+    # browser on an empty password the user never noticed ("button does nothing").
+    password1 = forms.CharField(label="Password", widget=forms.PasswordInput(
+        attrs={"autocomplete": "new-password"}, render_value=True))
+    password2 = forms.CharField(label="Confirm password", widget=forms.PasswordInput(
+        attrs={"autocomplete": "new-password"}, render_value=True))
     declaration = forms.BooleanField(label="I am authorised to register this institution with NBTE, and the "
                                            "information I give is true.")
     website_hp = forms.CharField(required=False, widget=forms.TextInput(attrs={"tabindex": "-1",
@@ -834,7 +857,8 @@ def register(request):
     form = RegistrationForm(request.POST or None)
     if request.method == "POST" and enabled:
         ip = ratelimit.client_ip(request)
-        if ratelimit.is_limited("qa-register", ip, 5):
+        limit = int(config.get("qa.portal.register_rate_limit", 5 if not settings.DEBUG else 50) or 5)
+        if ratelimit.is_limited("qa-register", ip, limit):
             form.add_error(None, "Too many registrations from this network. Try again in an hour.")
         elif form.is_valid():
             ratelimit.hit("qa-register", ip, 3600)
@@ -863,9 +887,11 @@ def register(request):
             else:
                 user = inst.primary_user()
                 login(request, user, backend="accounts.backends.RolePermissionBackend")
+                ce_line = ("The Chief Executive's set-up link was sent to their own e-mail. "
+                           if services.ce_auto_email() else
+                           "NBTE will send the Chief Executive their set-up link. ")
                 messages.success(request, f"Welcome! {inst.name} is registered (code {inst.code}). "
-                                          "The Chief Executive's set-up link was sent to their own e-mail. "
-                                          "Next: finish setup.")
+                                          f"{ce_line}Next: finish setup.")
                 request.session["qa_celebrate"] = inst.code   # v2.2: one light confetti burst on arrival
                 return redirect("qa_portal:setup")
     from qa_core.portal_public import public_context
@@ -873,6 +899,7 @@ def register(request):
     ctx = public_context(request, "register")  # the public layout: nav, contacts, registration flag
     ctx.update(_shell_context(request, "register", form=form, enabled=enabled,
                               registration_closed_message=ctx["registration_closed_message"],
+                              ce_auto_email=services.ce_auto_email(),
                               **_register_lga_context(form)))
     return render(request, "qa_portal/register.html", ctx)
 
@@ -908,6 +935,15 @@ class ManagementStaffForm(QAForm):
                 available_ids.append(selected_id)
             roles = roles.filter(pk__in=available_ids)
         self.fields["role"].queryset = roles.order_by("sort_order", "name")
+        # Mark e-mail / phone as required up front when every role on offer
+        # needs them (the save still checks per role in profile.save_member);
+        # before, the user only found out after pressing Save.
+        roles_list = list(self.fields["role"].queryset)
+        for name, flag in (("email", "requires_email"), ("phone", "requires_phone")):
+            if roles_list and all(getattr(r, flag, False) for r in roles_list):
+                self.fields[name].required = True
+            elif any(getattr(r, flag, False) for r in roles_list):
+                self.fields[name].help_text = "Required for most roles."
 
 
 def _can_edit_team(request):

@@ -106,7 +106,25 @@ def naira(value):
 
 @register.filter
 def humanize_code(value):
-    return str(value or "").replace("_", " ").replace("-", " ").strip().capitalize()
+    raw = str(value or "")
+    if raw in PLAIN_CODES:  # v2.3: the codes people see most read as words, not identifiers
+        return PLAIN_CODES[raw]
+    text = raw.replace("_", " ").replace("-", " ").strip().capitalize()
+    for short, full in (("Ssq", "SSQ"), (" ssq", " SSQ"), (" qa ", " QA "), ("Qa ", "QA "), (" ict", " ICT"),
+                        (" es ", " ES "), ("Es ", "ES "), (" cqac", " CQAC"), ("Cqac", "CQAC")):
+        text = text.replace(short, full)
+    return text
+
+
+PLAIN_CODES = {  # workflow action and stage codes → plain words
+    "start": "Started", "submit": "Submitted", "route_to_fee": "Sent for the fee",
+    "payment_confirmed": "Payment confirmed", "auto_open_ssq": "Self-studies opened",
+    "submit_ssqs": "Self-studies submitted", "auto_open_case": "QA case opened",
+    "draft": "Draft", "submitted": "Submitted", "fee_due": "Fee due", "fee_confirmed": "Fee confirmed",
+    "payment_pending_confirmation": "Payment awaiting confirmation", "ssq_in_progress": "Self-studies in progress",
+    "ssq_submitted": "Self-studies submitted", "in_workflow": "In the SOP-03 workflow",
+    "qa_fee_due": "QA fee due", "withdrawn": "Withdrawn", "returned": "Returned", "approved": "Approved",
+}
 
 
 @register.filter
@@ -364,3 +382,60 @@ def group_title(group):
 def group_blurb(group):
     name = (group or "General").replace("QA · ", "")
     return GROUP_COPY.get(name, (name, ""))[1]
+
+
+# ---------------------------------------------------------------------------
+# Inspection pages: one colour language for every status (static/css/qa-vx.css)
+#   green = done / healthy      amber = waiting on someone    blue = planned / moving
+#   red = stopped / sent back   violet = needs a decision     teal = field work    slate = history
+# ---------------------------------------------------------------------------
+_VX_TONES = {
+    # resource persons
+    "nominated": "amber", "vetted": "blue", "active": "green", "suspended": "red", "retired": "slate",
+    "rejected": "red",
+    # QA mappings
+    "proposed": "amber", "released": "slate", "overridden": "violet",
+    # inspections (visits)
+    "scheduled": "blue", "in_progress": "teal", "completed": "green", "closed": "green", "cancelled": "red",
+    # post-visit reports and member reports
+    "draft": "slate", "submitted": "amber", "division_endorsed": "amber", "deputy_verified": "amber",
+    "director_endorsed": "green", "returned": "red", "accepted": "green", "skipped": "slate",
+    # duties
+    "ssq_review": "violet", "physical_verification": "blue", "resource_inspection": "teal", "tracking": "amber",
+    # person types
+    "resource_person": "teal", "qa_personnel": "blue", "staff": "indigo",
+}
+_VX_LABELS = {"closed": "Visit recorded", "submitted": "With the Division Head",
+              "division_endorsed": "With the Deputy Director", "deputy_verified": "With the Director",
+              "director_endorsed": "Endorsed", "draft": "Being written"}
+
+
+@register.filter
+def vx_tone(status):
+    """`vx-t-<colour>` for an inspection-area status, duty or person type."""
+    return "vx-t-" + _VX_TONES.get(str(status or ""), "slate")
+
+
+@register.filter
+def vx_label(status):
+    """Plain words for an inspection / post-visit report status."""
+    raw = str(status or "")
+    return _VX_LABELS.get(raw) or humanize_code(raw) or "—"
+
+
+_HONORIFICS = {"dr", "mr", "mrs", "ms", "miss", "prof", "professor", "engr", "arc", "barr", "alhaji", "alhaja",
+               "hajiya", "chief", "mallam", "malam", "pharm", "rev", "sir", "dame", "hon"}
+
+
+@register.filter
+def greet_name(user):
+    """A friendly name for greetings: "Amina", or "Dr. Obi" when the first
+    name holds only a title (accounts created from "Dr. Chukwuma Obi")."""
+    first = (getattr(user, "first_name", "") or "").strip()
+    last = (getattr(user, "last_name", "") or "").strip()
+    if first and first.rstrip(".").lower() in _HONORIFICS:
+        parts = last.split()
+        if len(parts) > 1:  # "Dr." + "Chukwuma Obi" -> "Chukwuma"
+            return parts[0]
+        return f"{first if first.endswith('.') else first + '.'} {last}".strip()
+    return first

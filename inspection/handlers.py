@@ -110,6 +110,11 @@ class EditQAMappingHandler(ActionHandler):
     def snapshot(self, target):
         return {"name": target.name} if target is not None else {}
 
+    def clash_key(self, payload):
+        # Several people are mapped to one institution's visit: each mapping
+        # is its own confirmation and must not block the others.
+        return str(payload.get("mapping_id") or "")
+
     def validate(self, target, payload):
         mapping = self._mapping(payload)
         if mapping is None or (target is not None and mapping.case.institution_id != target.pk):

@@ -73,3 +73,46 @@ def platform_banners(context):
     except Exception:  # noqa: BLE001 — a cache outage must never break a page
         out["banners"] = []
     return out
+
+
+@register.simple_tag(takes_context=True)
+def reminder_items(context):
+    """Everything the corner reminder card lists (partials/reminder_card.html):
+    the profile-completeness nudge plus the signature / bank prompts above.
+    Which rows show is decided here, exactly as the old banners decided it."""
+    request = context.get("request")
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated:
+        return []
+    items = []
+    match = getattr(request, "resolver_match", None)
+    view_name = match.view_name if match is not None else ""
+    try:
+        from .ux_tags import profile_nudge
+
+        nudge = profile_nudge(context)
+        if nudge and nudge.get("banner") and view_name not in ("core:home", "accounts:profile"):
+            missing = ", ".join(nudge["missing_top"]).lower()
+            if nudge["missing_more"]:
+                missing += f" and {nudge['missing_more']} more"
+            items.append({"key": "profile", "tone": "warn", "icon": "profile", "percent": nudge["percent"],
+                          "title": "Complete your profile",
+                          "text": f"{nudge['percent']}% done, {nudge['threshold']}% needed. Missing: {missing}.",
+                          "url": nudge["profile_url"], "action": "Complete"})
+    except Exception:  # noqa: BLE001 — a reminder must never break a page
+        pass
+    short = {"sig-required": ("Required for your approvals.", "Add"),
+             "sig-remind": ("Your documents and memos will carry it.", "Add"),
+             "bank-add": ("So NBTE can pay you.", "Add")}
+    try:
+        from django.urls import reverse
+
+        for b in platform_banners(context)["banners"]:
+            text, action = short.get(b["key"], (b["text"], b["action"]))
+            url = reverse(b["url_name"])
+            items.append({"key": b["key"], "tone": b["tone"], "icon": "bank" if b["key"].startswith("bank") else "sign",
+                          "title": b["title"], "text": text, "full": b["text"], "action": action,
+                          "url": url + ("?change=1" if b.get("confirm") else ""), "confirm": bool(b.get("confirm"))})
+    except Exception:  # noqa: BLE001
+        pass
+    return items

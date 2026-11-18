@@ -5,7 +5,7 @@
   <span class="qa-inst-head__code rp-hero__code" aria-hidden="true">{{ case.institution.code }}</span>
   <div class="rp-hero__main"><span class="qa-eyebrow">{% icon "file" 14 "2.2" %} SOP-03 stage 12 · <a href="{% url 'qa_case:detail' case.pk %}">{{ case.reference }}</a></span>
     <h1 data-qa-focus>{{ report.qa_request_programme.programme }}</h1>
-    <div class="qa-inst-head__meta"><span class="qa-chip {{ report.status|tone }}">{{ report.status|humanize_code }}</span><span>{{ case.institution.name }}</span><span>v{{ report.version }}</span>{% if report.submitted_by %}<span>Submitted by {{ report.submitted_by|who }}</span>{% endif %}</div></div>
+    <div class="qa-inst-head__meta"><span class="vx-chip {{ report.status|vx_tone }}">{{ report.status|vx_label }}</span><span>{{ case.institution.name }}</span><span>v{{ report.version }}</span>{% if report.submitted_by %}<span>Submitted by {{ report.submitted_by|who }}</span>{% endif %}</div></div>
   <div class="rp-hero__stats" aria-label="Report progress">
     <div class="rp-hero__stat rp-hero__stat--ok"><strong>{{ member_counts.accepted }}</strong><span>Accepted</span></div>
     <div class="rp-hero__stat rp-hero__stat--info"><strong>{{ member_counts.submitted }}</strong><span>Awaiting review</span></div>
@@ -86,11 +86,11 @@
           <span class="qa-rowlink__title">{{ row.person }}
             {% if not row.attendee.attended %}<span class="qa-chip qa-tone-danger">Absent</span>
             {% elif not row.member_report %}<span class="qa-chip qa-tone-pending">No portal account</span>
-            {% elif row.member_report.status == "accepted" %}<span class="qa-chip qa-tone-success">{{ row.status }}</span>
-            {% elif row.member_report.status == "submitted" %}<span class="qa-chip qa-tone-info">{{ row.status }}</span>
-            {% elif row.member_report.status == "skipped" %}<span class="qa-chip qa-tone-warn">{{ row.status }}</span>
-            {% elif row.member_report.status == "returned" %}<span class="qa-chip qa-tone-warn">{{ row.status }}</span>
-            {% else %}<span class="qa-chip qa-tone-pending">{{ row.status }}</span>{% endif %}
+            {% elif row.member_report.status == "accepted" %}<span class="vx-chip vx-t-green">{{ row.status }}</span>
+            {% elif row.member_report.status == "submitted" %}<span class="vx-chip vx-t-amber">{{ row.status }}</span>
+            {% elif row.member_report.status == "skipped" %}<span class="vx-chip vx-t-slate">{{ row.status }}</span>
+            {% elif row.member_report.status == "returned" %}<span class="vx-chip vx-t-red">{{ row.status }}</span>
+            {% else %}<span class="vx-chip vx-t-blue">{{ row.status }}</span>{% endif %}
           </span>
           <span class="qa-rowlink__meta">{% if row.attendee.role_on_team %}{{ row.attendee.role_on_team }} · {% endif %}{{ row.attendee.get_duty_display }}</span>
           {% if not row.attendee.attended %}
@@ -170,10 +170,11 @@
       {% if can_write %}
         <form class="qa-form" method="post" action="{% url 'qa_insp:report_save' report.pk %}" hx-post="{% url 'qa_insp:report_save' report.pk %}" hx-target="#qa-panel" novalidate>{% csrf_token %}
           {% include "qa_core/partials/_form_errors.html" with form=form %}
+          {% if form.prefilled %}<div class="qa-callout qa-callout--info v3-prefill" role="status">{% icon "layers" 15 "2.2" %} <span><strong>Started for you from {{ member_digest.count }} accepted attendee report{{ member_digest.count|pluralize }}.</strong> Each line names its author{% if member_digest.recommendation %}; the recommendation is the one most attendees chose{% endif %}. Edit freely — nothing is saved until you press Save.</span></div>{% endif %}
           {% if compile_pending %}<div id="compile-pending" class="qa-callout qa-callout--warn" role="status">Before you can submit the compilation, these attendees still need to submit or have their report accepted: {{ compile_pending|join:", " }}.</div>{% endif %}
           <div class="qa-fields">{% for field in form %}{% include "qa_core/partials/_field.html" with wide=True %}{% endfor %}</div>
           <div class="qa-form-actions rp-compile__actions"><button class="btn btn-subtle" type="submit" name="op" value="save">Save draft</button>
-            <button class="btn btn-primary" type="submit" name="op" value="submit"{% if compile_pending %} disabled aria-describedby="compile-pending"{% endif %}>{% icon "check" 16 %} {% if report.status == "returned" %}Re-submit{% else %}Submit{% endif %} compilation to the Division Head</button></div>
+            <button class="btn btn-primary" type="submit" name="op" value="submit"{% if compile_pending %} disabled aria-describedby="compile-pending"{% endif %}>{% icon "check" 16 %} {% if report.status == "returned" %}Re-submit{% else %}Submit{% endif %} compilation for endorsement</button></div>
         </form>
       {% else %}
         <dl class="qa-dl">{% for key, label, help in sections %}<div><dt>{{ label }}</dt><dd>{{ report.findings|get_item:key|default:"—"|linebreaksbr }}</dd></div>{% endfor %}

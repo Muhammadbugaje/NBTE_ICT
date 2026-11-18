@@ -6,18 +6,7 @@
   <span aria-current="page">{{ policy.label }}</span>
 </nav>
 
-<header class="qa-hero qa-hero--action">
-  <div>
-    <span class="qa-eyebrow">{% icon handler.icon|default:"edit" 14 "2.2" %} {{ policy.menu_group }}</span>
-    <h1 data-qa-focus>{{ policy.label }}</h1>
-    {% if inst %}<p class="qa-detail-head__target">{{ inst.name }} ({{ inst.code }}) · {{ inst.status_label }} · {{ inst.handling_department.name }}</p>
-    {% elif handler.summary %}<p>{{ handler.summary }}</p>{% endif %}
-  </div>
-  <div class="qa-detail-head__chips qa-hero__chips">
-    {% if policy.requires_second_officer %}<span class="qa-chip qa-chip--dual">{% icon "users" 13 %} Needs a second officer</span>{% else %}<span class="qa-chip">Single step, audited</span>{% endif %}
-    {% if policy.requires_second_officer %}<a class="qa-chip qa-chip--button" href="{{ confirm_url }}">Confirm list {% icon "arrow" 12 "2.4" %}</a>{% endif %}
-  </div>
-</header>
+{% include "institutions/_action_head.html" with step="details" %}
 
 {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not started" message=error %}{% endif %}
 {% if not available %}{% include "qa_core/partials/_callout.html" with kind="warn" title="Not available" message=why %}{% endif %}
@@ -29,7 +18,7 @@
 
 <div class="qa-cols">
   <section class="qa-card qa-actcard-form" aria-labelledby="act-form-title">
-    <header class="qa-card__head"><div><h2 id="act-form-title">{% if inst and handler.summary %}{{ handler.summary }}{% else %}Details{% endif %}</h2>{% if policy.description %}<p>{{ policy.description }}</p>{% endif %}</div>{% if form.fields %}<span class="qa-small qa-muted"><span aria-hidden="true">*</span> required</span>{% endif %}</header>
+    <header class="qa-card__head"><div><h2 id="act-form-title">{% if form.numbered_steps %}Three steps{% else %}Details{% endif %}</h2><p>{% if policy.requires_second_officer %}Nothing changes when you send this. A second officer sees it first.{% elif policy.action_code == "institutions.impersonate" %}You only look; nothing on the institution's side can be changed.{% else %}This is applied as soon as you press the button.{% endif %}</p></div>{% if form.fields %}<span class="qa-small qa-muted"><span aria-hidden="true">*</span> required</span>{% endif %}</header>
     <div class="qa-card__body">
       <form method="post" class="qa-form qa-actform" novalidate{% if form.is_multipart %} enctype="multipart/form-data" hx-encoding="multipart/form-data"{% endif %}
             {% if inst %}action="{% url 'qa_inst:action' inst.code policy.action_code %}" hx-post="{% url 'qa_inst:action' inst.code policy.action_code %}"{% else %}action="{% url 'qa_inst:add_tvet' %}" hx-post="{% url 'qa_inst:add_tvet' %}"{% endif %}
@@ -40,7 +29,8 @@
         {% for title, fields in form|fieldsets_of %}
           <fieldset class="qa-fieldset qa-fs" id="act-fs-{{ forloop.counter }}">
             {% if title %}<legend class="qa-fs__legend">
-              {% if title == "Institution" %}<span class="qa-tile qa-tile--sm qa-tile--blue" aria-hidden="true">{% icon "building" 15 "2.3" %}</span>
+              {% if form.numbered_steps %}<span class="vx-stepnum" aria-hidden="true">{{ forloop.counter }}</span>
+              {% elif title == "Institution" %}<span class="qa-tile qa-tile--sm qa-tile--blue" aria-hidden="true">{% icon "building" 15 "2.3" %}</span>
               {% elif title == "Location" %}<span class="qa-tile qa-tile--sm qa-tile--teal" aria-hidden="true">{% icon "map" 15 "2.3" %}</span>
               {% elif title == "Contacts" %}<span class="qa-tile qa-tile--sm qa-tile--green" aria-hidden="true">{% icon "phone" 15 "2.3" %}</span>
               {% elif title == "Chief executive and head of ICT" %}<span class="qa-tile qa-tile--sm qa-tile--green" aria-hidden="true">{% icon "users" 15 "2.3" %}</span>
@@ -48,7 +38,7 @@
               {% elif title == "Why" %}<span class="qa-tile qa-tile--sm qa-tile--orange" aria-hidden="true">{% icon "message" 15 "2.3" %}</span>
               {% else %}<span class="qa-tile qa-tile--sm qa-tile--slate" aria-hidden="true">{% icon "edit" 15 "2.3" %}</span>{% endif %}
               <span class="qa-fs__title">{{ title }}
-                <small>{% if title == "Institution" %}Name, type and registration details.{% elif title == "Location" %}Where the institution is. Pick the state first to get its LGAs.{% elif title == "Contacts" %}How NBTE reaches the institution.{% elif title == "Portal administrator" %}The person who will sign in to the QA portal for the institution.{% elif title == "Why" %}The second officer reads this before confirming.{% endif %}</small>
+                <small>{% if form.fieldset_hints %}{{ form.fieldset_hints|get_item:title|default:"" }}{% elif title == "Institution" %}Name, type and registration details.{% elif title == "Location" %}Where the institution is. Pick the state first to get its LGAs.{% elif title == "Contacts" %}How NBTE reaches the institution.{% elif title == "Portal administrator" %}The person who will sign in to the QA portal for the institution.{% elif title == "Why" %}The second officer reads this before confirming.{% endif %}</small>
               </span>
             </legend>{% endif %}
             <div class="qa-fields">
@@ -66,11 +56,31 @@
                 {% endif %}
               {% endfor %}
             </div>
+            {% if forloop.first and form.programme_facts %}
+            {# Read-only: what the chosen programme says today. Filled by static/js/qa-action.js from the JSON below (no request). #}
+            <div class="vx-progcard" data-vx-progcard hidden aria-live="polite">
+              <div class="vx-progcard__head"><span class="vx-progcard__label">On the file today</span><span class="qa-chip" data-vx-prog="status"></span></div>
+              <strong class="vx-progcard__name" data-vx-prog="name"></strong>
+              <dl class="vx-progcard__facts">
+                <div><dt>Level</dt><dd data-vx-prog="level"></dd></div>
+                <div><dt>Category</dt><dd data-vx-prog="category"></dd></div>
+                <div><dt>Professional body</dt><dd data-vx-prog="body"></dd></div>
+                <div><dt>NBTE list entry</dt><dd data-vx-prog="master"></dd></div>
+              </dl>
+              <p class="vx-progcard__after" data-vx-prog-after hidden>{% icon "arrow" 14 "2.4" %} <span>After confirmation it becomes <strong data-vx-prog="after"></strong></span></p>
+            </div>
+            {{ form.programme_facts|json_script:"vx-prog-facts" }}
+            {% endif %}
           </fieldset>
         {% endfor %}
+        {% if policy.requires_second_officer %}
+        <div class="vx-sendnote" role="note">{% icon "shield" 18 "2.1" %}
+          <div><strong>What happens when you send this</strong>
+            <p>Nothing changes yet. The request goes to the waiting list, where a second officer{% if policy.same_department_required %} in the same department{% endif %} sees the current and the new details side by side and confirms or rejects. You cannot confirm your own request; you can withdraw it while it waits.</p></div></div>
+        {% endif %}
         <datalist id="qa-lga-options">{% for lga in lgas %}<option value="{{ lga }}"></option>{% endfor %}</datalist>
         <div class="qa-form-actions qa-form-actions--sticky">
-          <button type="submit" class="btn btn-primary"{% if not available or not allowed %} disabled{% endif %}>
+          <button type="submit" class="btn {% if policy.action_code in "institutions.delist institutions.wipe_requests institutions.revert_qa_history institutions.suspend_portal_access institutions.drop_programmes" %}btn-danger{% else %}btn-primary{% endif %}"{% if not available or not allowed %} disabled{% endif %}>
             {% if policy.action_code == "institutions.impersonate" %}{% icon "eye" 16 %} Open the portal (read-only){% elif policy.requires_second_officer %}{% icon "shield" 16 %} Send for confirmation{% else %}{% icon "check" 16 "2.4" %} Do it now{% endif %}
           </button>
           <a class="btn btn-subtle" href="{% if inst %}{% url 'qa_inst:detail' inst.code %}{% else %}{% url 'qa_inst:list' %}{% endif %}">Cancel</a>
@@ -93,7 +103,7 @@
           <ol class="qa-twostep">
             <li><strong>You start it</strong> with a reason. Nothing changes yet; the item shows “Change pending”.</li>
             <li><strong>A second officer</strong> with the confirm permission{% if policy.confirmer_min_rank %} (rank {{ policy.confirmer_min_rank }}+){% endif %}{% if policy.same_department_required %}, in the same department{% endif %}, sees the before/after and confirms or rejects.</li>
-            <li><strong>It is applied at once</strong>, in one transaction. If the record changed meanwhile, it fails safely — never applied over newer data.</li>
+            <li><strong>It is applied at once</strong>, in one transaction. If the record changed meanwhile, it fails safely and is never applied over newer data.</li>
           </ol>
           <p class="qa-small qa-muted">Unconfirmed requests expire after {% if policy.expires_after_hours %}{{ policy.expires_after_hours }}{% else %}the configured{% endif %} hours. You can never confirm your own request.</p>
         {% elif policy.action_code == "institutions.impersonate" %}

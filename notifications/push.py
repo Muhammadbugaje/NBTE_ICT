@@ -241,6 +241,18 @@ def queue(notifications):
     if not ids:
         return
 
+    from django.conf import settings
+
+    if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False) and not getattr(settings, "EMAIL_DELIVERY_INLINE", False):
+        # No worker (dev): don't let the push service hold up the request.
+        from core import background
+
+        from . import push as _push
+
+        for pk in ids:
+            background.submit(_push.send_notification, pk, label=f"push {pk}")
+        return
+
     def _dispatch():
         from .tasks import send_push_task
 

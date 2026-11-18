@@ -607,6 +607,9 @@ class QARequestProgramme(InstitutionScopedModelMixin, TimeStampedModel):
     dropped_reason = models.TextField(blank=True)
     dropped_at = models.DateTimeField(null=True, blank=True)
     is_new_programme = models.BooleanField(default=False)
+    # v2.3 (owner decision 5): an HND requested without an accredited ND in the same
+    # field is allowed, but the institution must say why (shown to NBTE reviewers).
+    prerequisite_note = models.TextField(blank=True)
     clearance_status = models.CharField(max_length=10, choices=CLEARANCE_CHOICES, blank=True, default="")
     clearance_remark = models.TextField(blank=True)
     cleared_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
@@ -933,6 +936,11 @@ class QACase(InstitutionScopedModelMixin, TimeStampedModel):
     # Phase 4
     requires_second_ict_officer = models.BooleanField(
         default=False, help_text="programme_count ≥ qa.assignment.second_ict_officer_threshold (R-04).")
+    # v2.3 (owner decision 2, B5): the Division Director confirms the personnel list
+    # (stage 4) and the visit details (stage 9) for this case. Configurable per case by
+    # the owning department's Director; empty = the Director does it, as before.
+    division_director = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+                                          help_text="Confirms stage 4 and stage 9 for this case (B5).")
     desk_officer = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
                                      help_text="The owning department's officer who builds the cost sheet, "
                                                "personnel list and visit details.")
@@ -1757,6 +1765,9 @@ class VisitFinding(InstitutionScopedModelMixin, TimeStampedModel):
     kind = models.CharField(max_length=10, choices=CatalogueItem.KIND_CHOICES, default=CatalogueItem.EQUIPMENT)
     declared_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     found_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # v2.3 (mockup 4): the not-working counts, declared on the SSQ and found on the visit.
+    declared_not_working = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    found_not_working = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     is_falsified = models.BooleanField(default=False, help_text="Declared but not found: a fine applies.")
     remark = models.CharField(max_length=255, blank=True)
 
@@ -1770,6 +1781,25 @@ class VisitFinding(InstitutionScopedModelMixin, TimeStampedModel):
 
     def __str__(self):
         return f"{self.name}: {self.declared_quantity} declared, {self.found_quantity} found"
+
+    # v2.3: three categories, never mixed (honest institutions are not fined for broken kit).
+    FALSIFIED, DECLINED, DECLARED_DEFECTIVE, CONSISTENT = "falsified", "declined", "declared_defective", "consistent"
+    OUTCOME_LABELS = {FALSIFIED: "Falsified — fine applies", DECLINED: "Declined on the visit (found not working)",
+                      DECLARED_DEFECTIVE: "Declared not working by the institution", CONSISTENT: "Consistent"}
+
+    @property
+    def device_outcome(self):
+        if self.is_falsified:
+            return self.FALSIFIED
+        if (self.found_not_working or 0) > (self.declared_not_working or 0):
+            return self.DECLINED
+        if (self.declared_not_working or 0) > 0:
+            return self.DECLARED_DEFECTIVE
+        return self.CONSISTENT
+
+    @property
+    def device_outcome_label(self):
+        return self.OUTCOME_LABELS[self.device_outcome]
 
 
 class VisitReportForm(InstitutionScopedModelMixin, TimeStampedModel):
@@ -1926,6 +1956,80 @@ class CaseChangeRequest(InstitutionScopedModelMixin, TimeStampedModel):
     @property
     def is_open(self):
         return self.status in self.OPEN
+
+
+class ArtifactVersion(InstitutionScopedModelMixin, models.Model):
+    """v2.3 Phase 2 (owner decision 3): a frozen, read-only copy of a piece of
+    case work, taken when a rollback reopens it.
+
+    The live record keeps its content and opens as the next version for editing
+    (copy-forward); this row keeps exactly what was submitted/signed before.
+    Nothing is blanked or deleted without a version here first. Dated notes can
+    be appended to a frozen version (``ArtifactAddendum``); the version itself
+    never changes."""
+
+    INSTITUTION_PATH = "case__institution"
+
+    KIND_CHOICES = [
+        ("post_visit_report", "Post-visit report"), ("member_report", "Team member report"),
+        ("visit_report_form", "Visit report form"), ("decision", "Decision"),
+        ("visit_attendance", "Visit attendance"), ("cost_sheet", "Cost sheet"),
+        ("personnel_list", "Personnel list"), ("visit_details", "Visit details"), ("other", "Other"),
+    ]
+
+    case = models.ForeignKey("accreditation.QACase", on_delete=models.CASCADE, related_name="artifact_versions")
+    kind = models.CharField(max_length=24, choices=KIND_CHOICES, db_index=True)
+    object_label = models.CharField(max_length=60, help_text="Model label of the live record, e.g. inspection.postvisitreport")
+    object_id = models.PositiveIntegerField(db_index=True)
+    title = models.CharField(max_length=255)
+    version = models.PositiveIntegerField(default=1)
+    data = models.JSONField(default=dict, help_text="The record's fields exactly as they were.")
+    change_request = models.ForeignKey(CaseChangeRequest, null=True, blank=True, on_delete=models.SET_NULL,
+                                       related_name="frozen_versions")
+    reason = models.TextField(blank=True)
+    frozen_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    frozen_at = models.DateTimeField(default=timezone.now)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["case", "kind", "object_id", "-version"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+        indexes = [models.Index(fields=["case", "kind", "object_id"])]
+
+    def __str__(self):
+        return f"{self.title} · v{self.version} (frozen)"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None and not self._state.adding:
+            raise PermissionError("A frozen version never changes; append a note instead.")
+        super().save(*args, **kwargs)
+
+
+class ArtifactAddendum(InstitutionScopedModelMixin, models.Model):
+    """A dated note appended to a frozen version (append-only)."""
+
+    INSTITUTION_PATH = "version__case__institution"
+
+    version = models.ForeignKey(ArtifactVersion, on_delete=models.CASCADE, related_name="addenda")
+    text = models.TextField()
+    author = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    objects = InstitutionScopedManager()
+    unscoped = UnscopedInstitutionManager()
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        base_manager_name = "unscoped"
+        default_manager_name = "objects"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None and not self._state.adding:
+            raise PermissionError("An addendum is append-only.")
+        super().save(*args, **kwargs)
 
 
 # Visit invitations to professional bodies and resource persons (kept in their own module).

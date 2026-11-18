@@ -17,7 +17,7 @@ def body_setup(p4, make_institution):
 
     from institutions.models import ProfessionalBody, Programme
 
-    from . import pb_people as service
+    from institutions import pb_people as service
 
     case = p4.case
     programme = case.qa_request.programmes.first()

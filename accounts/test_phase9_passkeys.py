@@ -212,7 +212,7 @@ def test_institution_passkey_signs_in_on_portal(institution_user, portal_host, m
     _passkey(institution_user)
     c = Client(HTTP_HOST=portal_host)
     r = _auth(c, portal_reverse("qa_portal:passkey_sign_in_begin"), portal_reverse("qa_portal:passkey_sign_in_finish"))
-    assert r.status_code == 200 and r.json()["redirect"] == "/"
+    assert r.status_code == 200 and r.json()["redirect"] in ("/", "/dashboard/")  # "/" is the public landing page
     assert int(c.session["_auth_user_id"]) == institution_user.pk
 
 

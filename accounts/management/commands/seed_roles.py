@@ -133,6 +133,8 @@ _MIGRATION_GRANTED = (
     # Phase B: org.seed adds these to the ES / super admin after every migrate.
     "view_all_tasks", "view_all_users", "view_all_ssq",
     "assign_director", "manage_offices", "manage_all_divisions", "manage_grade_levels",
+    # Nominal-roll migrations (staff app) grant these to the ES at migrate time.
+    "promote_staff", "rollback_promotion", "override_promotion_step", "print_staff_id",
 )
 
 

@@ -1,16 +1,29 @@
 {% load qa_tags %}
 {% include "institutions/pb/_subnav.html" %}
 <header class="qa-hero"><div>
+  <span class="qa-eyebrow">{% icon "shield" 14 "2.2" %} Joint quality assurance</span>
   <h1 data-qa-focus>Professional bodies</h1>
-  <p>Regulatory councils that assess some programmes with NBTE. A QA request for a mapped programme becomes a joint QA exercise, and the body is told when the case opens.</p>
+  <p>Regulatory councils that assess some programmes with NBTE. Open a body to manage the programmes it regulates.</p>
   <div class="qa-hero__actions btn-group">
     {% if can_manage %}<a class="btn btn-primary" href="{% url 'qa_pb:body_new' %}" hx-get="{% url 'qa_pb:body_new' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "plus" 16 %} Add a body</a>{% endif %}
-    {% if can_manage %}<a class="btn btn-ghost" href="{% url 'core:import_upload' 'professional_bodies' %}">{% icon "upload" 16 %} Import from Excel</a>{% endif %}
-    <a class="btn btn-ghost" href="{% url 'qa_pb:bodies_export' %}" download>{% icon "download" 16 %} Export to Excel</a>
+    {% if can_import %}
+    <a class="btn btn-ghost" href="{% url 'core:import_upload' 'professional_bodies' %}" title="Upload an edited .xlsx; you see every change before it is applied">{% icon "upload" 16 %} Import bodies (.xlsx)</a>
+    <a class="btn btn-ghost" href="{% url 'qa_pb:bodies_export' %}" download title="Downloads nbte-professional-bodies-(date).xlsx: one row per body with its programme codes">{% icon "download" 16 %} Export bodies (.xlsx)</a>
+    {% else %}
+    {% if can_manage %}<a class="btn btn-ghost" href="{% url 'qa_pb:import' %}" hx-get="{% url 'qa_pb:import' %}" hx-target="#qa-panel" hx-push-url="true" title="Upload a workbook of bodies and programme mappings; check it before importing">{% icon "upload" 16 %} Import bodies (.xlsx)</a>{% endif %}
+    <a class="btn btn-ghost" href="{% url 'qa_pb:export' %}" download title="Downloads nbte-professional-bodies-(date).xlsx: a Bodies sheet and a Mappings sheet">{% icon "download" 16 %} Export bodies (.xlsx)</a>
+    {% endif %}
   </div>
-</div></header>
+  <p class="pb-io-note">{% if can_import %}Export downloads <span class="qa-mono">nbte-professional-bodies-(date).xlsx</span>: one row per body, with its contact details and programme codes. Edit it and Import it back; you review every change before it is saved.{% else %}Export downloads <span class="qa-mono">nbte-professional-bodies-(date).xlsx</span> with two sheets: the bodies, and the programmes each one regulates.{% endif %}</p>
+</div>
+<div class="qa-hero__stats" aria-label="Summary">
+  <div class="qa-stat"><strong>{{ totals.active }}</strong><span>Active bodies</span></div>
+  <div class="qa-stat"><strong>{{ mapping_total }}</strong><span>Programmes mapped</span></div>
+  {% if totals.no_email %}<a class="qa-stat qa-stat--warn qa-stat--link" href="?contact=missing" hx-get="{% url 'qa_pb:list' %}?contact=missing" hx-target="#qa-panel" hx-push-url="true"><strong>{{ totals.no_email }}</strong><span>No e-mail on file</span></a>{% endif %}
+</div>
+</header>
 <section class="qa-card" aria-label="Professional bodies">
-  <form class="qa-toolbar" role="search" hx-get="{% url 'qa_pb:list' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
+  <form class="qa-toolbar" role="search" method="get" action="{% url 'qa_pb:list' %}" hx-get="{% url 'qa_pb:list' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
     <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Body, acronym, contact or programme" autocomplete="off"></label>
     <select class="input qa-select" name="status" aria-label="Status"><option value="">Any status</option><option value="active"{% if filters.status == "active" %} selected{% endif %}>Active</option><option value="inactive"{% if filters.status == "inactive" %} selected{% endif %}>Inactive</option></select>
     <select class="input qa-select" name="level" aria-label="Level"><option value="">Any level</option>{% for lv in levels %}<option value="{{ lv.code }}"{% if filters.level == lv.code %} selected{% endif %}>{{ lv.code|upper }} programmes</option>{% endfor %}</select>

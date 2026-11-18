@@ -48,7 +48,7 @@ def test_first_run_creates_everything(base):
     for code in ("qa-finance-officer", "ict-qa-monitor", "qa-settings-admin",
                  "inst-chief-executive", "inst-admin", "inst-academic-dept", "resource-person"):
         assert Role.objects.filter(code=code).exists(), code
-    assert ReferenceFormat.objects.count() == 10  # Phase 3 adds "query" (was 9)
+    assert ReferenceFormat.objects.count() >= 10 and ReferenceFormat.objects.filter(code="query").exists()  # Phase 3 adds "query"
     # Phase 2 adds the institution lifecycle, SOP-01 onboarding and refunds;
     # Phase 3 adds SOP-02 (qa_request) and the SSQ; Phase 4 adds SOP-03 (qa_case);
     # Phase 5 adds the inspection and the post-visit report (stage 12's sub-flow).

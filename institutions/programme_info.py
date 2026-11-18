@@ -41,6 +41,10 @@ def bodies_map(programmes):
     out = {}
     for p in programmes:
         bodies = {m.body for m in by_key.get(programme_key(p.name), []) if m.level_id in (None, p.level_id)}
+        # The body set on the programme itself (chosen at selection / by NBTE) counts too.
+        if getattr(p, "professional_body_id", None) and p.professional_body is not None \
+                and p.professional_body.is_active:
+            bodies.add(p.professional_body)
         out[p.pk] = sorted(bodies, key=lambda b: b.name)
     return out
 

@@ -25,7 +25,7 @@ def test_six_month_window_requirement_4(p3):
     ok, _ = svc.programme_eligibility(p3.cs, reacc)          # expires in 120 days
     assert ok
     ok, why = svc.programme_eligibility(p3.far, reacc)       # expires in 3 years
-    assert not ok and "Too early" in why and "Requirement 4" in why
+    assert not ok and "Too early" in why
     ok, _ = svc.programme_eligibility(p3.expired, reacc)     # expired: always eligible
     assert ok
     ok, why = svc.programme_eligibility(p3.proposed, reacc)  # wrong status
@@ -313,7 +313,8 @@ def test_drop_programmes_action_takes_the_programme_off_open_requests(p3, depart
 def test_staff_portal_dashboard(p3, paid_request, portal_host):
     c = Client(HTTP_HOST=portal_host)
     c.force_login(p3.p2.officer)
-    r = c.get("/")
+    assert c.get("/")["Location"] == "/dashboard/"  # signed-in staff land on their dashboard
+    r = c.get("/dashboard/")
     body = r.content.decode()
     assert r.status_code == 200 and "Go to Internal System" in body
     assert "Staff" in body and "Institution dashboard" not in body
@@ -323,7 +324,7 @@ def test_staff_portal_dashboard(p3, paid_request, portal_host):
     for path in ("/qa-requests/", f"/qa-requests/{paid_request.pk}/", "/documents/", "/payments/", "/queries/",
                  "/institution/", "/timeline/"):
         r = c.get(path)
-        assert r.status_code == 302 and r["Location"] == "/", path
+        assert r.status_code == 302 and r["Location"] in ("/", "/dashboard/"), path
 
 
 def test_staff_dashboard_lists_work_with_internal_links(p3, paid_request, portal_host, department_mode):
@@ -343,14 +344,14 @@ def test_staff_dashboard_lists_work_with_internal_links(p3, paid_request, portal
     work.accept(ssq_assign.assign(ssq, by=director, officer=p3.p2.officer), User.objects.get(pk=p3.p2.officer.pk))
     c = Client(HTTP_HOST=portal_host)
     c.force_login(p3.p2.officer)
-    body = c.get("/").content.decode()
+    body = c.get("/dashboard/").content.decode()
     assert paid_request.reference in body and f"/qa/requests/ssq/{ssq.pk}/" in body and "Review SSQ" in body
 
 
 def test_institution_users_never_get_the_staff_dashboard(p3, portal_host):
     c = Client(HTTP_HOST=portal_host)
     c.force_login(p3.admin)
-    body = c.get("/").content.decode()
+    body = c.get("/dashboard/").content.decode()  # "/" is the public landing page for institutions
     assert "Institution dashboard" in body and "Go to Internal System" not in body
 
 

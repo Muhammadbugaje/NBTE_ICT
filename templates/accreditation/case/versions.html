@@ -1,0 +1,77 @@
+{% extends "qa_core/_shell.html" %}
+{% load qa_tags %}
+{% comment %}v2.3 Phase 2 (owner decision 3): read-only frozen versions of case work, with dated notes.{% endcomment %}
+{% block qa_title %}Version history · {{ case.reference }}{% endblock %}
+{% block qa_page_title %}QA cases (SOP-03){% endblock %}
+{% block panel %}
+<div class="v3-page">
+  <nav class="qa-crumbs" aria-label="Breadcrumb">
+    <a href="{% url 'qa_case:board' %}">Case board</a><span aria-hidden="true">/</span>
+    <a href="{% url 'qa_case:detail' case.pk %}">{{ case.reference }}</a><span aria-hidden="true">/</span>
+    <span aria-current="page">Version history</span>
+  </nav>
+  <header class="v3-head">
+    <div>
+      <p class="v3-head__kicker">{{ inst.name }}</p>
+      <h1 data-qa-focus>Version history</h1>
+      <p class="v3-head__lede">When a case is moved back a stage, the work done after that stage is frozen here exactly as it was, and a new copy opens for editing. Frozen versions never change; you can add a dated note to any of them.</p>
+    </div>
+    <a class="btn btn-subtle" href="{% url 'qa_case:detail' case.pk %}?tab=reports">{% icon "arrow" 15 %} Back to the case</a>
+  </header>
+
+  {% if not versions %}
+  <section class="v3-empty">
+    <span class="v3-empty__icon" aria-hidden="true">{% icon "layers" 22 %}</span>
+    <h2>No earlier versions</h2>
+    <p>This case has never been moved back, so every report is still its first version.</p>
+  </section>
+  {% else %}
+  <div class="v3-split">
+    <aside class="v3-list" aria-label="Frozen versions">
+      <p class="v3-list__count">{{ versions|length }} frozen version{{ versions|length|pluralize }}</p>
+      <ul role="list">
+        {% for v in versions %}
+        <li><a class="v3-list__item{% if selected and v.pk == selected.pk %} is-on{% endif %}" href="?v={{ v.pk }}"{% if selected and v.pk == selected.pk %} aria-current="true"{% endif %}>
+          <span class="v3-list__title">{{ v.title }}</span>
+          <span class="v3-list__meta"><span class="v3-ver">v{{ v.version }}</span> {{ v.get_kind_display }} · {{ v.frozen_at|date:"j M Y, H:i" }}</span>
+          {% if v.addenda.all %}<span class="v3-list__notes">{% icon "message" 12 %} {{ v.addenda.all|length }} note{{ v.addenda.all|length|pluralize }}</span>{% endif %}
+        </a></li>
+        {% endfor %}
+      </ul>
+    </aside>
+
+    {% if selected %}
+    <article class="v3-doc" aria-labelledby="ver-title">
+      <header class="v3-doc__head">
+        <div>
+          <span class="v3-lock">{% icon "lock" 13 %} Frozen · read only</span>
+          <h2 id="ver-title">{{ selected.title }} <span class="v3-ver v3-ver--lg">v{{ selected.version }}</span></h2>
+          <p class="qa-muted">Frozen {{ selected.frozen_at|date:"j M Y, H:i" }}{% if selected.frozen_by %} by {{ selected.frozen_by|who }}{% endif %}{% if selected.change_request %} · rollback request #{{ selected.change_request.pk }}{% endif %}</p>
+        </div>
+      </header>
+      {% if selected.reason %}<p class="v3-reason"><strong>Why it was reopened:</strong> {{ selected.reason }}</p>{% endif %}
+      <dl class="v3-fields">
+        {% for r in rows %}
+        <div class="v3-field{% if r.long %} v3-field--long{% endif %}"><dt>{{ r.label }}</dt><dd>{{ r.value|linebreaksbr }}</dd></div>
+        {% empty %}<p class="qa-muted">This version holds no written content.</p>{% endfor %}
+      </dl>
+
+      <section class="v3-notes" aria-labelledby="notes-h">
+        <h3 id="notes-h">Dated notes</h3>
+        {% for n in selected.addenda.all %}
+        <div class="v3-note"><p>{{ n.text|linebreaksbr }}</p><span>{{ n.author|who }} · {{ n.created_at|date:"j M Y, H:i" }}</span></div>
+        {% empty %}<p class="qa-muted">No notes yet.</p>{% endfor %}
+        {% if can_append %}
+        <form method="post" action="{% url 'qa_case:version_note' case.pk selected.pk %}" class="v3-note-form">{% csrf_token %}
+          <label for="note-text">Add a note to this version</label>
+          <textarea class="input" id="note-text" name="text" rows="3" required minlength="3" placeholder="For example: the figure in section C was confirmed by phone with the Registrar."></textarea>
+          <div><button class="btn btn-primary" type="submit">{% icon "plus" 15 %} Add dated note</button></div>
+        </form>
+        {% endif %}
+      </section>
+    </article>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

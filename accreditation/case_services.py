@@ -285,10 +285,27 @@ def pin(case, stage, user, *, replace=False):
     case.stage_actors = current
 
 
+# v2.3 (owner decision 2): stages the case's Division Director confirms instead of the Director.
+DIVISION_DIRECTOR_STAGES = ("confirm_personnel", "confirm_visit_details")
+
+
+def division_director_of(case):
+    if not getattr(case, "division_director_id", None):
+        return None
+    from accounts.models import User
+
+    return User.objects.filter(pk=case.division_director_id, is_active=True).select_related(
+        "department", "role").first()
+
+
 def resolve_actors(case, stage, prefer_user=None):
     """(users, department, title) for the bridge."""
     dept = stage_department(case, stage)
     title = f"{case.institution.code} · {case.reference}"
+    if stage.code in DIVISION_DIRECTOR_STAGES and prefer_user is None:
+        dd = division_director_of(case)
+        if dd is not None:
+            return [dd], dd.department or dept, title
     if stage.code == "cqac_recommendation":
         users = _role_users("cqac-member")
         if users and users[0].department_id:
@@ -432,7 +449,10 @@ def can_act(case, user, stage_code):
 def director_may_act(case, user, stage_code):
     """v2.2: a stage given to a role inside a department (e.g. the Pay Officer
     in Finance releasing funds) can always be done by that department's
-    director — the work never stalls because nobody holds the role."""
+    director — the work never stalls because nobody holds the role.
+    v2.3: the same for the Division Director's confirmations (stages 4 and 9)."""
+    if stage_code in DIVISION_DIRECTOR_STAGES and getattr(case, "division_director_id", None):
+        return bool(user.pk in {u.pk for u in _director_of(case.owning_department) if u is not None})
     stage = next((s for s in stage_objects(case) if s.code == stage_code), None)
     if stage is None or getattr(stage, "actor_kind", "") != "role_in_department":
         return False
@@ -857,8 +877,9 @@ def _check_team_lead(staff):
     user = getattr(staff, "user", None)
     role = getattr(getattr(user, "role", None), "code", "") if user else ""
     if role not in team_lead_roles():
-        raise ValidationError(f"{staff} cannot lead the visit: team leads must hold one of these roles: "
-                              f"{', '.join(team_lead_roles())} (qa.visit.team_lead_roles).")
+        roles = ", ".join(r.replace("-", " ").replace("_", " ") for r in team_lead_roles())
+        raise ValidationError(f"{staff} cannot lead the visit. A team lead must be a {roles}. "
+                              "Choose another duty for this person, or pick an eligible lead.")
 
 
 def staff_choices(case):
@@ -900,7 +921,30 @@ def save_visit(case, *, user, planned_start, planned_end, team_lead, notes=""):
     visit.planned_start, visit.planned_end, visit.team_lead = planned_start, planned_end, team_lead
     visit.logistics_notes = (notes or "").strip()
     visit.save()
+    _consult_zonal_directors(case, visit, user)
     return visit
+
+
+def _consult_zonal_directors(case, visit, actor):
+    """v2.3 (owner decision 2): Zonal Directors are consulted on visits in their
+    zone — they are told the planned dates and team lead and can reply on the
+    case. Advisory only: no step waits for them."""
+    people = [u for u in zonal_directors_for(case.institution) if u.pk != getattr(actor, "pk", None)]
+    if not people:
+        return
+    from notifications.services import notify
+
+    def send():
+        for person in people:
+            try:
+                notify(person, title=f"Visit planned in your zone: {case.institution.name}",
+                       body=f"{case.reference}: {visit.planned_start:%d %b} – {visit.planned_end:%d %b %Y}, team lead "
+                            f"{_name(visit.team_lead)}. Reply on the case if you have advice for the team.",
+                       url=f"/qa/cases/{case.pk}/?tab=visit", category="qa")
+            except Exception:  # a notification never blocks the visit
+                pass
+
+    transaction.on_commit(send)
 
 
 # ===========================================================================
@@ -1082,10 +1126,24 @@ def on_completed(ctx):
         from . import onboarding_v4
 
         onboarding_v4.finalise_institution(case, actor=ctx.actor)
-    except Exception:
+    except Exception as exc:
         import logging
 
         logging.getLogger(__name__).exception("final institution approval failed for %s", case.reference)
+        # Never silent: the case is closed but the institution was not moved
+        # to Approved — leave a visible internal flag on its record.
+        timeline.record(case.institution, "institution.finalise_failed", subject=case, actor=ctx.actor,
+                        visibility="internal",
+                        internal_text=f"{case.reference} completed, but the automatic institution approval failed "
+                                      f"({type(exc).__name__}: {str(exc)[:160]}). ICT must re-run it.")
+    try:  # ICT supervision ends by itself once nothing is left open for the institution
+        from assignments import supervision
+
+        supervision.complete_if_settled(case.institution, actor=ctx.actor)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("supervision close failed for %s", case.reference)
     try:  # v2.3: SOP-03 is complete — visit honoraria go to the institution's file
         from honoraria import files as honoraria_files
 
@@ -1276,14 +1334,18 @@ def visible_cases(user):
     if user is None or not user.is_authenticated or getattr(user, "user_type", "staff") != "staff":
         return base.none()
     role = getattr(getattr(user, "role", None), "code", "")
-    has_case_permission = user.has_perm("accreditation.view_qa_case") or user.has_perm("accreditation.act_on_qa_stage")
+    # v2.3 fix: holding the case permissions (e.g. via the "QA Desk" group) lets
+    # a person use the case screens; it does not widen *which* cases they see.
+    # Before, it did, so a desk officer of one department could open every
+    # department's cases and letters.
     if user.is_superuser or role in CROSS_DEPARTMENT_ROLES or (
-            user.department_id and user.department_id in _support_department_ids()) or has_case_permission:
+            user.department_id and user.department_id in _support_department_ids()):
         qs = QACase.unscoped.all()
     else:
         ct = ContentType.objects.get_for_model(QACase)
         task_case_ids = QATaskLink.objects.filter(content_type=ct, task__assignee_rows__user=user).values("object_id")
-        qs = QACase.unscoped.filter(Q(pk__in=base.values("pk")) | Q(desk_officer=user)
+        own_department = Q(owning_department_id=user.department_id) if user.department_id else Q(pk__in=[])
+        qs = QACase.unscoped.filter(Q(pk__in=base.values("pk")) | own_department | Q(desk_officer=user)
                                     | Q(supervising_audit_officer=user) | Q(supervising_finance_officer=user)
                                     | Q(tracking_ict_officers=user) | Q(pk__in=task_case_ids)).distinct()
     qs._mark_scoped()
@@ -1566,6 +1628,8 @@ def decorate_cases(cases, now=None):
         case.holders = [r.user for link in case_links_ for r in link.task.assignee_rows.all() if r.state != "declined"]
         case.due = min((link.due_at for link in case_links_ if link.due_at), default=None)
         case.overdue = bool(case.due and case.due < now)
+        # when the current stage's work was handed over (the oldest open task), for "N days here"
+        case.stage_since = min((link.opened_at for link in case_links_ if link.opened_at), default=None)
         stage = labels.get(case.status)
         case.stage_label = stage.label if stage else ("Not started" if case.status in ("", "awaiting_sop03")
                                                      else case.status.replace("_", " ").capitalize())
@@ -1601,3 +1665,72 @@ def filter_cases(qs, *, q="", department="", flag=""):
     if flag == "reassign":
         qs = qs.filter(needs_reassignment=True)
     return qs
+
+
+
+# ===========================================================================
+# v2.3 (owner decision 2): Division Director and Zonal Directors
+# ===========================================================================
+def can_set_division_director(case, user):
+    from . import case_changes as cc
+
+    return bool(user.is_superuser or cc.is_owning_department_director(case, user))
+
+
+def division_director_candidates(case):
+    """Deputy Directors / Division Heads / Directors of the owning department."""
+    from accounts.models import User
+
+    codes = ("deputy-director", "division-head", "director", "zonal-director")
+    qs = User.objects.filter(is_active=True, user_type="staff", role__code__in=codes)
+    if case.owning_department_id:
+        qs = qs.filter(department_id=case.owning_department_id) | User.objects.filter(
+            is_active=True, user_type="staff", role__code="zonal-director")
+    return list(qs.select_related("role", "department").order_by("first_name", "last_name").distinct()[:200])
+
+
+@transaction.atomic
+def set_division_director(case, *, user, director):
+    if not can_set_division_director(case, user):
+        raise PermissionDenied("Only the owning department's Director sets the Division Director.")
+    if director is not None:  # a User (not a Staff row): check the account directly
+        from accounts.audience import not_nbte_staff_reason
+
+        why = not_nbte_staff_reason(director, "Division Director")
+        if why:
+            raise ValidationError(why)
+    QACase.unscoped.filter(pk=case.pk).update(division_director=director, updated_at=timezone.now())
+    case.division_director = director
+    from qa_core import timeline
+
+    timeline.record(case.institution, "qa.case.division_director", subject=case, actor=user,
+                    internal_text=(f"Division Director set to {_name(director)} — confirms the personnel list and "
+                                   "the visit details." if director else "Division Director cleared — the Director "
+                                   "confirms the personnel list and the visit details."))
+    # A confirmation already waiting moves to the new holder.
+    for code in DIVISION_DIRECTOR_STAGES:
+        if code in current_stages(case):
+            link = open_link(case, code)
+            new = director or (_director_of(case.owning_department) or [None])[0]
+            old = (holders(case, code) or [None])[0]
+            if link is not None and new is not None and old is not None and old.pk != new.pk:
+                try:
+                    task_bridge.reassign_stage_task(link, actor=user, from_user=old, to_user=new)
+                except Exception:  # the old holder keeps it; the director can always act
+                    pass
+    return case
+
+
+def zonal_directors_for(inst):
+    """Zonal Directors whose zone covers the institution's state (B9) — consulted on visits."""
+    from django.db.models import Q
+
+    from institutions.models import ZonalAssignment
+
+    zone = getattr(getattr(inst, "state", None), "zone", "") or ""
+    if not zone:
+        return []
+    today = timezone.localdate()
+    rows = (ZonalAssignment.objects.filter(zone_code__iexact=zone, from_date__lte=today, staff__is_active=True)
+            .filter(Q(to_date__isnull=True) | Q(to_date__gte=today)).select_related("staff"))
+    return [r.staff for r in rows]

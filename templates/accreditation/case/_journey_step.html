@@ -1,0 +1,31 @@
+{% load qa_tags %}<li class="c3-journey__step is-{{ st.state }}{% if st.overdue %} is-overdue{% endif %}"{% if st.state == "current" %} aria-current="step"{% endif %}>
+          <span class="c3-journey__dot" aria-hidden="true">{% if st.state == "done" %}{% icon "check" 13 "3" %}{% elif st.no == 0 %}{% icon "flag" 12 "2.4" %}{% else %}{{ st.no }}{% endif %}</span>
+          <div class="c3-journey__body">
+            <div class="c3-journey__top">
+              <strong>{{ st.label }}</strong>
+              {% if st.state == "current" %}<span class="qa-chip qa-tone-pending">Now</span>{% endif %}
+              {% if st.overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}
+              {% if st.state == "done" and st.done_at %}<span class="c3-journey__when">{{ st.done_at|date:"j M Y" }}</span>{% endif %}
+            </div>
+            {% if st.state != "todo" %}
+            <ul class="c3-journey__parts" role="list">
+              {% for p in st.parts %}
+              <li class="is-{{ p.state }}">
+                {% if st.is_parallel %}<span class="c3-journey__part">{% if p.code == "assign_audit_officer" %}Audit{% elif p.code == "assign_finance_officer" %}Finance{% elif p.code == "assign_ict_officer" %}ICT{% else %}{{ p.label }}{% endif %}</span>{% endif %}
+                {% if p.link %}
+                  <span class="c3-journey__who">{% for u in p.holders %}<span class="c3-person c3-person--sm"><span class="c3-av" aria-hidden="true">{{ u|initials }}</span>{{ u|who }}</span>{% empty %}<span class="qa-chip qa-tone-warn">Department queue</span>{% endfor %}</span>
+                  <span class="c3-muted">{% if p.since %}holding for {{ p.since }}{% endif %}{% if p.due_at %} · {% if p.overdue %}<strong class="c3-late">was due {{ p.due_at|date:"j M" }}</strong>{% else %}due {{ p.due_at|date:"j M" }}{% endif %}{% endif %}</span>
+                  {% if can_remind and p.holders and request.user not in p.holders %}
+                  <form class="c3-remind" method="post" action="{% url 'qa_case:remind' case.pk p.code %}" hx-post="{% url 'qa_case:remind' case.pk p.code %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="overview">
+                    <button class="btn btn-xs btn-subtle" type="submit">{% icon "bell" 12 "2.2" %} Remind</button></form>
+                  {% endif %}
+                {% elif p.done_by %}
+                  <span class="c3-muted">by {% for u in p.done_by %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if p.done_at %} · {{ p.done_at|date:"j M, H:i" }}{% endif %}</span>
+                {% elif p.state == "done" %}<span class="c3-muted">Done</span>
+                {% else %}<span class="c3-muted">{{ p.who }}</span>{% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}<span class="c3-muted c3-journey__next">{{ st.guide.who|default:"" }}</span>{% endif %}
+          </div>
+        </li>

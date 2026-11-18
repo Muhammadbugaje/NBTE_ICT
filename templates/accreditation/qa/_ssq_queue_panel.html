@@ -3,23 +3,11 @@
   <a href="{% url 'qa_req:list' %}" hx-get="{% url 'qa_req:list' %}" hx-target="#qa-panel" hx-push-url="true">QA requests</a>
   <span aria-hidden="true">/</span><span aria-current="page">SSQ review queue</span>
 </nav>
-<header class="qa-hero ssq-hero">
+<header class="qa-hero ssq-hero sq-hero">
   <div>
-    <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Self-study questionnaires · who is handling what</span>
+    <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Self-study questionnaires</span>
     <h1 data-qa-focus>SSQ review queue</h1>
-    <p>Every submitted SSQ goes to the department that handles the institution. Its director assigns one officer, the officer assesses it, and the director approves. Each row shows who holds it now and for how long{% if not tracks_all %} — for the SSQs in your scope{% endif %}.</p>
-    <div class="qa-hero__actions">
-      <a class="btn btn-primary" href="?status=unassigned" hx-get="{% url 'qa_req:ssq_queue' %}?status=unassigned" hx-target="#qa-panel" hx-push-url="true">{% icon "users" 16 %} Needs an officer</a>
-      <a class="btn btn-subtle" href="?status=overdue" hx-get="{% url 'qa_req:ssq_queue' %}?status=overdue" hx-target="#qa-panel" hx-push-url="true">{% icon "clock" 16 %} Overdue</a>
-      <a class="btn btn-subtle" href="{% url 'qa_req:list' %}" hx-get="{% url 'qa_req:list' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "layers" 16 %} QA requests</a>
-    </div>
-  </div>
-  <div class="qa-hero__stats" aria-label="SSQs at NBTE">
-    <a class="qa-stat qa-stat--link" href="?status=submitted" hx-get="{% url 'qa_req:ssq_queue' %}?status=submitted" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.waiting }}</strong><span>At NBTE</span></a>
-    <a class="qa-stat qa-stat--warn qa-stat--link" href="?status=unassigned" hx-get="{% url 'qa_req:ssq_queue' %}?status=unassigned" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.unassigned }}</strong><span>Need an officer</span></a>
-    <a class="qa-stat qa-stat--link" href="?status=assessing" hx-get="{% url 'qa_req:ssq_queue' %}?status=assessing" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.assessing }}</strong><span>Under assessment</span></a>
-    <a class="qa-stat qa-stat--warn qa-stat--link" href="?status=approval" hx-get="{% url 'qa_req:ssq_queue' %}?status=approval" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.approval }}</strong><span>Awaiting approval</span></a>
-    <a class="qa-stat qa-stat--danger qa-stat--link" href="?status=overdue" hx-get="{% url 'qa_req:ssq_queue' %}?status=overdue" hx-target="#qa-panel" hx-push-url="true"><strong>{{ counts.overdue }}</strong><span>Over {{ sla_days }} days</span></a>
+    <p>Submitted SSQs waiting for NBTE{% if not tracks_all %} in your scope{% endif %}, longest wait first. Each row shows who holds it now. Target: {{ sla_days }} day{{ sla_days|pluralize }} per stage.</p>
   </div>
 </header>
 
@@ -27,8 +15,8 @@
 {% elif action_ok %}{% include "qa_core/partials/_callout.html" with kind="success" title=action_ok message=action_ok_body|default:action_ok %}{% endif %}
 
 <section class="qa-card ssq-desk" aria-label="SSQs">
-  <nav class="qa-tabs ssq-desk__tabs" aria-label="SSQ stage">
-    {% for v, l in statuses %}<a href="?status={{ v }}" hx-get="{% url 'qa_req:ssq_queue' %}?status={{ v }}" hx-target="#qa-panel" hx-push-url="true" class="{% if status == v %}is-active{% endif %}"{% if status == v %} aria-current="page"{% endif %}>{{ l }}</a>{% endfor %}
+  <nav class="qa-tabs ssq-desk__tabs sq-tabs" aria-label="SSQ stage">
+    {% for v, l, n in tabs %}<a href="?status={{ v }}" hx-get="{% url 'qa_req:ssq_queue' %}?status={{ v }}" hx-target="#qa-panel" hx-push-url="true" class="{% if status == v %}is-active{% endif %}"{% if status == v %} aria-current="page"{% endif %}>{{ l }}{% if n is not None %} <span class="sq-count{% if v == 'overdue' and n %} is-danger{% elif v == 'unassigned' and n %} is-warn{% endif %}">{{ n }}</span>{% endif %}</a>{% endfor %}
   </nav>
   <form class="qa-toolbar" role="search" method="get" action="{% url 'qa_req:ssq_queue' %}" hx-get="{% url 'qa_req:ssq_queue' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change, submit" data-qa-no-overlay>
     <input type="hidden" name="status" value="{{ status }}">

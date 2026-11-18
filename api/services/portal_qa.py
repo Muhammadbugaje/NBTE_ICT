@@ -275,7 +275,8 @@ def _field_payload(field, value, programme, *, prefilled, edited, evidence, reus
         qty = value or {}
         # X35: no required quantity for the institution.
         out["items"] = [{"id": item.pk, "name": item.name, "unit": getattr(item, "unit", "") or "",
-                         "quantity": qty.get(str(item.pk), "")}
+                         "quantity": qty.get(str(item.pk), ""),
+                         "not_working": qty.get(f"d{item.pk}", "")}
                         for item in engine.catalogue_items(field, programme)]
         out["value"] = dict(qty)
     if field["type"] == "multi_choice":

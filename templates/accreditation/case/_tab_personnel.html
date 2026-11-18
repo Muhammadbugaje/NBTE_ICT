@@ -44,7 +44,7 @@
     <h3>Add a person</h3>
     <form class="c3-form c3-form--grid" method="post" action="{% url 'qa_case:personnel_add' case.pk %}" hx-post="{% url 'qa_case:personnel_add' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="personnel">
       <div class="c3-form__wide">{% include "qa_core/partials/_person_picker.html" with pp_name="staff" pp_id="pe-staff" pp_label="Member of staff" pp_people=personnel_people pp_required=True pp_placeholder="Search NBTE staff" %}</div>
-      <div class="qa-field"><label for="pe-duty">Duty</label><select class="input" id="pe-duty" name="duty">{% for v, l in duties %}<option value="{{ v }}"{% if v == "team_lead" %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+      <div class="qa-field"><label for="pe-duty">Duty</label><select class="input" id="pe-duty" name="duty" required><option value="" disabled selected>Choose a duty</option>{% for v, l in duties %}<option value="{{ v }}">{{ l }}{% if v == "team_lead" %} — directors and deputy directors{% endif %}</option>{% endfor %}</select></div>
       <div class="qa-field"><label for="pe-remark">Remark <span class="qa-muted">(optional)</span></label><input class="input" id="pe-remark" name="remark" maxlength="255"></div>
       <div class="c3-form__row"><button class="btn btn-primary" type="submit">{% icon "plus" 16 %} Add to the team</button></div>
     </form>

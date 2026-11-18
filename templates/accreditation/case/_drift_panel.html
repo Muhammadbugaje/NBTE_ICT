@@ -1,103 +1,165 @@
 {% load qa_tags %}
+{% comment %}
+  Task-link drift: what the nightly reconciliation found. Written for people, not for the
+  job log: one status sentence, three "what / why / what to do" notes, then each finding as
+  a card. `task_findings` / `people_findings` come from case_views._drift_decorate.
+{% endcomment %}
 <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">Case Board</a><span aria-hidden="true">/</span><span aria-current="page">Task-link drift</span></nav>
 
+<div class="vx vx-drift">
 <header class="qa-hero">
   <div>
-    <span class="qa-eyebrow">{% icon "rotate" 14 "2.4" %} QA cases (SOP-03)</span>
+    <span class="qa-eyebrow">{% icon "rotate" 14 "2.4" %} QA cases (SOP-03) · Health check</span>
     <h1 data-qa-focus>Task-link drift</h1>
-    <p>Every open case stage should have exactly one task, in the Tasks inbox of the person who must act. A check runs every night: it closes tasks whose stage has moved on and opens a task for any stage that has none.</p>
+    <p>A health check that makes sure every open case stage has a task in someone's inbox — so no case gets stuck because nobody was told to act.</p>
     {% if can_run and not monitor %}
     <div class="qa-hero__actions">
-      <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "rotate" 16 "2.2" %} Run and repair</button></form>
-      <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="dry_run" value="1"><button class="btn btn-subtle" type="submit">{% icon "search" 16 "2.2" %} Check only</button></form>
+      <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="dry_run" value="1"><button class="btn btn-primary" type="submit">{% icon "search" 16 "2.2" %} Check now</button></form>
+      <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<button class="btn btn-subtle" type="submit">{% icon "rotate" 16 "2.2" %} Check and repair</button></form>
     </div>
+    <p class="vx-hint">“Check now” only looks and changes nothing. “Check and repair” also fixes what it finds.</p>
     {% endif %}
-  </div>
-  <div class="qa-hero__stats" aria-label="Summary">
-    <div class="qa-stat"><strong>{{ runs_total }}</strong><span>Runs</span></div>
-    <div class="qa-stat{% if runs_with_drift %} qa-stat--warn{% else %} qa-stat--success{% endif %}"><strong>{{ runs_with_drift }}</strong><span>Found drift</span></div>
   </div>
 </header>
 
 {% if monitor %}<div class="qa-readonly-banner" role="status">{% icon "eye" 16 %} You are the ICT monitor: you can see every run, but running a repair needs an officer who can reassign QA tasks.</div>{% endif %}
 
-<div class="qa-drift-summary">
-  <section class="qa-drift-card qa-drift-card--last" aria-labelledby="dr-last">
-    <h2 id="dr-last">Last run</h2>
-    {% if latest %}
-      <p class="qa-drift-card__when"><time datetime="{{ latest.run_at|date:'c' }}">{{ latest.run_at|date:"j M Y, H:i" }}</time> <small>{{ latest.run_at|timesince }} ago</small></p>
-      <p class="qa-drift-card__state">
-        {% if latest.closed or latest.opened %}<span class="qa-drift-dot is-warn" aria-hidden="true"></span>{% if latest.dry_run %}Drift found, not yet repaired{% else %}Drift found and repaired{% endif %}
-        {% else %}<span class="qa-drift-dot is-ok" aria-hidden="true"></span>Every stage had its task{% endif %}
-      </p>
-      <span class="qa-chip">{% if latest.dry_run %}Check only{% else %}Repair{% endif %}</span>
-    {% else %}
-      <p class="qa-drift-card__state"><span class="qa-drift-dot" aria-hidden="true"></span>Not run yet</p>
-    {% endif %}
+{# ---- The answer first: is anything wrong right now? ---- #}
+{% if latest %}
+  {% if latest.task_findings and latest.dry_run %}
+  <section class="vx-verdict vx-t-amber" role="status">
+    <span class="vx-verdict__icon" aria-hidden="true">{% icon "alert" 22 "2.2" %}</span>
+    <div><h2>{{ latest.task_findings|length }} task problem{{ latest.task_findings|length|pluralize }} found — not repaired yet</h2>
+      <p>The last check only looked. {% if can_run and not monitor %}Press <strong>Check and repair</strong> to fix {{ latest.task_findings|length|pluralize:"it,them" }}, or wait for tonight's automatic run.{% else %}Tonight's automatic run will repair {{ latest.task_findings|length|pluralize:"it,them" }}.{% endif %}</p></div>
+    <time class="vx-verdict__when" datetime="{{ latest.run_at|date:'c' }}">Checked {{ latest.run_at|timesince }} ago</time>
   </section>
-  <section class="qa-drift-card" aria-labelledby="dr-checked">
-    <h2 id="dr-checked">Links checked</h2>
-    <strong class="qa-drift-card__num">{{ latest.checked|default:0 }}</strong>
-    <p>Stage tasks compared with their cases in the last run.</p>
+  {% elif latest.task_findings %}
+  <section class="vx-verdict vx-t-green" role="status">
+    <span class="vx-verdict__icon" aria-hidden="true">{% icon "check" 22 "2.6" %}</span>
+    <div><h2>{{ latest.task_findings|length }} task problem{{ latest.task_findings|length|pluralize }} found and fixed</h2>
+      <p>Nothing more to do for the tasks.{% if latest.people_findings %} {{ latest.people_findings|length }} person record{{ latest.people_findings|length|pluralize }} still need{{ latest.people_findings|length|pluralize:"s," }} a look — see below.{% endif %}</p></div>
+    <time class="vx-verdict__when" datetime="{{ latest.run_at|date:'c' }}">Checked {{ latest.run_at|timesince }} ago</time>
   </section>
-  <section class="qa-drift-card" aria-labelledby="dr-closed">
-    <h2 id="dr-closed">Orphan tasks</h2>
-    <strong class="qa-drift-card__num">{{ latest.closed|default:0 }}</strong>
-    <p>{% if latest.dry_run %}Found: tasks for a stage that has moved on.{% else %}Closed: tasks for a stage that had moved on.{% endif %}</p>
-  </section>
-  <section class="qa-drift-card" aria-labelledby="dr-opened">
-    <h2 id="dr-opened">Missing tasks</h2>
-    <strong class="qa-drift-card__num">{{ latest.opened|default:0 }}</strong>
-    <p>{% if latest.dry_run %}Found: stages with no open task.{% else %}Opened: stages that had no open task.{% endif %}</p>
-  </section>
-</div>
-
-<section class="qa-card" aria-labelledby="dr-h">
-  <header class="qa-card__head"><div><h2 id="dr-h">Run history</h2><p>Newest first. Open a run to see each repair.</p></div>
-    {% if last_repair %}<span class="qa-small qa-muted">Last repair {{ last_repair.run_at|date:"j M Y, H:i" }}</span>{% endif %}</header>
-  {% if page.rows %}
-    <div class="qa-table-wrap">
-      <table class="qa-table qa-drift-table">
-        <caption class="sr-only">Reconciliation runs</caption>
-        <thead><tr><th scope="col">When</th><th scope="col">Kind</th><th scope="col" class="qa-num">Checked</th><th scope="col" class="qa-num">Orphans</th><th scope="col" class="qa-num">Missing</th><th scope="col">Result</th></tr></thead>
-        {% for r in page.rows %}
-          <tbody>
-            <tr>
-              <td data-label="When"><strong>{{ r.run_at|date:"j M Y" }}</strong> <span class="qa-muted">{{ r.run_at|date:"H:i" }}</span></td>
-              <td data-label="Kind">{% if r.dry_run %}Check only{% else %}Repair{% endif %}</td>
-              <td data-label="Checked" class="qa-num">{{ r.checked }}</td>
-              <td data-label="Orphans" class="qa-num">{{ r.closed }}</td>
-              <td data-label="Missing" class="qa-num">{{ r.opened }}</td>
-              <td data-label="Result">{% if r.closed or r.opened %}<span class="qa-chip qa-tone-warn">{% if r.dry_run %}Drift found{% else %}Repaired{% endif %}</span>{% else %}<span class="qa-chip qa-tone-success">Clean</span>{% endif %}</td>
-            </tr>
-            {% if r.details %}
-            <tr class="qa-drift-details"><td colspan="6">
-              <details>
-                <summary>Show details ({{ r.details|length }})</summary>
-                <ul class="qa-drift-fixes" role="list">
-                  {% for d in r.details %}
-                    <li><span class="qa-chip {% if d.kind == 'missing' %}qa-chip--info{% elif d.kind == 'orphaned' %}qa-chip--dual{% endif %}">{% if d.kind == "missing" %}{% if r.dry_run %}Missing task{% else %}Task opened{% endif %}{% elif d.kind == "orphaned" %}{% if r.dry_run %}Orphan task{% else %}Task closed{% endif %}{% else %}{{ d.kind|capfirst }}{% endif %}</span>
-                      <span><strong>{{ d.subject }}</strong>{% if d.stage %} · stage <code>{{ d.stage }}</code>{% endif %}{% if d.task %} · task {{ d.task }}{% endif %}<small>{{ d.why|capfirst }}</small></span></li>
-                  {% endfor %}
-                </ul>
-              </details>
-            </td></tr>
-            {% endif %}
-          </tbody>
-        {% endfor %}
-      </table>
-    </div>
-    {% include "qa_core/partials/_pagination.html" with page=page target="#qa-panel" %}
   {% else %}
-    <div class="nbte-empty-state qa-empty">
-      <span class="qa-tile qa-tile--lg qa-tile--purple qa-empty__tile" aria-hidden="true">{% icon "rotate" 26 "2.2" %}</span>
-      <h3 class="nbte-empty-state__title">No runs yet</h3>
-      <p class="nbte-empty-state__body">The first nightly check will appear here. {% if can_run and not monitor %}Run a check now to see whether any case stage is missing its task — it changes nothing.{% endif %}</p>
+  <section class="vx-verdict vx-t-green" role="status">
+    <span class="vx-verdict__icon" aria-hidden="true">{% icon "check" 22 "2.6" %}</span>
+    <div><h2>All good — every stage has its task</h2>
+      <p>The last check found no task problems.{% if latest.people_findings %} {{ latest.people_findings|length }} person record{{ latest.people_findings|length|pluralize }} need{{ latest.people_findings|length|pluralize:"s," }} a look — see below.{% endif %}</p></div>
+    <time class="vx-verdict__when" datetime="{{ latest.run_at|date:'c' }}">Checked {{ latest.run_at|timesince }} ago</time>
+  </section>
+  {% endif %}
+{% endif %}
+
+{# ---- Plain-language explainer ---- #}
+<section class="vx-explain" aria-label="About this page">
+  <article class="vx-explain__item vx-t-blue">
+    <span class="vx-explain__icon" aria-hidden="true">{% icon "search" 18 "2.2" %}</span>
+    <h2>What this checks</h2>
+    <p>Each stage of an open case should have <strong>exactly one task</strong>, sitting with the person who must act. “Drift” is when the two no longer match: a task left behind after its stage finished, or a stage that has no task at all.</p>
+  </article>
+  <article class="vx-explain__item vx-t-amber">
+    <span class="vx-explain__icon" aria-hidden="true">{% icon "alert" 18 "2.2" %}</span>
+    <h2>Why it matters</h2>
+    <p>A stage without a task means <strong>nobody is told to act</strong>, so the case silently stalls. A left-over task clutters someone's inbox with work that is already done.</p>
+  </article>
+  <article class="vx-explain__item vx-t-green">
+    <span class="vx-explain__icon" aria-hidden="true">{% icon "check" 18 "2.4" %}</span>
+    <h2>What to do</h2>
+    <p>Usually nothing: the check runs <strong>every night</strong> and repairs tasks by itself. Only <em>People to review</em> needs a person — the system never changes someone's eligibility on its own.</p>
+  </article>
+</section>
+
+{# ---- Numbers from the last run ---- #}
+<section class="vx-kpis" aria-label="Last run in numbers">
+  <div class="vx-kpi vx-t-slate">
+    <span class="vx-kpi__icon" aria-hidden="true">{% icon "clock" 18 "2.2" %}</span>
+    <span class="vx-kpi__label">Last run</span>
+    <strong class="vx-kpi__value vx-kpi__value--sm">{% if latest %}{{ latest.run_at|date:"j M, H:i" }}{% else %}Not yet{% endif %}</strong>
+    <span class="vx-kpi__hint">{% if latest %}{% if latest.dry_run %}Check only — nothing was changed{% else %}Check and repair{% endif %}{% else %}The first nightly check will appear here{% endif %}</span>
+  </div>
+  <div class="vx-kpi vx-t-blue">
+    <span class="vx-kpi__icon" aria-hidden="true">{% icon "link" 18 "2.2" %}</span>
+    <span class="vx-kpi__label">Tasks checked</span>
+    <strong class="vx-kpi__value">{{ latest.checked|default:0 }}</strong>
+    <span class="vx-kpi__hint">Open stage tasks compared with their case</span>
+  </div>
+  <div class="vx-kpi {% if latest.closed %}vx-t-amber{% else %}vx-t-green{% endif %}">
+    <span class="vx-kpi__icon" aria-hidden="true">{% icon "archive" 18 "2.2" %}</span>
+    <span class="vx-kpi__label">Left-over tasks</span>
+    <strong class="vx-kpi__value">{{ latest.closed|default:0 }}</strong>
+    <span class="vx-kpi__hint">{% if latest.dry_run %}Found: open tasks whose stage has finished{% else %}Closed because their stage had finished{% endif %}</span>
+  </div>
+  <div class="vx-kpi {% if latest.opened %}vx-t-amber{% else %}vx-t-green{% endif %}">
+    <span class="vx-kpi__icon" aria-hidden="true">{% icon "plus" 18 "2.4" %}</span>
+    <span class="vx-kpi__label">Stages with no task</span>
+    <strong class="vx-kpi__value">{{ latest.opened|default:0 }}</strong>
+    <span class="vx-kpi__hint">{% if latest.dry_run %}Found: stages nobody was asked to act on{% else %}A task was opened for each{% endif %}</span>
+  </div>
+  <div class="vx-kpi {% if latest.people_findings %}vx-t-violet{% else %}vx-t-green{% endif %}">
+    <span class="vx-kpi__icon" aria-hidden="true">{% icon "users" 18 "2.2" %}</span>
+    <span class="vx-kpi__label">People to review</span>
+    <strong class="vx-kpi__value">{{ latest.people_findings|length|default:0 }}</strong>
+    <span class="vx-kpi__hint">Active people who no longer meet the eligibility rules</span>
+  </div>
+</section>
+
+{# ---- Findings of the last run, as cards ---- #}
+{% if latest.task_findings or latest.people_findings %}
+<section class="qa-card" aria-labelledby="dr-now">
+  <header class="qa-card__head"><div><h2 id="dr-now">What the last run found</h2><p>{{ latest.run_at|date:"l j F Y, H:i" }} · {% if latest.dry_run %}check only{% else %}check and repair{% endif %}</p></div></header>
+  <div class="qa-card__body">
+    {% if latest.task_findings %}
+      <h3 class="vx-subhead">Task problems <span class="vx-count">{{ latest.task_findings|length }}</span></h3>
+      <ul class="vx-findings" role="list">{% for f in latest.task_findings %}{% include "accreditation/case/_drift_finding.html" %}{% endfor %}</ul>
+    {% endif %}
+    {% if latest.people_findings %}
+      <h3 class="vx-subhead">People to review <span class="vx-count">{{ latest.people_findings|length }}</span></h3>
+      <p class="vx-subnote">Reported only — nothing was changed. Update the person's rank or designation, or set them inactive, on their own page.</p>
+      <ul class="vx-findings" role="list">{% for f in latest.people_findings %}{% include "accreditation/case/_drift_finding.html" %}{% endfor %}</ul>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{# ---- Every run ---- #}
+<section class="qa-card" aria-labelledby="dr-h">
+  <header class="qa-card__head"><div><h2 id="dr-h">Earlier runs</h2><p>Newest first. Open a run to see exactly what it found.</p></div>
+    <span class="vx-chips"><span class="vx-chip vx-t-slate">{{ runs_total }} run{{ runs_total|pluralize }}</span><span class="vx-chip {% if runs_with_drift %}vx-t-amber{% else %}vx-t-green{% endif %}">{{ runs_with_drift }} found task problems</span>{% if last_repair %}<span class="vx-chip vx-t-blue">Last repair {{ last_repair.run_at|date:"j M, H:i" }}</span>{% endif %}</span></header>
+  {% if page.rows %}
+    <ul class="vx-runs" role="list">
+      {% for r in page.rows %}
+      <li class="vx-run {% if r.closed or r.opened %}{% if r.dry_run %}vx-t-amber{% else %}vx-t-blue{% endif %}{% else %}vx-t-green{% endif %}">
+        <details>
+          <summary>
+            <span class="vx-run__when"><strong>{{ r.run_at|date:"j M Y" }}</strong><span>{{ r.run_at|date:"H:i" }} · {% if r.dry_run %}Check only{% else %}Check and repair{% endif %}</span></span>
+            <span class="vx-run__nums">
+              <span><b>{{ r.checked }}</b> checked</span>
+              <span{% if r.closed %} class="is-hit"{% endif %}><b>{{ r.closed }}</b> left-over</span>
+              <span{% if r.opened %} class="is-hit"{% endif %}><b>{{ r.opened }}</b> missing</span>
+              <span{% if r.people_findings %} class="is-people"{% endif %}><b>{{ r.people_findings|length }}</b> people</span>
+            </span>
+            <span class="vx-chip">{% if r.closed or r.opened %}{% if r.dry_run %}Problems found{% else %}Repaired{% endif %}{% else %}All good{% endif %}</span>
+            <span class="vx-run__toggle" aria-hidden="true">{% icon "chevron" 16 "2.4" %}</span>
+          </summary>
+          <div class="vx-run__body">
+            {% if r.task_findings or r.people_findings %}
+              <ul class="vx-findings" role="list">{% for f in r.task_findings %}{% include "accreditation/case/_drift_finding.html" %}{% endfor %}{% for f in r.people_findings %}{% include "accreditation/case/_drift_finding.html" %}{% endfor %}</ul>
+            {% else %}<p class="vx-subnote">Nothing was found in this run — every stage had its task.</p>{% endif %}
+          </div>
+        </details>
+      </li>
+      {% endfor %}
+    </ul>
+    {% url 'qa_case:drift' as drift_url %}{% include "qa_core/partials/_pagination.html" with page=page target="#qa-panel" page_path=drift_url %}
+  {% else %}
+    <div class="vx-empty">
+      <span class="vx-empty__icon vx-t-violet" aria-hidden="true">{% icon "rotate" 26 "2.2" %}</span>
+      <h3>No checks have run yet</h3>
+      <p>The first nightly check will appear here. {% if can_run and not monitor %}You can also check now — it only looks and changes nothing.{% endif %}</p>
       {% if can_run and not monitor %}
-      <div class="nbte-empty-state__action">
         <form method="post" action="{% url 'qa_case:drift_run' %}" hx-post="{% url 'qa_case:drift_run' %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="dry_run" value="1"><button class="btn btn-primary" type="submit">Check now</button></form>
-      </div>
       {% endif %}
     </div>
   {% endif %}
 </section>
+</div>

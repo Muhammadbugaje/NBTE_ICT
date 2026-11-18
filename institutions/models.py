@@ -243,6 +243,10 @@ class Institution(InstitutionScopedModelMixin, TimeStampedModel):
     portal_enabled = models.BooleanField(default=True)
     origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES, default="legacy")
     approved_at = models.DateTimeField(null=True, blank=True)
+    # v2.3 (owner decision 1): SOP-01 finished and every programme self-study cleared.
+    # Shown as "Cleared for QA". The institution becomes "Approved" only when the ES's
+    # final approval of its first SOP-03 case is applied (stage 17).
+    cleared_for_qa_at = models.DateTimeField(null=True, blank=True)
     delisted_at = models.DateTimeField(null=True, blank=True)
     delist_reason = models.TextField(blank=True)
 
@@ -318,8 +322,17 @@ class Institution(InstitutionScopedModelMixin, TimeStampedModel):
         return f"{self.name} ({self.code})"
 
     # -- derived values ---------------------------------------------------
+    CLEARED_FOR_QA_LABEL = "Cleared for QA"
+
+    @property
+    def is_cleared_for_qa(self):
+        """Onboarding (SOP-01) is complete and the first SOP-03 case is under way."""
+        return bool(self.cleared_for_qa_at) and self.status in (self.PROPOSED, self.UNDER_REVIEW)
+
     @property
     def status_label(self):
+        if self.is_cleared_for_qa:
+            return self.CLEARED_FOR_QA_LABEL
         return self.STATUS_LABELS.get(self.status, self.status.replace("_", " ").capitalize())
 
     @property
@@ -994,6 +1007,10 @@ class BodyProgrammeRequest(TimeStampedModel):
     """A professional body's request to regulate a programme."""
 
     AUDITED = True
+    # Owned by the professional body (scoped through its own portal views);
+    # ``institution`` names which institution runs the programme, it does not
+    # make the request institution data.
+    INSTITUTION_FK_ATTRIBUTES = ("institution",)
     PENDING, APPROVED, REJECTED, WITHDRAWN = "pending", "approved", "rejected", "withdrawn"
     STATUS_CHOICES = [(PENDING, "Waiting for NBTE"), (APPROVED, "Approved"), (REJECTED, "Rejected"),
                       (WITHDRAWN, "Withdrawn")]

@@ -124,6 +124,14 @@ def task_list_base(user, scope):
     return _visible_tasks_qs(user)
 
 
+def _with_row_data(qs):
+    """v2.3 Phase 1: everything a list row reads, fetched in a fixed number of
+    queries (was ~6 queries per row: subtasks, assignees, users)."""
+    # qa_link + its content type: the "Open in QA" link on each row (tasks_tags.qa_open_url).
+    return qs.select_related("category", "created_by", "owner_department", "division",
+                             "qa_link", "qa_link__content_type").prefetch_related("assignee_rows__user", "subtasks")
+
+
 def _require_view(request, pk):
     task = get_object_or_404(_visible_tasks_qs(request.user), pk=pk)
     return task
@@ -241,7 +249,7 @@ def task_list(request):
         "all_users": staff_users().order_by("first_name", "last_name")[:300],
         })
 
-    paginator = Paginator(qs, PER_PAGE)
+    paginator = Paginator(_with_row_data(qs), PER_PAGE)
     page = paginator.get_page(request.GET.get("page"))
 
     return render(request, "tasks/list.html", {
@@ -280,8 +288,7 @@ def _phase_c_list_ctx(request, qdict):
 def _build_kanban_columns(qs):
     """Return the four kanban columns with their tasks. Uses a small
     number of DB queries — grouped client-side in Python for correctness."""
-    qs = qs.select_related("category", "created_by").prefetch_related("assignee_rows__user")
-    tasks = list(qs[:300])  # cap for sanity
+    tasks = list(_with_row_data(qs)[:300])  # cap for sanity
 
     COLUMNS = [
         ("open",       "Open",         ["draft", "open"]),
@@ -307,7 +314,7 @@ def my_tasks(request):
     )
     total = qs.count()
 
-    paginator = Paginator(qs, PER_PAGE)
+    paginator = Paginator(_with_row_data(qs), PER_PAGE)
     page = paginator.get_page(request.GET.get("page"))
 
     return render(request, "tasks/my_tasks.html", {
@@ -330,7 +337,7 @@ def assigned_to_me(request):
     )
     total = qs.count()
 
-    paginator = Paginator(qs, PER_PAGE)
+    paginator = Paginator(_with_row_data(qs), PER_PAGE)
     page = paginator.get_page(request.GET.get("page"))
 
     return render(request, "tasks/assigned_to_me.html", {
@@ -349,7 +356,7 @@ def review_queue(request):
     qs, qdict = _apply_list_filters(qs, request)
     total = qs.count()
 
-    paginator = Paginator(qs, PER_PAGE)
+    paginator = Paginator(_with_row_data(qs), PER_PAGE)
     page = paginator.get_page(request.GET.get("page"))
 
     return render(request, "tasks/review_queue.html", {
@@ -1463,6 +1470,31 @@ def task_accept_start(request, pk):
     task = _require_view(request, pk)
     return _run(request, task, lambda: services.accept_and_start(task, request.user),
                 "Accepted. Your timer is running.")
+
+
+@login_required
+@require_POST
+def task_accept_proceed(request, pk):
+    """v2.3: one button for QA work — accept, start, accept the QA assignment, open QA."""
+    task = _require_view(request, pk)
+    try:
+        url = services.accept_and_proceed(task, request.user)
+    except (PermissionDenied, ValidationError) as exc:
+        messages.error(request, "; ".join(getattr(exc, "messages", None) or [str(exc)]))
+        return redirect("tasks:detail", pk=task.pk)
+    messages.success(request, "Accepted. You can start the QA work now.")
+    return redirect(url or reverse("tasks:detail", args=[task.pk]))
+
+
+@login_required
+@require_POST
+def task_qa_respond(request, pk):
+    """v2.3: Return / Decline / Reject a QA task with a remark."""
+    task = _require_view(request, pk)
+    kind = request.POST.get("kind", "")
+    return _run(request, task, lambda: services.respond_to_qa_task(task, request.user, kind,
+                                                                   request.POST.get("reason", "")),
+                services.QA_RESPONSES.get(kind, ("Done",))[0] + ".")
 
 
 def _assignee_on(task, user_id):

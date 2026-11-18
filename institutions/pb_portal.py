@@ -871,7 +871,8 @@ def pb_requests(request, *, error="", status=200):
     rows = (BodyProgrammeRequest.objects.filter(body=body)
             .select_related("institution", "level", "category", "decided_by", "requested_by")
             .order_by("-created_at", "-id"))
-    institutions = (Institution.unscoped.filter(is_active=True).order_by("name"))
+    institutions = (Institution.unscoped.filter(status__in=("approved", "proposed", "under_review"))
+                    .order_by("name"))
     ctx = _body_ctx(request, "requests", rows=rows, groups=_programme_choice_rows(body),
                     institutions=institutions,
                     can_submit=is_pb_admin(request.user), statuses=BodyProgrammeRequest.STATUS_CHOICES,

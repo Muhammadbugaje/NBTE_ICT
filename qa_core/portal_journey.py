@@ -209,7 +209,8 @@ JARGON_PATTERNS = [
     (re.compile(r"\bSOP[\s\-_]*0?\d\s*[·:\-–—]?\s*", re.I), ""),
     (re.compile(r"\bSOP\b", re.I), "process"),
     (re.compile(r"NBTE institution approval is now required before formal QA requests can begin\.?", re.I),
-     "NBTE now checks each self-study, then approves your institution."),
+     "NBTE now checks each self-study. When all are cleared, your first quality-assurance request opens; "
+     "your institution is approved when that accreditation case is complete."),
     (re.compile(r"\bSSQs\b"), "self-studies"),
     (re.compile(r"\bSSQ\b"), "self-study"),
     (re.compile(r"\bCQAC\b"), "NBTE"),
@@ -227,7 +228,7 @@ STEP_DEFS = [
     ("programmes", "Choose & pay for programmes", "Programmes chosen & paid"),
     ("self_studies", "Fill the self-studies", "Self-studies submitted"),
     ("review", "NBTE reviews your self-studies", "Self-studies reviewed"),
-    ("approval", "NBTE approves your institution", "Institution approved"),
+    ("approval", "NBTE clears you for quality assurance", "Cleared for QA"),
     ("request", "Ask for accreditation & pay the fee", "Request sent & fee paid"),
     ("request_ssq", "Self-study for the visit", "Visit self-study done"),
     ("visit_planned", "NBTE plans your visit", "Visit planned"),
@@ -475,12 +476,15 @@ def _onboarding(steps, inst, user):
     s = {st["code"]: st for st in steps}
     _done(s["registered"], f"{inst.name} is registered on the NBTE portal.")
     approved = getattr(inst, "status", "") == "approved"
+    cleared = bool(getattr(inst, "cleared_for_qa_at", None))  # v2.3: SOP-01 ends with "Cleared for QA"
     app = _latest_application(inst)
     studies = _self_studies(inst)
-    if approved:
+    if approved or cleared:
         for code in ("documents", "programmes", "self_studies", "review"):
             _done(s[code])
-        _done(s["approval"], f"NBTE approved {inst.name}.")
+        _done(s["approval"], f"NBTE approved {inst.name}." if approved else
+              f"NBTE cleared {inst.name} for quality assurance. Full approval comes with the decision on "
+              f"your first accreditation visit.")
         _later_programmes(s, studies)
         return
     try:  # v2.1 X13: the profile set-up comes first (until the application is under way)
@@ -528,9 +532,9 @@ def _onboarding(steps, inst, user):
         stage = approval_stage(app)
     except Exception:
         stage = {"code": "under_review"}
-    sentence = ("NBTE has reviewed your self-studies. The approval of your institution is waiting for final "
-                "sign-off." if stage.get("code") == "approval_pending" else
-                "NBTE is preparing the approval of your institution.")
+    sentence = ("NBTE has reviewed your self-studies. Clearing your institution for quality assurance is "
+                "waiting for final sign-off." if stage.get("code") == "approval_pending" else
+                "NBTE is preparing to clear your institution for quality assurance.")
     _set(s["approval"], "current", sentence, holder=nbte_holder(getattr(inst, "handling_department", None)),
          since_days=_days_since(stage.get("at")))
 

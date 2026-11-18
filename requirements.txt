@@ -18,10 +18,16 @@ webauthn>=2.0  # Phase 9: passkeys (py_webauthn)
 python-docx
 certifi>=2024.2.2  # CA bundle for outbound HTTPS (payment providers) on python.org macOS builds
 boto3>=1.34          # backups: S3-compatible destinations (AWS S3, R2, Supabase, B2)
+django-storages[s3]>=1.14  # v2.3: FILE_STORAGE=r2 puts uploads on Cloudflare R2
 # Phase 9: mobile API
 djangorestframework>=3.16
 djangorestframework-simplejwt>=5.5
 drf-spectacular>=0.28
-cryptography>=46.0,<49  # 48.0.1 is the last wheel for macOS 12 Intel; v2.1 X33/S-28: Fernet field encryption of staff bank account numbers (was transitive)
+# v2.1 X33/S-28: Fernet field encryption of staff bank account numbers.
+# v2.3 Phase 1: 48.0.1 is the last wheel for macOS 12 Intel, but it carries
+# PYSEC-2026-3552/3553/3554. Keep the old pin only on macOS; servers (Linux,
+# Render) get the fixed release.
+cryptography>=46.0,<49; sys_platform == "darwin"
+cryptography>=50.0; sys_platform != "darwin"
 whitenoise>=6.6  # v2.2 Phase G: static files with cache headers when no nginx (Render)
-gunicorn==21.2.0
+gunicorn>=22.0  # v2.3 Phase 1: 21.2.0 carried PYSEC-2026-1433/1434 and clashed with requirements-prod.txt

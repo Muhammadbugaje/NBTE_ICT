@@ -20,8 +20,10 @@ from .models import EmailQuotaTracker
 
 logger = logging.getLogger(__name__)
 
-PROVIDERS = ("brevo_smtp", "brevo", "gmail")
-DEFAULT_LIMITS = {"brevo": 300,"brevo_smtp": 300,"gmail": 500}  # doc 30 §5.4
+# The site sends through the Brevo HTTP API only (SMTP removed 15 Nov 2026).
+# "gmail" stays known so a test (or a future API provider) can plug in.
+PROVIDERS = ("brevo", "gmail")
+DEFAULT_LIMITS = {"brevo": 300, "gmail": 500}  # doc 30 §5.4
 
 
 class DeliveryError(Exception):
@@ -44,9 +46,7 @@ def today():
     return timezone.localdate()
 
 
-# Review M15: Brevo SMTP and the Brevo HTTP API are two doors into ONE Brevo
-# account with ONE daily allowance, so they share a single quota counter.
-_QUOTA_KEYS = {"brevo_smtp": "brevo", "brevo": "brevo", "gmail": "gmail"}
+_QUOTA_KEYS = {"brevo": "brevo", "gmail": "gmail"}
 
 
 def quota_key(provider):
@@ -85,9 +85,6 @@ def safe_error_message(exc):
     secrets = [
         getattr(settings, "ANYMAIL", {}).get("BREVO_API_KEY", ""),
         providers.get("gmail", {}).get("OPTIONS", {}).get("password", ""),
-        # Review M15: the Brevo SMTP key was not redacted.
-        providers.get("brevo_smtp", {}).get("OPTIONS", {}).get("password", ""),
-        getattr(settings, "BREVO_SMTP_KEY", ""),
         getattr(settings, "EMAIL_HOST_PASSWORD", ""),
     ]
     for secret in secrets:
@@ -96,12 +93,44 @@ def safe_error_message(exc):
     return message[:500]
 
 
+def _cooldown_key(provider):
+    return f"email:provider_down:{provider}"
+
+
+def _cooling(provider):
+    """True while ``provider`` failed recently (bad key, outage): skip it so
+    the next e-mail goes straight to a provider that works."""
+    if getattr(settings, "EMAIL_DELIVERY_INLINE", False):
+        return False  # tests: every send tries the full chain
+    try:
+        from django.core.cache import cache
+
+        return bool(cache.get(_cooldown_key(provider)))
+    except Exception:
+        return False
+
+
+def _mark_down(provider, error):
+    if getattr(settings, "EMAIL_DELIVERY_INLINE", False):
+        return
+    try:
+        from django.core.cache import cache
+
+        cache.set(_cooldown_key(provider), error[:200] or "failed",
+                  int(getattr(settings, "EMAIL_PROVIDER_COOLDOWN", 900)))
+    except Exception:
+        pass
+
+
 def provider_order(category="general"):
-    """Try Brevo SMTP first, then Brevo API, then Gmail.
-    An explicit override via the config registry reshuffles the order."""
-    order = ["brevo_smtp", "brevo", "gmail"]
+    """The Brevo HTTP API first, then any other provider a deployment (or a
+    test) adds to settings.EMAIL_PROVIDERS. The site itself defines only
+    "brevo", so in practice this is ["brevo"]. An explicit override via the
+    config registry pins the first choice. A provider that failed in the last
+    few minutes moves to the back."""
+    order = [p for p in PROVIDERS if p in getattr(settings, "EMAIL_PROVIDERS", {})]
     override = config.get("email.provider_override", "auto")
-    if override in PROVIDERS:
+    if override in order:
         order.remove(override)
         order.insert(0, override)
 
@@ -109,6 +138,8 @@ def provider_order(category="general"):
         provider for provider in order
         if _provider_is_configured(provider)
     ]
+    healthy = [p for p in configured if not _cooling(p)]
+    configured = healthy + [p for p in configured if p not in healthy]
     logger.debug("Email provider order category=%s providers=%s", category, configured)
     return configured
 
@@ -160,8 +191,7 @@ def send(
     if not order:
         logger.error("Email delivery unavailable category=%s; no configured provider", category)
         raise NoEmailProviderConfigured(
-            "No email provider is configured. Set BREVO_API_KEY or both "
-            "GMAIL_USER and GMAIL_APP_PASSWORD."
+            "No email provider is configured. Set BREVO_API_KEY in .env."
         )
     errors, quota_skipped = [], 0
 
@@ -206,6 +236,7 @@ def send(
         except Exception as exc:  # any provider failure -> try the next one
             _release(provider, n)
             error = safe_error_message(exc)
+            _mark_down(provider, error)
             note(provider, False, error)
             errors.append(f"{provider}: {error}")
             logger.error(

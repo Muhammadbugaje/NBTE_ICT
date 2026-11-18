@@ -6,7 +6,9 @@ from django import forms
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.validators import MaxValueValidator
 from django.db import transaction
-from django.http import Http404
+from django.contrib import messages
+from django.http import Http404, HttpResponse
+from django.urls import reverse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -70,6 +72,14 @@ def _context(request, inst, app, **extra):
 
     ctx["v2"] = app is None or onboarding_v2.is_v2(app)
     ctx["v3"] = onboarding_v3.is_v3(app) if app is not None else onboarding_v3.latest_flow_is_v3()
+    from . import onboarding_v4 as _v4
+
+    ctx["v4"] = bool(app is not None and _v4.is_v4(app))
+    if ctx["v4"] and inst is not None and inst.cleared_for_qa_at:
+        from .models import QARequest
+
+        ctx["first_request"] = (QARequest.objects.for_user(request.user).filter(institution=inst)
+                                .order_by("created_at").first())
     if ctx["v2"]:
         ctx["head"] = onboarding_v2.header(app, inst)
         ctx["pay_blockers"] = onboarding_v2.pay_blockers(app) if app is not None and app.status == "draft" else []
@@ -141,6 +151,11 @@ def journey_state(inst, app, *, head=None, obligations=None, is_ce=False, return
 
     def out(title, body, *, who="NBTE", mine=False, tone="blue", icon="clock", cta_label="", cta_url="",
             cta_icon="arrow"):
+        if is_ce and who in ("Your Chief Executive", "Chief Executive"):
+            who = "You (Chief Executive)"
+            body = (body.replace("Your Chief Executive signs", "You sign")
+                        .replace("your Chief Executive signs", "you sign")
+                        .replace("Your Chief Executive", "You").replace("your Chief Executive", "you"))
         return {"title": title, "body": body, "who": who, "mine": mine, "tone": tone, "icon": icon,
                 "cta_label": cta_label, "cta_url": cta_url, "cta_icon": cta_icon}
 
@@ -175,8 +190,9 @@ def journey_state(inst, app, *, head=None, obligations=None, is_ce=False, return
         else:
             state = out("Start your onboarding application",
                         "Open your application to register with NBTE. It takes a minute; nothing is sent to NBTE "
-                        "until your Chief Executive signs the declaration.", who="You", mine=True, tone="gold",
-                        icon="plus", cta_label="Start application", cta_url=app_url, cta_icon="plus")
+                        + ("until you sign the declaration." if is_ce else
+                           "until your Chief Executive signs the declaration."), who="You", mine=True, tone="gold",
+                        icon="plus", cta_label="Start application", cta_url=app_url + "#qa-next", cta_icon="plus")
     elif status == "draft":
         if app.return_remark:
             state = out("NBTE returned your application", app.return_remark, who="You", mine=True, tone="red",
@@ -473,20 +489,28 @@ def application_start(request):
     if getattr(request, "is_impersonating", False):
         raise PermissionDenied
     try:
-        services.start_application(inst, user=request.user)
+        app = services.start_application(inst, user=request.user)
     except ValidationError as exc:
         response = render(request, "qa_portal/application/page.html",
                           _context(request, inst, _app(request, inst), error=" ".join(exc.messages)))
         return toast(response, "error", "Could not start", " ".join(exc.messages))
+    from . import onboarding_v3, onboarding_v4
+
+    if onboarding_v4.is_v4(app):
+        next_line = ("Next: the Chief Executive signs the declaration. Uploads open straight away; the fee is "
+                     "paid after NBTE approves your documents." if onboarding_v4.fee_timing() == onboarding_v4.AFTER
+                     else "Next: the Chief Executive declares and pays; uploads unlock once Finance confirms.")
+    elif onboarding_v3.is_v3(app):
+        next_line = "The Chief Executive pays first; uploads unlock after Finance confirms payment."
+    else:
+        next_line = "Upload your documents, then submit."
+    messages.success(request, f"Application {app.reference} opened. {next_line}")
+    # A full redirect (also for HTMX) so the page is rebuilt from the saved
+    # state — rendering in-line showed the pre-start page with this toast.
     response = redirect("qa_portal:application")
     if is_htmx(request):
-        app = _app(request, inst)
-        from . import onboarding_v3
-
-        response = render(request, "qa_portal/application/page.html", _context(request, inst, app))
-        toast(response, "success", "Application opened",
-              "The Chief Executive pays first; uploads unlock after Finance confirms payment."
-              if onboarding_v3.is_v3(app) else "Upload your documents, then submit.")
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = reverse("qa_portal:application")
     return response
 
 
@@ -511,6 +535,11 @@ def application_submit(request):
                           _context(request, inst, app, error=" ".join(msgs)), status=422)
         return toast(response, "error", "Not submitted", " ".join(msgs))
     app.refresh_from_db()
+    if not is_htmx(request):
+        # Post/redirect/get: a refresh must not re-post the submission.
+        messages.success(request, "Documents submitted. NBTE departments will review each document routed to them."
+                         if onboarding_v3.is_v3(app) else "Application submitted.")
+        return redirect("qa_portal:application")
     response = render(request, "qa_portal/application/page.html", _context(request, inst, app, submitted=True))
     if onboarding_v3.is_v3(app):
         return toast(response, "success", "Documents submitted",

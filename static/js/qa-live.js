@@ -108,7 +108,7 @@
     pill.addEventListener("click", function () {
       if (!current) return;
       if (pill.getAttribute("data-state") === "available") refreshNow(true);
-      else if (pill.getAttribute("data-state") === "offline") pollNow();
+      else if (/^(offline|slow)$/.test(pill.getAttribute("data-state") || "")) pollNow();
     });
     document.body.appendChild(pill);
     return pill;
@@ -122,7 +122,24 @@
     var label = current.label ? " · " + current.label : "";
     pill.title = text + label;
     pill.setAttribute("aria-label", text + label);
-    pill.disabled = state !== "available" && state !== "offline";
+    pill.disabled = state !== "available" && state !== "offline" && state !== "slow";
+  }
+
+  // v2.3 Phase 1 (D8): a slow server is not "offline". Polls that fail while
+  // the browser is online show "Waiting for the server…"; the first good
+  // answer puts the pill back to Live. The site-wide banner (network-guard.js)
+  // is told too, so there is one source of truth for connection state.
+  function connectionTrouble() {
+    var off = navigator.onLine === false;
+    setPill(off ? "offline" : "slow", off ? "Offline" : "Waiting for the server\u2026");
+    if (window.NBTE && NBTE.net && NBTE.net.report) NBTE.net.report(off ? "offline" : "slow");
+  }
+
+  function connectionOk() {
+    if (pill && /^(offline|slow)$/.test(pill.getAttribute("data-state") || "")) {
+      setPill(current && current.pending ? "available" : "idle", current && current.pending ? "Update available" : "Live");
+    }
+    if (window.NBTE && NBTE.net && NBTE.net.report) NBTE.net.report("ok");
   }
 
   function removePill() {
@@ -204,7 +221,9 @@
       return r.json();
     }).then(function (data) {
       if (!current || gen !== current.gen) return;
+      var wasFailing = (current.failures || 0) > 0;
       current.failures = 0;
+      if (wasFailing) connectionOk();
       var first = !current.token;
       if (data && data.v) current.token = data.v;
       if (data && typeof data.unread === "number") updateUnread(data.unread);
@@ -233,7 +252,7 @@
       if (!current || gen !== current.gen) return;
       if (err && err.name === "AbortError") return;
       current.failures = (current.failures || 0) + 1;
-      if (current.failures >= 2) setPill("offline", "Reconnecting…");
+      if (current.failures >= 2) connectionTrouble();
     }).finally(function () {
       if (!current || gen !== current.gen) return;
       current.inflight = false;
@@ -329,7 +348,7 @@
       if (!current || gen !== current.gen) return;
       current.refreshing = false;
       current.failures = (current.failures || 0) + 1;
-      setPill("offline", "Reconnecting…");
+      connectionTrouble();
       schedule(backoff());
     });
   }

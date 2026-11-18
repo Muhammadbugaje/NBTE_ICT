@@ -510,17 +510,29 @@ def _reset_after(case, target, *, req, actor):
     def affected(code):
         return order.get(code, -1) >= cut
 
+    from . import versions
+
+    why = f"Case rollback request #{req.pk}: {req.reason}"
+
+    def keep(obj, kind, title):
+        """v2.3: freeze the record as a read-only version before it is reopened."""
+        return versions.freeze(case, obj, kind, title=title, change_request=req, actor=actor, reason=why)
+
     if any(affected(code) for code in ("generate_cost", "audit_personnel_cost", "es_approve_cost")):
+        for sheet in CostSheet.unscoped.filter(case=case, is_current=True):
+            keep(sheet, "cost_sheet", "Cost sheet")
         CostSheet.unscoped.filter(case=case, is_current=True).update(status="draft", updated_at=timezone.now())
     if any(affected(code) for code in ("add_personnel", "confirm_personnel")):
         plist = PersonnelList.unscoped.filter(case=case).first()
         if plist is not None:
+            keep(plist, "personnel_list", "Personnel list")
             plist.status = "draft"
             plist.save(update_fields=["status", "updated_at"])
             plist.entries.update(status="proposed", updated_at=timezone.now())
     if any(affected(code) for code in ("add_visit_details", "confirm_visit_details", "es_approve_visit")):
         visit = VisitDetail.unscoped.filter(case=case).first()
         if visit is not None:
+            keep(visit, "visit_details", "Visit details")
             visit.status = "draft"
             visit.approved_by = None
             visit.approved_at = None
@@ -540,8 +552,12 @@ def _reset_after(case, target, *, req, actor):
     elif affected("post_visit_recommendation"):
         from inspection.models import PostVisitReport
 
-        PostVisitReport.unscoped.filter(inspection__case=case).update(
-            recommendation_note="", recommended_by=None, updated_at=timezone.now())
+        # v2.3: the recommendation is frozen and kept as the starting text of the next version.
+        for report in PostVisitReport.unscoped.filter(inspection__case=case).select_related("qa_request_programme__programme"):
+            keep(report, "post_visit_report", f"Post-visit report · {report.qa_request_programme.programme}")
+            report.recommended_by = None
+            report.version = (report.version or 1) + 1
+            report.save(update_fields=["recommended_by", "version", "updated_at"])
 
     from .models import CapacityAssessment, Decision, QARequestProgramme
 
@@ -552,7 +568,10 @@ def _reset_after(case, target, *, req, actor):
     }
     invalid_decisions = [stage for stage, flow_code in decision_stages.items() if affected(flow_code)]
     if invalid_decisions:
-        Decision.unscoped.filter(case=case, stage__in=invalid_decisions, applied_at__isnull=True).delete()
+        stale = Decision.unscoped.filter(case=case, stage__in=invalid_decisions, applied_at__isnull=True)
+        for decision in stale.select_related("programme"):
+            keep(decision, "decision", f"{decision.get_stage_display()} · {decision.programme}")
+        stale.delete()  # superseded: kept as frozen versions above
     if affected("cqac_recommendation"):
         CapacityAssessment.unscoped.filter(
             qa_request_programme__in=QARequestProgramme.unscoped.filter(qa_request=case.qa_request),
@@ -567,8 +586,12 @@ def _reset_post_visit_work(case, *, req, actor):
 
     from .models import VisitReportForm
 
+    from . import versions
+
+    why = f"Case rollback request #{req.pk}: {req.reason}"
     inspections = list(Inspection.unscoped.filter(case=case).order_by("pk"))
-    reports = list(PostVisitReport.unscoped.filter(inspection__in=inspections).select_related("inspection"))
+    reports = list(PostVisitReport.unscoped.filter(inspection__in=inspections)
+                   .select_related("inspection", "qa_request_programme__programme"))
     report_ids = [report.pk for report in reports]
     for report in reports:
         instance = flow.instance_for(report, "post_visit_report")
@@ -578,15 +601,37 @@ def _reset_post_visit_work(case, *, req, actor):
             flow.force_stage(instance, "draft", actor,
                              remark=f"Case rollback request #{req.pk}: {req.reason}",
                              metadata={"change_request": req.pk})
-    VisitReportForm.unscoped.filter(inspection__in=inspections).update(
-        data={}, score={}, computed_outcome="", status="draft", rendered_snapshot=[],
-        submitted_by=None, submitted_at=None, updated_at=timezone.now())
-    PostVisitReport.unscoped.filter(pk__in=report_ids).update(
-        status="draft", summary="", findings={}, recommendation="", recommendation_note="", recommended_by=None,
-        submitted_by=None, submitted_at=None, updated_at=timezone.now())
-    PostVisitMemberReport.unscoped.filter(report_id__in=report_ids).update(
-        status="draft", summary="", findings={}, recommendation="", submitted_at=None,
-        reviewed_by=None, reviewed_at=None, review_note="", updated_at=timezone.now())
+    # v2.3 (owner decision 3): freeze → copy forward. Every report, form and member
+    # report is kept as a read-only version; the live record keeps its content as
+    # the starting point of the next version and reopens as a draft. Each change is
+    # saved row by row so the audit log records it.
+    for form in VisitReportForm.unscoped.filter(inspection__in=inspections):
+        versions.freeze(case, form, "visit_report_form", title=f"{form.get_kind_display()}",
+                        change_request=req, actor=actor, reason=why)
+        form.status, form.submitted_by, form.submitted_at = "draft", None, None
+        form.score, form.computed_outcome, form.rendered_snapshot = {}, "", []
+        form.save(update_fields=["status", "submitted_by", "submitted_at", "score", "computed_outcome",
+                                 "rendered_snapshot", "updated_at"])
+    for report in reports:
+        versions.freeze(case, report, "post_visit_report",
+                        title=f"Post-visit report · {report.qa_request_programme.programme}",
+                        change_request=req, actor=actor, reason=why)
+        report.status, report.recommended_by = "draft", None
+        report.submitted_by, report.submitted_at = None, None
+        report.version = (report.version or 1) + 1
+        report.save(update_fields=["status", "recommended_by", "submitted_by", "submitted_at", "version",
+                                   "updated_at"])
+    for member in PostVisitMemberReport.unscoped.filter(report_id__in=report_ids).select_related(
+            "author", "report__qa_request_programme__programme"):
+        who = getattr(member.author, "get_full_name", lambda: "")() or "team member"
+        versions.freeze(case, member, "member_report",
+                        title=f"Member report · {who} · {member.report.qa_request_programme.programme}",
+                        change_request=req, actor=actor, reason=why)
+        member.status, member.submitted_at = "draft", None
+        member.reviewed_by, member.reviewed_at, member.review_note = None, None, ""
+        member.version = (member.version or 1) + 1
+        member.save(update_fields=["status", "submitted_at", "reviewed_by", "reviewed_at", "review_note",
+                                   "version", "updated_at"])
 
     if not affected_visit_stage(case, req.target_stage):
         return
@@ -605,7 +650,10 @@ def _reset_post_visit_work(case, *, req, actor):
         Inspection.unscoped.filter(pk=inspection.pk).update(
             status="scheduled", actual_start=None, actual_end=None, completed_by=None, closed_at=None,
             updated_at=timezone.now())
-        PostVisitPersonnel.unscoped.filter(inspection=inspection).delete()
+        for person in PostVisitPersonnel.unscoped.filter(inspection=inspection):
+            versions.freeze(case, person, "visit_attendance", title=f"Visit attendance · {person}",
+                            change_request=req, actor=actor, reason=why)
+        PostVisitPersonnel.unscoped.filter(inspection=inspection).delete()  # kept as frozen versions
 
 
 def affected_visit_stage(case, target_stage):

@@ -1,0 +1,362 @@
+/* ==========================================================================
+   confirm-glass.css — Liquid Glass confirmation dialog (static/js/dialog.js)
+
+   Not bundled: linked after motion-plus.css so it wins over the older
+   .nbte-confirm rules in components.css and nbte-ux.css (both bundled).
+
+   · Glass only on the layer that overlaps the page: the scrim and the panel.
+   · Motion uses opacity and transform only, as CSS keyframes, so the buttons
+     can be clicked from the first frame. dialog.js adds .is-leaving on close
+     and removes the node when ncg-panel-out / ncg-sheet-out ends.
+   · No movement under prefers-reduced-motion or html[data-motion] other
+     than "full": the dialog simply appears and goes.
+   ========================================================================== */
+
+:root {
+  --ncg-scrim: rgba(18, 20, 24, .30);
+  --ncg-glass: rgba(255, 255, 255, .68);
+  --ncg-glass-solid: #ffffff;
+  --ncg-hairline: rgba(255, 255, 255, .70);
+  --ncg-edge: rgba(0, 0, 0, .08);
+  --ncg-specular: linear-gradient(180deg, rgba(255, 255, 255, .85) 0%, rgba(255, 255, 255, .18) 22%, rgba(255, 255, 255, 0) 46%);
+  --ncg-shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 12px 28px -8px rgba(0, 0, 0, .18), 0 44px 90px -24px rgba(0, 0, 0, .34);
+  --ncg-ink: #1d1d1f;
+  --ncg-ink-2: rgba(60, 60, 67, .78);
+  --ncg-ink-3: rgba(60, 60, 67, .56);
+  --ncg-fill: rgba(118, 118, 128, .14);
+  --ncg-fill-hover: rgba(118, 118, 128, .22);
+  --ncg-inset: rgba(118, 118, 128, .10);
+  --ncg-accent: var(--primary, #1f6b3e);
+  --ncg-accent-fg: var(--primary-fg, #fff);
+  --ncg-accent-soft: rgba(31, 107, 62, .13);
+  --ncg-accent-ink: #1f6b3e;
+  --ncg-red: #d92d33;
+  --ncg-red-soft: rgba(217, 45, 51, .12);
+  --ncg-red-ink: #c9252b;
+  --ncg-blur: blur(34px) saturate(190%);
+  --ncg-spring: cubic-bezier(.2, .9, .25, 1.15);
+  --ncg-sheet: cubic-bezier(.32, .72, 0, 1);
+}
+:root[data-theme="dark"] {
+  --ncg-scrim: rgba(0, 0, 0, .44);
+  --ncg-glass: rgba(52, 52, 58, .66);
+  --ncg-glass-solid: #1c1c1e;
+  --ncg-hairline: rgba(255, 255, 255, .16);
+  --ncg-edge: rgba(0, 0, 0, .55);
+  --ncg-specular: linear-gradient(180deg, rgba(255, 255, 255, .16) 0%, rgba(255, 255, 255, .04) 20%, rgba(255, 255, 255, 0) 44%);
+  --ncg-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 14px 30px -8px rgba(0, 0, 0, .5), 0 48px 96px -24px rgba(0, 0, 0, .7);
+  --ncg-ink: #f5f5f7;
+  --ncg-ink-2: rgba(235, 235, 245, .72);
+  --ncg-ink-3: rgba(235, 235, 245, .50);
+  --ncg-fill: rgba(120, 120, 128, .30);
+  --ncg-fill-hover: rgba(120, 120, 128, .42);
+  --ncg-inset: rgba(120, 120, 128, .20);
+  --ncg-accent-soft: rgba(95, 211, 148, .16);
+  --ncg-accent-ink: #7ad7a2;
+  --ncg-red: #e0383e;
+  --ncg-red-soft: rgba(255, 105, 97, .18);
+  --ncg-red-ink: #ff7b74;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --ncg-scrim: rgba(0, 0, 0, .44);
+    --ncg-glass: rgba(52, 52, 58, .66);
+    --ncg-glass-solid: #1c1c1e;
+    --ncg-hairline: rgba(255, 255, 255, .16);
+    --ncg-edge: rgba(0, 0, 0, .55);
+    --ncg-specular: linear-gradient(180deg, rgba(255, 255, 255, .16) 0%, rgba(255, 255, 255, .04) 20%, rgba(255, 255, 255, 0) 44%);
+    --ncg-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 14px 30px -8px rgba(0, 0, 0, .5), 0 48px 96px -24px rgba(0, 0, 0, .7);
+    --ncg-ink: #f5f5f7;
+    --ncg-ink-2: rgba(235, 235, 245, .72);
+    --ncg-ink-3: rgba(235, 235, 245, .50);
+    --ncg-fill: rgba(120, 120, 128, .30);
+    --ncg-fill-hover: rgba(120, 120, 128, .42);
+    --ncg-inset: rgba(120, 120, 128, .20);
+    --ncg-accent-soft: rgba(95, 211, 148, .16);
+    --ncg-accent-ink: #7ad7a2;
+    --ncg-red: #e0383e;
+    --ncg-red-soft: rgba(255, 105, 97, .18);
+    --ncg-red-ink: #ff7b74;
+  }
+}
+
+/* ---- Layer ---------------------------------------------------------------- */
+.nbte-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  --ncg-tint: var(--ncg-accent);
+  --ncg-tint-fg: var(--ncg-accent-fg);
+  --ncg-tint-soft: var(--ncg-accent-soft);
+  --ncg-tint-ink: var(--ncg-accent-ink);
+}
+.nbte-confirm.is-leaving { pointer-events: none; }
+
+.nbte-confirm .nbte-confirm__backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--ncg-scrim);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  cursor: default;
+  animation: ncg-fade-in 200ms ease-out both;
+}
+
+/* ---- Panel ---------------------------------------------------------------- */
+.nbte-confirm .nbte-confirm__panel {
+  position: relative;
+  box-sizing: border-box;
+  width: min(420px, 100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  padding: 18px 22px 22px;
+  overflow: hidden auto;
+  border: 1px solid var(--ncg-hairline);
+  border-radius: 28px;
+  background: var(--ncg-glass);
+  -webkit-backdrop-filter: var(--ncg-blur);
+  backdrop-filter: var(--ncg-blur);
+  box-shadow: 0 0 0 .5px var(--ncg-edge), var(--ncg-shadow);
+  color: var(--ncg-ink);
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif);
+  text-align: center;
+  outline: none;
+  transform-origin: 50% 60%;
+  animation: ncg-panel-in 320ms var(--ncg-spring) both;
+}
+.nbte-confirm .nbte-confirm__panel--danger {
+  --ncg-tint: var(--ncg-red);
+  --ncg-tint-fg: #fff;
+  --ncg-tint-soft: var(--ncg-red-soft);
+  --ncg-tint-ink: var(--ncg-red-ink);
+  border: 1px solid var(--ncg-hairline);
+}
+/* Specular top highlight (replaces the old colour bar). */
+.nbte-confirm .nbte-confirm__panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  display: block;
+  height: auto;
+  border-radius: inherit;
+  background: var(--ncg-specular);
+  opacity: .55;
+  pointer-events: none;
+}
+.nbte-confirm .nbte-confirm__panel > * { position: relative; }
+
+/* ---- Content -------------------------------------------------------------- */
+.nbte-confirm .nbte-confirm__brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: var(--ncg-ink-3);
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.nbte-confirm .nbte-confirm__brand img { width: 16px; height: 16px; opacity: .9; }
+
+.nbte-confirm .nbte-confirm__icon {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin: 18px auto 0;
+  border-radius: 50%;
+  background: var(--ncg-tint-soft);
+  box-shadow: inset 0 1px 0 var(--ncg-hairline), inset 0 0 0 .5px var(--ncg-tint-soft);
+  color: var(--ncg-tint-ink);
+  font-size: 1.6rem;
+  line-height: 1;
+}
+.nbte-confirm .nbte-confirm__icon svg { display: block; width: 28px; height: 28px; }
+
+.nbte-confirm .nbte-confirm__panel .nbte-confirm__title {
+  margin: 14px 0 0 !important; /* beats the !important margin in nbte-ux.css */
+  color: var(--ncg-ink);
+  font-family: inherit;
+  font-size: 1.25rem !important;
+  font-weight: 600;
+  letter-spacing: -.022em;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+.nbte-confirm .nbte-confirm__body {
+  margin: 6px 0 0;
+  color: var(--ncg-ink-2);
+  font-size: .9375rem;
+  line-height: 1.5;
+  letter-spacing: -.005em;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.nbte-confirm .nbte-confirm__note {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: var(--ncg-inset);
+  box-shadow: inset 0 0 0 .5px var(--ncg-edge);
+  color: var(--ncg-ink-2);
+  font-size: .8125rem;
+  line-height: 1.45;
+}
+
+/* ---- Actions: equal-width pair -------------------------------------------- */
+.nbte-confirm .nbte-confirm__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 22px 0 0;
+}
+.nbte-confirm .nbte-confirm__actions .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 50px;
+  margin: 0;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ncg-fill);
+  background-image: none;
+  box-shadow: none;
+  color: var(--ncg-ink);
+  font: inherit;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -.015em;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  transform: none;
+  translate: none;
+  scale: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 160ms cubic-bezier(.25, 1, .5, 1), background-color 160ms ease, filter 160ms ease;
+}
+.nbte-confirm .nbte-confirm__actions .btn:hover { background: var(--ncg-fill-hover); }
+.nbte-confirm .nbte-confirm__actions .btn:is(.btn-primary, .btn-danger) {
+  background: var(--ncg-tint);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 6px 16px -8px var(--ncg-tint);
+  color: var(--ncg-tint-fg);
+}
+.nbte-confirm .nbte-confirm__actions .btn:is(.btn-primary, .btn-danger):hover { background: var(--ncg-tint); filter: brightness(1.08); }
+.nbte-confirm .nbte-confirm__actions .btn:active { transform: scale(.965); transition-duration: 90ms; filter: brightness(.96); }
+.nbte-confirm .nbte-confirm__actions .btn:focus-visible { outline: 3px solid var(--ncg-ink-3); outline-offset: 2px; }
+.nbte-confirm .nbte-confirm__actions .btn:is(.btn-primary, .btn-danger):focus-visible { outline-color: var(--ncg-tint-ink); }
+
+/* ---- Motion --------------------------------------------------------------- */
+@keyframes ncg-fade-in { from { opacity: 0; } }
+@keyframes ncg-fade-out { to { opacity: 0; } }
+@keyframes ncg-panel-in { from { opacity: 0; transform: translateY(8px) scale(.92); } }
+@keyframes ncg-panel-out { to { opacity: 0; transform: scale(.96); } }
+@keyframes ncg-sheet-in { from { opacity: .6; transform: translateY(calc(100% + 24px)); } }
+@keyframes ncg-sheet-out { to { opacity: 0; transform: translateY(calc(100% + 24px)); } }
+@keyframes ncg-rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes ncg-pop { from { opacity: 0; transform: scale(.7); } }
+
+/* Light stagger: icon, then text, then buttons. */
+.nbte-confirm .nbte-confirm__brand { animation: ncg-fade-in 240ms ease-out 30ms both; }
+.nbte-confirm .nbte-confirm__icon { animation: ncg-pop 360ms var(--ncg-spring) 50ms both; }
+.nbte-confirm .nbte-confirm__title,
+.nbte-confirm .nbte-confirm__body,
+.nbte-confirm .nbte-confirm__note { animation: ncg-rise 280ms cubic-bezier(.25, 1, .5, 1) 80ms both; }
+.nbte-confirm .nbte-confirm__actions { animation: ncg-rise 280ms cubic-bezier(.25, 1, .5, 1) 110ms both; }
+
+.nbte-confirm.is-leaving .nbte-confirm__backdrop { animation: ncg-fade-out 180ms ease-in both; }
+.nbte-confirm.is-leaving .nbte-confirm__panel { animation: ncg-panel-out 160ms cubic-bezier(.4, 0, 1, 1) both; }
+.nbte-confirm.is-leaving .nbte-confirm__panel > * { animation: none; }
+
+/* ---- Phones: floating bottom sheet ---------------------------------------- */
+@media (max-width: 560px) {
+  .nbte-confirm {
+    place-items: end center;
+    padding: 8px max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+  }
+  .nbte-confirm .nbte-confirm__panel {
+    width: 100%;
+    max-height: min(85dvh, 100dvh - 24px);
+    padding: 16px 18px 18px;
+    border-radius: 32px;
+    transform-origin: 50% 100%;
+    animation: ncg-sheet-in 380ms var(--ncg-sheet) both;
+  }
+  .nbte-confirm.is-leaving .nbte-confirm__panel { animation: ncg-sheet-out 200ms cubic-bezier(.4, 0, 1, 1) both; }
+  .nbte-confirm .nbte-confirm__actions { grid-template-columns: 1fr; }
+  .nbte-confirm .nbte-confirm__actions .btn:is(.btn-primary, .btn-danger) { order: -1; }
+}
+
+/* ---- No movement when motion is reduced ----------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .nbte-confirm .nbte-confirm__backdrop,
+  .nbte-confirm .nbte-confirm__panel,
+  .nbte-confirm .nbte-confirm__panel > *,
+  .nbte-confirm.is-leaving .nbte-confirm__backdrop,
+  .nbte-confirm.is-leaving .nbte-confirm__panel { animation: none; }
+  .nbte-confirm .nbte-confirm__actions .btn { transition: none; }
+  .nbte-confirm .nbte-confirm__actions .btn:active { transform: none; }
+}
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) .nbte-confirm :is(.nbte-confirm__backdrop, .nbte-confirm__panel, .nbte-confirm__panel > *) { animation: none !important; }
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) .nbte-confirm .nbte-confirm__actions .btn:active { transform: none; }
+
+/* ---- No backdrop-filter: solid surface ------------------------------------ */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .nbte-confirm .nbte-confirm__backdrop { background: rgba(0, 0, 0, .5); }
+  .nbte-confirm .nbte-confirm__panel { background: var(--ncg-glass-solid); }
+  .modal-root .modal { background: var(--ncg-glass-solid); }
+}
+
+/* ==========================================================================
+   Same material for the generic modal and plain native dialogs.
+   Their own open/close motion (components.css, motion-plus.css) is untouched.
+   ========================================================================== */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .modal-root .modal-backdrop {
+    background: var(--ncg-scrim);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+    backdrop-filter: blur(14px) saturate(150%);
+  }
+  .modal-root .modal {
+    border-color: var(--ncg-hairline);
+    border-radius: 28px;
+    background: var(--ncg-glass);
+    -webkit-backdrop-filter: var(--ncg-blur);
+    backdrop-filter: var(--ncg-blur);
+    box-shadow: 0 0 0 .5px var(--ncg-edge), var(--ncg-shadow);
+  }
+  /* Unstyled native dialogs only: every classed dialog (.msg-sheet, .sv-dialog,
+     .vin-dialog, .hrd-card) has its own surface and keeps it. The scrim below
+     is zero-specificity, so a dialog with its own ::backdrop rule wins. */
+  :where(dialog:not([class])) {
+    border: 1px solid var(--ncg-hairline);
+    border-radius: 28px;
+    background: var(--ncg-glass);
+    -webkit-backdrop-filter: var(--ncg-blur);
+    backdrop-filter: var(--ncg-blur);
+    box-shadow: 0 0 0 .5px var(--ncg-edge), var(--ncg-shadow);
+    color: var(--ncg-ink);
+  }
+  :where(dialog)::backdrop {
+    background: var(--ncg-scrim);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+    backdrop-filter: blur(14px) saturate(150%);
+  }
+}
+@media (max-width: 767px) {
+  .modal-root .modal, .modal-root .modal-lg { border-radius: 28px 28px 0 0; }
+}

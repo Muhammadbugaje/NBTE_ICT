@@ -1,10 +1,11 @@
 {% load qa_tags %}
 {% include "inspection/_subnav.html" with section="calendar" %}
+<div class="vx vx-insp">
 <header class="qa-hero" data-qa-live-url="{% url 'qa_insp:calendar_live' %}" data-qa-live-target="#qa-panel" data-qa-live-label="calendar">
   <div>
-    <span class="qa-eyebrow">{% icon "clock" 14 "2.4" %} SOP-03 visits</span>
+    <span class="qa-eyebrow">{% icon "calendar" 14 "2.4" %} Inspection · SOP-03 visits</span>
     <h1 data-qa-focus>Visit calendar</h1>
-    <p>Every planned and recorded inspection visit by month. Open a visit to see its team, dates and post-visit reports, or add it to your own calendar from the list below.</p>
+    <p>Every planned and recorded visit, month by month. Click a visit to open its team, dates and reports.</p>
     <div class="qa-hero__actions">
       <a class="btn btn-subtle" href="{% url 'qa_insp:inspections' %}" hx-get="{% url 'qa_insp:inspections' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "map" 16 %} All inspections</a>
     </div>
@@ -15,7 +16,7 @@
 </header>
 <section class="qa-card" aria-labelledby="cal-h">
   <header class="qa-card__head"><div><h2 id="cal-h">{{ first|date:"F Y" }}</h2><p>{{ visits|length }} visit{{ visits|length|pluralize }} this month.</p></div>
-    <div class="qa-cal-nav">
+    <div class="qa-cal-nav"><span class="vx-chips vx-cal-key" aria-label="Colour key"><span class="vx-chip vx-t-blue">Scheduled</span><span class="vx-chip vx-t-green">Visit recorded</span><span class="vx-chip vx-t-red">Cancelled</span></span>
       <a class="btn btn-sm btn-subtle" href="?month={{ prev }}" hx-get="{% url 'qa_insp:calendar' %}?month={{ prev }}" hx-target="#qa-panel" hx-push-url="true" aria-label="Previous month">‹</a>
       <a class="btn btn-sm btn-subtle" href="?" hx-get="{% url 'qa_insp:calendar' %}" hx-target="#qa-panel" hx-push-url="true">Today</a>
       <a class="btn btn-sm btn-subtle" href="?month={{ next }}" hx-get="{% url 'qa_insp:calendar' %}?month={{ next }}" hx-target="#qa-panel" hx-push-url="true" aria-label="Next month">›</a>
@@ -25,8 +26,10 @@
     {% for week in weeks %}<div class="qa-cal__row" role="row">{% for day in week %}
       <div class="qa-cal__day{% if not day.in_month %} is-other{% endif %}{% if day.today %} is-today{% endif %}" role="gridcell">
         <span class="qa-cal__num">{{ day.date.day }}</span>
-        {% for v in day.visits %}<a class="qa-cal__visit qa-cal__visit--{{ v.status }}" href="{% url 'qa_insp:inspection' v.pk %}" hx-get="{% url 'qa_insp:inspection' v.pk %}" hx-target="#qa-panel" hx-push-url="true" title="{{ v.case.institution.name }} · {{ v.reference }}">{{ v.case.institution.code }}</a>{% endfor %}
+        {% for v in day.visits %}<a class="qa-cal__visit qa-cal__visit--{{ v.status }} vx-cal-visit {{ v.status|vx_tone }}" href="{% url 'qa_insp:inspection' v.pk %}" hx-get="{% url 'qa_insp:inspection' v.pk %}" hx-target="#qa-panel" hx-push-url="true" title="{{ v.case.institution.name }} · {{ v.reference }} · {{ v.status|vx_label }}">{{ v.case.institution.code }}</a>{% endfor %}
       </div>{% endfor %}</div>{% endfor %}
   </div>
-  {% load nbte_calendar %}{% if visits %}<ul class="qa-rowlist qa-cal-list" role="list">{% for v in visits %}<li class="nbte-cal-row"><a class="qa-rowlink" href="{% url 'qa_insp:inspection' v.pk %}" hx-get="{% url 'qa_insp:inspection' v.pk %}" hx-target="#qa-panel" hx-push-url="true"><span class="qa-rowlink__badge">{{ v.case.institution.code }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ v.case.institution.name }}</span><span class="qa-rowlink__meta"><span>{% if v.actual_start %}Visited {{ v.actual_start|date:"j M" }}–{{ v.actual_end|date:"j M" }}{% else %}{{ v.scheduled_start|date:"j M" }}–{{ v.scheduled_end|date:"j M" }}{% endif %}</span><span>· {{ v.team_lead|who }}</span></span></span></a>{% add_to_calendar "inspection" v %}</li>{% endfor %}</ul>{% endif %}
+  {% if not visits %}<div class="vx-empty vx-empty--slim"><span class="vx-empty__icon vx-t-pink" aria-hidden="true">{% icon "calendar" 24 "2" %}</span><h3>No visits in {{ first|date:"F Y" }}</h3><p>Use the arrows to look at another month. Visits appear when the ES approves them.</p></div>{% endif %}
+  {% load nbte_calendar %}{% if visits %}<ul class="qa-rowlist qa-cal-list" role="list">{% for v in visits %}<li class="nbte-cal-row"><a class="qa-rowlink vx-rowlink {{ v.status|vx_tone }}" href="{% url 'qa_insp:inspection' v.pk %}" hx-get="{% url 'qa_insp:inspection' v.pk %}" hx-target="#qa-panel" hx-push-url="true"><span class="qa-rowlink__badge">{{ v.case.institution.code }}</span><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ v.case.institution.name }}</span><span class="qa-rowlink__meta"><span>{% if v.actual_start %}Visited {{ v.actual_start|date:"j M" }}–{{ v.actual_end|date:"j M" }}{% else %}{{ v.scheduled_start|date:"j M" }}–{{ v.scheduled_end|date:"j M" }}{% endif %}</span><span>· {{ v.team_lead|who }}</span></span></span><span class="qa-rowlink__side"><span class="vx-chip">{{ v.status|vx_label }}</span></span></a>{% add_to_calendar "inspection" v %}</li>{% endfor %}</ul>{% endif %}
 </section>
+</div>

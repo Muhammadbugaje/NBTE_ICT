@@ -71,7 +71,7 @@ slow pages.
    - `SITE_URL`, for example `https://nbte-ict.onrender.com`
    - `CSRF_TRUSTED_ORIGINS`: the same hosts, each with `https://`
    - `DEFAULT_FROM_EMAIL`
-   - Email: `BREVO_API_KEY`, **or** both `GMAIL_USER` and `GMAIL_APP_PASSWORD`
+   - Email: `BREVO_API_KEY` (e-mail goes out through the Brevo API only; there is no SMTP)
    - Payments: leave `PAYMENTS_GATEWAYS` empty until the provider account,
      callback URLs, and approved test/live credentials are ready. Then add the
      matching `PAYSTACK_*` / `REMITA_*` values.

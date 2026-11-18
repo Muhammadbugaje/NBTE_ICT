@@ -4,8 +4,9 @@
 {% load static brand %}
 {% block title %}{{ ob.reference }} · {{ portal_name }}{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
 <div class="qa-portal-page qa-bill-page" id="qa-payment">
+  {# inside #qa-payment on purpose: the method / proof forms swap in only this element (hx-select), so a link outside it was lost #}
+  <link rel="stylesheet" href="{% static 'css/qa-pay.css' %}">
   <nav class="qa-bill-crumbs" aria-label="Breadcrumb">
     <a href="{% url 'qa_portal:payments' %}" hx-get="{% url 'qa_portal:payments' %}" hx-target="#qa-main" hx-push-url="true">{% icon "back" 14 %} Payments</a>
     <span aria-hidden="true">/</span><span class="qa-mono" aria-current="page">{{ ob.reference }}</span>
@@ -55,7 +56,7 @@
     <h1 data-qa-focus>{{ ob.description|plain }}</h1>
     <p>{% if payable %}Pay once, using the method you choose below. NBTE Finance confirms it, then your next step opens.{% else %}{{ public_label }}.{% endif %}</p>
   </header>
-  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Something went wrong" message=error %}{% endif %}
+  {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title=error_title|default:"Something went wrong" message=error %}{% endif %}
   {% if rejected and ob.status == "rejected" %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Finance could not confirm your last payment" message=rejected.final_reason %}{% endif %}
   {% if needs_info %}{% include "qa_core/partials/_callout.html" with kind="warn" title="Finance needs more information" message=needs_info.reason %}{% endif %}
   {% if gateway_verified %}{% include "qa_core/partials/_callout.html" with kind="success" title="Verified by the provider — awaiting Finance confirmation" message="Your payment was received and checked with the provider. You do not need to upload anything; NBTE’s Director of Finance confirms it, usually within 1 working day." %}
@@ -98,13 +99,13 @@
           <ol class="qa-paysteps" role="list">
             <li class="qa-paystep{% if remita_rrr %} is-done{% endif %}"><div><b>Remita reference{% if remita_rrr %} created{% endif %}</b><span>{% if remita_rrr %}RRR <span class="qa-rrr">{{ remita_rrr }}</span>{% else %}Created when you continue to Remita{% endif %}</span></div>{% if remita_rrr %}<button type="button" class="btn btn-subtle btn-sm" data-qa-copy="{{ remita_rrr }}">Copy</button>{% endif %}</li>
             <li class="qa-paystep is-now"><div><b>Pay on Remita</b><span>Card, bank branch or internet banking. Use the RRR above.{% for p in online_methods %}{% if p.is_simulated %} <em>(Test mode — no real money.)</em>{% endif %}{% endfor %}</span></div>
-              <form data-needs-network method="post" action="{% url 'qa_portal:payment_online' ob.pk %}" hx-post="{% url 'qa_portal:payment_online' ob.pk %}">{% csrf_token %}<input type="hidden" name="provider" value="remita"><button class="btn btn-primary" type="submit">Continue to Remita</button></form></li>
+              <form data-needs-network method="post" action="{% url 'qa_portal:payment_online' ob.pk %}" hx-post="{% url 'qa_portal:payment_online' ob.pk %}" hx-target="#qa-main" hx-select="#qa-payment" hx-swap="innerHTML">{% csrf_token %}<input type="hidden" name="provider" value="remita"><button class="btn btn-primary" type="submit">Continue to Remita</button></form></li>
             <li class="qa-paystep"><div><b>Remita tells NBTE automatically</b><span>No proof upload is needed for Remita</span></div><span class="qa-chip">Automatic</span></li>
           </ol>
         {% elif chosen == "paystack" %}
           <ol class="qa-paysteps" role="list">
             <li class="qa-paystep is-now"><div><b>Pay on Paystack</b><span>Card, bank transfer or USSD. Paystack’s charge is added at checkout.{% for p in online_methods %}{% if p.is_simulated %} <em>(Test mode — no real money.)</em>{% endif %}{% endfor %}</span></div>
-              <form data-needs-network method="post" action="{% url 'qa_portal:payment_online' ob.pk %}" hx-post="{% url 'qa_portal:payment_online' ob.pk %}">{% csrf_token %}<input type="hidden" name="provider" value="paystack"><button class="btn btn-primary" type="submit">Continue to Paystack</button></form></li>
+              <form data-needs-network method="post" action="{% url 'qa_portal:payment_online' ob.pk %}" hx-post="{% url 'qa_portal:payment_online' ob.pk %}" hx-target="#qa-main" hx-select="#qa-payment" hx-swap="innerHTML">{% csrf_token %}<input type="hidden" name="provider" value="paystack"><button class="btn btn-primary" type="submit">Continue to Paystack</button></form></li>
             <li class="qa-paystep"><div><b>Paystack tells NBTE automatically</b><span>No proof upload is needed for Paystack</span></div><span class="qa-chip">Automatic</span></li>
           </ol>
         {% elif chosen == "bank_transfer" %}
@@ -113,10 +114,11 @@
               {% if slip and not slip_expired %}<span class="fpv-pair"><a class="btn btn-subtle btn-sm" href="{{ slip.portal_download_url }}">{% icon "download" 14 %} Slip v{{ slip.version }}</a>{% preview_button slip.portal_download_url slip.display_name slip.size_bytes %}</span>
               {% else %}<form method="post" hx-post="{% url 'qa_portal:payment_slip' ob.pk %}" hx-target="#qa-main" hx-select="#qa-payment" hx-swap="innerHTML">{% csrf_token %}<button class="btn btn-subtle btn-sm" type="submit">New slip</button></form>{% endif %}</li>
             <li class="qa-paystep is-now"><div><b>Pay at the bank or by transfer</b><span>Quote the payment reference exactly as printed.</span></div></li>
-            <li class="qa-paystep"><div><b>Upload your teller or transfer receipt</b><span>Finance checks it against the bank statement</span></div></li>
+            <li class="qa-paystep qa-paystep--proof"><div><b>I have paid: upload proof of payment</b><span>Your teller or transfer receipt. Finance checks it against the bank statement.</span></div>
+              <a class="btn btn-primary btn-sm" href="#qa-proof" data-qa-open-proof>{% icon "upload" 14 %} I have paid</a></li>
           </ol>
           <details class="qa-card qa-proof" id="qa-proof"{% if open_proof %} open{% endif %}>
-            <summary class="qa-card__head qa-summary"><div><h2>Upload proof of payment</h2><p>After paying at the bank or by transfer.</p></div><span class="btn btn-sm btn-primary qa-summary__toggle">{% icon "upload" 14 %} I have paid</span></summary>
+            <summary class="qa-card__head qa-summary"><div><h2>Upload proof of payment</h2><p>After paying at the bank or by transfer.</p></div><span class="btn btn-sm btn-subtle qa-summary__toggle">Open the form</span></summary>
             <div class="qa-card__body">
               <form method="post" enctype="multipart/form-data" action="{% url 'qa_portal:payment_proof' ob.pk %}" hx-post="{% url 'qa_portal:payment_proof' ob.pk %}" hx-encoding="multipart/form-data" hx-target="#qa-main" hx-select="#qa-payment" hx-swap="innerHTML" data-qa-progress novalidate>{% csrf_token %}
                 {% with form=proof_form %}{% include "qa_core/partials/_form_errors.html" %}

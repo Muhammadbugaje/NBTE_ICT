@@ -120,6 +120,22 @@ def request_ssqs(req, *, current_only=True):
 # ===========================================================================
 # Eligibility (Requirement 4 and the QA type rules)
 # ===========================================================================
+def min_running_months():
+    """v2.3: months a new programme must run before Accreditation (0 = off)."""
+    return max(0, _int("qa.programme.min_running_months_before_accreditation", 24))
+
+
+def accreditation_opens(programme):
+    """The first day an approval-to-commence programme may ask for accreditation, or None."""
+    months = min_running_months()
+    start = getattr(programme, "commencement_date", None)
+    if not months or start is None:
+        return None
+    from .models import add_months
+
+    return add_months(start, months)
+
+
 def window_months():
     return _int("qa.programme.reassessment_window_months", 6)
 
@@ -163,7 +179,12 @@ def programme_eligibility(programme, qa_type, *, today=None):
             return False, "The programme has no expiry date on record."
         if today < opens:
             return False, (f"Too early: reassessment opens on {opens:%d %b %Y}, "
-                           f"{window_months()} months before expiry (Requirement 4).")
+                           f"{window_months()} months before the programme expires.")
+    if qa_type.code == "accreditation" and programme.status == "approval_to_commence":
+        ready = accreditation_opens(programme)
+        if ready is not None and today < ready:
+            return False, (f"Too early: a new programme may ask for accreditation from {ready:%d %b %Y}, "
+                           f"{min_running_months()} months after it was approved to commence.")
     busy = (QARequestProgramme.unscoped.filter(programme=programme, status=QARequestProgramme.ACTIVE,
                                                qa_request__status__in=OPEN_STATUSES)
             .select_related("qa_request").first())
@@ -283,8 +304,44 @@ def set_streams(req, row, value, *, user):
     return row
 
 
+ND_OK_STATUSES = ("accredited", "interim")
+JUSTIFICATION_MIN = 10
+
+
+def _field_key(name):
+    import re
+
+    name = (name or "").lower()
+    name = re.sub(r"^\s*(h?nd)\s+", "", name)
+    name = re.sub(r"\btechnology\b", "", name)
+    return re.sub(r"[^a-z0-9]+", " ", name).strip()
+
+
+def nd_prerequisite_warning(programme):
+    """v2.3 (owner decision 5): "" or a warning when an HND programme has no
+    accredited (or interim) ND in the same field at the institution.
+
+    Same field = the same master discipline, or else the same programme name
+    once "ND/HND" and "Technology" are ignored. A warning, never a block."""
+    level = getattr(programme, "level", None)
+    if level is None or (level.code or "").lower() != "hnd":
+        return ""
+    nd = Programme.unscoped.filter(institution_id=programme.institution_id, level__code__iexact="nd",
+                                   status__in=ND_OK_STATUSES).select_related("master")
+    master = getattr(programme, "master", None)
+    discipline_id = getattr(master, "discipline_id", None) if master is not None else None
+    key = _field_key(programme.name)
+    for p in nd:
+        if discipline_id and p.master_id and p.master.discipline_id == discipline_id:
+            return ""
+        if key and _field_key(p.name) == key:
+            return ""
+    return (f"{programme.name} (HND): your institution has no accredited ND in this field. You can still "
+            "apply; explain why in the box (for example, the ND is under accreditation now).")
+
+
 @transaction.atomic
-def create_request(inst, qa_type, programmes, *, user, streams=None):
+def create_request(inst, qa_type, programmes, *, user, streams=None, justifications=None):
     if user is not None and getattr(user, "user_type", "") == "institution" and not can_manage_requests(user, inst):
         raise PermissionDenied("Your account cannot start QA requests.")
     ok, why = type_availability(inst, qa_type)
@@ -301,6 +358,18 @@ def create_request(inst, qa_type, programmes, *, user, streams=None):
         eligible, reason = programme_eligibility(programme, qa_type)
         if not eligible:
             raise ValidationError(f"{programme}: {reason}")
+    # The portal form always passes ``justifications`` (a dict, possibly empty)
+    # and so must explain every HND warning. System callers (the onboarding
+    # auto-start, imports) pass None: the warning stays visible to NBTE on the
+    # request, but there is nobody to ask, so it never blocks them.
+    ask = justifications is not None
+    justifications = {k: (v or "").strip() for k, v in (justifications or {}).items()}
+    missing = [p for p in programmes if ask and nd_prerequisite_warning(p)
+               and len(justifications.get(p.pk, "")) < JUSTIFICATION_MIN]
+    if missing:
+        raise ValidationError(
+            "Explain why you are applying for " + ", ".join(f"{p.name} (HND)" for p in missing)
+            + " without an accredited ND in the same field (at least 10 characters each).")
     streams = streams or {}
     asked = {p.pk: _streams_for(p, qa_type, streams.get(p.pk)) for p in programmes}
     _accepting, cycle = cycle_for(qa_type)
@@ -310,7 +379,9 @@ def create_request(inst, qa_type, programmes, *, user, streams=None):
     for programme in programmes:
         QARequestProgramme.unscoped.create(qa_request=req, programme=programme,
                                            is_new_programme=programme.status == "proposed",
-                                           requested_streams=asked[programme.pk])
+                                           requested_streams=asked[programme.pk],
+                                           prerequisite_note=justifications.get(programme.pk, "")[:4000]
+                                           if nd_prerequisite_warning(programme) else "")
     container_type = InstitutionRequestType.objects.filter(code="qa").first()
     if container_type is not None:
         container = InstitutionRequest.unscoped.create(
@@ -659,11 +730,23 @@ def can_clear(req, user):
     stage = flow.stage(instance, "programme_clearance")
     scope = getattr(stage, "actor_scope", "") if stage else ""
     if scope and not user.is_superuser and not user.has_perm("qa_core.confirm_any_department") \
-            and getattr(user.department, "code", "") != scope:
+            and (getattr(user.department, "code", "") or "").lower() != scope.lower():
         return False, "Programme clearance belongs to another department."
     if req.status != "programme_clearance":
         return False, "The request is not waiting for programme clearance."
     return True, ""
+
+
+def clearance_queue(user, *, limit=200):
+    """Requests waiting for ``user``'s programme clearance. Clearance may
+    belong to a department other than the institution's handling department
+    (NTIRD by default), so this reads past the institution scope and keeps
+    only the requests ``can_clear`` allows."""
+    if getattr(user, "user_type", "staff") != "staff" or not user.has_perm("accreditation.clear_qa_programmes"):
+        return []
+    reqs = (QARequest.unscoped.filter(status="programme_clearance")
+            .select_related("institution__handling_department", "qa_type").order_by("created_at")[:limit])
+    return [r for r in reqs if can_clear(r, user)[0]]
 
 
 @transaction.atomic
@@ -1450,9 +1533,8 @@ def staff_work(user, *, limit=50):
     reqs = QARequest.objects.for_user(user).select_related("institution", "qa_type")
     items = []
     if user.has_perm("accreditation.clear_qa_programmes"):
-        for req in reqs.filter(status="programme_clearance")[:limit]:
-            if can_clear(req, user)[0]:
-                items.append({"request": req, "action": "Clear new programmes"})
+        for req in clearance_queue(user, limit=limit):
+            items.append({"request": req, "action": "Clear new programmes"})
     if user.has_perm("accreditation.view_qa_case"):
         for req in reqs.filter(status="fee_due", fee_note__gt="")[:limit]:
             items.append({"request": req, "action": "Fee not issued yet"})

@@ -12,11 +12,11 @@
 
   <div class="qa-pagination__pages">
     {% if page.show_all %}
-      <a href="{{ request.path }}?{{ page.base_qs }}" hx-get="{{ request.path }}?{{ page.base_qs }}"
+      <a href="{{ page_path|default:request.path }}?{{ page.base_qs }}" hx-get="{{ page_path|default:request.path }}?{{ page.base_qs }}"
          hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true">25 per page</a>
     {% elif page.num_pages > 1 %}
       {% if page.page.has_previous %}
-        <a href="{{ request.path }}?{{ page.prev_qs }}" hx-get="{{ request.path }}?{{ page.prev_qs }}"
+        <a href="{{ page_path|default:request.path }}?{{ page.prev_qs }}" hx-get="{{ page_path|default:request.path }}?{{ page.prev_qs }}"
            hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true" aria-label="Previous page">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
         </a>
@@ -29,12 +29,12 @@
         {% elif link.current %}
           <span class="is-current" aria-current="page">{{ link.num }}</span>
         {% else %}
-          <a href="{{ request.path }}?{{ link.qs }}" hx-get="{{ request.path }}?{{ link.qs }}"
+          <a href="{{ page_path|default:request.path }}?{{ link.qs }}" hx-get="{{ page_path|default:request.path }}?{{ link.qs }}"
              hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true" aria-label="Page {{ link.num }}">{{ link.num }}</a>
         {% endif %}
       {% endfor %}
       {% if page.page.has_next %}
-        <a href="{{ request.path }}?{{ page.next_qs }}" hx-get="{{ request.path }}?{{ page.next_qs }}"
+        <a href="{{ page_path|default:request.path }}?{{ page.next_qs }}" hx-get="{{ page_path|default:request.path }}?{{ page.next_qs }}"
            hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true" aria-label="Next page">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
         </a>
@@ -45,7 +45,7 @@
 
     {% if not page.show_all and page.num_pages > 1 %}
       {% if page.show_all_allowed %}
-        <a class="qa-showall" href="{{ request.path }}?{{ page.all_qs }}" hx-get="{{ request.path }}?{{ page.all_qs }}"
+        <a class="qa-showall" href="{{ page_path|default:request.path }}?{{ page.all_qs }}" hx-get="{{ page_path|default:request.path }}?{{ page.all_qs }}"
            hx-target="{{ target }}"{% if swap %} hx-swap="{{ swap }}"{% endif %} hx-push-url="true">Show all</a>
       {% else %}
         <span class="qa-showall" aria-disabled="true" tabindex="0"

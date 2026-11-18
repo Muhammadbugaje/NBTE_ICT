@@ -1,0 +1,31 @@
+{% load qa_tags %}{% comment %}
+  Shared head of every TVET Support / New Institution action: the launcher
+  (choose the institution) and the action form. Context: policy, handler,
+  confirm_url; inst (action page only); step = "choose" | "details".
+  Destructive actions (delist, wipe requests, revert QA history, suspend
+  access, drop programmes) get the red treatment.
+{% endcomment %}
+<header class="qa-hero qa-hero--action vx-acthead{% if policy.action_code in "institutions.delist institutions.wipe_requests institutions.revert_qa_history institutions.suspend_portal_access institutions.drop_programmes" %} vx-acthead--danger{% endif %}">
+  <div class="vx-acthead__main">
+    <span class="vx-acthead__icon" aria-hidden="true">{% icon handler.icon|default:"edit" 22 "2.1" %}</span>
+    <div class="vx-acthead__text">
+      <span class="vx-acthead__group">{{ policy.menu_group }}{% if policy.action_code in "institutions.delist institutions.wipe_requests institutions.revert_qa_history institutions.suspend_portal_access institutions.drop_programmes" %} <span class="vx-acthead__warn">{% icon "alert" 12 "2.4" %} Hard to undo</span>{% endif %}</span>
+      <h1 data-qa-focus>{{ policy.label }}</h1>
+      <p class="vx-acthead__purpose">{{ handler.summary|default:policy.description }}</p>
+      {% if inst %}<p class="vx-acthead__target">{% icon "building" 14 %} <strong>{{ inst.name }}</strong> <span>{{ inst.code }} · {{ inst.status_label }} · {{ inst.handling_department.name }}</span></p>{% endif %}
+    </div>
+  </div>
+  <div class="vx-acthead__side">
+    <span class="vx-acthead__who">
+      {% if policy.action_code == "institutions.impersonate" %}{% icon "eye" 14 %} <span><strong>Read-only</strong> time-boxed and audited</span>
+      {% elif policy.requires_second_officer %}{% icon "users" 14 %} <span><strong>A second officer confirms</strong>{% if policy.confirmer_min_rank %} rank {{ policy.confirmer_min_rank }}+{% endif %}{% if policy.same_department_required %}{% if policy.confirmer_min_rank %},{% endif %} same department{% endif %}</span>
+      {% else %}{% icon "check" 14 "2.4" %} <span><strong>Applies at once</strong> recorded in the audit log</span>{% endif %}
+    </span>
+    {% if policy.requires_second_officer %}<a class="btn btn-subtle btn-sm" href="{{ confirm_url }}">Waiting list {% icon "arrow" 12 "2.4" %}</a>{% endif %}
+  </div>
+  <ol class="vx-actflow" aria-label="Steps of this action">
+    <li class="{% if step == 'choose' %}is-now{% else %}is-done{% endif %}"{% if step == 'choose' %} aria-current="step"{% endif %}><span>Choose the institution</span></li>
+    <li class="{% if step == 'details' %}is-now{% endif %}"{% if step == 'details' %} aria-current="step"{% endif %}><span>Fill in the details</span></li>
+    <li><span>{% if policy.action_code == "institutions.impersonate" %}The portal opens, read-only{% elif policy.requires_second_officer %}A second officer confirms, then it is applied{% else %}It is applied at once{% endif %}</span></li>
+  </ol>
+</header>

@@ -61,11 +61,19 @@
   {% endif %}
 {% endif %}
 
-<nav class="c3-tabs" aria-label="Case sections">
-  {% for key, label in tabs %}
-    <a href="?tab={{ key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-get="{% url 'qa_case:detail' case.pk %}?tab={{ key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-target="#qa-panel" hx-push-url="true" class="{% if tab == key %}is-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}>{{ label }}{% for a in my_turn %}{% if a.tab == key and key != "overview" %}<span class="c3-tabs__dot" title="Your step is here"><span class="sr-only">(your step)</span></span>{% endif %}{% endfor %}</a>
+{% url 'qa_case:detail' case.pk as case_url %}
+<nav class="c3-tabs v3-sections" aria-label="Case sections">
+  {% for g in tab_groups %}
+    <a href="?tab={{ g.first }}{% if focus %}&stage={{ focus }}{% endif %}" hx-get="{{ case_url }}?tab={{ g.first }}{% if focus %}&stage={{ focus }}{% endif %}" hx-target="#qa-panel" hx-push-url="true" class="{% if g.active %}is-active{% endif %}"{% if g.active %} aria-current="page"{% endif %}>{{ g.label }}{% if g.dot %}<span class="c3-tabs__dot" title="Your step is here"><span class="sr-only">(your step)</span></span>{% endif %}</a>
   {% endfor %}
 </nav>
+{% if tab_group.subs|length > 1 %}
+<nav class="v3-subtabs" aria-label="{{ tab_group.label }} views">
+  {% for s in tab_group.subs %}
+    <a href="?tab={{ s.key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-get="{{ case_url }}?tab={{ s.key }}{% if focus %}&stage={{ focus }}{% endif %}" hx-target="#qa-panel" hx-push-url="true" class="{% if s.active %}is-active{% endif %}"{% if s.active %} aria-current="true"{% endif %}>{{ s.label }}{% if s.dot %}<span class="c3-tabs__dot" title="Your step is here"><span class="sr-only">(your step)</span></span>{% endif %}</a>
+  {% endfor %}
+</nav>
+{% endif %}
 
 <div class="c3-body{% if tab == 'decisions' %} c3-body--decisions{% endif %}">
   {% if tab == "overview" %}{% include "accreditation/case/_tab_overview.html" %}

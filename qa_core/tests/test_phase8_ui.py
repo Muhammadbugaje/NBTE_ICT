@@ -27,29 +27,12 @@ def test_settings_nav_is_grouped_and_has_the_guide(officer, client_for):
     assert "NBTE_QA_Settings_Guide.pdf" not in body
 
 
-def test_cqac_recommendation_setting_offers_shared_and_individual_modes(officer, client_for):
-    setting = ConfigEntry.objects.get(key="qa.cqac.recommendation_mode", scope="global")
-    assert not setting.dual_control
-    client = client_for(officer)
-
-    editor = client.get(reverse("qa:setting_edit", args=[setting.pk])).content.decode()
-    assert 'class="qa-mode-toggle"' in editor
-    assert 'type="radio" name="value" value="shared" checked' in editor
-    assert 'value="individual"' in editor
-    row = client.get(reverse("qa:settings_rules") + "?q=cqac.recommendation_mode").content.decode()
-    assert "Shared recommendation" in row
-
-    original = setting.value
-    try:
-        saved = client.post(reverse("qa:setting_save", args=[setting.pk]), {"value": "individual"}, **hx("x"))
-        assert saved.status_code == 200
-        setting.refresh_from_db()
-        assert setting.value == "individual", saved.content.decode()
-        assert "Individual votes · majority (ties return)" in client.get(
-            reverse("qa:settings_rules") + "?q=cqac.recommendation_mode").content.decode()
-    finally:
-        setting.value = original
-        setting.save(update_fields=["value"])
+def test_cqac_shared_vote_setting_is_gone(officer, client_for):
+    """v2.3 (owner decision 10): CQAC members always vote individually, so the
+    shared/individual switch no longer exists anywhere in the settings."""
+    assert not ConfigEntry.objects.filter(key="qa.cqac.recommendation_mode").exists()
+    row = client_for(officer).get(reverse("qa:settings_rules") + "?q=cqac.recommendation_mode").content.decode()
+    assert "Shared recommendation" not in row
 
 
 def test_templates_are_grouped_by_family(officer, client_for):

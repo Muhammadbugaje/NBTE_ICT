@@ -1,8 +1,11 @@
-"""v2.3: honorarium files (one per institution) — list, detail, prepare,
-one-click approval, pay officer. Bank numbers are masked here; the DoF, the
-ES and super admins can reveal one through ``views.roller_bank`` (logged)."""
+"""v2.3/v2.4: honorarium files (one per institution) — list, detail, prepare,
+DoF review -> ES approval -> DoF payment, pay officer, printable/CSV payment
+list. Bank numbers are masked here; the DoF releases full details only for the
+payment list (logged). The ES and super admins can reveal one through
+``views.roller_bank`` (logged)."""
 from __future__ import annotations
 
+import csv
 import datetime as _dt
 from decimal import Decimal
 
@@ -11,7 +14,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q, Sum
 from django.db.models.functions import TruncMonth
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -63,14 +66,21 @@ def files_list(request):
     if sched.can_view_all(request.user):
         hf.sync_unfiled()  # brings in work completed before files existed (idempotent)
     files = list(_visible_files(request.user).prefetch_related("lines"))
-    drafts = {}
-    for s in PaymentSchedule.objects.filter(honorarium_file__in=files, status="draft"):
-        drafts.setdefault(s.honorarium_file_id, []).append(s)
+    open_batches = {}
+    for s in (PaymentSchedule.objects.filter(
+            honorarium_file__in=files, status__in=("draft", "awaiting_es", "approved"))
+            .select_related("created_by", "sent_to_es_by").order_by("-created_at")):
+        s.paid_count = s.lines.filter(paid_at__isnull=False).count()
+        s.unpaid_count = s.lines.filter(paid_at__isnull=True).count()
+        open_batches.setdefault(s.honorarium_file_id, []).append(s)
     for f in files:
         f.summary = hf.summary(f, f.lines.all())
         f.bucket = _bucket(f.summary)
         f.steps = hf.steps(f.summary["phase"])
-        f.drafts = drafts.get(f.pk, [])
+        f.batches = open_batches.get(f.pk, [])
+        f.drafts = [b for b in f.batches if b.status == "draft"]
+        f.with_es = [b for b in f.batches if b.status == "awaiting_es"]
+        f.to_pay = [b for b in f.batches if b.status == "approved" and b.unpaid_count]
         f.officer = hf.officer_for(f)
     counts = {key: 0 for key, _ in FILTERS}
     counts["all"] = len(files)
@@ -98,7 +108,7 @@ def files_list(request):
     totals["paid_year"] = (PaymentScheduleLine.objects.filter(paid_at__date__gte=year_start)
                            .aggregate(t=Sum("amount"))["t"] or Decimal("0"))
     is_dof = hf.is_dof(request.user)
-    awaiting = [s for f in files for s in f.drafts]
+    awaiting = [s for f in files for s in f.batches]
     charts = [
         {"id": "owed-stage", "type": "doughnut",
          "data": [{"label": hf.STAGE_LABELS[k], "value": _float(v)} for k, v in owed_by_stage.items() if v],
@@ -143,18 +153,55 @@ def file_detail(request, pk):
     can_prepare = hf.can_prepare(request.user, file)
     for line in lines:
         line.selectable = can_prepare and line.status == FL.PENDING and line.bank_ok
+
+    # v2.4: filter the people the DoF will pay (stage, status, name/work/bank).
+    stage_filter = request.GET.get("stage") or "all"
+    status_filter = request.GET.get("status") or "all"
+    query = " ".join((request.GET.get("q") or "").split())
+    if stage_filter not in dict(FL.STAGE_CHOICES):
+        stage_filter = "all"
+    if status_filter not in dict(FL.STATUS_CHOICES):
+        status_filter = "all"
+
+    def matches(line):
+        if stage_filter != "all" and line.stage != stage_filter:
+            return False
+        if status_filter != "all" and line.status != status_filter:
+            return False
+        if query:
+            haystack = " ".join(filter(None, [line.name, line.role, line.work_item,
+                                              line.case.reference if line.case_id else ""])).lower()
+            if query.lower() not in haystack:
+                return False
+        return True
+
+    shown_lines = [line for line in lines if matches(line)]
+    status_counts = {code: 0 for code, _ in FL.STATUS_CHOICES}
+    stage_counts = {code: 0 for code, _ in FL.STAGE_CHOICES}
+    for line in lines:
+        status_counts[line.status] = status_counts.get(line.status, 0) + 1
+        stage_counts[line.stage] = stage_counts.get(line.stage, 0) + 1
     stages = summary["stages"]
     for st in stages:
-        st["lines"] = [line for line in lines if line.stage == st["code"] and line.status != FL.VOIDED]
+        st["lines"] = [line for line in shown_lines if line.stage == st["code"] and line.status != FL.VOIDED]
         st["selectable"] = sum(1 for line in st["lines"] if line.selectable)
-    batches = list(file.batches.exclude(status="cancelled").select_related("created_by", "approved_by",
-                                                                           "funding_account")
-                   .order_by("-created_at"))
+        st["shown"] = len(st["lines"])
+        st["all"] = stage_counts.get(st["code"], 0)
+
+    batches = list(file.batches.exclude(status="cancelled").select_related(
+        "created_by", "sent_to_es_by", "es_decided_by", "approved_by", "funding_account").order_by("-created_at"))
     for b in batches:
         b.line_count = b.lines.count()
         b.confirmed = b.lines.filter(confirmed_at__isnull=False).count()
+        b.paid_count = b.lines.filter(paid_at__isnull=False).count()
+        b.unpaid_count = b.lines.filter(paid_at__isnull=True).count()
+        b.disputed_count = b.lines.filter(disputed_at__isnull=False).count()
+        b.can_send = hf.can_send_to_es(request.user, b)
+        b.can_es_decide = hf.can_es_decide(request.user, b)
     is_dof = hf.is_dof(request.user)
     drafts = [b for b in batches if b.status == "draft"]
+    with_es = [b for b in batches if b.status == "awaiting_es"]
+    to_pay = [b for b in batches if b.status == "approved" and b.unpaid_count]
     from payments.models import BankAccount
 
     funding_accounts = list(BankAccount.objects.filter(is_active=True, is_placeholder=False)
@@ -162,8 +209,14 @@ def file_detail(request, pk):
     ready = [line for line in lines if line.status == FL.PENDING]
     ready_ok = [line for line in ready if line.bank_ok]
     awaiting_confirm = [line for line in lines if line.status == FL.PAID]
+    disputes = [line for line in lines if line.schedule_line_id and line.schedule_line.disputed_at]
+    can_decide_es = any(hf.can_es_decide(request.user, b) for b in with_es)
     if is_dof and drafts:
-        nxt = {"kind": "approve", "batch": drafts[0]}
+        nxt = {"kind": "send_es", "batch": drafts[0]}
+    elif with_es:
+        nxt = {"kind": "es_decide" if can_decide_es else "awaiting_es", "batch": with_es[0]}
+    elif is_dof and to_pay:
+        nxt = {"kind": "pay", "batch": to_pay[0]}
     elif can_prepare and ready_ok:
         nxt = {"kind": "prepare", "count": len(ready_ok), "total": sum((x.amount for x in ready_ok), Decimal("0"))}
     elif drafts:
@@ -178,10 +231,17 @@ def file_detail(request, pk):
         nxt = {"kind": "empty"}
     response = render(request, "honoraria/file_detail.html", {
         "file": file, "lines": lines, "summary": summary, "stages": stages, "steps": hf.steps(summary["phase"]),
-        "batches": batches, "drafts": drafts, "is_dof": is_dof, "can_prepare": can_prepare,
+        "batches": batches, "drafts": drafts, "with_es": with_es, "to_pay": to_pay,
+        "is_dof": is_dof, "can_prepare": can_prepare, "can_decide_es": can_decide_es,
         "can_view_bank": can_view_bank_details(request.user, request), "officer": hf.officer_for(file),
         "candidates": hf.pay_officer_candidates() if is_dof else [], "funding_accounts": funding_accounts,
         "next": nxt, "ready_ok": len(ready_ok), "missing_bank": len(ready) - len(ready_ok),
+        "ready_total": sum((x.amount for x in ready_ok), Decimal("0")),
+        "disputes": disputes, "dispute_count": len(disputes),
+        "stage_filter": stage_filter, "status_filter": status_filter, "query": query,
+        "shown_count": len(shown_lines), "total_count": len(lines),
+        "status_options": [(code, label, status_counts.get(code, 0)) for code, label in FL.STATUS_CHOICES],
+        "stage_options": [(code, label, stage_counts.get(code, 0)) for code, label in FL.STAGE_CHOICES],
         "charts": [{"id": "file-stage", "type": "doughnut",
                     "data": [{"label": st["short"], "value": _float(st["total"])} for st in stages if st["total"]],
                     "colors": ["#1f6b3e", "#c8962a", "#2f7cf6"]}],
@@ -204,43 +264,166 @@ def file_prepare(request, pk):
         messages.error(request, _errors(exc))
     else:
         if hf.is_dof(request.user):
-            messages.success(request, f"{batch.reference} prepared (₦{batch.total:,.2f}). Approve it to pay.")
+            messages.success(request, f"{batch.reference} prepared (₦{batch.total:,.2f}). Review the payment "
+                                      "list, print or download it for the ES, then send it for approval.")
         else:
             messages.success(request, f"{batch.reference} prepared (₦{batch.total:,.2f}) and sent to the "
-                                      "Director of Finance for approval.")
+                                      "Director of Finance to review and send to the Executive Secretary.")
     return redirect("honoraria_sched:file", pk=file.pk)
+
+
+def _batch(pk):
+    batch = get_object_or_404(PaymentSchedule.objects.select_related("honorarium_file__institution"), pk=pk)
+    if batch.honorarium_file_id is None:
+        raise Http404
+    return batch
+
+
+def _after_batch(request, batch):
+    if request.POST.get("next") == "file" and batch.honorarium_file_id:
+        return redirect("honoraria_sched:file", pk=batch.honorarium_file_id)
+    return redirect("honoraria_sched:detail", pk=batch.pk)
 
 
 @login_required
 @require_POST
-def batch_approve(request, pk):
-    batch = get_object_or_404(PaymentSchedule.objects.select_related("honorarium_file"), pk=pk)
-    if batch.honorarium_file_id is None:
-        raise Http404
+def batch_send(request, pk):
+    """The DoF sends the reviewed batch to the Executive Secretary."""
+    batch = _batch(pk)
     try:
-        hf.approve_and_pay(batch, user=request.user, payment_reference=request.POST.get("payment_reference", ""),
-                           funding_account_id=request.POST.get("funding_account") or None)
+        hf.send_to_es(batch, user=request.user, remark=request.POST.get("remark", ""))
     except (PermissionDenied, ValidationError) as exc:
         messages.error(request, _errors(exc))
     else:
-        messages.success(request, f"{batch.reference} approved and recorded as paid. Each payee was asked to "
-                                  "confirm receipt.")
-    return redirect("honoraria_sched:file", pk=batch.honorarium_file_id)
+        messages.success(request, f"{batch.reference} sent to the Executive Secretary for approval. "
+                                  "Nothing has been paid yet.")
+    return _after_batch(request, batch)
+
+
+@login_required
+@require_POST
+def batch_es_approve(request, pk):
+    batch = _batch(pk)
+    try:
+        hf.es_approve(batch, user=request.user, remark=request.POST.get("remark", ""))
+    except (PermissionDenied, ValidationError) as exc:
+        messages.error(request, _errors(exc))
+    else:
+        messages.success(request, f"{batch.reference} approved by the Executive Secretary. It is back with "
+                                  "the Director of Finance to pay.")
+    return _after_batch(request, batch)
+
+
+@login_required
+@require_POST
+def batch_es_return(request, pk):
+    batch = _batch(pk)
+    try:
+        hf.es_return(batch, user=request.user, remark=request.POST.get("remark", ""))
+    except (PermissionDenied, ValidationError) as exc:
+        messages.error(request, _errors(exc))
+    else:
+        messages.success(request, f"{batch.reference} returned to the Director of Finance with your note.")
+    return _after_batch(request, batch)
+
+
+@login_required
+@require_POST
+def batch_pay(request, pk):
+    """The DoF pays the ES-approved batch: everyone, or only the ticked payees."""
+    batch = _batch(pk)
+    scope = request.POST.get("scope") or "selected"
+    line_ids = None if scope == "all" else request.POST.getlist("lines")
+    try:
+        hf.pay_batch(batch, user=request.user,
+                     payment_reference=request.POST.get("payment_reference", ""),
+                     funding_account_id=request.POST.get("funding_account") or None,
+                     line_ids=line_ids)
+    except (PermissionDenied, ValidationError) as exc:
+        messages.error(request, _errors(exc))
+    else:
+        paid = batch.lines.filter(paid_at__isnull=False).count()
+        left = batch.lines.filter(paid_at__isnull=True).count()
+        messages.success(request, f"Payment recorded for {paid} payee line{'' if paid == 1 else 's'} on "
+                                  f"{batch.reference}." + (f" {left} left for a later run." if left else
+                                                           " Each payee was asked to confirm receipt."))
+    return _after_batch(request, batch)
 
 
 @login_required
 @require_POST
 def batch_cancel(request, pk):
-    batch = get_object_or_404(PaymentSchedule.objects.select_related("honorarium_file"), pk=pk)
-    if batch.honorarium_file_id is None:
-        raise Http404
+    batch = _batch(pk)
     try:
         hf.cancel_batch(batch, user=request.user, reason=request.POST.get("reason", ""))
     except (PermissionDenied, ValidationError) as exc:
         messages.error(request, _errors(exc))
     else:
         messages.success(request, f"{batch.reference} withdrawn. Its lines are ready to pay again.")
-    return redirect("honoraria_sched:file", pk=batch.honorarium_file_id)
+    return _after_batch(request, batch)
+
+
+def _payment_list(request, pk):
+    """Shared gate for the printable/CSV payment list: DoF only, unpaid lines,
+    full bank details released through the logged disbursement path."""
+    batch = get_object_or_404(
+        PaymentSchedule.objects.select_related("honorarium_file__institution", "funding_account"), pk=pk)
+    if not sched.can_pay(request.user):
+        raise PermissionDenied("Only the Director of Finance may print payee bank details.")
+    if batch.status not in ("draft", "awaiting_es", "approved"):
+        raise Http404
+    lines = list(batch.lines.select_related("user", "resource_person")
+                 .filter(paid_at__isnull=True).order_by("name", "pk"))
+    details, missing = sched.payment_details(batch, user=request.user, lines=lines)
+    for line in lines:
+        line.payment_details = details.get(line.pk)
+    return batch, lines, missing
+
+
+@login_required
+def batch_print(request, pk):
+    batch, lines, missing = _payment_list(request, pk)
+    response = render(request, "honoraria/batch_print.html", {
+        "batch": batch, "lines": lines, "missing": missing,
+        "institution": batch.honorarium_file.institution if batch.honorarium_file_id else None,
+        "generated_at": timezone.now(),
+    })
+    response["Cache-Control"] = "no-store, private"
+    return response
+
+
+@login_required
+def batch_export(request, pk):
+    batch, lines, _missing = _payment_list(request, pk)
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="honoraria-{batch.reference}.csv"'
+    response["Cache-Control"] = "no-store, private"
+    writer = csv.writer(response)
+    writer.writerow(["Institution", batch.honorarium_file.institution.name if batch.honorarium_file_id else ""])
+    writer.writerow(["Batch", batch.reference])
+    writer.writerow(["Teller / reference", batch.payment_reference])
+    writer.writerow(["Prepared by", batch.created_by.get_full_name() if batch.created_by else ""])
+    if batch.funding_account:
+        writer.writerow(["Paid from", f"{batch.funding_account.bank_name} · {batch.funding_account.account_name} · "
+                                     f"{batch.funding_account.account_number}"])
+    writer.writerow([])
+    writer.writerow(["No.", "Payee", "Work", "Amount (NGN)", "Bank", "Account name", "Account number",
+                     "Teller / reference"])
+    for index, line in enumerate(lines, 1):
+        details = line.payment_details
+        writer.writerow([
+            index,
+            line.name or line.person,
+            line.role,
+            f"{line.amount:.2f}",
+            details["bank"] if details else "",
+            details["account_name"] if details else "",
+            details["account_number"] if details else "No confirmed account",
+            batch.payment_reference,
+        ])
+    writer.writerow([])
+    writer.writerow(["", "", "Total", f"{sum((line.amount for line in lines), Decimal('0')):.2f}"])
+    return response
 
 
 @login_required

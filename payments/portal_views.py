@@ -381,8 +381,15 @@ def payment_online(request, pk):
                   "refused": "Could not start the payment"}
         ob.refresh_from_db()
         response = render(request, "qa_portal/payments/detail.html",
-                          _detail_context(request, ob, error=" ".join(exc.messages), error_kind=kind),
+                          _detail_context(request, ob, error=" ".join(exc.messages), error_kind=kind,
+                                          error_title=titles.get(kind, titles["refused"])),
                           status=200 if kind == "already_paid" else 422)
+        if is_htmx(request):
+            # qa.js swaps 422 responses (form validation). Without an explicit
+            # target the whole page would be swapped into the tiny form, so
+            # always put the payment card back where it belongs.
+            response["HX-Retarget"] = "#qa-main"
+            response["HX-Reselect"] = "#qa-payment"
         return toast(response, "success" if kind == "already_paid" else "error", titles.get(kind, titles["refused"]),
                      " ".join(exc.messages))
     if is_htmx(request):

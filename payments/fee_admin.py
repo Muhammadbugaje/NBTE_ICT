@@ -28,7 +28,7 @@ from .models import FeeSchedule
 
 CODE_RE = re.compile(r"^[a-z][a-z0-9_]{2,50}$")
 SAMPLE_DEFAULTS = {"ownership": "private", "institution_type": "polytechnic", "programmes": "2",
-                   "new_programmes": "0", "streams": "3", "max_streams": "2"}
+                   "new_programmes": "0", "streams": "3", "max_streams": "2", "falsified": "0"}
 TEXT_VARIABLES = ("ownership", "institution_type")
 
 
@@ -79,7 +79,7 @@ def sample_inputs(raw):
     """Sample values for the test panel: numbers as Decimal, text as text."""
     out = {}
     for name in FEE_VARIABLE_NAMES:
-        value = (raw.get(name) if raw.get(name) not in (None, "") else SAMPLE_DEFAULTS[name])
+        value = (raw.get(name) if raw.get(name) not in (None, "") else SAMPLE_DEFAULTS.get(name, "0"))
         if name in TEXT_VARIABLES:
             out[name] = str(value).strip().lower()
         else:

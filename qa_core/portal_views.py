@@ -328,6 +328,14 @@ class PortalLoginView(auth_views.LoginView):
         url = self.get_redirect_url()
         return url or reverse("qa_portal:dashboard")
 
+    def get_initial(self):
+        """``/login/?username=…`` (from invitation e-mails) fills the e-mail box."""
+        initial = super().get_initial()
+        email = (self.request.GET.get("username") or "").strip()
+        if email and "@" in email and len(email) <= 254:
+            initial["username"] = email
+        return initial
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx.update(_shell_context(self.request, "login"))
@@ -370,7 +378,10 @@ def portal_logout(request):
 # ---------------------------------------------------------------------------
 @require_http_methods(["GET", "POST"])
 def password_forgot(request):
-    form = PortalPasswordResetForm(request.POST or None)
+    # ?email=… (from the sign-in page) fills the box; never trusted beyond that.
+    email = (request.GET.get("email") or "").strip()
+    initial = {"email": email} if email and "@" in email and len(email) <= 254 else None
+    form = PortalPasswordResetForm(request.POST or None, initial=initial)
     if request.method == "POST" and form.is_valid():
         email = form.cleaned_data["email"].strip().lower()
         ip = ratelimit.client_ip(request)

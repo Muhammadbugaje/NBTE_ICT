@@ -169,13 +169,17 @@ def template_xlsx():
     return _workbook(example_bodies, example_maps, with_reference=True)
 
 
-def export_xlsx():
+def export_xlsx(body=None):
+    """Bodies and their programme mappings; ``body`` limits it to that one body."""
+    body_qs = ProfessionalBody.objects.order_by("name")
+    map_qs = ProgrammeBodyMapping.objects.select_related("body", "level")
+    if body is not None:
+        body_qs, map_qs = body_qs.filter(pk=body.pk), map_qs.filter(body=body)
     bodies = [[b.name, b.acronym, b.address, b.contact_person, b.email, b.phone, "Yes" if b.is_active else "No"]
-              for b in ProfessionalBody.objects.order_by("name")]
+              for b in body_qs]
     maps = [[m.body.acronym or m.body.name, m.programme_name, m.level.code.upper() if m.level_id else "", m.note,
              "Yes" if m.is_active else "No"]
-            for m in ProgrammeBodyMapping.objects.select_related("body", "level")
-            .order_by("body__name", "programme_name", "level__sort_order")]
+            for m in map_qs.order_by("body__name", "programme_name", "level__sort_order")]
     return _workbook(bodies, maps, with_reference=False)
 
 

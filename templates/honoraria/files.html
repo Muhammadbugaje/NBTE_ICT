@@ -8,7 +8,7 @@
   <div>
     <span class="ux-hero__eyebrow">Finance · Honoraria</span>
     <h1 data-qa-focus>Honorarium files</h1>
-    <p>One file per institution. Everyone who worked on it — SOP-01 document reviews, SOP-02 SSQ reviews and the SOP-03 visit — is added automatically as each stage completes. Prepare, approve, and each person confirms receipt.</p>
+    <p>One file per institution. Everyone who worked on it — SOP-01 document reviews, SOP-02 SSQ reviews and the SOP-03 visit — is added automatically as each stage completes. Prepare, send to the Executive Secretary, pay, and each person confirms receipt.</p>
   </div>
   <div class="uxf-hero__figure">
     <span>Owed now</span>
@@ -21,7 +21,7 @@
 
 <div class="ux-stats">
   <a class="ux-stat ux-stat--gold" href="?show=ready"><span class="ux-stat__label">Ready to pay</span><span class="ux-stat__value">{{ totals.ready|naira }}</span><span class="ux-stat__hint">Generated, not yet in a batch</span></a>
-  <a class="ux-stat ux-stat--blue" href="?show=approval"><span class="ux-stat__label">Awaiting approval</span><span class="ux-stat__value">{{ totals.approval|naira }}</span><span class="ux-stat__hint">{{ awaiting|length }} batch{{ awaiting|length|pluralize:"es" }} prepared</span></a>
+  <a class="ux-stat ux-stat--blue" href="?show=approval"><span class="ux-stat__label">In a batch</span><span class="ux-stat__value">{{ totals.approval|naira }}</span><span class="ux-stat__hint">{{ awaiting|length }} batch{{ awaiting|length|pluralize:"es" }} open</span></a>
   <a class="ux-stat ux-stat--violet" href="?show=confirm"><span class="ux-stat__label">Paid · to confirm</span><span class="ux-stat__value">{{ totals.confirm|naira }}</span><span class="ux-stat__hint">Payees asked to confirm receipt</span></a>
   <div class="ux-stat ux-stat--teal"><span class="ux-stat__label">Paid this year</span><span class="ux-stat__value">{{ totals.paid_year|naira }}</span><span class="ux-stat__hint">All honoraria recorded paid</span></div>
 </div>
@@ -29,15 +29,15 @@
 {% if is_dof and awaiting %}
 <div class="ux-next">
   <span class="ux-next__badge" aria-hidden="true">₦</span>
-  <div><h3>{{ awaiting|length }} batch{{ awaiting|length|pluralize:"es" }} waiting for your approval</h3>
-    <p>{% for b in awaiting|slice:":3" %}{{ b.title }} — {{ b.total|naira }}{% if not forloop.last %} · {% endif %}{% endfor %}</p></div>
-  <a class="btn ux-btn-approve" href="{% url 'honoraria_sched:file' awaiting.0.honorarium_file_id %}">Review &amp; approve</a>
+  <div><h3>{{ awaiting|length }} batch{{ awaiting|length|pluralize:"es" }} need you</h3>
+    <p>{% for b in awaiting|slice:":3" %}{{ b.title }} — {{ b.total|naira }} ({% if b.status == "draft" %}send to ES{% elif b.status == "awaiting_es" %}with the ES{% else %}ready to pay{% endif %}){% if not forloop.last %} · {% endif %}{% endfor %}</p></div>
+  <a class="btn ux-btn-approve" href="{% url 'honoraria_sched:file' awaiting.0.honorarium_file_id %}">Review</a>
 </div>
 {% elif totals.ready %}
 <div class="ux-next">
   <span class="ux-next__badge" aria-hidden="true">→</span>
   <div><h3>{{ totals.ready|naira }} is ready to be paid</h3>
-    <p>Open a file marked <strong>Ready to pay</strong>, tick the people and prepare the batch{% if not is_dof %}; the Director of Finance approves it{% endif %}.</p></div>
+    <p>Open a file marked <strong>Ready to pay</strong>, tick the people and prepare the batch{% if not is_dof %}; the Director of Finance reviews it and sends it to the ES{% else %}, then send it to the Executive Secretary for approval{% endif %}.</p></div>
   <a class="btn btn-primary" href="?show=ready">Show ready files</a>
 </div>
 {% endif %}
@@ -72,7 +72,9 @@
         <div class="ux-progress" role="progressbar" aria-valuenow="{{ f.summary.percent }}" aria-valuemin="0" aria-valuemax="100" aria-label="Paid"><i style="width: {{ f.summary.percent }}%"></i></div>
         <footer class="uxf-file__foot">
           <span class="ux-muted">{{ f.summary.percent }}% of {{ f.summary.total|naira }} paid{% if f.officer %} · Pay officer: {{ f.officer.get_full_name|default:f.officer.email }}{% endif %}</span>
-          {% if f.drafts and is_dof %}<a class="btn btn-sm ux-btn-approve" href="{% url 'honoraria_sched:file' f.pk %}">Approve {{ f.drafts.0.total|naira }}</a>
+          {% if f.drafts and is_dof %}<a class="btn btn-sm ux-btn-approve" href="{% url 'honoraria_sched:file' f.pk %}">Send {{ f.drafts.0.total|naira }} to ES</a>
+          {% elif f.with_es %}<a class="btn btn-sm btn-subtle" href="{% url 'honoraria_sched:file' f.pk %}">With the ES</a>
+          {% elif f.to_pay and is_dof %}<a class="btn btn-sm ux-btn-approve" href="{% url 'honoraria_sched:file' f.pk %}">Pay {{ f.to_pay.0.total|naira }}</a>
           {% elif f.bucket == "ready" %}<a class="btn btn-sm btn-primary" href="{% url 'honoraria_sched:file' f.pk %}#prepare">Prepare payment</a>
           {% else %}<a class="btn btn-sm btn-subtle" href="{% url 'honoraria_sched:file' f.pk %}">Open file</a>{% endif %}
         </footer>
@@ -95,7 +97,7 @@
       <div class="ux-chart ux-chart--sm"><canvas data-ux-chart="paid-month" aria-label="Paid per month"></canvas></div>
     </section>
     <section class="ux-card ux-card--accent">
-      <div class="ux-card__head"><div><h3>Pay officer</h3><p>Prepares payments with masked bank numbers; the Director of Finance approves.</p></div></div>
+      <div class="ux-card__head"><div><h3>Pay officer</h3><p>Prepares payments with masked bank numbers; the Director of Finance reviews and sends the batch to the ES.</p></div></div>
       {% if standing %}<div class="uxf-person"><span class="ux-avatar ux-avatar--gold" aria-hidden="true">{{ standing.officer.first_name|slice:":1" }}{{ standing.officer.last_name|slice:":1" }}</span><div><strong>{{ standing.officer.get_full_name|default:standing.officer.email }}</strong><small>Standing, since {{ standing.created_at|date:"j M Y" }}</small></div></div>
       {% elif is_dof %}<p class="ux-muted">No standing pay officer yet. Choose one below, or prepare payments yourself.</p>
       {% else %}<p class="ux-muted">No standing pay officer — the Director of Finance prepares payments.</p>{% endif %}

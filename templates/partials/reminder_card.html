@@ -1,0 +1,40 @@
+{% load platform_banners %}{% reminder_items as rc_items %}{% if rc_items %}
+{% comment %} One small corner card for the outstanding set-up items (profile, signature, bank details).
+   Rows are decided on the server (core/templatetags/platform_banners.py: reminder_items);
+   show / hide / come-back timing lives in static/js/ux-affordance.js. Starts hidden: no JS, no card. {% endcomment %}
+<aside class="rc-card" data-reminder-card data-rc-sig="u{{ request.user.pk }}:{% for it in rc_items %}{{ it.key }}{% if not forloop.last %},{% endif %}{% endfor %}"
+       role="region" aria-label="Reminders: {{ rc_items|length }} thing{{ rc_items|length|pluralize }} to finish" hidden>
+  <header class="rc-card__head">
+    <span class="rc-card__badge" aria-hidden="true">{{ rc_items|length }}</span>
+    <strong class="rc-card__title">{% if rc_items|length == 1 %}One thing to finish{% else %}A few things to finish{% endif %}</strong>
+    <button type="button" class="rc-card__close" data-rc-close aria-label="Hide reminders for now" title="Hide for now">
+      <svg class="rc-card__ring" viewBox="0 0 32 32" aria-hidden="true"><circle class="rc-card__ring-track" cx="16" cy="16" r="14"/><circle class="rc-card__ring-bar" data-rc-ring cx="16" cy="16" r="14" pathLength="100"/></svg>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </header>
+  <ul class="rc-card__list" role="list">
+    {% for it in rc_items %}
+    <li class="rc-item rc-item--{{ it.tone }}" data-rc-item="{{ it.key }}">
+      <span class="rc-item__ic" aria-hidden="true">
+        {% if it.icon == "profile" %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        {% elif it.icon == "bank" %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-6 9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8"/><path d="M3 21h18"/></svg>
+        {% else %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>{% endif %}
+      </span>
+      <span class="rc-item__text"{% if it.full %} title="{{ it.full }}"{% endif %}>
+        <strong>{{ it.title }}</strong>
+        <span>{{ it.text }}</span>
+      </span>
+      <span class="rc-item__actions">
+        {% if it.confirm %}
+        <form method="post" action="{% url 'honoraria:banner_confirm' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button class="rc-item__btn rc-item__btn--primary" type="submit">Yes, correct</button></form>
+        <a class="rc-item__btn" href="{{ it.url }}">Change</a>
+        {% else %}
+        <a class="rc-item__btn rc-item__btn--primary" href="{{ it.url }}">{{ it.action }}<span class="sr-only">: {{ it.title }}</span></a>
+        {% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</aside>
+{% endif %}

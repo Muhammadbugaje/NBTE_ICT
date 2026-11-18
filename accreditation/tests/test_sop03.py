@@ -183,8 +183,12 @@ def test_seventeen_stage_walk_with_approvals(p4):
     from accreditation.models import QACase
 
     links = QATaskLink.objects.filter(content_type=ContentType.objects.get_for_model(QACase), object_id=case.pk)
-    # 18 stage tasks (stage 12 has none since Phase 5: the post-visit reports carry their own tasks)
-    assert links.count() == 18 and not links.filter(closed_at__isnull=True).exists()
+    # 18 stage tasks (stage 12 has none since Phase 5: the post-visit reports carry their own
+    # tasks) plus the desk officer's capacity assessment, closed as "assessed".
+    codes = list(links.values_list("stage_code", flat=True))
+    assert len(codes) == len(set(codes)) and len(codes) in (18, 19)
+    assert set(codes) - {"capacity_assessment"} and not links.filter(closed_at__isnull=True).exists()
+    assert links.exclude(stage_code="capacity_assessment").count() == 18
 
 
 def test_seventeen_stage_walk_through_the_screens(p4):
@@ -247,13 +251,18 @@ def test_seventeen_stage_walk_through_the_screens(p4):
         post(holder(case, "post_visit_recommendation"), f"reports/{report.pk}/recommend/",
              {"recommendation": "accredit", "note": "Meets the minimum standard"})
     from accreditation import decisions as dec
+    from accreditation.case_demo import run_demo_capacity
+    from accreditation.models import ApprovalType
 
+    # Stage 13 needs the capacity assessment (desk officer) confirmed first.
+    run_demo_capacity(case, people.desk_officer)
+    full = ApprovalType.objects.get(code="full")  # v2.3: decision forms start empty
     for code in LINEAR[11:]:
         if dec.is_decision_stage(code):  # Phase 8: every programme needs a decision first
             data = {"stage": code}
             for d in dec.board(case, code, holder(case, code)):
                 pk = d["row"].pk
-                data.update({f"d{pk}-outcome": "approve", f"d{pk}-approval_type": d["start"]["approval_type"].pk,
+                data.update({f"d{pk}-outcome": "approve", f"d{pk}-approval_type": full.pk,
                              f"d{pk}-approved_streams": "1", f"d{pk}-commencement_date": "2026-10-15",
                              f"d{pk}-weaknesses": "", f"d{pk}-note": ""})
             post(holder(case, code), "decisions/", data)
@@ -391,6 +400,7 @@ def test_reassign_to_an_overworked_officer_is_rejected_r01(p4):
     from accreditation import case_services as cs
     from qa_core.task_bridge import reassign_stage_task
     from tasks import services
+    from tasks.models import TaskAssignee
 
     set_config("qa.resource_person.max_open_ssq_per_officer", "1")
     busy = p4.people.busy_officer
@@ -895,7 +905,7 @@ def test_director_rollback_requires_es_and_reopens_downstream_work(p4):
 
     from accreditation import case_changes as changes
     from accreditation import case_services as cs
-    from accreditation.decisions import record, rows, suggestion
+    from accreditation.decisions import legacy_suggestion as suggestion, record, rows  # v2.3: forms start empty
     from accreditation.models import CaseChangeRequest, Decision, VisitDetail
     from django.utils import timezone
     from inspection import demo as inspection_demo
@@ -945,11 +955,13 @@ def test_director_rollback_requires_es_and_reopens_downstream_work(p4):
     )
     assert es_task_link.task.assignee_rows.filter(user=p4.people.es).exists()
     assert not changes.can_apply(case, request, p4.people.director)[0]
-    assert changes.can_apply(case, request, p4.people.desk_officer)[0]
+    assert not changes.can_apply(case, request, p4.people.desk_officer)[0]  # not before the ES approves
     assert _stages(case) == ["cqac_recommendation"]
     changes.decide(request, user=p4.people.es, decision="approve", remark="ES approval")
     request.refresh_from_db()
     assert request.status == "approved"
+    assert changes.can_apply(case, request, p4.people.desk_officer)[0]
+    assert not changes.can_apply(case, request, p4.people.director)[0]
     apply_task_link = QATaskLink.objects.get(
         content_type__model="qacase", object_id=case.pk,
         stage_code=f"case_change_{request.pk}_apply", closed_at__isnull=True,
@@ -966,7 +978,13 @@ def test_director_rollback_requires_es_and_reopens_downstream_work(p4):
         stage_code__startswith=f"case_change_{request.pk}_", closed_at__isnull=True,
     ).exists()
     assert _stages(case) == ["request_fund_release"]
-    assert report.status == "draft" and not report.summary and not report.recommended_by_id
+    # v2.3 (owner decision 3): the old report is frozen as a locked version and
+    # the working copy reopens as a draft with its content kept (not blanked).
+    from accreditation.models import ArtifactVersion
+
+    assert report.status == "draft" and not report.recommended_by_id
+    assert ArtifactVersion.unscoped.filter(case=case, kind="post_visit_report", object_id=report.pk).exists()
+    assert ArtifactVersion.unscoped.filter(case=case, kind="decision").exists()
     assert not Decision.unscoped.filter(pk=decision.pk).exists()
     assert cs.current_release(case).status == "es_approved"
     assert cs.open_link(case, "request_fund_release") is not None

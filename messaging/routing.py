@@ -765,9 +765,11 @@ def _deliver_to_institutions(memo, actor, now):
             body = (f"NBTE has sent your institution a memo: {memo.subject}\n\n"
                     f"Reference: {memo.reference}\nRead it and download the signed letter in the "
                     f"Quality Assurance Portal under Memos.")
-            for addr in sorted(set(emails)):
-                send_mail(title, body, getattr(dj_settings, "DEFAULT_FROM_EMAIL", None), [addr],
-                          fail_silently=True)
+            from core import background
+
+            for addr in sorted(set(emails)):  # sent after commit, off the request
+                background.submit(send_mail, title, body, getattr(dj_settings, "DEFAULT_FROM_EMAIL", None), [addr],
+                                  fail_silently=True, label=f"memo e-mail {memo.reference}")
         except Exception:
             logger.exception("Memo e-mail to institutions failed for %s", memo.reference)
     return len(institutions)

@@ -44,7 +44,10 @@ def _isolation(settings, tmp_path):
     settings.PROTECTED_MEDIA_ROOT = tmp_path / "protected"
     cache.clear()
     from qa_core.departments import clear_cache
+    from config.registry import clear_local  # v2.3: process-local settings maps
     clear_cache()
+    clear_local()
     yield
     cache.clear()
     clear_cache()
+    clear_local()

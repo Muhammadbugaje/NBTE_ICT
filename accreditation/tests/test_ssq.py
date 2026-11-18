@@ -25,7 +25,7 @@ def test_seeded_templates_are_valid(qa_seed):
     from accreditation.models import SSQTemplate
 
     templates = list(SSQTemplate.objects.filter(status="published"))
-    assert {t.qa_type.code for t in templates} == {"reaccreditation", "institutional_administration"}
+    assert {t.qa_type.code for t in templates} == {"reaccreditation", "institutional_administration", "onboarding_ssq"}
     for t in templates:
         assert engine.validate_schema(t.schema) == []
 
@@ -317,6 +317,7 @@ def test_return_then_revise_supersedes_never_overwrites(p3, paid_request, django
     v1 = complete_ssq(svc.request_ssqs(paid_request)[0], p3.admin)
     svc.attach_upload(v1, "corrective_evidence", pdf_upload("plan.pdf"), user=p3.admin)
     svc.submit_ssq(v1, user=p3.ceo, declaration=True)
+    _assign_to_officer(p3, v1)  # the strict SSQ allow-list: assigned and accepted
     with pytest.raises(PermissionDenied):
         svc.return_ssq(v1, user=p3.other_admin, remark="x")
     with django_capture_on_commit_callbacks(execute=True):
@@ -353,7 +354,8 @@ def test_reviewer_needs_permission_and_scope(p3, paid_request):
     outsider.save(update_fields=["department"])
     outsider = User.objects.get(pk=outsider.pk)
     ok, why = svc.can_review(ssq, outsider)
-    assert not ok and "another department" in why
+    # The strict SSQ allow-list refuses before the department check is reached.
+    assert not ok and ("another department" in why or "assigned SSQ reviewer" in why)
     with pytest.raises(PermissionDenied):
         svc.accept_ssq(ssq, user=p3.p2.fin_officer)
 
@@ -427,11 +429,22 @@ def test_query_raise_respond_close(p3, paid_request, portal_host, django_capture
         svc.respond(query, user=p3.admin, body="late")
 
 
+def _assign_to_officer(p3, ssq):
+    import org
+    from accounts.models import User
+    from accreditation import ssq_assign
+    from assignments import work
+
+    director = User.objects.get(pk=org.director_of(p3.inst.handling_department).pk)
+    work.accept(ssq_assign.assign(ssq, by=director, officer=p3.p2.officer), User.objects.get(pk=p3.p2.officer.pk))
+
+
 def test_internal_query_form_and_review_screens(p3, paid_request):
     from accreditation import qa_services as svc
 
     ssq = complete_ssq(svc.request_ssqs(paid_request)[0], p3.admin)
     svc.submit_ssq(ssq, user=p3.ceo, declaration=True)
+    _assign_to_officer(p3, ssq)  # SSQs are on a strict allow-list (assigned and accepted)
     c = Client(HTTP_HOST="localhost")
     c.force_login(p3.p2.officer)
     r = c.get("/qa/requests/ssq/?status=submitted")

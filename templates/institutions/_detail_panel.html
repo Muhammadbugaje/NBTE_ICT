@@ -50,11 +50,11 @@
 
 {% include "assignments/_journey_banner.html" %}
 
-<nav class="qa-tabs ix-tabs" aria-label="Institution sections">
+<nav class="qa-tabs ix-tabs" aria-label="Institution sections" data-tabsync="tab" data-tabsync-default="overview">
+  {# Active tab: marked here from ?tab= (view) and kept in step by static/js/ux-affordance.js (click, swap, Back/Forward). #}
   {% for key, label in tabs %}
     <a href="{% url 'qa_inst:detail' inst.code %}?tab={{ key }}" hx-get="{% url 'qa_inst:detail' inst.code %}?tab={{ key }}" hx-target="#qa-tab" hx-push-url="true"
-       class="{% if tab == key %}is-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}
-       hx-on::after-request="this.parentElement.querySelectorAll('a').forEach(a=>{a.classList.remove('is-active');a.removeAttribute('aria-current')});this.classList.add('is-active');this.setAttribute('aria-current','page')">{% with ic=tab_icons|get_item:key %}{% icon ic|default:"file" 15 %}{% endwith %}<span>{{ label }}</span></a>
+       data-tab="{{ key }}" class="{% if tab == key %}is-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}>{% with ic=tab_icons|get_item:key %}{% icon ic|default:"file" 15 %}{% endwith %}<span>{{ label }}</span></a>
   {% endfor %}
 </nav>
 

@@ -393,6 +393,8 @@ def test_stage_13_needs_a_recommendation_per_programme(p5_visit):
         services.recommend(services.reports_of(case)[0], user=p5_visit.people.desk_officer,
                            recommendation="accredit")
     demo.recommend_all(case)
+    # Stage 13 also needs the capacity assessment (desk officer, then confirmed).
+    case_demo.run_demo_capacity(case, p5_visit.people.desk_officer)
     assert not cs.prerequisites(case, "post_visit_recommendation")
     cs.act(case, user=holder, stage_code="post_visit_recommendation", action="approve", remark="Recommended")
     case.refresh_from_db()
@@ -632,3 +634,36 @@ def test_stage_13_return_sends_every_report_back_to_its_writer(p5_visit):
     demo.drive_reports(case)
     case.refresh_from_db()
     assert cs.current_stages(case) == ["post_visit_recommendation"]
+
+
+def test_team_lead_compilation_is_prefilled_from_accepted_reports(p5_visit):
+    """v2.3: the Team Lead starts from the accepted attendee reports; skipped
+    and unreviewed ones stay out, and saved text is never overwritten."""
+    from inspection import forms, services
+
+    _complete(p5_visit, absent_users=[p5_visit.people.desk_officer])
+    report = _eee_report(p5_visit)
+    rp = p5_visit.rps["rp_eng"]
+    contribution = next(row for row in services.ensure_member_reports(report) if row.author_id == rp.user_id)
+    services.save_member_report(contribution, user=rp.user,
+                                summary="The laboratories and equipment were physically checked.",
+                                findings={"facilities": "Two oscilloscopes were out of order."},
+                                recommendation="accredit", submit=True)
+    assert services.member_digest(report)["count"] == 0  # not accepted yet
+    services.review_member_report(contribution, user=p5_visit.people.team_lead, action="accept")
+
+    digest = services.member_digest(report)
+    name = rp.user.get_full_name() or rp.user.email
+    assert digest["count"] == 1
+    assert digest["findings"]["facilities"] == f"{name}: Two oscilloscopes were out of order."
+    assert digest["recommendation"] == "accredit"
+
+    form = forms.ReportForm(report=report, digest=digest)
+    assert form.initial["f_facilities"].endswith("Two oscilloscopes were out of order.")
+    assert form.initial["recommendation"] == "accredit"
+    assert "facilities" in form.prefilled
+
+    report.findings = {"facilities": "Team Lead's own words."}
+    form = forms.ReportForm(report=report, digest=digest)
+    assert form.initial["f_facilities"] == "Team Lead's own words."
+    assert "facilities" not in form.prefilled

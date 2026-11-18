@@ -1,10 +1,12 @@
 {% load qa_tags %}
 {% if queue %}{% include "inspection/_subnav.html" with section="nominations" %}{% else %}{% include "inspection/_subnav.html" with section="rp" %}{% endif %}
+<div class="vx vx-insp">
 <header class="qa-hero">
   <div>
-    <span class="qa-eyebrow">{% icon "users" 14 "2.4" %} Quality Assurance · §5.5, §9</span>
+    <span class="qa-eyebrow">{% icon "users" 14 "2.4" %} Inspection · {% if queue %}People waiting to be vetted{% else %}The assessors register{% endif %}</span>
     <h1 data-qa-focus>{% if queue %}Nominations and vetting{% else %}Resource persons{% endif %}</h1>
-    <p>{% if queue %}People nominated as resource persons. A vetter (not the nominator) checks the CV and approves — the person becomes active — or does not approve, with a reason.{% else %}The assessors NBTE sends on visits. Eligibility follows the §9 rules and their settings (rank, posts, workload, visits per year); there is no manual override. A person whose rank or designation changed shows <em>No longer eligible</em>: existing work continues, new work is blocked.{% endif %}</p>
+    <p>{% if queue %}People nominated as resource persons and waiting for a decision. A vetter (never the person who nominated them) checks the CV, then approves or declines with a reason.{% else %}The assessors NBTE sends on visits. Open a person to see their profile, workload and service history.{% endif %}</p>
+    {% if not queue %}<p class="vx-hint">Eligibility is worked out from the §9 rules (rank, posts, workload, visits per year) — nobody can override it. <em>No longer eligible</em> means existing work continues but new work is blocked.</p>{% endif %}
     {% if can_nominate %}<div class="qa-hero__actions"><a class="btn btn-primary" href="{% url 'qa_insp:rp_new' %}" hx-get="{% url 'qa_insp:rp_new' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "plus" 16 %} Nominate a resource person</a></div>{% endif %}
   </div>
   {% if counts %}<div class="qa-hero__stats">
@@ -22,3 +24,4 @@
   </form>
   <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "inspection/_rp_rows.html" %}</div>
 </section>
+</div>

@@ -64,6 +64,17 @@ def memo_badge_count(user):
     """
     if not user or not user.is_authenticated:
         return 0
+    # v2.3 Phase 1: this tag is in the sidebar of every page, and working out
+    # "awaiting you" resolves the approver of up to 200 memos one by one
+    # (dozens of queries per page for the ES). Cache it per user; any memo,
+    # route or seat change bumps the namespace (core.fastcache.MEMO_BADGE),
+    # and the 60 s TTL is only a safety net.
+    from core import fastcache
+
+    return fastcache.cached(fastcache.MEMO_BADGE, "count", lambda: _memo_badge_count(user), ttl=60, user=user)
+
+
+def _memo_badge_count(user):
     try:
         from messaging.models import MemoRecipient
 

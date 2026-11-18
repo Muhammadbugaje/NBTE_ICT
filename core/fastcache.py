@@ -22,6 +22,7 @@ LOOKUPS = "qa_lookups"  # flows/stages/rates/master lists shared by everybody
 BANNERS = "qa_banners"  # per-user platform banners
 INST = "qa_inst"        # per-institution summaries (portal setup checklist); bumped by institutions-app writes
 HOME = "qa_home"        # per-user home/dashboard widgets; bumped by any write in the QA data apps
+MEMO_BADGE = "memo_badge"  # v2.3 P1: the sidebar Memos badge (unread + awaiting you), per user
 HOME_APPS = ("accreditation", "complaints", "honoraria", "payments", "assignments", "documents", "inspection",
              "institutions", "tasks", "leave", "qa_core")
 
@@ -35,6 +36,10 @@ _WATCHED = {
     LOOKUPS: ["qa_core.FlowDefinition", "qa_core.FlowStage", "qa_core.FlowInstance", "config.ConfigEntry",
               "accreditation.RateTable", "staff.Department", "staff.Designation"],
     BANNERS: ["documents.StaffSignature", "honoraria.PayeeBankAccount", "accounts.User"],
+    # Who must act on a memo depends on the memo, its route and the seat holders.
+    MEMO_BADGE: ["messaging.Memo", "messaging.MemoRecipient", "messaging.MemoApproval", "messaging.MemoRoute",
+                 "messaging.MemoRouteStep", "messaging.MemoRouteRule", "accounts.User", "accounts.Role",
+                 "staff.Staff", "staff.Department", "staff.ExecutivePosition", "staff.ExecutiveTenure"],
 }
 
 

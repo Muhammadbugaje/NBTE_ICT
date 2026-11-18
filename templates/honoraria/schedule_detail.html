@@ -8,7 +8,7 @@
   <div>
     <span class="ux-hero__eyebrow">Payment batch · {{ schedule.reference }}</span>
     <h1 data-qa-focus>{{ schedule.title|default:schedule.reference }}</h1>
-    <p>{{ schedule.period_start|date:"j M" }} – {{ schedule.period_end|date:"j M Y" }} · {{ paid_line_count }} of {{ line_count }} payee line{{ line_count|pluralize }} recorded as paid{% if schedule.payment_reference and schedule.status != "draft" %} · reference {{ schedule.payment_reference }}{% if schedule.paid_by %} by {{ schedule.paid_by.get_full_name|default:schedule.paid_by.email }}{% endif %}{% endif %}.</p>
+    <p>{{ schedule.period_start|date:"j M" }} – {{ schedule.period_end|date:"j M Y" }} · {{ paid_line_count }} of {{ line_count }} payee line{{ line_count|pluralize }} recorded as paid{% if schedule.payment_reference %} · teller {{ schedule.payment_reference }}{% endif %}{% if schedule.paid_by %} · paid by {{ schedule.paid_by.get_full_name|default:schedule.paid_by.email }}{% endif %}.</p>
   </div>
   <div class="uxf-hero__figure"><span>{{ schedule.get_status_display }}</span><strong>{{ schedule.total|naira }}</strong><small>{% if schedule.honorarium_file %}From {{ schedule.honorarium_file.reference }}{% else %}{{ line_count }} line{{ line_count|pluralize }}{% endif %}</small></div>
 </header>
@@ -16,21 +16,69 @@
 {% if messages %}{% for m in messages %}<div class="uxf-flash uxf-flash--{{ m.tags }}" role="status">{{ m }}</div>{% endfor %}{% endif %}
 {% if error %}<div class="uxf-flash uxf-flash--error" role="alert">{{ error }}</div>{% endif %}
 
+{% if is_file_batch %}
+<ol class="ux-steps uxf-steps" aria-label="Batch progress">
+  <li class="ux-step is-done"><strong>Prepared</strong><small>{{ schedule.created_at|date:"j M Y" }}{% if schedule.created_by %} · {{ schedule.created_by.get_full_name }}{% endif %}</small></li>
+  <li class="ux-step{% if schedule.status == 'draft' %} is-current{% elif schedule.sent_to_es_at %} is-done{% endif %}"><strong>Sent to ES</strong><small>{% if schedule.sent_to_es_at %}{{ schedule.sent_to_es_at|date:"j M Y" }}{% else %}Director of Finance{% endif %}</small></li>
+  <li class="ux-step{% if schedule.status == 'awaiting_es' %} is-current{% elif schedule.status == 'approved' or schedule.status == 'paid' %} is-done{% elif schedule.status == 'draft' and schedule.es_decided_at %} is-current{% endif %}"><strong>ES approved</strong><small>{% if schedule.es_decided_by %}{{ schedule.es_decided_by.get_full_name|default:"ES" }} · {{ schedule.es_decided_at|date:"j M Y" }}{% elif schedule.status == "awaiting_es" %}With the Executive Secretary{% else %}Executive Secretary{% endif %}</small></li>
+  <li class="ux-step{% if schedule.status == 'approved' %} is-current{% elif schedule.status == 'paid' %} is-done{% endif %}"><strong>Paid</strong><small>{% if schedule.paid_at %}{{ schedule.paid_at|date:"j M Y" }}{% else %}{{ paid_line_count }}/{{ line_count }} lines{% endif %}</small></li>
+  <li class="ux-step{% if schedule.status == 'paid' and paid_line_count == line_count %} is-current{% endif %}"><strong>Receipt confirmed</strong><small>By each payee</small></li>
+</ol>
+{% else %}
 <ol class="ux-steps uxf-steps" aria-label="Batch progress">
   <li class="ux-step is-done"><strong>Prepared</strong><small>{{ schedule.created_at|date:"j M Y" }}{% if schedule.created_by %} · {{ schedule.created_by.get_full_name }}{% endif %}</small></li>
   <li class="ux-step{% if schedule.status == 'draft' %} is-current{% elif schedule.status != 'cancelled' %} is-done{% endif %}"><strong>Approved</strong><small>{% if schedule.approved_at %}{{ schedule.approved_at|date:"j M Y" }}{% else %}Director of Finance{% endif %}</small></li>
   <li class="ux-step{% if schedule.status == 'approved' %} is-current{% elif schedule.status == 'paid' %} is-done{% endif %}"><strong>Paid</strong><small>{% if schedule.paid_at %}{{ schedule.paid_at|date:"j M Y" }}{% else %}{{ paid_line_count }}/{{ line_count }} lines{% endif %}</small></li>
   <li class="ux-step{% if schedule.status == 'paid' %} is-current{% endif %}"><strong>Receipt confirmed</strong><small>By each payee</small></li>
 </ol>
+{% endif %}
 
-{% if can_approve %}
+{% if schedule.es_remark and schedule.status == "draft" %}
+<div class="uxf-flash uxf-flash--warning" role="alert"><strong>Returned by the Executive Secretary:</strong> {{ schedule.es_remark }}</div>
+{% endif %}
+
+{% if can_send_to_es %}
+<div class="ux-next uxf-next--approve">
+  <span class="ux-next__badge" aria-hidden="true">→</span>
+  <div><h3>Send this batch to the Executive Secretary — {{ schedule.total|naira }}</h3>
+    <p>Check the payment list, teller <span class="qa-mono">{{ schedule.payment_reference|default:"auto" }}</span> and source account. The ES approves before you pay; nothing is recorded as paid yet.</p></div>
+  <div class="uxf-batch__actions">
+    <a class="btn btn-subtle" href="{% url 'honoraria_sched:batch_print' schedule.pk %}" target="_blank" rel="noopener">Print payment list</a>
+    <a class="btn btn-subtle" href="{% url 'honoraria_sched:batch_export' schedule.pk %}">Download CSV</a>
+    <form method="post" action="{% url 'honoraria_sched:batch_send' schedule.pk %}" data-confirm data-confirm-title="Send to the Executive Secretary?" data-confirm-body="{{ schedule.reference }}: {{ schedule.total|naira }}." data-confirm-label="Send to ES" data-confirm-variant="neutral">{% csrf_token %}<button class="btn ux-btn-approve" type="submit">Send to ES</button></form>
+  </div>
+</div>
+{% elif can_es_decide %}
 <div class="ux-next uxf-next--approve">
   <span class="ux-next__badge" aria-hidden="true">✓</span>
-  <div><h3>Approve this batch — {{ schedule.total|naira }}</h3><p>{% if schedule.honorarium_file %}Prepared from an honorarium file: approving on the file records it paid in one click.{% else %}After approval, record the transfer below.{% endif %}</p></div>
-  {% if schedule.honorarium_file %}<a class="btn ux-btn-approve" href="{% url 'honoraria_sched:file' schedule.honorarium_file.pk %}">Open the file to approve</a>
-  {% else %}<form method="post" action="{% url 'honoraria_sched:approve' schedule.pk %}" data-confirm data-confirm-title="Approve this schedule?" data-confirm-body="{{ schedule.reference }}: {{ schedule.total|naira }}." data-confirm-label="Approve" data-confirm-variant="neutral">{% csrf_token %}<button class="btn ux-btn-approve" type="submit">Approve</button></form>{% endif %}
+  <div><h3>Approve this batch — {{ schedule.total|naira }}</h3><p>Sent by {{ schedule.sent_to_es_by.get_full_name|default:"the Director of Finance" }} on {{ schedule.sent_to_es_at|date:"j M, H:i" }}. Approving sends it back for payment; returning it asks Finance to change something.</p></div>
+  <div class="uxf-batch__actions">
+    <form method="post" action="{% url 'honoraria_sched:batch_es_approve' schedule.pk %}">{% csrf_token %}
+      <input class="input input-sm" name="remark" maxlength="500" placeholder="Optional note">
+      <button class="btn ux-btn-approve" type="submit">Approve batch</button>
+    </form>
+    <form method="post" action="{% url 'honoraria_sched:batch_es_return' schedule.pk %}" data-confirm data-confirm-title="Return this batch?" data-confirm-body="It goes back to the Director of Finance with your note." data-confirm-label="Return">{% csrf_token %}
+      <input class="input input-sm" name="remark" maxlength="500" required placeholder="Why are you returning it?">
+      <button class="btn btn-subtle" type="submit">Return with note</button>
+    </form>
+  </div>
+</div>
+{% elif schedule.status == "awaiting_es" %}
+<div class="ux-next"><span class="ux-next__badge" aria-hidden="true">⏳</span>
+  <div><h3>With the Executive Secretary</h3><p>Sent {{ schedule.sent_to_es_at|timesince }} ago for approval. It comes back here for payment once approved.</p></div>
+  <div class="uxf-batch__actions">
+    {% if can_print %}<a class="btn btn-subtle" href="{% url 'honoraria_sched:batch_print' schedule.pk %}" target="_blank" rel="noopener">Print</a><a class="btn btn-subtle" href="{% url 'honoraria_sched:batch_export' schedule.pk %}">CSV</a>{% endif %}
+    {% if is_finance_director %}<form method="post" action="{% url 'honoraria_sched:batch_cancel' schedule.pk %}" data-confirm data-confirm-title="Withdraw this batch?" data-confirm-body="It is recalled from the ES and its lines become ready to pay again." data-confirm-label="Withdraw">{% csrf_token %}<button class="btn btn-sm btn-subtle" type="submit">Withdraw</button></form>{% endif %}
+  </div>
+</div>
+{% elif can_approve %}
+<div class="ux-next uxf-next--approve">
+  <span class="ux-next__badge" aria-hidden="true">✓</span>
+  <div><h3>Approve this batch — {{ schedule.total|naira }}</h3><p>After approval, record the transfer below.</p></div>
+  <form method="post" action="{% url 'honoraria_sched:approve' schedule.pk %}" data-confirm data-confirm-title="Approve this schedule?" data-confirm-body="{{ schedule.reference }}: {{ schedule.total|naira }}." data-confirm-label="Approve" data-confirm-variant="neutral">{% csrf_token %}<button class="btn ux-btn-approve" type="submit">Approve</button></form>
 </div>
 {% endif %}
+
 {% if missing_accounts %}
   <div class="uxf-flash uxf-flash--warning" role="alert">Some payees cannot be selected until they confirm their bank details:
     {% for line in missing_accounts %}{{ line.name|default:line.person }}{% if not forloop.last %}, {% endif %}{% endfor %}.</div>
@@ -40,32 +88,39 @@
 {% endif %}
 
 {% if can_pay %}
-<form id="pay-form" method="post" action="{% url 'honoraria_sched:pay' schedule.pk %}" class="uxf-footbar" data-confirm data-confirm-title="Record the selected payments as sent?" data-confirm-body="Each payee is told 'Paid — please confirm receipt'." data-confirm-label="Record payment" data-confirm-variant="neutral">
+<form id="pay-form" method="post" action="{% url 'honoraria_sched:pay' schedule.pk %}" class="uxf-footbar" data-confirm data-confirm-title="Record the payment?" data-confirm-body="Each selected payee is told 'Paid — please confirm receipt'. Payees you untick stay on the batch for a later run." data-confirm-label="Record payment" data-confirm-variant="neutral">
   {% csrf_token %}
-  <p>Make the transfer outside NBTE, then record the source account and reference. Unselected payees remain pending.</p>
+  <p>Make the transfer outside NBTE, then record the source account and teller number. Choose everyone or only the people actually paid — unticked payees remain pending.</p>
   <div class="ux-gap">
     <label class="sr-only" for="funding-account">Paid from</label>
     <select class="input" id="funding-account" name="funding_account" required>
       <option value="">Choose NBTE source account</option>
-      {% for account in funding_accounts %}<option value="{{ account.pk }}">{{ account.bank_name }} · {{ account.account_name }} · ending {{ account.account_number|slice:"-4:" }}</option>{% endfor %}
+      {% for account in funding_accounts %}<option value="{{ account.pk }}"{% if schedule.funding_account_id == account.pk %} selected{% endif %}>{{ account.bank_name }} · {{ account.account_name }} · ending {{ account.account_number|slice:"-4:" }}</option>{% endfor %}
     </select>
-    <label class="sr-only" for="payment-reference">Bank transfer / batch reference</label>
-    <input class="input" id="payment-reference" name="payment_reference" maxlength="100" required placeholder="Transfer / batch reference">
-    <button class="btn ux-btn-approve" type="submit">Record selected payment(s) as sent</button>
+    <label class="sr-only" for="payment-reference">Teller / bank transfer reference</label>
+    <input class="input" id="payment-reference" name="payment_reference" maxlength="100" required value="{{ schedule.payment_reference }}" placeholder="Teller / batch reference">
+    <label class="uxf-check"><input type="checkbox" data-pay-all checked> Select all unpaid</label>
+  </div>
+  <div class="ux-gap ux-mt">
+    <button class="btn btn-primary" type="submit" name="scope" value="selected">Record selected payment(s) as sent</button>
+    <button class="btn ux-btn-approve" type="submit" name="scope" value="all">Mark all unpaid as paid</button>
   </div>
 </form>
 {% endif %}
 
 <section class="ux-card" aria-labelledby="lines-h">
-  <div class="ux-card__head"><div><h2 id="lines-h">Payees</h2><p>{% if is_finance_director %}Full bank numbers appear only while the batch is approved and unpaid (each release is logged).{% else %}Bank numbers are masked.{% endif %}</p></div>
-    <button class="btn btn-subtle btn-sm" type="button" onclick="window.print()">Print schedule / payment slip</button></div>
+  <div class="ux-card__head"><div><h2 id="lines-h">Payees</h2><p>{% if is_finance_director %}Full bank numbers appear only while the batch is being prepared, with the ES or approved and unpaid (each release is logged).{% else %}Bank numbers are masked.{% endif %}</p></div>
+    <div class="uxf-batch__actions">
+      {% if can_print %}<a class="btn btn-subtle btn-sm" href="{% url 'honoraria_sched:batch_print' schedule.pk %}" target="_blank" rel="noopener">Printable payment list</a><a class="btn btn-subtle btn-sm" href="{% url 'honoraria_sched:batch_export' schedule.pk %}">Download CSV</a>{% endif %}
+      <button class="btn btn-subtle btn-sm" type="button" onclick="window.print()">Print this page</button>
+    </div></div>
   <div class="uxf-table-wrap"><table class="uxf-table honoraria-lines">
     <thead><tr>{% if is_finance_director and can_pay %}<th scope="col">Pay now</th>{% endif %}<th scope="col">Payee</th><th scope="col">For</th><th scope="col" class="ux-num">Qty</th><th scope="col" class="ux-num">Rate</th><th scope="col" class="ux-num">Amount</th><th scope="col">Bank details</th><th scope="col">Payment / receipt</th></tr></thead>
     <tbody>{% for line in lines %}
       <tr>{% if is_finance_director and can_pay %}<td data-label="Pay now">
           {% if line.paid_at %}<span class="ux-chip ux-chip--green">Paid</span>
           {% elif line.payment_details %}<label class="sr-only" for="pay-line-{{ line.pk }}">Select {{ line.name|default:line.person }}</label>
-            <input id="pay-line-{{ line.pk }}" form="pay-form" type="checkbox" name="lines" value="{{ line.pk }}" checked>
+            <input id="pay-line-{{ line.pk }}" class="pay-line" form="pay-form" type="checkbox" name="lines" value="{{ line.pk }}" checked>
             <label class="sr-only" for="pay-amount-{{ line.pk }}">Payment amount for {{ line.name|default:line.person }}</label>
             <input id="pay-amount-{{ line.pk }}" form="pay-form" class="input input-sm" style="max-width:9rem" type="number" name="amount_{{ line.pk }}" min="0.01" max="999999999999.99" step="0.01" value="{{ line.amount }}">
             {% if line.calculated_amount != line.amount %}<small class="uxf-note">Calculated {{ line.calculated_amount|naira }}</small>{% endif %}
@@ -79,7 +134,8 @@
           {% elif is_finance_director and line.paid_at %}<span class="ux-muted">Released to Finance</span>
           {% elif is_finance_director and not line.paid_at and schedule.status == "approved" %}<span class="uxf-bank is-missing">No confirmed account</span>
           {% else %}<span class="ux-muted">Finance only</span>{% endif %}</td>
-        <td>{% if line.confirmed_at %}<span class="ux-chip ux-chip--green">Confirmed {{ line.confirmed_at|date:"j M" }}</span>
+        <td>{% if line.disputed_at %}<span class="ux-chip ux-chip--red">Payee says not received</span><small class="uxf-note">{{ line.dispute_note }}</small>
+          {% elif line.confirmed_at %}<span class="ux-chip ux-chip--green">Confirmed {{ line.confirmed_at|date:"j M" }}</span>
           {% elif line.paid_at and line.payment_reference %}<span class="ux-chip ux-chip--violet">Paid · {{ line.payment_reference }}</span>
             {% if line.paid_by %}<small class="uxf-note">Recorded by {{ line.paid_by.get_full_name|default:line.paid_by.email }}</small>{% endif %}
             {% if line.can_confirm %}<form method="post" action="{% url 'honoraria_sched:line_confirm' line.pk %}">{% csrf_token %}<button class="btn btn-sm ux-btn-approve" type="submit">Confirm receipt</button></form>{% endif %}
@@ -88,5 +144,19 @@
     {% if lines %}<tfoot><tr><th colspan="{% if is_finance_director and can_pay %}5{% else %}4{% endif %}">Total</th><td class="ux-num">{{ schedule.total|naira }}</td><td colspan="2"></td></tr></tfoot>{% endif %}
   </table></div>
 </section>
+<script>
+(function () {
+  var all = document.querySelector("[data-pay-all]");
+  if (!all) return;
+  var boxes = Array.prototype.slice.call(document.querySelectorAll(".pay-line"));
+  function sync() {
+    all.checked = boxes.length > 0 && boxes.every(function (b) { return b.checked; });
+    all.indeterminate = boxes.some(function (b) { return b.checked; }) && !all.checked;
+  }
+  all.addEventListener("change", function () { boxes.forEach(function (b) { b.checked = all.checked; }); });
+  boxes.forEach(function (b) { b.addEventListener("change", sync); });
+  sync();
+})();
+</script>
 </div>
 {% endblock %}

@@ -1,0 +1,80 @@
+# DRAFT — v2.3 Phase 1 target layout. NOT active: render.yaml is still the live blueprint.
+#
+# Use this once uploads, letters and backups live in S3-compatible object
+# storage (open question Q8: Cloudflare R2 recommended). Until then the worker
+# cannot share files with the web service, which is why render.yaml runs
+# everything in one box (PROCESS_MODE=all).
+#
+# What changes compared with render.yaml
+#   * web      : the website only, 2 gunicorn workers x 4 threads on 1 GB.
+#                Downloads are short-lived signed URLs from object storage, so
+#                no gunicorn thread is held by a file transfer.
+#   * worker   : Celery only (PDF letters, backups, Data Hub imports, scans).
+#   * scheduler: Celery beat only, exactly ONE instance.
+#   * no persistent disk on the web service (nothing there that cannot be rebuilt).
+#   * Postgres in the SAME region as these services (check the Aiven region, or
+#     use Render Postgres): every query pays the round trip.
+services:
+  - type: web
+    name: nbte-ict-web
+    runtime: python
+    plan: standard            # 1 GB; measure, then adjust
+    region: frankfurt         # must match the database region
+    buildCommand: ./build.sh
+    startCommand: gunicorn nbte_ict.wsgi:application -c gunicorn.conf.py
+    preDeployCommand: python manage.py migrate --noinput
+    healthCheckPath: /healthz
+    autoDeployTrigger: "off"
+    envVars:
+      - fromGroup: siteEnv
+      - key: PROCESS_MODE
+        value: web
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: GUNICORN_THREADS
+        value: "4"
+      - key: REDIS_URL
+        fromService: {type: keyvalue, name: nbte-ict-redis, property: connectionString}
+      - key: CELERY_BROKER_URL
+        fromService: {type: keyvalue, name: nbte-ict-redis, property: connectionString}
+
+  - type: worker
+    name: nbte-ict-worker
+    runtime: python
+    plan: starter
+    region: frankfurt
+    buildCommand: ./build.sh
+    startCommand: celery -A nbte_ict worker -l info --concurrency 2
+    envVars:
+      - fromGroup: siteEnv
+      - key: REDIS_URL
+        fromService: {type: keyvalue, name: nbte-ict-redis, property: connectionString}
+      - key: CELERY_BROKER_URL
+        fromService: {type: keyvalue, name: nbte-ict-redis, property: connectionString}
+
+  - type: worker
+    name: nbte-ict-scheduler
+    runtime: python
+    plan: starter
+    region: frankfurt
+    numInstances: 1           # the scheduler must never run twice
+    buildCommand: ./build.sh
+    startCommand: celery -A nbte_ict beat -l info --schedule /tmp/celerybeat-schedule
+    envVars:
+      - fromGroup: siteEnv
+      - key: REDIS_URL
+        fromService: {type: keyvalue, name: nbte-ict-redis, property: connectionString}
+      - key: CELERY_BROKER_URL
+        fromService: {type: keyvalue, name: nbte-ict-redis, property: connectionString}
+
+  - type: keyvalue
+    name: nbte-ict-redis
+    plan: standard
+    region: frankfurt
+    ipAllowList: []
+    maxmemoryPolicy: volatile-lru
+    persistenceMode: journal-snapshot
+
+# siteEnv: as in render.yaml, plus (once Q8 is decided)
+#   MEDIA_STORAGE=s3, AWS_S3_ENDPOINT_URL, AWS_STORAGE_BUCKET_NAME,
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (sync: false)

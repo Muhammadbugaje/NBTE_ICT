@@ -55,8 +55,8 @@ class Command(BaseCommand):
         self.stdout.write("")
         self.stdout.write("Providers (tried in this order)")
         order = engine.provider_order("test")
-        for name in ("brevo_smtp", "brevo", "gmail"):
-            label = {"brevo_smtp": "Brevo SMTP relay", "brevo": "Brevo HTTP API", "gmail": "Gmail SMTP"}[name]
+        for name in [p for p in engine.PROVIDERS if p in settings.EMAIL_PROVIDERS]:
+            label = {"brevo": "Brevo HTTP API"}.get(name, name)
             if name not in order:
                 self.warn(f"{label}: not configured (credentials missing) — skipped")
                 continue
@@ -68,14 +68,14 @@ class Command(BaseCommand):
             used, limit = engine.used_today(name), engine.daily_limit(name)
             self.stdout.write(f"      sent today {used} of {limit}")
         if not order:
-            self.bad("No provider is configured. Put BREVO_SMTP_LOGIN + BREVO_SMTP_KEY (and/or "
-                     "BREVO_API_KEY, GMAIL_USER + GMAIL_APP_PASSWORD) in .env.")
+            self.bad("No provider is configured. Put BREVO_API_KEY in .env.")
             problems += 1
 
         self.stdout.write("")
         self.stdout.write("Delivery")
         if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
-            self.ok("Celery runs tasks inline (development): queued emails are sent straight away.")
+            self.ok("No Celery worker (development): e-mails are sent by a background thread, "
+                    "so pages never wait for them.")
         else:
             self.warn(f"Emails are queued for a Celery worker (broker {getattr(settings, 'CELERY_BROKER_URL', '?')}). "
                       "Make sure `celery -A nbte_ict worker` is running, or nothing is delivered.")

@@ -5,14 +5,15 @@
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/qa.css' %}">
   <link rel="stylesheet" href="{% static 'css/honoraria.css' %}">
+  <link rel="stylesheet" href="{% static 'css/qa-vx.css' %}">
 {% endblock %}
 {% block content %}
-<div class="qa-page earnings-page">
+<div class="qa-page earnings-page vx vx-earn{% if request.is_qa_portal %} qa-portal-page{% endif %}">
   <header class="qa-hero nbte-hero earnings-qa-hero" data-qa-area="profile">
     <div>
       <span class="qa-eyebrow">{% icon "card" 14 "2.2" %} Honoraria · Personal account</span>
       <h1 data-qa-focus>My earnings</h1>
-      <p>Track completed payable work, payment scheduling, and your receipt confirmations.</p>
+      <p>What NBTE owes you for completed QA work, where each payment is on its way to you, and what you have confirmed receiving.</p>
     </div>
     <div class="qa-hero__stats" aria-label="Summary">
       <div class="qa-stat"><strong>{% if is_resource_person %}{{ schedule_lines|length }}{% else %}{{ entries|length }}{% endif %}</strong><span>{% if is_resource_person %}Schedule line{{ schedule_lines|length|pluralize }}{% elif entries|length == 1 %}Payable item{% else %}Payable items{% endif %}</span></div>
@@ -24,37 +25,54 @@
     <p class="qa-small"><a class="btn btn-subtle" href="{{ bank_url }}">Manage my payment details</a></p>
   {% endif %}
 
-  <section class="earnings-summary" aria-label="Earnings totals by payment status">
-    <article class="earnings-stat earnings-stat--accrued">
-      <span class="earnings-stat__label">Awaiting schedule</span>
-      <strong class="earnings-stat__amount">₦{{ totals.accrued|floatformat:2 }}</strong>
-      <span class="earnings-stat__hint">Completed work not yet added to a payment schedule</span>
-    </article>
-    <article class="earnings-stat earnings-stat--scheduled">
-      <span class="earnings-stat__label">Scheduled</span>
-      <strong class="earnings-stat__amount">₦{{ totals.scheduled|floatformat:2 }}</strong>
-      <span class="earnings-stat__hint">Included in a schedule and awaiting payment</span>
-    </article>
-    <article class="earnings-stat earnings-stat--paid">
-      <span class="earnings-stat__label">Payment sent</span>
-      <strong class="earnings-stat__amount">₦{{ totals.paid|floatformat:2 }}</strong>
-      <span class="earnings-stat__hint">Marked paid by Finance; confirm once received</span>
-    </article>
-    <article class="earnings-stat earnings-stat--received">
-      <span class="earnings-stat__label">Receipt confirmed</span>
-      <strong class="earnings-stat__amount">₦{{ totals.received|floatformat:2 }}</strong>
-      <span class="earnings-stat__hint">Payment you have confirmed receiving</span>
-    </article>
+  {% if totals.paid %}
+  <section class="vx-verdict vx-t-violet" role="status">
+    <span class="vx-verdict__icon" aria-hidden="true">{% icon "bell" 22 "2.2" %}</span>
+    <div><h2>{{ totals.paid|naira }} has been sent to you</h2>
+      <p>Finance marked it as paid. Check your bank account, then press <strong>Confirm receipt</strong> on the payment below.</p></div>
+  </section>
+  {% endif %}
+
+  <section class="vx-earn__journey" aria-label="Where your money is, step by step">
+    <h2 class="vx-earn__journey-title">Where your money is <span>Every payment moves left to right through these four steps.</span></h2>
+    <ol class="vx-earn__steps">
+      <li class="vx-earn__step vx-t-amber{% if totals.accrued %} is-live{% endif %}">
+        <span class="vx-earn__no" aria-hidden="true">1</span>
+        <span class="vx-earn__label">Awaiting schedule</span>
+        <strong class="vx-earn__amount">{{ totals.accrued|naira }}</strong>
+        <span class="vx-earn__hint">Work is done; Finance has not yet put it on a payment schedule.</span>
+      </li>
+      <li class="vx-earn__step vx-t-blue{% if totals.scheduled %} is-live{% endif %}">
+        <span class="vx-earn__no" aria-hidden="true">2</span>
+        <span class="vx-earn__label">Scheduled</span>
+        <strong class="vx-earn__amount">{{ totals.scheduled|naira }}</strong>
+        <span class="vx-earn__hint">On a payment schedule and waiting to be paid.</span>
+      </li>
+      <li class="vx-earn__step vx-t-violet{% if totals.paid %} is-live{% endif %}">
+        <span class="vx-earn__no" aria-hidden="true">3</span>
+        <span class="vx-earn__label">Payment sent</span>
+        <strong class="vx-earn__amount">{{ totals.paid|naira }}</strong>
+        <span class="vx-earn__hint">Paid by Finance. Confirm once it reaches your account.</span>
+      </li>
+      <li class="vx-earn__step vx-t-green{% if totals.received %} is-live{% endif %}">
+        <span class="vx-earn__no" aria-hidden="true">{% icon "check" 14 "3" %}</span>
+        <span class="vx-earn__label">Receipt confirmed</span>
+        <strong class="vx-earn__amount">{{ totals.received|naira }}</strong>
+        <span class="vx-earn__hint">Money you have confirmed receiving. Nothing more to do.</span>
+      </li>
+    </ol>
   </section>
 
+{% if entries or not is_resource_person or not schedule_lines and not unclaimed_records %}
   <section class="qa-card earnings-card" aria-labelledby="earnings-list-title">
     <header class="qa-card__head earnings-card__head">
       <div>
         <h2 id="earnings-list-title">Payable work</h2>
-        <p>Amounts and status are recorded against each completed assignment.</p>
+        <p>Each completed assignment, what it pays and which step it has reached.</p>
       </div>
       <span class="qa-chip">{{ entries|length }} item{{ entries|length|pluralize }}</span>
     </header>
+    {% if entries %}
     <div class="qa-table-wrap earnings-table-wrap">
       <table class="qa-table earnings-table">
         <thead>
@@ -71,8 +89,7 @@
           {% for entry in entries %}
             <tr class="earnings-row">
               <td data-label="Work item">
-                <strong>{{ entry.get_kind_display }}</strong>
-                <span class="earnings-table__sub">Rate: {{ entry.rate_key|cut:"_"|title }}</span>
+                <strong title="Rate setting: {{ entry.rate_key }}">{{ entry.get_kind_display }}</strong>
               </td>
               <td data-label="Institution / department">
                 {% if entry.institution %}<strong>{{ entry.institution.name }}</strong>{% endif %}
@@ -81,9 +98,9 @@
                 {% if not entry.institution and not entry.department %}<span class="qa-muted">—</span>{% endif %}
               </td>
               <td data-label="Earned">{{ entry.accrued_at|date:"j M Y" }}</td>
-              <td data-label="Amount"><strong class="earnings-table__amount">₦{{ entry.amount|floatformat:2 }}</strong></td>
+              <td data-label="Amount"><strong class="earnings-table__amount">{{ entry.amount|naira }}</strong></td>
               <td data-label="Status">
-                <span class="earnings-status earnings-status--{{ entry.status }}">{{ entry.get_status_display }}</span>
+                <span class="vx-chip {% if entry.status == 'accrued' %}vx-t-amber{% elif entry.status == 'scheduled' %}vx-t-blue{% elif entry.status == 'paid' %}vx-t-violet{% elif entry.status == 'received' %}vx-t-green{% else %}vx-t-red{% endif %}">{% if entry.status == 'accrued' %}Awaiting schedule{% elif entry.status == 'paid' %}Payment sent{% else %}{{ entry.get_status_display }}{% endif %}</span>
                 {% if entry.paid_reference %}<span class="earnings-table__sub">Ref: {{ entry.paid_reference }}</span>{% endif %}
               </td>
               <td data-label="Actions" class="earnings-table__action">
@@ -92,19 +109,19 @@
                 {% endif %}
               </td>
             </tr>
-          {% empty %}
-            {% if not schedule_lines and not unclaimed_records %}
-            <tr class="earnings-empty-row"><td class="earnings-empty" colspan="6">
-              <span class="earnings-empty__mark" aria-hidden="true">₦</span>
-              <strong>No payable work yet</strong>
-              <span>Completed eligible reviews and assessments will appear here with their payment status.</span>
-            </td></tr>
-            {% endif %}
           {% endfor %}
         </tbody>
       </table>
     </div>
+    {% else %}
+      <div class="vx-empty">
+        <span class="vx-empty__icon vx-t-green" aria-hidden="true"><b class="vx-earn__naira">₦</b></span>
+        <h3>No payable work yet</h3>
+        <p>Completed eligible reviews and assessments will appear here with their payment status.</p>
+      </div>
+    {% endif %}
   </section>
+{% endif %}
   {% if not is_resource_person and schedule_lines %}
     <section class="qa-card earnings-card" aria-labelledby="payment-history-title">
       <header class="qa-card__head earnings-card__head">
@@ -117,12 +134,27 @@
           <tr><td data-label="Payee / work">{{ line.name|default:line.person }} · {{ line.role }}</td>
             <td data-label="Schedule"><a href="{% url 'honoraria_sched:detail' line.schedule_id %}">{{ line.schedule.reference }}</a></td>
             <td data-label="Period">{{ line.schedule.period_start|date:"j M Y" }} – {{ line.schedule.period_end|date:"j M Y" }}</td>
-            <td class="num" data-label="Payment amount">₦{{ line.amount|floatformat:2 }}{% if line.amount_override %}<span class="earnings-table__sub">{{ line.note }}</span>{% endif %}</td>
-            <td data-label="Status / reference">{% if line.confirmed_at %}Receipt confirmed{% elif line.paid_at %}Paid · {{ line.payment_reference }}{% else %}{{ line.schedule.get_status_display }}{% endif %}</td>
-            <td data-label="Receipt">{% if line.paid_at and not line.confirmed_at and line.can_confirm %}
-              <form method="post" class="earnings-confirm-form">{% csrf_token %}<input type="hidden" name="line" value="{{ line.pk }}">
+            <td class="num" data-label="Payment amount">{{ line.amount|naira }}{% if line.amount_override %}<span class="earnings-table__sub">{{ line.note }}</span>{% endif %}</td>
+            <td data-label="Status / reference">{% if line.confirmed_at %}<span class="vx-chip vx-t-green">Receipt confirmed</span>{% elif line.paid_at %}<span class="vx-chip vx-t-violet">Payment sent</span>{% if line.payment_reference %}<span class="earnings-table__sub">Ref: {{ line.payment_reference }}</span>{% endif %}{% else %}<span class="vx-chip vx-t-blue">{{ line.schedule.get_status_display }}</span>{% endif %}</td>
+            <td data-label="Receipt">{% if line.disputed_at %}
+              <span class="vx-chip vx-t-red">You reported not received</span><span class="earnings-table__sub">{{ line.dispute_note }}</span>
+              {% if line.can_confirm %}<form method="post" class="earnings-confirm-form">{% csrf_token %}<input type="hidden" name="line" value="{{ line.pk }}"><input type="hidden" name="action" value="confirm">
+                <button class="btn btn-xs btn-primary earnings-action" type="submit">I have now received it</button></form>{% endif %}
+              {% elif line.paid_at and not line.confirmed_at and line.can_confirm %}
+              <form method="post" class="earnings-confirm-form">{% csrf_token %}<input type="hidden" name="line" value="{{ line.pk }}"><input type="hidden" name="action" value="confirm">
                 <button class="btn btn-xs btn-primary earnings-action" type="submit">Confirm receipt</button></form>
-              {% elif line.confirmed_at %}Confirmed {{ line.confirmed_at|date:"j M Y" }}{% else %}<span class="qa-muted">—</span>{% endif %}</td></tr>
+              {% if line.can_dispute %}
+              <details class="earnings-dispute">
+                <summary class="uxf-link">I did not receive it</summary>
+                <form method="post" class="earnings-confirm-form">{% csrf_token %}
+                  <input type="hidden" name="line" value="{{ line.pk }}"><input type="hidden" name="action" value="dispute">
+                  <label class="sr-only" for="dispute-{{ line.pk }}">What happened?</label>
+                  <textarea class="input" id="dispute-{{ line.pk }}" name="note" rows="2" maxlength="255" required placeholder="Tell Finance what happened (at least 5 characters)"></textarea>
+                  <button class="btn btn-xs btn-subtle earnings-action" type="submit">Send to Finance</button>
+                </form>
+              </details>
+              {% endif %}
+              {% elif line.confirmed_at %}<span class="vx-earn__ok">{% icon "check" 14 "3" %} Confirmed {{ line.confirmed_at|date:"j M Y" }}</span>{% else %}<span class="qa-muted">—</span>{% endif %}</td></tr>
         {% endfor %}</tbody>
       </table></div>
     </section>
@@ -141,8 +173,8 @@
               <td data-label="Institution">{{ record.institution.name|default:"—" }}</td>
               <td data-label="Served">{{ record.served_from|date:"j M Y" }}{% if record.served_to != record.served_from %} – {{ record.served_to|date:"j M Y" }}{% endif %}</td>
               <td data-label="Visits">{{ record.visit_count }}</td>
-              <td data-label="Estimated amount">₦{{ record.estimated_amount|floatformat:2 }}</td>
-              <td data-label="Status">Awaiting schedule</td></tr>
+              <td data-label="Estimated amount">{{ record.estimated_amount|naira }}</td>
+              <td data-label="Status"><span class="vx-chip vx-t-amber">Awaiting schedule</span></td></tr>
           {% endfor %}</tbody>
         </table></div>
       {% endif %}
@@ -153,20 +185,35 @@
             <tr><td data-label="Visit / programme">{{ line.role }}</td>
               <td data-label="Institution">{% for record in line.work_records %}{% if record.institution %}{{ record.institution.name }}{% if not forloop.last %}<br>{% endif %}{% endif %}{% empty %}—{% endfor %}</td>
               <td data-label="Service dates">{% for record in line.work_records %}{{ record.served_from|date:"j M Y" }}{% if record.served_to != record.served_from %} – {{ record.served_to|date:"j M Y" }}{% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}{{ line.schedule.period_start|date:"j M Y" }} – {{ line.schedule.period_end|date:"j M Y" }}{% endfor %}</td>
-              <td class="num" data-label="Amount">₦{{ line.amount|floatformat:2 }}</td>
-              <td data-label="Status">{% if line.confirmed_at %}Receipt confirmed{% elif line.paid_at %}Paid by Finance{% else %}{{ line.schedule.get_status_display }}{% endif %}</td>
-              <td data-label="Receipt">{% if line.paid_at and not line.confirmed_at %}
+              <td class="num" data-label="Amount">{{ line.amount|naira }}</td>
+              <td data-label="Status">{% if line.disputed_at %}<span class="vx-chip vx-t-red">Not received</span>{% elif line.confirmed_at %}<span class="vx-chip vx-t-green">Receipt confirmed</span>{% elif line.paid_at %}<span class="vx-chip vx-t-violet">Payment sent</span>{% else %}<span class="vx-chip vx-t-blue">{{ line.schedule.get_status_display }}</span>{% endif %}</td>
+              <td data-label="Receipt">{% if line.disputed_at %}
+                <span class="vx-chip vx-t-red">You reported not received</span><span class="earnings-table__sub">{{ line.dispute_note }}</span>
+                {% if line.can_confirm %}<form method="post" class="earnings-confirm-form">{% csrf_token %}<input type="hidden" name="line" value="{{ line.pk }}"><input type="hidden" name="action" value="confirm">
+                  <button class="btn btn-xs btn-primary earnings-action" type="submit">I have now received it</button></form>{% endif %}
+                {% elif line.paid_at and not line.confirmed_at %}
                 <form method="post" class="earnings-confirm-form">{% csrf_token %}
-                  <input type="hidden" name="line" value="{{ line.pk }}">
+                  <input type="hidden" name="line" value="{{ line.pk }}"><input type="hidden" name="action" value="confirm">
                   <button class="btn btn-xs btn-primary earnings-action" type="submit">Confirm receipt</button>
                 </form>
-                {% elif line.confirmed_at %}<span>Confirmed {{ line.confirmed_at|date:"j M Y" }}</span>{% else %}<span class="qa-muted">—</span>{% endif %}</td>
+                {% if line.can_dispute %}
+                <details class="earnings-dispute">
+                  <summary class="uxf-link">I did not receive it</summary>
+                  <form method="post" class="earnings-confirm-form">{% csrf_token %}
+                    <input type="hidden" name="line" value="{{ line.pk }}"><input type="hidden" name="action" value="dispute">
+                    <label class="sr-only" for="dispute-rp-{{ line.pk }}">What happened?</label>
+                    <textarea class="input" id="dispute-rp-{{ line.pk }}" name="note" rows="2" maxlength="255" required placeholder="Tell Finance what happened (at least 5 characters)"></textarea>
+                    <button class="btn btn-xs btn-subtle earnings-action" type="submit">Send to Finance</button>
+                  </form>
+                </details>
+                {% endif %}
+                {% elif line.confirmed_at %}<span class="vx-earn__ok">{% icon "check" 14 "3" %} Confirmed {{ line.confirmed_at|date:"j M Y" }}</span>{% else %}<span class="qa-muted">—</span>{% endif %}</td>
             </tr>
           {% endfor %}</tbody>
         </table></div>
       {% endif %}
       {% if not unclaimed_records and not schedule_lines %}
-        <div class="qa-card__body"><p class="qa-muted">No visit allowance has been recorded yet. Completed work will appear here.</p></div>
+        <div class="vx-empty"><span class="vx-empty__icon vx-t-teal" aria-hidden="true">{% icon "map" 26 "2" %}</span><h3>No visit allowance yet</h3><p>When a visit you attended is recorded, its allowance appears here and moves through the four steps above.</p></div>
       {% endif %}
     </section>
   {% endif %}

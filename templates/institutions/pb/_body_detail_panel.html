@@ -1,45 +1,46 @@
 {% load qa_tags %}
 {% include "institutions/pb/_subnav.html" %}
 <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_pb:list' %}" hx-get="{% url 'qa_pb:list' %}" hx-target="#qa-panel" hx-push-url="true">Professional bodies</a> <span aria-hidden="true">/</span> <span aria-current="page">{{ body.acronym|default:body.name }}</span></nav>
-<header class="qa-hero"><div>
-  <h1 data-qa-focus>{{ body.name }}</h1>
-  <p>{% if body.is_active %}Active.{% else %}Inactive: it no longer flags joint QA.{% endif %} {% if body.email %}Joint QA notices go to {{ body.email }}.{% else %}No e-mail on file, so joint QA notices cannot be sent.{% endif %}</p>
-  {% if can_manage %}<div class="qa-hero__actions"><a class="btn btn-ghost" href="{% url 'qa_pb:body_edit' body.pk %}" hx-get="{% url 'qa_pb:body_edit' body.pk %}" hx-target="#qa-panel" hx-push-url="true">{% icon "edit" 16 %} Edit details</a></div>{% endif %}
-</div></header>
+<header class="qa-hero pb-hero"><div>
+  <div class="pb-hero__id">
+    <span class="pb-badge pb-badge--lg" aria-hidden="true">{% if body.acronym %}{{ body.acronym|slice:":5" }}{% else %}{{ body.name|initials }}{% endif %}</span>
+    <div><span class="qa-eyebrow">Professional body{% if body.acronym %} · {{ body.acronym }}{% endif %}</span>
+      <h1 data-qa-focus>{{ body.name }}</h1></div>
+  </div>
+  <p>{% if body.is_active %}<span class="qa-chip qa-tone-success">Active</span>{% else %}<span class="qa-chip">Inactive</span> It no longer flags joint QA.{% endif %} {% if body.email %}Joint QA notices go to <strong>{{ body.email }}</strong>.{% else %}<span class="qa-chip qa-tone-warn">No e-mail on file</span> Joint QA notices cannot be sent.{% endif %}</p>
+  <div class="qa-hero__actions btn-group">
+    {% if map_form %}<a class="btn btn-primary" href="#pb-map-form">{% icon "link" 16 %} Map a programme</a>{% endif %}
+    {% if can_manage %}<a class="btn btn-ghost" href="{% url 'qa_pb:body_edit' body.pk %}" hx-get="{% url 'qa_pb:body_edit' body.pk %}" hx-target="#qa-panel" hx-push-url="true">{% icon "edit" 16 %} Edit details</a>{% endif %}
+    <a class="btn btn-ghost" href="{% url 'qa_pb:export' %}?body={{ body.pk }}" download title="Downloads this body and its programme mappings as one .xlsx workbook">{% icon "download" 16 %} Export this body (.xlsx)</a>
+    {% if can_manage %}<a class="btn btn-ghost" href="{% url 'qa_pb:import' %}" hx-get="{% url 'qa_pb:import' %}" hx-target="#qa-panel" hx-push-url="true" title="Upload a workbook of programme mappings; check it before importing">{% icon "upload" 16 %} Import mappings (.xlsx)</a>{% endif %}
+  </div>
+</div>
+<div class="qa-hero__stats" aria-label="Summary">
+  <a class="qa-stat qa-stat--link" href="#pb-maps"><strong>{{ mapping_active }}</strong><span>Programmes mapped</span></a>
+  <a class="qa-stat qa-stat--link" href="#pb-progs"><strong>{{ programmes.total }}</strong><span>At institutions</span></a>
+  <a class="qa-stat qa-stat--link" href="#pb-notices"><strong>{{ case_total }}</strong><span>Joint QA cases</span></a>
+</div>
+</header>
 
-<section class="qa-card" aria-labelledby="pb-contact">
-  <header class="qa-card__head"><div><h2 id="pb-contact">Contact</h2></div></header>
-  <dl class="qa-dl">
-    <div><dt>Contact person</dt><dd>{{ body.contact_person|default:"—" }}</dd></div>
-    <div><dt>E-mail</dt><dd>{% if body.email %}<a href="mailto:{{ body.email }}">{{ body.email }}</a>{% else %}—{% endif %}</dd></div>
-    <div><dt>Phone</dt><dd>{% if body.phone %}<a href="tel:{{ body.phone }}">{{ body.phone }}</a>{% else %}—{% endif %}</dd></div>
-    <div><dt>Address</dt><dd>{{ body.address|default:"—"|linebreaksbr }}</dd></div>
-  </dl>
-</section>
-
+<div class="pb-detail">
+<div class="qa-stack pb-detail__main">
 <section class="qa-card" aria-labelledby="pb-maps">
-  <header class="qa-card__head"><div><h2 id="pb-maps">Programmes it regulates</h2><p>A QA request for any of these programmes, at any institution, is a joint QA exercise.</p></div></header>
+  <header class="qa-card__head"><div><h2 id="pb-maps">Programmes it regulates</h2><p>A QA request for any of these programmes, at any institution, becomes a joint QA exercise with {{ body.acronym|default:"this body" }}.{% if can_manage %} Turn a mapping off to stop that without losing its history.{% endif %}</p></div>
+    <span class="qa-chip">{{ mapping_active }} active{% if mappings|length != mapping_active %} · {{ mappings|length }} in all{% endif %}</span></header>
   <div id="pb-mappings" hx-get="{% url 'qa_pb:body_detail' body.pk %}" hx-trigger="pb:changed from:body" hx-target="#pb-mappings" hx-select="#pb-mappings" hx-swap="outerHTML">
     {% if mappings %}
     <div class="qa-table-wrap"><table class="qa-table">
       <thead><tr><th scope="col">Programme</th><th scope="col">Level</th><th scope="col">Note</th><th scope="col">Status</th>{% if can_manage %}<th scope="col"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
       <tbody>{% for m in mappings %}{% include "institutions/pb/_mapping_row.html" with show_body=False %}{% endfor %}</tbody>
     </table></div>
-    {% else %}<p class="qa-card__body qa-muted">No programmes mapped yet.</p>{% endif %}
+    {% else %}<p class="qa-card__body qa-muted">No programmes mapped yet.{% if map_form %} Use the form below to map the first one.{% endif %}</p>{% endif %}
   </div>
-  {% if map_form %}<div class="qa-card__body qa-card__body--divided">{% include "institutions/pb/_mapping_form.html" with fixed_body=body %}</div>{% endif %}
+  {% if map_form %}<div class="qa-card__body qa-card__body--divided pb-mapform">{% include "institutions/pb/_mapping_form.html" with fixed_body=body %}</div>{% endif %}
 </section>
 
 <section class="qa-card" aria-labelledby="pb-progs">
   <header class="qa-card__head"><div><h2 id="pb-progs">Programmes at institutions</h2><p>Every institution programme this body regulates (by the mappings above), across the institutions you can see.</p></div></header>
   <div id="pb-prog-rows" class="qa-region" data-qa-region aria-live="polite">{% include "institutions/pb/_body_programmes.html" %}</div>
-</section>
-
-<section class="qa-card" aria-labelledby="pb-letters">
-  <header class="qa-card__head"><div><h2 id="pb-letters">Letters and certificates</h2><p>Uploaded by the body on the QA portal. The institution sees them too.</p></div></header>
-  {% if letters %}<div class="qa-table-wrap"><table class="qa-table"><thead><tr><th scope="col">Letter</th><th scope="col">Programme</th><th scope="col">Uploaded</th></tr></thead>
-    <tbody>{% for l in letters %}<tr><td><a href="{{ l.download_url }}">{{ l.get_kind_display }}</a>{% if l.reference %}<br><span class="qa-small qa-muted">{{ l.reference }}</span>{% endif %}</td><td>{{ l.programme }}<br><span class="qa-small qa-muted">{{ l.programme.institution.name }}</span></td><td>{{ l.created_at|date:"j M Y" }}</td></tr>{% endfor %}</tbody></table></div>
-  {% else %}<p class="qa-card__body qa-muted">No letters uploaded yet.</p>{% endif %}
 </section>
 
 {% if can_manage %}<section class="qa-card" aria-labelledby="pb-users">
@@ -72,3 +73,34 @@
   </table></div>
   {% else %}<p class="qa-card__body qa-muted">No joint QA cases yet.</p>{% endif %}
 </section>
+</div>
+<aside class="qa-stack pb-detail__side">
+<section class="qa-card" aria-labelledby="pb-contact">
+  <header class="qa-card__head"><div><h2 id="pb-contact">Contact</h2></div></header>
+  <dl class="qa-dl">
+    <div><dt>Contact person</dt><dd>{{ body.contact_person|default:"—" }}</dd></div>
+    <div><dt>E-mail</dt><dd>{% if body.email %}<a href="mailto:{{ body.email }}">{{ body.email }}</a>{% else %}—{% endif %}</dd></div>
+    <div><dt>Phone</dt><dd>{% if body.phone %}<a href="tel:{{ body.phone }}">{{ body.phone }}</a>{% else %}—{% endif %}</dd></div>
+    <div><dt>Address</dt><dd>{{ body.address|default:"—"|linebreaksbr }}</dd></div>
+    {% if body.website %}<div><dt>Website</dt><dd><a href="{{ body.website }}" rel="noopener noreferrer" target="_blank">{{ body.website }}</a></dd></div>{% endif %}
+  </dl>
+</section>
+<section class="qa-card" aria-labelledby="pb-io">
+  <header class="qa-card__head"><div><h2 id="pb-io">Import and export</h2><p>Work on this body's mappings in Excel.</p></div></header>
+  <ul class="pb-io" role="list">
+    <li><a class="btn btn-subtle btn-block" href="{% url 'qa_pb:export' %}?body={{ body.pk }}" download>{% icon "download" 16 %} Export this body (.xlsx)</a>
+      <span class="qa-small qa-muted">One workbook: a Bodies sheet with {{ body.acronym|default:"this body" }}, and a Mappings sheet with its {{ mappings|length }} programme mapping{{ mappings|length|pluralize }}.</span></li>
+    {% if can_manage %}<li><a class="btn btn-subtle btn-block" href="{% url 'qa_pb:import' %}" hx-get="{% url 'qa_pb:import' %}" hx-target="#qa-panel" hx-push-url="true">{% icon "upload" 16 %} Import mappings (.xlsx)</a>
+      <span class="qa-small qa-muted">Upload the exported workbook after editing it. The file is checked first; nothing is saved until you choose Import.</span></li>
+    <li><a class="qa-small" href="{% url 'qa_pb:import_template' %}" download>Download an empty template (.xlsx)</a></li>{% endif %}
+  </ul>
+</section>
+<section class="qa-card" aria-labelledby="pb-letters">
+  <header class="qa-card__head"><div><h2 id="pb-letters">Letters and certificates</h2><p>Uploaded by the body on the QA portal. The institution sees them too.</p></div></header>
+  {% if letters %}<div class="qa-table-wrap"><table class="qa-table"><thead><tr><th scope="col">Letter</th><th scope="col">Programme</th><th scope="col">Uploaded</th></tr></thead>
+    <tbody>{% for l in letters %}<tr><td><a href="{{ l.download_url }}">{{ l.get_kind_display }}</a>{% if l.reference %}<br><span class="qa-small qa-muted">{{ l.reference }}</span>{% endif %}</td><td>{{ l.programme }}<br><span class="qa-small qa-muted">{{ l.programme.institution.name }}</span></td><td>{{ l.created_at|date:"j M Y" }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<p class="qa-card__body qa-muted">No letters uploaded yet.</p>{% endif %}
+</section>
+
+</aside>
+</div>

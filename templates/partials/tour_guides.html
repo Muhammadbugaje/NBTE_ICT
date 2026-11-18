@@ -1,0 +1,45 @@
+{% comment %}
+  "Guide me through it": the live walk-throughs that go with a help page.
+  Rendered by {% tour_guides %} (qa_core/templatetags/tour_tags.py). Each link
+  opens the tour's first page with ?tour=<id>; where the tour engine is already
+  loaded, data-tour-start starts it without the detour. Self-styled so it also
+  works on the public pages, which do not load tour.css.
+{% endcomment %}{% if tour_rows %}
+{% if tour_variant == "button" %}{% with t=tour_rows.0 %}<a class="tg-btn" href="{{ t.url }}" data-tour-start="{{ t.id }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polygon points="16.2 7.8 14.1 14.1 7.8 16.2 9.9 9.9 16.2 7.8"/></svg><span>Guide me through it</span></a>{% endwith %}
+{% else %}
+<section class="tg{% if tour_variant == 'compact' %} tg--compact{% endif %}" aria-labelledby="tg-h{{ tour_guide|default:'' }}">
+  <div class="tg__head">
+    <span class="tg__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.2 7.8 14.1 14.1 7.8 16.2 9.9 9.9 16.2 7.8"/></svg></span>
+    <div>
+      <h2 class="tg__title" id="tg-h{{ tour_guide|default:'' }}">Guide me through it</h2>
+      <p class="tg__sub">Pick a task. The system opens the right page and points at each step, one at a time.{% if not tour_signed_in %} You will be asked to sign in first.{% endif %}</p>
+    </div>
+  </div>
+  <ul class="tg__list" role="list">{% for t in tour_rows %}
+    <li><a class="tg__item" href="{{ t.url }}" data-tour-start="{{ t.id }}">
+      <span class="tg__text"><strong>{{ t.title }}</strong><small>{{ t.summary }}</small></span>
+      <span class="tg__meta">{{ t.steps }} steps{% if t.role %} · {{ t.role }}{% endif %}</span>
+      <span class="tg__go" aria-hidden="true">Show me →</span>
+    </a></li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+<style>
+.tg{margin:24px 0;padding:18px;border-radius:18px;border:1px solid color-mix(in srgb,#107a40 22%,transparent);background:linear-gradient(135deg,color-mix(in srgb,#107a40 7%,transparent),color-mix(in srgb,#f6b93b 9%,transparent));text-align:left}
+.tg__head{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}
+.tg__icon{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:#107a40;color:#fff}
+.tg__title{margin:0;font-size:1.15rem;line-height:1.25}
+.tg__sub{margin:3px 0 0;font-size:.92rem;opacity:.78}
+.tg__list{list-style:none;margin:0;padding:0;display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.tg--compact .tg__list{grid-template-columns:1fr}
+.tg__item{display:flex;flex-direction:column;gap:4px;height:100%;box-sizing:border-box;padding:12px 14px;border-radius:14px;text-decoration:none;color:inherit;background:var(--surface,#fff);border:1px solid var(--border,rgba(0,0,0,.1));transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
+.tg__item:hover,.tg__item:focus-visible{transform:translateY(-1px);border-color:#107a40;box-shadow:0 8px 20px -10px rgba(0,0,0,.3)}
+.tg__text strong{display:block;font-size:.98rem;line-height:1.3}
+.tg__text small{display:block;margin-top:2px;font-size:.86rem;opacity:.75;line-height:1.4}
+.tg__meta{font-size:.76rem;font-weight:600;opacity:.6}
+.tg__go{margin-top:auto;padding-top:4px;font-size:.86rem;font-weight:700;color:var(--primary,#107a40)}
+.tg-btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 18px;border-radius:999px;background:#f6b93b;color:#1c1300;font-weight:700;text-decoration:none;border:1px solid rgba(0,0,0,.08)}
+.tg-btn:hover{filter:brightness(1.05)}
+@media (prefers-reduced-motion:reduce){.tg__item{transition:none}}
+</style>
+{% endif %}

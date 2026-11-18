@@ -138,7 +138,12 @@ class PaymentSchedule(TimeStampedModel):
     Finance, then paid."""
 
     AUDITED = True
-    STATUS_CHOICES = [("draft", "Draft"), ("approved", "Approved"), ("paid", "Paid"),
+    # v2.4: a batch prepared from an institution's honorarium file goes to the
+    # Executive Secretary before the Director of Finance may pay it:
+    # draft -> awaiting_es -> approved -> paid. A file batch the ES returns goes
+    # back to draft with a remark. Classic schedules keep draft -> approved.
+    STATUS_CHOICES = [("draft", "Draft"), ("awaiting_es", "Awaiting ES approval"),
+                      ("approved", "Approved — ready to pay"), ("paid", "Paid"),
                       ("cancelled", "Cancelled")]
 
     reference = models.CharField(max_length=60, unique=True)
@@ -153,6 +158,14 @@ class PaymentSchedule(TimeStampedModel):
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                     on_delete=models.SET_NULL, related_name="+")
     approved_at = models.DateTimeField(null=True, blank=True)
+    # v2.4: the ES approval step for batches prepared from an honorarium file.
+    sent_to_es_at = models.DateTimeField(null=True, blank=True)
+    sent_to_es_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
+    es_decided_at = models.DateTimeField(null=True, blank=True)
+    es_decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
+    es_remark = models.TextField(blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
     funding_account = models.ForeignKey("payments.BankAccount", null=True, blank=True,
                                         on_delete=models.SET_NULL, related_name="honoraria_schedules")
@@ -211,6 +224,11 @@ class PaymentScheduleLine(TimeStampedModel):
     payment_reference = models.CharField(max_length=100, blank=True)
     paid_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                 on_delete=models.SET_NULL, related_name="+")
+    # v2.4: the payee says the money never arrived; Finance sees it on the batch.
+    disputed_at = models.DateTimeField(null=True, blank=True)
+    disputed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    dispute_note = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["schedule", "name", "pk"]

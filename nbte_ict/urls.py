@@ -10,6 +10,7 @@ from django.views.generic import RedirectView
 from accounts.security_views import staff_verify  # Phase 9
 from accreditation import invite_views as visit_invite_views  # SOP-03 invitation link (works on either host)
 from config import appearance_views  # v2.1 A10
+from qa_core import tour_views as qa_tour_views  # guided tours ("Guide me")
 from documents import views_scan as documents_scan  # v2.1 Phase F (X26)
 
 urlpatterns = [
@@ -27,6 +28,7 @@ urlpatterns = [
     path("settings/geography/", include("staff.geo_urls")),  # v2.1 X49: Settings → States & LGAs
     path("settings/", include("config.urls")),
     path("me/preferences/", appearance_views.my_preferences, name="my_preferences"),  # v2.1 A10
+    path("me/tours/", qa_tour_views.tour_state, name="tour_state"),  # guided tours: done / dismissed
     path("messages/", include("messaging.urls")),
     path("manage/messages/", include("messaging.management_urls")),
     path("notifications/", include("notifications.urls")),
@@ -45,6 +47,11 @@ urlpatterns = [
     path("showcase/", include("showcase.urls")),
     
     # WORKAROUND FOR RENDER: Serve the QA Portal on a /qa-portal/ path
+    # The mobile API. Its namespace must stay "api": the API builds its own links
+    # with reverse("api:…") (memo PDFs, chat and announcement attachments). An
+    # earlier rename to "api_staff" made those requests fail with a server error.
+    # It comes before the portal URLs (also namespaced "api") so it wins here.
+    path("api/v1/", include("api.urls_staff", namespace="api")),
     path("qa-portal/", include("qa_core.portal_urls")),
     
     # NBTE Digital QA System — internal screens (Master Plan §13)
@@ -83,8 +90,6 @@ urlpatterns = [
     # Phase 9: public check of a scanned digital staff ID (internal host only, no login)
     path("verify/staff/<str:token>/", staff_verify, name="staff_verify"),
     
-    # FIXED: Changed namespace from "api" to "api_staff" to resolve the urls.W005 warning
-    path("api/v1/", include("api.urls_staff", namespace="api_staff")),  
     
     path("", include("core.urls")),
 ]

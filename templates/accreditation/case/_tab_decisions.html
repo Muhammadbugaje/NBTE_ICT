@@ -34,12 +34,8 @@
       <div class="c3-panel-mode__mark" aria-hidden="true">{% icon "users" 20 "2.2" %}</div>
       <div class="c3-panel-mode__body">
         <span class="qa-eyebrow">Stage 14 · CQAC review panel</span>
-        <h3 id="cqac-panel-heading">{% if cqac_recommendation_mode == "individual" %}Individual panel votes{% else %}Shared panel recommendation{% endif %}</h3>
-        {% if cqac_recommendation_mode == "individual" %}
-          <p>Every assigned panelist votes on each programme. The outcome is decided by the full panel; approval type, stream count, and commencement date are each decided by majority among members who voted “Approve.” If any detail has no majority, it is returned for review. The stage cannot advance until all active assigned panel members have voted.</p>
-        {% else %}
-          <p>The CQAC acts as one panel. Any assigned panel member may record the shared recommendation for each programme; the Chairman reviews it at the next stage.</p>
-        {% endif %}
+        <h3 id="cqac-panel-heading">Individual panel votes</h3>
+          <p>Every assigned member votes on each programme on their own form. Nobody sees another member's vote until the whole panel has voted. The outcome is decided by majority; approval type, streams and commencement date by majority of the “Approve” votes. A tie is returned for review.</p>
         <div class="c3-panel-mode__members" aria-label="Assigned CQAC panelists">
           {% for member in cqac_panel_members %}<span class="c3-panel-member">{% icon "user" 13 %} {{ member|who }}</span>
           {% empty %}<span class="qa-chip qa-tone-warn">No CQAC members are currently assigned</span>{% endfor %}
@@ -91,8 +87,8 @@
       </div>
       <div class="c3-decision-evidence__programmes" aria-label="Programme evidence">
         {% for d in decision_rows %}
-        <article class="c3-decision-evidence__programme">
-          <header class="c3-decision-evidence__programme-head"><span class="qa-eyebrow">Programme evidence</span><h4>{{ d.programme }}</h4><p>Institution SSQ and attachments · programme evaluation · Team Lead compilation · attendee/member reports</p></header>
+        <details class="c3-decision-evidence__programme v3-evid"{% if decision_rows|length == 1 %} open{% endif %}>
+          <summary class="c3-decision-evidence__programme-head"><span class="qa-eyebrow">Programme evidence</span><h4>{{ d.programme }}</h4><p>Institution SSQ and attachments · programme evaluation · Team Lead compilation · attendee/member reports</p></summary>
           <div class="c3-decision-evidence__documents">
             {% if d.source_ssq %}
             <section class="c3-evidence-document" aria-label="Institution SSQ">
@@ -136,7 +132,7 @@
             </section>
             {% if not d.source_ssq and not d.report %}<p class="c3-decision-evidence__empty">No programme documents are currently available.</p>{% endif %}
           </div>
-        </article>
+        </details>
         {% endfor %}
       </div>
     </section>
@@ -163,13 +159,22 @@
           </section>
           <section class="c3-decision-summary c3-decision-summary--history">
             <h4><span class="c3-decision-summary__icon">{% icon "layers" 14 "2.4" %}</span>Previous recommendations</h4>
-            {% for h in d.history %}<p><span>{{ h.get_stage_display }}{% if h.batch_key %} · Batch{% endif %}</span><strong><span class="qa-chip {{ h.outcome|tone }}">{{ h.get_outcome_display }}</span>{% if h.approval_type %}<span>{{ h.approval_type.name }} · {{ h.approved_streams }} stream{{ h.approved_streams|pluralize }}</span>{% endif %}</strong><small>Recorded by {{ h.decided_by|who }}</small></p>{% empty %}<p class="c3-decision-summary__empty">No earlier decision recorded for this programme.</p>{% endfor %}
+            {% if d.earlier_hidden %}<p class="c3-decision-summary__empty">{% icon "lock" 13 %} Earlier decisions are hidden until you record your own. They appear here as soon as you save.</p>{% endif %}
+            {% for h in d.history %}<p><span>{{ h.get_stage_display }}{% if h.batch_key %} · Batch{% endif %}</span><strong><span class="qa-chip {{ h.outcome|tone }}">{{ h.get_outcome_display }}</span>{% if h.approval_type %}<span>{{ h.approval_type.name }} · {{ h.approved_streams }} stream{{ h.approved_streams|pluralize }}</span>{% endif %}</strong><small>Recorded by {{ h.decided_by|who }}</small></p>{% empty %}{% if not d.earlier_hidden %}<p class="c3-decision-summary__empty">No earlier decision recorded for this programme.</p>{% endif %}{% endfor %}
           </section>
         </div>
+        {% if d.vote_tally %}
+        <section class="c3-vote-tally" aria-label="CQAC panel votes for {{ d.programme }}">
+          <h4>CQAC panel votes <span class="qa-muted">({{ d.vote_tally.total }} member{{ d.vote_tally.total|pluralize }})</span></h4>
+          {% for line in d.vote_tally.lines %}<div class="c3-vote-tally__line"><span>{{ line.label }}</span><span class="c3-vote-tally__bar" aria-hidden="true"><i style="width:{{ line.pct }}%"></i></span><strong>{{ line.count }}</strong></div>{% endfor %}
+          {% if d.vote_tally.reasons %}<ul class="c3-vote-tally__reasons">{% for r in d.vote_tally.reasons %}<li><span class="qa-chip">{{ r.outcome }}</span> {{ r.text }}</li>{% endfor %}</ul>{% endif %}
+          <p class="qa-small qa-muted">Your own decision below starts empty.</p>
+        </section>
+        {% endif %}
         <div class="c3-decision-controls-head"><span class="qa-eyebrow">Record decision</span><span>Complete the required fields for this programme.</span></div>
         <div class="qa-decision__grid">
           <div class="qa-field"><label for="d{{ d.row.pk }}-outcome">Decision outcome</label>
-            <select class="input" id="d{{ d.row.pk }}-outcome" name="d{{ d.row.pk }}-outcome" aria-describedby="d{{ d.row.pk }}-outcome-help"><option value="approve"{% if d.start.outcome == "approve" %} selected{% endif %}>Approve</option><option value="deny"{% if d.start.outcome == "deny" %} selected{% endif %}>Deny</option><option value="return"{% if d.start.outcome == "return" %} selected{% endif %}>Return for more work</option></select><small id="d{{ d.row.pk }}-outcome-help" class="qa-small qa-muted">Choose the recommendation for this programme.</small></div>
+            <select class="input" id="d{{ d.row.pk }}-outcome" name="d{{ d.row.pk }}-outcome" aria-describedby="d{{ d.row.pk }}-outcome-help"><option value=""{% if not d.start.outcome %} selected{% endif %} disabled>Choose…</option><option value="approve"{% if d.start.outcome == "approve" %} selected{% endif %}>Approve</option><option value="deny"{% if d.start.outcome == "deny" %} selected{% endif %}>Deny</option><option value="return"{% if d.start.outcome == "return" %} selected{% endif %}>Return for more work</option></select><small id="d{{ d.row.pk }}-outcome-help" class="qa-small qa-muted">Choose the recommendation for this programme.</small></div>
           <div class="qa-field"><label for="d{{ d.row.pk }}-approval_type">Approval type</label>
             <select class="input" id="d{{ d.row.pk }}-approval_type" name="d{{ d.row.pk }}-approval_type"><option value="">—</option>{% for t in approval_types %}<option value="{{ t.pk }}"{% if d.start.approval_type and d.start.approval_type.pk == t.pk %} selected{% endif %}>{{ t.name }} ({{ t.duration_months }} months)</option>{% endfor %}</select></div>
           <div class="qa-field"><label for="d{{ d.row.pk }}-approved_streams">Approved streams</label>
@@ -186,7 +191,7 @@
         </div>
       </fieldset>
     {% endfor %}
-    {% if can_decide %}<div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "check" 16 %}{% if decision_stage == "cqac_recommendation" and cqac_recommendation_mode == "individual" %} Submit or update my votes{% elif decision_stage == "cqac_recommendation" %} Save shared panel recommendation{% else %} Save decisions{% endif %}</button><span class="qa-small qa-muted">{% if decision_stage == "cqac_recommendation" and cqac_recommendation_mode == "individual" %}Your votes are private to you until the panel vote is finalized.{% else %}Then approve the stage below.{% endif %}</span></div>{% endif %}
+    {% if can_decide %}<div class="qa-form-actions"><button class="btn btn-primary" type="submit">{% icon "check" 16 %}{% if decision_stage == "cqac_recommendation" %} Submit or update my votes{% else %} Save my decisions{% endif %}</button><span class="qa-small qa-muted">{% if decision_stage == "cqac_recommendation" %}Your votes are private to you until the panel vote is finalized.{% elif earlier_hidden %}Earlier decisions are shown once you save.{% else %}Then approve the stage below.{% endif %}</span></div>{% endif %}
     </form>
   </div>
   {% endif %}

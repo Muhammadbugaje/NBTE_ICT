@@ -380,6 +380,14 @@ def evaluate(staff, facts, rule=None):
         good.append(f"GL {grade} fits")
     if rule.get("lead") and role_code in facts.lead_roles:
         good.append("Can lead")
+    infos = []
+    if purpose == "personnel" and not locks:
+        # One picker serves every duty: say up front who may take the Team
+        # lead duty, so nobody "Recommended" is refused when added as lead.
+        if role_code in facts.lead_roles:
+            good.append("Can be team lead")
+        else:
+            infos.append("Member only, cannot be team lead")
     good = [g for g in good if g]
 
     if locks:
@@ -393,7 +401,7 @@ def evaluate(staff, facts, rule=None):
         fits_grade = (lo is None and hi is None) or grade is not None
         status = RECOMMENDED if (fits_dept and fits_grade and tasks < cfg["light_tasks"]) else AVAILABLE
     reasons = ([("bad", t) for t in locks] + [("warn", t) for _k, t in warns]
-               + [("good", t) for t in good])
+               + [("good", t) for t in good] + [("info", t) for t in infos])
     return {"status": status, "reasons": reasons, "locks": locks, "warnings": [t for _k, t in warns],
             "tasks": tasks}
 

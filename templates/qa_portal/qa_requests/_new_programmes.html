@@ -11,6 +11,13 @@
               {% if row.programme.approved_streams %}<span class="qa-small qa-muted">· {{ row.programme.approved_streams }} stream{{ row.programme.approved_streams|pluralize }} approved</span>{% endif %}
               {% if not row.eligible %}<span class="qa-small qa-block qa-muted">{% icon "lock" 12 %} {{ row.reason }}</span>{% endif %}</span>
           </label>
+          {% if row.nd_warning and row.eligible %}
+            <div class="v3-warn" role="note">
+              <p>{% icon "alert" 14 %} {{ row.nd_warning }}</p>
+              <label for="jf-{{ row.programme.pk }}">Why are you applying now? <span class="qa-muted">(required if you tick this programme)</span></label>
+              <textarea class="input" id="jf-{{ row.programme.pk }}" name="justify_{{ row.programme.pk }}" rows="2" minlength="10">{{ row.justification }}</textarea>
+            </div>
+          {% endif %}
           {% if qa_type.asks_streams and row.eligible %}
             <span class="qa-streams"><label for="st-{{ row.programme.pk }}">Number of streams</label>
               <input class="input qa-streams__input" type="number" inputmode="numeric" id="st-{{ row.programme.pk }}" name="streams_{{ row.programme.pk }}" value="{{ row.streams }}" min="1" max="{{ max_streams }}" step="1"></span>

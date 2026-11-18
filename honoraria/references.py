@@ -27,8 +27,10 @@ FORMATS = [
     ("honoraria", "Honoraria schedule", "NBTE-HON-{YEAR}-{SEQ:6}", "yearly", "none", PAYSTACK_SAFE, "global"),
     ("honoraria_file", "Honorarium file (per institution)", "NBTE-HF-{YEAR}-{SEQ:5}", "yearly", "none",
      PAYSTACK_SAFE, "global"),
+    ("honoraria_teller", "Honoraria teller number", "NBTE-TEL-{YEAR}-{SEQ:6}", "yearly", "none",
+     PAYSTACK_SAFE, "global"),
 ]
-FALLBACK_PREFIX = {"honoraria": "NBTE-HON", "honoraria_file": "NBTE-HF"}
+FALLBACK_PREFIX = {"honoraria": "NBTE-HON", "honoraria_file": "NBTE-HF", "honoraria_teller": "NBTE-TEL"}
 
 
 def ensure_formats(model=None):

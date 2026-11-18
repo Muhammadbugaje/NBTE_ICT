@@ -1,19 +1,26 @@
 {% load qa_tags %}{% load ux_tags %}
 {% include "inspection/_subnav.html" with section="rp" %}
 <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_insp:rp_list' %}" hx-get="{% url 'qa_insp:rp_list' %}" hx-target="#qa-panel" hx-push-url="true">Resource persons</a><span aria-hidden="true">/</span><span aria-current="page">{{ rp.full_name }}</span></nav>
+<div class="vx vx-insp">
 <header class="qa-inst-head">
   <span class="qa-inst-head__code" aria-hidden="true">RP</span>
   <div><span class="qa-eyebrow">{{ rp.get_source_display }}{% if rp.professional_body %} · {{ rp.professional_body }}{% endif %}</span>
     <h1 data-qa-focus>{{ rp.full_name }}</h1>
-    <div class="qa-inst-head__meta"><span class="qa-chip {{ rp.status|tone }}">{{ rp.get_status_display }}</span>{% if lapsed %}<span class="qa-chip qa-tone-warn">No longer eligible — existing work only</span>{% endif %}<span>{{ rp.email }}</span>{% if rp.phone %}<span>{{ rp.phone }}</span>{% endif %}<span class="qa-mono">{{ rp.rank|default:"no rank" }}</span></div></div>
+    <div class="qa-inst-head__meta"><span class="vx-chip {{ rp.status|vx_tone }}">{{ rp.get_status_display }}</span>{% if lapsed %}<span class="vx-chip vx-t-red">No longer eligible — existing work only</span>{% endif %}<span>{{ rp.email }}</span>{% if rp.phone %}<span>{{ rp.phone }}</span>{% endif %}<span class="qa-mono">{{ rp.rank|default:"no rank" }}</span></div></div>
 </header>
 {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not done" message=error %}{% endif %}
+<section class="vx-kpis" aria-label="Service in numbers">
+  <div class="vx-kpi vx-t-teal"><span class="vx-kpi__icon" aria-hidden="true">{% icon "map" 18 "2.2" %}</span><span class="vx-kpi__label">Visits</span><strong class="vx-kpi__value">{{ totals.visits|default:0 }}</strong><span class="vx-kpi__hint">{{ totals.visits_this_year|default:0 }} this year</span></div>
+  <div class="vx-kpi vx-t-violet"><span class="vx-kpi__icon" aria-hidden="true">{% icon "file" 18 "2.2" %}</span><span class="vx-kpi__label">SSQ reviews</span><strong class="vx-kpi__value">{{ totals.ssqs|default:0 }}</strong><span class="vx-kpi__hint">Completed reviews</span></div>
+  <div class="vx-kpi vx-t-blue"><span class="vx-kpi__icon" aria-hidden="true">{% icon "link" 18 "2.2" %}</span><span class="vx-kpi__label">Engagements</span><strong class="vx-kpi__value">{{ mappings|length }}</strong><span class="vx-kpi__hint">Mappings to cases</span></div>
+  <div class="vx-kpi vx-t-green"><span class="vx-kpi__icon" aria-hidden="true">{% icon "calendar" 18 "2.2" %}</span><span class="vx-kpi__label">Last served</span><strong class="vx-kpi__value vx-kpi__value--sm">{{ totals.last_served|date:"j M Y"|default:"Never" }}</strong><span class="vx-kpi__hint">Most recent service</span></div>
+</section>
 {% if problems %}<div class="qa-callout qa-callout--warn" role="status">{% icon "alert" 18 "2.2" %}<div><strong>Eligibility</strong><ul class="qa-problems">{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div></div>{% endif %}
 <div class="qa-cols">
   <div class="qa-stack">
     <section class="qa-card" aria-labelledby="rp-h1"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--blue">{% icon "user" 17 "2.2" %}</span><div><h2 id="rp-h1">Profile</h2></div></div></header>
       <div class="qa-card__body"><dl class="qa-dl">
-        <div><dt>Disciplines</dt><dd>{% for d in disciplines %}<span class="qa-chip{% if d.is_primary %} qa-tone-info{% endif %}">{{ d.discipline.name }}{% if d.is_primary %} (primary){% endif %}</span> {% empty %}—{% endfor %}</dd></div>
+        <div><dt>Disciplines</dt><dd>{% for d in disciplines %}<span class="vx-chip vx-chip--plain {% if d.is_primary %}vx-t-blue{% else %}vx-t-slate{% endif %}">{{ d.discipline.name }}{% if d.is_primary %} (primary){% endif %}</span> {% empty %}—{% endfor %}</dd></div>
         <div><dt>Home institution</dt><dd>{{ rp.home_institution.name|default:"—" }}</dd></div>
         {% if rp.staff %}<div><dt>NBTE staff</dt><dd>{{ rp.staff }}</dd></div>{% endif %}
         <div><dt>Qualifications</dt><dd>{{ rp.qualifications|default:"—"|linebreaksbr }}</dd></div>
@@ -26,7 +33,7 @@
       {% include "inspection/_service_table.html" with rows=history %}
     </section>
     <section class="qa-card" aria-labelledby="rp-h3"><header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--amber">{% icon "link" 17 "2.2" %}</span><div><h2 id="rp-h3">Engagements</h2></div></div></header>
-      <ul class="qa-rowlist" role="list">{% for m in mappings %}<li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ m.qa_request_programme.programme }}</span><span class="qa-rowlink__meta"><span>{{ m.case.institution.name }}</span><span>· {{ m.get_duty_display }}</span><span>· {{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</span></span></span><span class="qa-rowlink__side"><span class="qa-chip {{ m.status|tone }}">{{ m.get_status_display }}</span></span></li>{% empty %}<li class="qa-card__body qa-muted">No engagements.</li>{% endfor %}</ul>
+      <ul class="qa-rowlist" role="list">{% for m in mappings %}<li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ m.qa_request_programme.programme }}</span><span class="qa-rowlink__meta"><span>{{ m.case.institution.name }}</span><span>· {{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</span></span></span><span class="qa-rowlink__side"><span class="vx-chip vx-chip--plain {{ m.duty|vx_tone }}">{{ m.get_duty_display }}</span><span class="vx-chip {{ m.status|vx_tone }}">{{ m.get_status_display }}</span></span></li>{% empty %}<li class="qa-card__body qa-muted">No engagements.</li>{% endfor %}</ul>
     </section>
   </div>
   <aside class="qa-stack">
@@ -54,4 +61,5 @@
     </section>
     {% endif %}
   </aside>
+</div>
 </div>

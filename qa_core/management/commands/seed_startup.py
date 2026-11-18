@@ -375,8 +375,6 @@ class LegacyStartupCommand(BaseCommand):
                 defaults={"value": value, "value_type": vtype, "group": group, "description": desc,
                           "editable_by": editable_by, "dual_control": dual},
             )
-            if key == "qa.cqac.recommendation_mode" and not was_created and _entry.description != desc:
-                ConfigEntry.objects.filter(pk=_entry.pk).update(description=desc)
             created += was_created
         stats.add("Settings", created, ConfigEntry.objects.filter(key__startswith="qa.").count())
 

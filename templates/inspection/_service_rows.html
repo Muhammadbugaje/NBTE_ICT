@@ -1,17 +1,39 @@
 {% load qa_tags %}
-{% if totals %}<div class="qa-card__body"><h3 class="qa-h3">Totals per person (this selection)</h3>
-  <ul class="qa-totals" role="list">{% for t in totals %}<li><strong>{{ t.person_name }}</strong><span>{{ t.visits|default:0 }} visit{{ t.visits|default:0|pluralize }} · {{ t.ssqs|default:0 }} SSQ{{ t.ssqs|default:0|pluralize }} · last {{ t.last|date:"j M Y" }}</span></li>{% endfor %}</ul></div>{% endif %}
 {% if page.rows %}
-<div class="qa-table-wrap" role="region" aria-label="Service history table" tabindex="0"><table class="qa-table qa-table--scroll">
-  <thead><tr><th scope="col">Person</th><th scope="col">Duty</th><th scope="col">Institution · programme</th><th scope="col">Served</th><th scope="col" class="num">Visits</th><th scope="col" class="num">SSQs</th><th scope="col">Source</th></tr></thead>
+<div class="qa-card__body vx-svc__top">
+  <div class="vx-kpis" aria-label="This selection in numbers">
+    <div class="vx-kpi vx-t-slate"><span class="vx-kpi__icon" aria-hidden="true">{% icon "list" 18 "2.2" %}</span><span class="vx-kpi__label">Records</span><strong class="vx-kpi__value">{{ page.total }}</strong><span class="vx-kpi__hint">Rows matching the filters</span></div>
+    <div class="vx-kpi vx-t-indigo"><span class="vx-kpi__icon" aria-hidden="true">{% icon "users" 18 "2.2" %}</span><span class="vx-kpi__label">People</span><strong class="vx-kpi__value">{{ summary.people|default:0 }}</strong><span class="vx-kpi__hint">Who served</span></div>
+    <div class="vx-kpi vx-t-teal"><span class="vx-kpi__icon" aria-hidden="true">{% icon "map" 18 "2.2" %}</span><span class="vx-kpi__label">Visits</span><strong class="vx-kpi__value">{{ summary.visits|default:0 }}</strong><span class="vx-kpi__hint">At {{ summary.institutions|default:0 }} institution{{ summary.institutions|default:0|pluralize }}</span></div>
+    <div class="vx-kpi vx-t-violet"><span class="vx-kpi__icon" aria-hidden="true">{% icon "file" 18 "2.2" %}</span><span class="vx-kpi__label">SSQ reviews</span><strong class="vx-kpi__value">{{ summary.ssqs|default:0 }}</strong><span class="vx-kpi__hint">Self-study questionnaires reviewed</span></div>
+    <div class="vx-kpi vx-t-green"><span class="vx-kpi__icon" aria-hidden="true">{% icon "calendar" 18 "2.2" %}</span><span class="vx-kpi__label">Last served</span><strong class="vx-kpi__value vx-kpi__value--sm">{{ summary.last|date:"j M Y"|default:"—" }}</strong><span class="vx-kpi__hint">Most recent service date</span></div>
+  </div>
+  {% if totals %}
+  <details class="vx-svc__people" open>
+    <summary><span class="vx-subhead">Who served most <span class="vx-count">{{ totals|length }}</span></span><span class="vx-subnote">Totals per person for this selection (busiest first)</span></summary>
+    <ul class="vx-people" role="list">{% for t in totals %}
+      <li class="vx-person {{ t.person_type|vx_tone }}">
+        <span class="vx-person__avatar" aria-hidden="true">{{ t.person_name|slice:":1"|upper }}</span>
+        <span class="vx-person__main"><strong>{{ t.person_name }}</strong>
+          <span class="vx-person__nums"><span class="vx-num vx-t-teal{% if not t.visits %} is-zero{% endif %}"><b>{{ t.visits|default:0 }}</b> visit{{ t.visits|default:0|pluralize }}</span><span class="vx-num vx-t-violet{% if not t.ssqs %} is-zero{% endif %}"><b>{{ t.ssqs|default:0 }}</b> SSQ{{ t.ssqs|default:0|pluralize }}</span><span class="vx-person__last">last {{ t.last|date:"j M Y" }}</span></span></span>
+      </li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>
+<div class="qa-table-wrap" role="region" aria-label="Service history table" tabindex="0"><table class="qa-table qa-table--scroll vx-table">
+  <thead><tr><th scope="col">Person</th><th scope="col">Duty</th><th scope="col">Institution · programme</th><th scope="col">Served</th><th scope="col" class="num">Visits</th><th scope="col" class="num">SSQs</th><th scope="col">Recorded from</th></tr></thead>
   <tbody>{% for r in page.rows %}<tr class="{% if r.visit_count < 0 or r.ssq_count < 0 %}is-compensating{% endif %}">
-    <td><strong>{{ r.person_name }}</strong><br><span class="qa-small qa-muted">{{ r.get_person_type_display }}</span></td>
-    <td>{{ r.get_duty_display }}{% if r.role_on_team and r.role_on_team != r.get_duty_display %}<br><span class="qa-small qa-muted">{{ r.role_on_team }}</span>{% endif %}</td>
+    <td><strong>{{ r.person_name }}</strong><br><span class="vx-chip vx-chip--plain {{ r.person_type|vx_tone }}">{{ r.get_person_type_display }}</span></td>
+    <td><span class="vx-chip {{ r.duty|vx_tone }}">{{ r.get_duty_display }}</span>{% if r.role_on_team and r.role_on_team != r.get_duty_display %}<br><span class="qa-small qa-muted">{{ r.role_on_team }}</span>{% endif %}</td>
     <td>{{ r.institution.name|default:"—" }}{% if r.programme %}<br><span class="qa-small qa-muted">{{ r.programme.name }}{% if r.discipline %} · {{ r.discipline.name }}{% endif %}</span>{% endif %}</td>
-    <td>{{ r.served_from|date:"j M Y" }}{% if r.served_to != r.served_from %}–{{ r.served_to|date:"j M Y" }}{% endif %}</td>
-    <td class="num">{{ r.visit_count }}</td><td class="num">{{ r.ssq_count }}</td>
-    <td class="qa-small">{% if r.voids_id %}<span class="qa-chip qa-tone-warn">Compensating</span><br>{% endif %}{{ r.source|humanize_code }}{% if r.reason %} — {{ r.reason }}{% endif %}</td>
+    <td class="vx-nowrap">{{ r.served_from|date:"j M Y" }}{% if r.served_to != r.served_from %}<br><span class="qa-small qa-muted">to {{ r.served_to|date:"j M Y" }}</span>{% endif %}</td>
+    <td class="num"><span class="vx-num vx-t-teal{% if not r.visit_count %} is-zero{% elif r.visit_count < 0 %} is-neg{% endif %}"><b>{{ r.visit_count }}</b></span></td><td class="num"><span class="vx-num vx-t-violet{% if not r.ssq_count %} is-zero{% elif r.ssq_count < 0 %} is-neg{% endif %}"><b>{{ r.ssq_count }}</b></span></td>
+    <td class="qa-small">{% if r.voids_id %}<span class="vx-chip vx-t-amber">Correction</span><br>{% endif %}{{ r.source|humanize_code }}{% if r.reason %} — {{ r.reason }}{% endif %}</td>
   </tr>{% endfor %}</tbody>
 </table></div>
+<p class="vx-legend"><b>Colours</b><span class="vx-chip vx-t-blue">Physical verification</span><span class="vx-chip vx-t-teal">Resource inspection</span><span class="vx-chip vx-t-violet">SSQ review</span><span class="vx-chip vx-t-amber">Tracking / correction</span></p>
 {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
-{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "clock" 28 %}</span><h3 class="nbte-empty-state__title">No service recorded</h3><p class="nbte-empty-state__body">Rows appear when visits are recorded and SSQ reviews complete. Try clearing the filters.</p></div>{% endif %}
+{% else %}
+<div class="vx-empty"><span class="vx-empty__icon vx-t-teal" aria-hidden="true">{% icon "clock" 26 "2" %}</span><h3>No service recorded</h3><p>{% if request.GET.q or request.GET.institution or request.GET.programme or request.GET.discipline or request.GET.duty or request.GET.person_type or request.GET.from or request.GET.to %}Nothing matches these filters. Try clearing one of them.{% else %}Rows appear here by themselves when a visit is recorded and when an SSQ review is completed.{% endif %}</p></div>
+{% endif %}

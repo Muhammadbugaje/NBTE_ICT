@@ -472,7 +472,11 @@ def clean_catalogue(field, raw, *, programme=None):
     out = {}
     for item_id, qty in raw.items():
         item_id = str(item_id)
-        if item_id not in items:
+        # v2.3 (D4, mockup 3): "d<id>" holds how many of the item are NOT working.
+        # The plain "<id>" key keeps its old meaning: how many work today.
+        defective = item_id.startswith("d") and item_id[1:] in items
+        base_id = item_id[1:] if defective else item_id
+        if base_id not in items:
             continue
         text = str(qty if qty is not None else "").strip()
         if text == "":
@@ -480,9 +484,9 @@ def clean_catalogue(field, raw, *, programme=None):
         try:
             number = _num(text, integer=False)
         except ValidationError:
-            raise ValidationError(f"{items[item_id].name}: enter a quantity.") from None
+            raise ValidationError(f"{items[base_id].name}: enter a quantity.") from None
         if number < 0:
-            raise ValidationError(f"{items[item_id].name}: the quantity cannot be negative.")
+            raise ValidationError(f"{items[base_id].name}: the quantity cannot be negative.")
         out[item_id] = str(number)
     return out
 
@@ -532,7 +536,9 @@ def required_problems(template, data, evidence_counts, *, sections=None):
             elif field["type"] == "table":
                 min_rows = int(field.get("min_rows") or (field.get("validation") or {}).get("min_rows") or 0)
                 if field.get("required") and min_rows and len(value or []) < min_rows:
-                    problems[field["key"]] = f"Add at least {min_rows} row(s)."
+                    have = len(value or [])
+                    problems[field["key"]] = (f"Needs at least {min_rows} rows; {have} added so far."
+                                              if min_rows > 1 else "Add at least one row.")
     return problems
 
 
@@ -617,6 +623,7 @@ def render_snapshot(template, data, *, programme=None, audience="staff"):
                         short = False
                     entry["rows"].append({"item_id": item.pk, "name": item.name, "unit": item.unit,
                                           "required": str(item.required_quantity), "quantity": have,
+                                          "not_working": qty.get(f"d{item.pk}", ""),
                                           "version": item.version, "short": short,
                                           "weight": str(item.weight), "critical": item.is_critical,
                                           "min_spec": item.min_spec})

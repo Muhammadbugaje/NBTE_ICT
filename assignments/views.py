@@ -42,6 +42,12 @@ def can_view_grants_log(user):
 def my_work(request):
     _staff(request)
     show = request.GET.get("show", "open")
+    from . import supervision
+
+    try:  # supervisions of institutions that have since settled move to "Supervised"
+        supervision.sweep_for(request.user)
+    except Exception:
+        pass
     qs = WorkAssignment.objects.filter(assignee=request.user).select_related("institution", "department",
                                                                                "subject_ct", "assigned_by")
     qs = qs.filter(status__in=WorkAssignment.OPEN) if show != "closed" else qs.exclude(
@@ -65,9 +71,22 @@ def my_work(request):
                    "due": sum(1 for wa in rows if wa.due_at and wa.due_at < now and wa.is_open)},
         "mode": access.privacy_mode(),
     }
+    ctx["supervised"] = supervision.supervised_by(request.user, limit=60)
     if show != "closed":
         ctx.update(inbox.context(request.user))
-        ctx["next_up"] = ctx["work_rows"][0] if ctx["work_rows"] else None
+        all_rows = ctx["work_rows"]
+        ctx["next_up"] = all_rows[0] if all_rows else None
+        # Each task once: "Next up" shows the first, the inbox lists the rest,
+        # and "Assigned to you" keeps only what the inbox does not already
+        # show (offers to accept/decline, or work with no task page).
+        ctx["work_rows"] = all_rows[1:]
+        ctx["work_total"] = len(all_rows)
+        listed = {r.get("url") for r in all_rows if r.get("url")}
+        groups = {}
+        for wa in rows:
+            if wa.status in ("offered", "suggested") or not wa.task_link or wa.task_link not in listed:
+                groups.setdefault(wa.get_kind_display(), []).append(wa)
+        ctx["groups"] = sorted(groups.items())
         ctx["offered_count"] = sum(1 for wa in rows if wa.status in ("offered", "suggested"))
     return render_qa(request, "assignments/my_work.html", ctx, {"qa-panel": "assignments/_my_work_panel.html"})
 

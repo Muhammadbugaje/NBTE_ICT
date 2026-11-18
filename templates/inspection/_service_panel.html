@@ -1,7 +1,9 @@
 {% load qa_tags %}
 {% include "inspection/_subnav.html" with section="service" %}
-<header class="qa-hero"><div><span class="qa-eyebrow">{% icon "clock" 14 "2.4" %} §9 — derived, append-only</span><h1 data-qa-focus>Service history</h1>
-  <p>Who served, when, where and how often. Rows are written when a visit is recorded (attendees only) and when an SSQ review completes. A corrected attendance writes a compensating row; history is never edited.</p>
+<div class="vx vx-insp vx-svc">
+<header class="qa-hero"><div><span class="qa-eyebrow">{% icon "clock" 14 "2.4" %} Inspection · Permanent record</span><h1 data-qa-focus>Service history</h1>
+  <p>Who served NBTE, when, where and how often. A row is added automatically when a visit is recorded (attendees only) or an SSQ review is completed.</p>
+  <p class="vx-hint">History is never edited: if an attendance is corrected, a <em>correction</em> row is added that cancels the earlier one.</p>
   {% if can_export %}<div class="qa-hero__actions"><a class="btn btn-subtle" href="{% url 'qa_insp:service_export' %}?{{ request.GET.urlencode }}">{% icon "download" 16 %} Export (Excel)</a><a class="btn btn-subtle" href="{% url 'qa_insp:service_export_pdf' %}?{{ request.GET.urlencode }}">{% icon "file" 16 %} Export (PDF)</a></div>{% endif %}</div></header>
 <section class="qa-card" aria-label="Service history">
   <form class="qa-toolbar qa-toolbar--wrap" role="search" hx-get="{% url 'qa_insp:service' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
@@ -16,3 +18,4 @@
   </form>
   <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "inspection/_service_rows.html" %}</div>
 </section>
+</div>

@@ -294,6 +294,8 @@ def prefill(row):
     base = {"requested_streams": requested}
     labs = []
     for item_id, qty in (data.get("facilities") or {}).items():
+        if not str(item_id).isdigit():  # v2.3: "d<id>" = not working, never counted as capacity
+            continue
         if _int(qty):
             item = CatalogueItem.objects.filter(pk=_int(item_id)).first()
             labs.append({"label": item.name if item else "Laboratory / workshop", "seats": seats, "count": _int(qty)})

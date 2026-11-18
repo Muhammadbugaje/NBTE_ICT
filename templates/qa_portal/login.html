@@ -1,15 +1,41 @@
 {% extends "qa_portal/base_auth.html" %}
-{% load static %}
+{% load static %}{% load brand %}
 {% block title %}Sign in · {{ portal_name }}{% endblock %}
-{% block heading %}Sign in{% endblock %}
-{% block subheading %}to the NBTE Quality Assurance Portal{% endblock %}
+{% block body_class %} signin-magic{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/account-security.css' %}">{# Phase 9 #}
+  <link rel="stylesheet" href="{% static 'css/signin-magic.css' %}">{# aurora + liquid-glass card, scoped to .signin-magic #}
+{% endblock %}
+{% block extra_js %}
+  <script src="{% static 'js/passkeys.js' %}" defer></script>{# Phase 9 #}
+  <script src="{% static 'js/signin-magic.js' %}" defer></script>{# greeting, Caps Lock hint, glass sheen #}
+{% endblock %}
+{# The split hero gives way to a living aurora and a small brand lockup (static/css/signin-magic.css). #}
+{% block hero %}
+<div class="sm-aurora" aria-hidden="true">
+  <i></i><i></i><i></i><i></i>
+  <span class="sm-aurora__crest"><img decoding="async" src="{% static 'img/brand/nbte-logo-mono-white.svg' %}" alt=""></span>
+</div>
+<header class="sm-top">
+  <a href="{% url 'qa_portal:home' %}" class="sm-brand">
+    <img decoding="async" src="{% brand_logo_url 'primary' %}" alt="">
+    <span>
+      <strong>{{ site_info.portal_short_name }}</strong>
+      <em>National Board for Technical Education</em>
+    </span>
+  </a>
+</header>
+{% endblock %}
+{% block form_brand %}{% endblock %}
 {% block form %}
-<div class="card card-pad-lg auth-card">
-  <div class="signin-note">
-    <strong>For institutions and resource persons</strong>
-    Use the email address NBTE registered for you. First time here? Use the set-password link NBTE emailed you.
-  </div>
-
+<div class="sm-card">
+<div class="auth-form-brand">
+  <span class="sm-crest sm-in sm-i1"><img decoding="async" src="{% brand_logo_url 'primary' %}" alt="National Board for Technical Education"></span>
+  <p class="sm-greeting sm-in sm-i2" data-sm-greeting>Welcome</p>
+  <h1 class="sm-in sm-i3">Sign in</h1>
+  <p class="sm-in sm-i4">to the NBTE Quality Assurance Portal</p>
+</div>
+<div class="auth-card">
   <form method="post" action="{% url 'qa_portal:login' %}" novalidate data-loading-text="Signing you in…" data-busy-text="Signing in…">
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ next|default:'' }}">
@@ -18,7 +44,7 @@
       <div class="auth-error" role="alert">{{ form.non_field_errors|join:" " }}</div>
     {% endif %}
 
-    <div class="field">
+    <div class="field sm-field sm-in sm-i5">
       <label for="id_username">Email address</label>
       <input class="input{% if form.username.errors %} error{% endif %}" type="email" name="username" id="id_username"
              autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required
@@ -27,23 +53,27 @@
       {% if form.username.errors %}<span class="error" id="id_username_error">{{ form.username.errors|join:" " }}</span>{% endif %}
     </div>
 
-    <div class="field">
-      <div class="auth-label-row">
-        <label for="id_password">Password</label>
-        <a href="{% url 'qa_portal:password_forgot' %}?email={{ form.username.value|default:''|urlencode }}" class="auth-forgot">First sign-in / forgot password?</a>
-      </div>
+    <div class="field sm-field sm-in sm-i6">
+      <label for="id_password">Password</label>
       <div class="input-group">
         <input class="input{% if form.password.errors %} error{% endif %}" type="password" name="password" id="id_password"
                autocomplete="current-password" required placeholder="Enter your password">
-        <button type="button" class="reveal" data-toggle-password="id_password" aria-label="Show password">
-          <svg class="icon-eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          <svg class="icon-eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        <button type="button" class="reveal" data-toggle-password="id_password" aria-label="Show password" aria-pressed="false">
+          <svg class="icon-eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="icon-eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
         </button>
       </div>
       {% if form.password.errors %}<span class="error">{{ form.password.errors|join:" " }}</span>{% endif %}
+      <div class="sm-field-meta">
+        <p class="sm-caps" data-sm-caps role="status" hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 12h5v4h6v-4h5z"/><line x1="9" y1="20" x2="15" y2="20"/></svg>
+          Caps Lock is on
+        </p>
+        <a href="{% url 'qa_portal:password_forgot' %}?email={{ form.username.value|default:''|urlencode }}" class="auth-forgot">First sign-in / forgot password?</a>
+      </div>
     </div>
 
-    <button class="btn btn-primary btn-lg btn-block auth-submit" type="submit">Sign in</button>
+    <button class="btn btn-primary btn-lg btn-block auth-submit sm-in sm-i7" type="submit">Sign in</button>
   </form>
   
   {# Phase 9: passkey sign-in (hidden unless the browser supports WebAuthn) #}
@@ -57,9 +87,12 @@
     </button>
     <p class="p9-status" data-passkey-status role="status" aria-live="polite" hidden></p>
   </div>
-  <link rel="stylesheet" href="{% static 'css/account-security.css' %}">
-  <script src="{% static 'js/passkeys.js' %}" defer></script>
 
-  <p class="auth-register">New TVET institution? <a href="{% url 'qa_portal:register' %}">Register with NBTE</a></p>
+  <div class="signin-note sm-in sm-i8">
+    <strong>For institutions and resource persons</strong>
+    Use the email address NBTE registered for you. First time here? Use the set-password link NBTE emailed you.
+  </div>
+  <p class="auth-register sm-in sm-i9">New TVET institution? <a href="{% url 'qa_portal:register' %}">Register with NBTE</a></p>
+</div>
 </div>
 {% endblock %}

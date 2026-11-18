@@ -1,0 +1,35 @@
+{% extends base_template %}
+{% load qa_tags static %}
+{% block title %}Propose a new programme · {{ portal_name }}{% endblock %}
+{% block content %}
+<div class="qa-portal-page" id="qa-propose-programme">
+  <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:programme_board' %}">Programmes</a><span aria-hidden="true">/</span><span aria-current="page">Propose a new programme</span></nav>
+  <header class="qa-page-head">
+    <span class="qa-eyebrow">{% icon "plus" 14 "2.2" %} New programme</span>
+    <h1 data-qa-focus>Propose a new programme</h1>
+    <p>Add a programme {{ inst.name }} plans to run. It goes on your record as <strong>proposed</strong>; next you ask NBTE for a <strong>Resource Inspection</strong>. NBTE inspects, decides and — if approved — gives approval to commence.</p>
+  </header>
+  <ol class="pp-steps" style="margin-bottom:18px">
+    <li class="is-current"><span class="pp-steps__dot">1</span><strong>Propose the programme</strong><small>This page</small></li>
+    <li class="is-todo"><span class="pp-steps__dot">2</span><strong>Resource Inspection request</strong><small>Fee, then the self-study</small></li>
+    <li class="is-todo"><span class="pp-steps__dot">3</span><strong>NBTE visit and decision</strong><small>Approval to commence</small></li>
+  </ol>
+  <form method="post" action="{% url 'qa_portal:programme_propose' %}" class="qa-card qa-form" novalidate>
+    {% csrf_token %}
+    <div class="qa-card__body">
+      {% include "qa_core/partials/_form_errors.html" %}
+      <div class="qa-fields">
+        {% include "qa_core/partials/_field.html" with field=form.source wide=True %}
+        <div data-show-if='{"source": ["custom"]}' class="qa-fields is-wide">
+          {% include "qa_core/partials/_field.html" with field=form.name %}
+          {% include "qa_core/partials/_field.html" with field=form.level %}
+        </div>
+        {% include "qa_core/partials/_field.html" with field=form.streams %}
+      </div>
+      <div class="qa-form-actions"><button class="btn btn-primary btn-lg" type="submit"{% if request.is_impersonating %} disabled{% endif %}>{% icon "arrow" 16 "2.4" %} Add and continue to the request</button>
+        <a class="btn btn-subtle" href="{% url 'qa_portal:programme_board' %}">Cancel</a></div>
+    </div>
+  </form>
+  <script src="{% static 'js/forms-dynamic.js' %}" defer></script>
+</div>
+{% endblock %}

@@ -63,7 +63,7 @@ def test_sqlite_run_writes_a_manifest_whose_hashes_verify(tmp_path):
     manifest = json.loads((folder / "manifest.json").read_text())
     assert sha(folder / "manifest.json") == run.manifest_hash
     kinds = {a["kind"] for a in manifest["artefacts"]}
-    assert kinds == {"database", "media", "protected_media", "settings"}
+    assert kinds == {"database", "media", "protected_media", "settings", "workbook"}  # v2.3: + data.xlsx
     for art in manifest["artefacts"]:
         assert (folder / art["name"]).stat().st_size == art["size"]
         assert sha(folder / art["name"]) == art["sha256"]
@@ -75,10 +75,10 @@ def test_sqlite_run_writes_a_manifest_whose_hashes_verify(tmp_path):
     assert "CREATE TABLE" in (folder / "database.sqlite.sql").read_text()
     snap = json.loads((folder / "settings.json").read_text())
     assert "config.ConfigEntry" in snap["models"] and "qa_core.FlowDefinition" in snap["models"]
-    # the restricted files are in their own archive
-    import tarfile
-    with tarfile.open(folder / "protected_media.tar.gz") as tar:
-        assert "evidence/proof.pdf" in tar.getnames()
+    # the restricted files are in their own archive (v2.3: a ZIP, paths kept)
+    import zipfile
+    with zipfile.ZipFile(folder / "protected_media.zip") as zf:
+        assert "evidence/proof.pdf" in zf.namelist()
     assert run.warnings == ["BACKUP_ENCRYPTION_KEY is not set in the server's .env, so backups are not encrypted."]
     copy = run.copies.get()
     assert copy.status == BackupCopy.OK and copy.destination == dest

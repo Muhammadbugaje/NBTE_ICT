@@ -45,6 +45,11 @@ def render_qa(request, full_template, context, partials=None, status=200):
     context.setdefault("qa_timeout_ms", timeout_ms())
     if target and target in partials:
         return render(request, partials[target], context, status=status)
+    if target == "qa-panel" and not request.headers.get("HX-History-Restore-Request"):
+        # No partial registered: send only the panel (templates/qa_core/_shell.html
+        # honours qa_panel_only) instead of a whole page nested in #qa-panel.
+        context.setdefault("qa_panel_only", True)
+        context.setdefault("qa_shell_base", "qa_core/_panel_base.html")
     return render(request, full_template, context, status=status)
 
 

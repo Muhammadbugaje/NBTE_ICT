@@ -282,10 +282,15 @@ def _catalogue_ctx(request, **extra):
     from qa_core.ui import paginate
 
     page = paginate(request, qs) if request.method == "GET" else None
+    programmes = sorted(set(CatalogueItem.objects.exclude(programme_name="").values_list("programme_name", flat=True)))
+    from institutions.models import ProgrammeMaster
+
+    master_names = ProgrammeMaster.objects.filter(is_active=True).values_list("name", flat=True).order_by("name")[:400]
     ctx = {"items": page["rows"] if page else list(qs), "page": page, "filters": f, "show": show,
            "editable": _can_manage_catalogue(request.user),
-           "programmes": sorted(set(CatalogueItem.objects.exclude(programme_name="")
-                                    .values_list("programme_name", flat=True))),
+           "programmes": programmes,
+           # the add form's single programme control: master list + names already in the catalogue
+           "programme_options": sorted(set(master_names) | set(programmes), key=str.lower),
            "categories": ProgrammeCategory.objects.filter(is_active=True).order_by("name"),
            "kinds": CatalogueItem.KIND_CHOICES,
            "count_active": CatalogueItem.objects.filter(is_active=True).count()}

@@ -1,14 +1,8 @@
 {% load qa_tags %}
-<header class="qa-hero">
-  <div>
-    <span class="qa-eyebrow">{% icon handler.icon|default:"edit" 14 "2.2" %} {{ policy.menu_group }}</span>
-    <h1 data-qa-focus>{{ policy.label }}</h1>
-    <p>{{ handler.summary|default:policy.description }} Choose the institution to start.</p>
-    {% if policy.requires_second_officer %}<div class="qa-hero__actions"><a class="btn btn-subtle" href="{{ confirm_url }}">{% icon "shield" 16 %} Confirm {{ policy.label }} — waiting list</a></div>{% endif %}
-  </div>
-</header>
+{% include "institutions/_action_head.html" with step="choose" %}
 {% if not policy.is_enabled %}{% include "qa_core/partials/_callout.html" with kind="warn" title="Not available yet" message=policy.description %}{% endif %}
-<section class="qa-card" aria-label="Choose an institution">
+<section class="qa-card vx-launch" aria-labelledby="vx-launch-h">
+  <header class="qa-card__head"><div><h2 id="vx-launch-h">Choose the institution</h2><p>Search by name or code, then press Start. Institutions where this action does not apply are greyed out, with the reason.</p></div></header>
   <form class="qa-toolbar" role="search" hx-get="{% url 'qa_inst:launcher' policy.action_code %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], change" data-qa-no-overlay>
     <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Institution name or code" autocomplete="off"></label>
     <select class="input qa-select" name="status" aria-label="Status"><option value="">Any status</option>{% for v, l in statuses %}<option value="{{ v }}"{% if filters.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>

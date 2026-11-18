@@ -1,18 +1,18 @@
 {% load qa_tags %}
-<div class="qa-card__body qa-small qa-muted">For <strong>{{ need.row.programme }}</strong> ({{ need.programme.category.discipline.name|default:"no discipline" }}) · {{ need.start|date:"j M" }}–{{ need.end|date:"j M Y" }} · {{ case.institution.name }}</div>
+<div class="qa-card__body vx-need"><span class="vx-need__label">Looking for</span><span class="vx-chip vx-chip--plain vx-t-blue">{{ need.row.programme }}</span><span class="vx-chip vx-chip--plain vx-t-slate">{{ need.programme.category.discipline.name|default:"no discipline" }}</span><span class="vx-chip vx-chip--plain vx-t-teal">{{ need.start|date:"j M" }}–{{ need.end|date:"j M Y" }}</span><span class="vx-chip vx-chip--plain vx-t-slate">{{ case.institution.name }}</span></div>
 {% if page.rows %}
-<div class="qa-table-wrap" role="region" aria-label="Available QA personnel table" tabindex="0"><table class="qa-table qa-table--scroll">
+<div class="qa-table-wrap" role="region" aria-label="Available QA personnel table" tabindex="0"><table class="qa-table qa-table--scroll vx-table">
   <thead><tr><th scope="col">#</th><th scope="col">Person</th><th scope="col">Current load</th><th scope="col" class="num">Assignments this year</th><th scope="col">Last served</th><th scope="col" class="num">Rating</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
   <tbody>{% for c in page.rows %}<tr class="{% if not c.ok %}is-muted{% endif %}">
-    <td class="num">{% if c.ok %}{{ forloop.counter }}{% else %}—{% endif %}</td>
-    <td><strong>{{ c.name }}</strong><br><span class="qa-small qa-muted">{% if c.kind == "resource_person" %}Resource person{% else %}QA personnel{% endif %}{% if c.load.row %} · limits: {{ c.load.row }}{% endif %}</span>
+    <td class="num">{% if c.ok %}<span class="vx-rank">{{ forloop.counter }}</span>{% else %}—{% endif %}</td>
+    <td><strong>{{ c.name }}</strong> {% if c.ok %}<span class="vx-chip vx-t-green">Eligible</span>{% else %}<span class="vx-chip vx-t-red">Not eligible</span>{% endif %}<br><span class="qa-small qa-muted">{% if c.kind == "resource_person" %}Resource person{% else %}QA personnel{% endif %}{% if c.load.row %} · limits: {{ c.load.row }}{% endif %}</span>
       {% if not c.ok %}<ul class="qa-problems">{% for p in c.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}</td>
     <td data-label="Current load">{% include "inspection/_load.html" with load=c.load %}</td>
     <td class="num" data-label="Assignments this year">{{ c.assignments_this_year }}</td>
     <td>{{ c.last_served|date:"j M Y"|default:"never" }}</td>
     <td class="num">{% if c.rating %}{{ c.rating|floatformat:1 }}{% else %}—{% endif %}</td>
     <td>{% if c.ok and can_map %}
-      <form class="qa-line-actions" method="post" action="{% url 'qa_insp:finder_map' %}" hx-post="{% url 'qa_insp:finder_map' %}" hx-target="#qa-panel" hx-trigger="qa:confirmed" data-qa-confirm="{{ c.name }} is booked now for these dates; a second officer confirms the mapping." data-qa-confirm-title="Map {{ c.name }}?" data-qa-confirm-label="Map">{% csrf_token %}
+      <form class="qa-line-actions" method="post" action="{% url 'qa_insp:finder_map' %}" hx-post="{% url 'qa_insp:finder_map' %}" hx-target="#qa-panel" hx-trigger="qa:confirmed" data-qa-confirm="{{ c.name }}'s dates are held now. The Director and then the ES approve the mapping (Inspection → Mappings)." data-qa-confirm-title="Map {{ c.name }}?" data-qa-confirm-label="Map">{% csrf_token %}
         <input type="hidden" name="case" value="{{ case.pk }}"><input type="hidden" name="row" value="{{ need.row.pk }}"><input type="hidden" name="duty" value="{{ need.duty }}">
         <input type="hidden" name="start" value="{{ need.start|date:'Y-m-d' }}"><input type="hidden" name="end" value="{{ need.end|date:'Y-m-d' }}">
         <input type="hidden" name="person" value="{{ c.key }}"><input type="hidden" name="version" value="{{ c.booking_version }}">
@@ -20,4 +20,4 @@
   </tr>{% endfor %}</tbody>
 </table></div>
 {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
-{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "users" 28 %}</span><h3 class="nbte-empty-state__title">Nobody is available</h3><p class="nbte-empty-state__body">Choose “Also show who is not eligible” to see why each person is excluded.</p></div>{% endif %}
+{% else %}<div class="vx-empty"><span class="vx-empty__icon vx-t-amber" aria-hidden="true">{% icon "users" 26 "2" %}</span><h3>Nobody is available</h3><p>No one passes every rule for these dates. Choose “Also show who is not eligible, and why” to see what excludes each person.</p></div>{% endif %}

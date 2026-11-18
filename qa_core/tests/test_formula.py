@@ -181,7 +181,7 @@ def test_cfg_rejects_json_values():
 @pytest.mark.django_db
 def test_seeded_fee_formula_against_real_settings(qa_seed):
     # Phase 8: every fee formula takes the documented fee variables (streams included).
-    base = {"ownership": "private", "institution_type": "polytechnic", "new_programmes": 0}
+    base = {"ownership": "private", "institution_type": "polytechnic", "new_programmes": 0, "falsified": 0}
     snap = evaluate_setting("qa.fee.programme_processing", {**base, "programmes": 2, "streams": 2, "max_streams": 1})
     assert Decimal(snap["result"]) == Decimal(4000000)
     snap = evaluate_setting("qa.fee.qa_request_processing", {**base, "programmes": 5, "streams": 7, "max_streams": 3})

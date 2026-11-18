@@ -2015,3 +2015,72 @@ def available_actions(task, user, my_row=None, running_timer=None):
     except ImportError:  # the QA apps are not installed
         pass
     return flags
+
+
+# ===========================================================================
+# v2.3 Phase 2 (owner answer 6, D5): one accept path for QA work
+# ===========================================================================
+def _qa_link(task):
+    try:
+        return task.qa_link
+    except Exception:  # RelatedObjectDoesNotExist, or the QA apps are absent
+        return None
+
+
+def _open_work_for(task, user, link):
+    """The QA work assignment(s) behind a QA-linked task, still waiting for this person."""
+    try:
+        from assignments.models import WorkAssignment as WA
+    except Exception:  # pragma: no cover - assignments app absent
+        return []
+    if link is None:
+        return []
+    return list(WA.objects.filter(assignee=user, subject_ct_id=link.content_type_id,
+                                  subject_id=str(link.object_id),
+                                  status__in=(WA.SUGGESTED, WA.OFFERED)))
+
+
+@transaction.atomic
+def accept_and_proceed(task, user):
+    """Accept the task, start it, and accept the matching QA work assignment in
+    one go (before: accepting the task left the QA work still "offered").
+    Returns the QA URL to continue on, or "" for a plain task."""
+    from assignments import work
+
+    accept_and_start(task, user)
+    link = _qa_link(task)
+    for wa in _open_work_for(task, user, link):
+        work.accept(wa, user)
+    if link is None:
+        return ""
+    try:
+        from qa_core.task_bridge import qa_url
+
+        return qa_url(link)
+    except Exception:
+        return ""
+
+
+QA_RESPONSES = {
+    "return": ("Returned to the Director", "Can't take it on now"),
+    "decline": ("Declined — conflict of interest", "Conflict of interest"),
+    "reject": ("Rejected — wrong task", "This task is wrong"),
+}
+
+
+@transaction.atomic
+def respond_to_qa_task(task, user, kind, reason):
+    """Return / Decline / Reject a QA task with a remark. Each closes the
+    person's part, releases the QA work assignment and tells the assigner."""
+    from assignments import work
+
+    if kind not in QA_RESPONSES:
+        raise ValidationError("Choose return, decline or reject.")
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        raise ValidationError("Please explain why (at least 5 characters).")
+    label, _short = QA_RESPONSES[kind]
+    link = _qa_link(task)
+    for wa in _open_work_for(task, user, link):
+        work.decline(wa, user, reason=f"{kind}: {reason}"[:255])
+    return return_to_assigner(task, user, f"{label}: {reason}")

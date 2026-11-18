@@ -70,6 +70,9 @@ def test_x36_shortfall_recorded_at_submission_and_review_card(p3, paid_request, 
     svc.submit_ssq(ssq, user=p3.ceo, declaration=True)
     sa = ShortfallAnalysis.unscoped.get(ssq=ssq)
     assert sa.band == "major" and sa.items[0]["name"] == "Desktop computer" and sa.items[0]["critical"]
+    from accreditation.tests.test_ssq import _assign_to_officer
+
+    _assign_to_officer(p3, ssq)  # the strict SSQ allow-list: assigned and accepted
     r = client_for(p3.p2.officer).get(f"/qa/requests/ssq/{ssq.pk}/", **hx("qa-panel"))
     assert r.status_code == 200 and b"Resource shortfall" in r.content and b"Major shortfall" in r.content
     # the institution's SSQ page never shows the score

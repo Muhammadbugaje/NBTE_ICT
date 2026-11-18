@@ -1,11 +1,12 @@
 {% load qa_tags nbte_calendar %}
 {% if page.rows %}
 <ul class="qa-rowlist" role="list">{% for i in page.rows %}
-  <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge">
+  <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge vx-rowlink {{ i.status|vx_tone }}">
     <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ i.get_kind_display }}</span>
       <span class="qa-rowlink__meta"><span class="qa-mono">{{ i.reference }}</span><span>· {{ i.scheduled_start|date:"j M" }}–{{ i.scheduled_end|date:"j M Y" }}</span>{% if i.actual_start %}<span>· visited {{ i.actual_start|date:"j M" }}–{{ i.actual_end|date:"j M Y" }}</span>{% endif %}</span></span>
-    <span class="qa-rowlink__side"><span class="qa-chip {{ i.status|tone }}">{% if i.status == "closed" %}Visit recorded{% else %}{{ i.status|humanize_code }}{% endif %}</span>{% add_to_calendar "inspection" i %}{% include "complaints/portal/_raise_link.html" with kind="inspection" pk=i.pk short=True %}</span>
+    <span class="qa-rowlink__side"><span class="vx-chip {{ i.status|vx_tone }}">{{ i.status|vx_label }}</span>{% add_to_calendar "inspection" i %}{% include "complaints/portal/_raise_link.html" with kind="inspection" pk=i.pk short=True %}</span>
   </li>
 {% endfor %}</ul>
+<p class="vx-legend"><b>Status</b><span class="vx-chip vx-t-blue">Scheduled — visit still to happen</span><span class="vx-chip vx-t-green">Visit recorded</span><span class="vx-chip vx-t-red">Cancelled</span></p>
 {% include "qa_core/partials/_pagination.html" with target="#insp-rows" %}
-{% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "clock" 28 %}</span><h3 class="nbte-empty-state__title">No inspections yet</h3><p class="nbte-empty-state__body">A visit appears here once the Executive Secretary approves it.</p></div>{% endif %}
+{% else %}<div class="vx-empty"><span class="vx-empty__icon vx-t-teal" aria-hidden="true">{% icon "map" 26 "2" %}</span><h3>No inspections yet</h3><p>A visit appears here once the Executive Secretary approves it. NBTE will contact you before any visit.</p></div>{% endif %}

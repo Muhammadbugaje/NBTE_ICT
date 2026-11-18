@@ -4,6 +4,40 @@
   var nextId = 0;
   var dialogQueue = Promise.resolve();
 
+  // Inline glyphs for the badge (static markup, never user text).
+  var SVG_OPEN = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" focusable="false" aria-hidden="true">';
+  var ICON_DANGER = SVG_OPEN +
+    '<path d="M10.3 3.9 2.4 17.5A2 2 0 0 0 4.1 20.5h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>' +
+    '<path d="M12 9.5v4"/><path d="M12 17h.01"/></svg>';
+  var ICON_DEFAULT = SVG_OPEN +
+    '<path d="M8.4 8.6a3.7 3.7 0 0 1 7.2 1.2c0 2.5-3.6 3-3.6 5.4"/><path d="M12 19.2h.01"/></svg>';
+  var LEAVE_FALLBACK_MS = 300;
+
+  // Plays the exit animation (confirm-glass.css), then removes the node. The
+  // node is already inert, so nothing waits on this.
+  function leave(root, panel) {
+    var done = false;
+    function remove() {
+      if (done) return;
+      done = true;
+      root.remove();
+    }
+    root.classList.add("is-leaving");
+    var name = "";
+    try { name = window.getComputedStyle(panel).animationName || ""; } catch (e) {}
+    if (name.indexOf("ncg-") !== 0) { remove(); return; }  // no exit animation
+    // Only the exit animation counts: closing mid-entrance cancels the
+    // entrance animation, which must not remove the node early.
+    function onDone(event) {
+      if (event.target === panel && event.animationName === name) remove();
+    }
+    panel.addEventListener("animationend", onDone);
+    panel.addEventListener("animationcancel", onDone);
+    window.setTimeout(remove, LEAVE_FALLBACK_MS);
+  }
+
   function createButton(label, className) {
     var button = document.createElement("button");
     button.type = "button";
@@ -47,7 +81,8 @@
       var icon = document.createElement("div");
       icon.className = "nbte-confirm__icon";
       icon.setAttribute("aria-hidden", "true");
-      icon.textContent = options.icon || (tone === "danger" ? "!" : "✓");
+      if (options.icon) icon.textContent = options.icon;
+      else icon.innerHTML = tone === "danger" ? ICON_DANGER : ICON_DEFAULT;
 
       var title = document.createElement("h2");
       title.className = "nbte-confirm__title";
@@ -90,13 +125,18 @@
         closed = true;
         document.removeEventListener("keydown", onKeyDown, true);
         document.removeEventListener("focusin", onFocusIn, true);
-        root.remove();
+        // Out of the way at once: callers and the next queued dialog never
+        // wait for the exit animation.
+        root.inert = true;
+        root.setAttribute("aria-hidden", "true");
+        root.style.pointerEvents = "none";
         document.body.style.overflow = previousOverflow;
         if (previousFocus && typeof previousFocus.focus === "function" &&
             previousFocus.isConnected) {
           previousFocus.focus();
         }
         resolve(result);
+        leave(root, panel);
       }
 
       function onKeyDown(event) {

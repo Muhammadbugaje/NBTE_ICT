@@ -57,11 +57,14 @@ def preview_button(url, name="", size="", label="Preview", compact=False, downlo
         download = url
     classes = "fpv-btn" + (" fpv-btn--compact" if compact else "")
     text = "" if compact else format_html('<span class="fpv-btn__label">{}</span>', label)
+    # WCAG 2.5.3 label-in-name: the accessible name starts with the visible
+    # label ("Open document: plan.pdf"), so voice control can press it.
+    spoken = f"{label}: {name}" if (label and not compact) else f"Preview {name}"
     return format_html(
         '<button type="button" class="{}" data-preview="{}" data-preview-name="{}" '
-        'data-preview-size="{}" data-preview-download="{}" aria-label="Preview {}" '
-        'title="Preview {}">{}{}</button>',
-        classes, url, name, human_size(size), download, name, name,
+        'data-preview-size="{}" data-preview-download="{}" aria-label="{}" '
+        'title="{}">{}{}</button>',
+        classes, url, name, human_size(size), download, spoken, spoken,
         mark_safe(EYE.format(s=14)), text,
     )
 

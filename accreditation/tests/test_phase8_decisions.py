@@ -52,14 +52,8 @@ def _cqac_vote_data(rows, outcomes, approval_type):
 
 @pytest.fixture
 def individual_cqac_mode(qa_seed):
-    from config.models import ConfigEntry
-    from qa_core.tests.phase3_fixtures import set_config
-
-    setting = ConfigEntry.objects.get(key="qa.cqac.recommendation_mode", scope="global")
-    previous = setting.value
-    set_config("qa.cqac.recommendation_mode", "individual")
+    """v2.3: individual votes are the only mode; kept so older tests read the same."""
     yield
-    set_config("qa.cqac.recommendation_mode", previous)
 
 
 def test_cqac_decision_evidence_links_are_role_and_case_scoped(p4, make_user):
@@ -89,7 +83,7 @@ def test_cqac_decision_evidence_links_are_role_and_case_scoped(p4, make_user):
     assert "Open all reports" in panel
     assert "Institution SSQ and attachments" in panel
     assert "attendee/member reports" in panel
-    assert "Shared panel recommendation" in panel
+    assert "Individual panel votes" in panel and "Shared panel recommendation" not in panel  # v2.3
     assert "Assigned CQAC panelists" in panel
     assert member_client.get(f"/qa/cases/{case.pk}/ssq/{ssq.pk}/").status_code == 200
     source_pdf = member_client.get(reverse("qa_case:source_ssq_pdf", args=[case.pk, ssq.pk]))
@@ -190,7 +184,8 @@ def test_capacity_is_assessed_by_desk_officer_and_director_confirmed_before_cqac
         {"tab": "capacity", "requested_streams": "2", "students_per_stream": "40", "support_staff": "2"},
         HTTP_HX_REQUEST="true", HTTP_HX_TARGET="qa-panel",
     )
-    assert denied.status_code == 403
+    # v2.3: an unassigned officer cannot even see the case (scope), let alone edit it
+    assert denied.status_code in (403, 404)
     director_denied = staff_client(director).post(
         url + f"capacity/{rows[0].pk}/support_staff/",
         {"tab": "capacity", "requested_streams": "2", "students_per_stream": "40", "support_staff": "2"},
@@ -309,7 +304,9 @@ def test_cqac_individual_panel_assignments_votes_majority_tie_and_gating(p4, mak
     assert "no cqac outcome received a majority" in decision.note.lower()
 
 
-def test_cqac_default_shared_mode_records_decisions_immediately(p4):
+def test_cqac_members_always_vote_individually(p4):
+    """v2.3 (owner decision 10): one member's form never records the panel's
+    decision; it is a vote, and the Decision waits for the panel."""
     from accreditation import decisions as dec
     from accreditation.models import ApprovalType, CQACVote, Decision
 
@@ -319,9 +316,8 @@ def test_cqac_default_shared_mode_records_decisions_immediately(p4):
     data = _cqac_vote_data(rows, {row.pk: "approve" for row in rows}, full)
     dec.record_from_post(case, "cqac_recommendation", data, user=p4.people.cqac_member)
 
-    assert dec.recommendation_mode() == "shared"
-    assert Decision.unscoped.filter(case=case, stage=Decision.CQAC).count() == len(rows)
-    assert not CQACVote.unscoped.filter(case=case).exists()
+    assert dec.recommendation_mode() == "individual"
+    assert CQACVote.unscoped.filter(case=case, user=p4.people.cqac_member).count() == len(rows)
 
 
 def test_decisions_then_stage_17_updates_programmes_and_issues_letters(p4, client_for, portal_host, make_user,

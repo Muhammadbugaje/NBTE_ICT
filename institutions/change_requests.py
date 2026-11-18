@@ -268,3 +268,29 @@ def decide(request, *, actor, decision, note=""):
              + (f" {note}" if note else ""),
         url="/institution/change-requests/", actor=actor))
     return row
+
+
+def visible_requests(user):
+    """Change requests ``user`` may list: everything for the ICT lead (Director
+    of ICT, ES, super admin), only their own assignments for an ICT reviewer,
+    nothing for anyone else. The role check is the scope, so the views never
+    query the model themselves."""
+    from .models import InstitutionChangeRequest
+
+    rows = InstitutionChangeRequest.unscoped.select_related("institution", "requested_by", "assigned_to")
+    if is_lead(user):
+        return rows
+    if is_ict_reviewer(user):
+        return rows.filter(assigned_to=user)
+    return rows.none()
+
+
+def visible_request(user, pk):
+    """One change request, or None when ``user`` may not open it."""
+    from .models import InstitutionChangeRequest
+
+    row = InstitutionChangeRequest.unscoped.select_related(
+        "institution", "requested_by", "assigned_to", "assigned_by", "decided_by").filter(pk=pk).first()
+    if row is None or not (is_lead(user) or row.assigned_to_id == getattr(user, "pk", None)):
+        return None
+    return row

@@ -35,7 +35,21 @@
             </td>
             <td data-label="Duration" class="bk-num">{% if run.is_running %}{{ run.progress }}%{% elif run.duration %}{{ run.duration|duration_h }}{% else %}—{% endif %}</td>
             <td class="bk-actions">
-              {% if run.manifest %}<a class="btn btn-sm btn-ghost" href="{% url 'backups:manifest' run.pk %}" download>Manifest</a>{% endif %}
+              {% if run.manifest %}
+                <details class="bk-files">
+                  <summary class="btn btn-sm btn-ghost">Download…</summary>
+                  <div class="bk-files__menu" role="menu">
+                    {% for art in run.manifest.artefacts %}
+                      {% if art.kind == "database" %}<a role="menuitem" href="{% url 'backups:artefact' run.pk art.kind %}"><strong>Database dump</strong><small>Full disaster recovery</small></a>
+                      {% elif art.kind == "media" %}<a role="menuitem" href="{% url 'backups:artefact' run.pk art.kind %}"><strong>Media ZIP</strong><small>{{ art.files|default:0 }} file{{ art.files|pluralize }}, paths kept</small></a>
+                      {% elif art.kind == "protected_media" %}<a role="menuitem" href="{% url 'backups:artefact' run.pk art.kind %}"><strong>Protected files ZIP</strong><small>{{ art.files|default:0 }} file{{ art.files|pluralize }}, paths kept</small></a>
+                      {% elif art.kind == "workbook" %}<a role="menuitem" href="{% url 'backups:artefact' run.pk art.kind %}"><strong>Excel workbook</strong><small>One sheet per table · re-import through the Data Hub</small></a>
+                      {% endif %}
+                    {% endfor %}
+                    <a role="menuitem" href="{% url 'backups:manifest' run.pk %}" download><strong>Manifest</strong><small>Every file with its size and SHA-256</small></a>
+                  </div>
+                </details>
+              {% endif %}
               {% if can_drill and run.can_drill %}
                 <form method="post" action="{% url 'backups:drill' run.pk %}" hx-post="{% url 'backups:drill' run.pk %}" hx-target="#bk-history" hx-swap="outerHTML" hx-disabled-elt="find button">
                   {% csrf_token %}

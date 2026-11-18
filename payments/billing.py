@@ -163,7 +163,7 @@ def category_lines(schedule, institution, variables):
             add("processing", "Processing fee", row.registration_processing_fee, "processing", label)
     elif family == "programme":
         n = max(n, 1)
-        add("programme", f"Programme fee × {n}", row.programme_fee * n, "base",
+        add("programme", f"Programme fee × {n} programme{'s' if n != 1 else ''}", row.programme_fee * n, "base",
             f"{label}: {to_money(row.programme_fee):,.2f} per programme")
         add("extra-streams", f"Additional streams × {extra_streams}", row.extra_stream_fee * extra_streams, "other")
         if processing_on:

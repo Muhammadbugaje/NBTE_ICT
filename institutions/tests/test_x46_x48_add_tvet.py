@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from qa_core.tests.conftest import hx
 from qa_core.tests.phase2_fixtures import pdf_upload
+from qa_core.tests.phase3_fixtures import department_mode  # noqa: F401 (fixture)
 
 pytestmark = pytest.mark.django_db
 

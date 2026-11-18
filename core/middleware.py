@@ -105,6 +105,36 @@ _HX_META = ("HTTP_HX_REQUEST", "HTTP_HX_TARGET", "HTTP_HX_TRIGGER", "HTTP_HX_TRI
             "HTTP_HX_BOOSTED")
 
 
+_SIGN_IN_PATHS = ("/login", "/accounts/login", "/signin", "/sign-in")
+
+
+def htmx_full_redirect(request, response):
+    """v2.3 Phase 1 (D9): an HTMX request that is redirected to the sign-in page
+    or to another host must become a full-page navigation.
+
+    The browser's XHR follows redirects silently. A redirect to the sign-in page
+    would swap a whole sign-in document into ``#qa-main``; a redirect to the
+    other host (internal ↔ portal) fails CORS and leaves the page stuck. Both
+    are answered with ``204 + HX-Redirect`` so htmx does a normal page load.
+    Same-host redirects between ordinary pages are left alone (htmx follows
+    them and the target view still sees the HTMX headers).
+    """
+    from urllib.parse import urlsplit
+
+    from django.http import HttpResponse
+
+    location = response["Location"]
+    parts = urlsplit(location)
+    other_host = bool(parts.netloc) and parts.netloc.lower() != request.get_host().lower()
+    sign_in = parts.path.rstrip("/").lower().endswith(_SIGN_IN_PATHS)
+    if not (other_host or sign_in):
+        return response
+    redirect = HttpResponse(status=204)
+    redirect["HX-Redirect"] = location
+    redirect.cookies = response.cookies  # keep session / CSRF cookies set on the way out
+    return redirect
+
+
 class HtmxVaryMiddleware:
     """Phase 0 / N2, V6, T-UX-1: make the browser Back button safe with HTMX.
 
@@ -133,6 +163,8 @@ class HtmxVaryMiddleware:
             request.htmx_history_restore = True
         partial = (not restore) and meta.get("HTTP_HX_REQUEST", "").lower() == "true"
         response = self.get_response(request)
+        if partial and 300 <= response.status_code < 400 and response.has_header("Location"):
+            response = htmx_full_redirect(request, response)
         if response.get("Content-Type", "").startswith("text/html"):
             from django.utils.cache import patch_vary_headers
 

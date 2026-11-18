@@ -53,6 +53,23 @@ class RestrictedMediaStorage(FileSystemStorage):
         )
 
 
+try:  # v2.3: Cloudflare R2 (FILE_STORAGE=r2); django-storages is optional locally
+    from storages.backends.s3 import S3Storage as _S3Storage
+except ImportError:  # pragma: no cover - package not installed
+    _S3Storage = None
+
+if _S3Storage is not None:
+    class R2PublicStorage(_S3Storage):
+        """Public uploads on R2, served from R2_PUBLIC_DOMAIN."""
+
+    class R2RestrictedStorage(_S3Storage):
+        """Private bucket. Same contract as RestrictedMediaStorage: no public
+        URL — files stream through core.views.protected_download."""
+
+        def url(self, name, *args, **kwargs):
+            raise ValueError("Restricted files have no public URL; use the protected download view.")
+
+
 def restricted_storage():
     """Callable for FileField(storage=...) so the storage resolves lazily and
     migrations don't embed an absolute path."""

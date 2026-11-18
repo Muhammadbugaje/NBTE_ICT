@@ -45,6 +45,17 @@ def _confirm_fee(app, p2, user, capture):
     return app
 
 
+@pytest.fixture(autouse=True)
+def _profile_gate_off(qa_seed):
+    """These fixtures' institutions have no management team, so the portal's
+    profile gate would send every page to /setup/. The gate has its own tests
+    (institutions/tests); here it is switched off explicitly. (Before v2.3 the
+    tests passed only when an earlier test had left the setting off.)"""
+    from qa_core.tests.phase3_fixtures import set_config
+
+    set_config("qa.onboarding.profile_gate_enabled", "false")
+
+
 @pytest.fixture
 def selecting_app(submitted_app, p2, inst_user, django_capture_on_commit_callbacks):
     """An onboarding application at programme selection with two programmes."""

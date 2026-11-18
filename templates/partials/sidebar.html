@@ -367,10 +367,10 @@
     </div>
 
     {# ---------------- People & Staff ---------------- #}
-    <div class="app-nav-group {% if ns == 'staff' or un == 'profile' or ns == 'accounts' or ns == 'org' %}is-open{% endif %}" data-group="people" style="--nav-c:var(--qa-c-blue)">
-      <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'staff' or un == 'profile' or ns == 'accounts' %}true{% else %}false{% endif %}">
+    <div class="app-nav-group {% if ns == 'staff' or un == 'profile' or ns == 'accounts' or ns == 'org' or request.resolver_match.namespace == 'accounts:groups' %}is-open{% endif %}" data-group="people" style="--nav-c:var(--qa-c-blue)">
+      <button type="button" class="app-nav-group-head" aria-expanded="{% if ns == 'staff' or un == 'profile' or ns == 'accounts' or request.resolver_match.namespace == 'accounts:groups' %}true{% else %}false{% endif %}">
         <span class="qa-nav-tile" data-tone="cyan" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-        <span class="app-nav-group-title">People</span>
+        <span class="app-nav-group-title">People &amp; access</span>
         <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div class="app-nav-group-body">
@@ -403,8 +403,33 @@
         {% if perms.accounts.view_user %}
           <a data-tone="indigo" href="{% url 'accounts:user_list' %}" class="app-nav-item {% if ns == 'accounts' and un in 'user_list,user_list_institution,user_list_external,user_create,user_create_institution,user_detail,user_edit_roles,user_reset_password' %}active{% endif %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-            <span>User management</span>
+            <span>Users &amp; accounts</span>
           </a>
+        {% endif %}
+
+        {# v2.3 (mockup 17): User Management merged into People — one place for people and access #}
+        {% if request.user.is_superuser or perms.accounts.change_user or perms.accounts.assign_groups %}
+        {% with gns=request.resolver_match.namespace %}
+        <p class="app-nav-sublabel">Access</p>
+          <a data-tone="sky" href="{% url 'accounts:groups:users' %}" class="app-nav-item {% if gns == 'accounts:groups' and un == 'users' or gns == 'accounts:groups' and un == 'user_groups' %}active{% endif %}"{% if gns == 'accounts:groups' and un == 'users' or gns == 'accounts:groups' and un == 'user_groups' %} aria-current="page"{% endif %}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Group membership</span>
+          </a>
+          <a data-tone="violet" href="{% url 'accounts:groups:list' %}" class="app-nav-item {% if gns == 'accounts:groups' and un in 'list create detail update delete' %}active{% endif %}"{% if gns == 'accounts:groups' and un in 'list create detail update delete' %} aria-current="page"{% endif %}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span>Groups</span>
+          </a>
+          {% if request.user.is_superuser or perms.accounts.assign_groups %}
+            <a data-tone="coral" href="{% url 'accounts:groups:roles' %}" class="app-nav-item {% if gns == 'accounts:groups' and un == 'roles' or gns == 'accounts:groups' and un == 'role_groups' %}active{% endif %}"{% if gns == 'accounts:groups' and un == 'roles' or gns == 'accounts:groups' and un == 'role_groups' %} aria-current="page"{% endif %}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg>
+              <span>Roles</span>
+            </a>
+          {% endif %}
+          <a data-tone="graphite" href="{% url 'accounts:groups:matrix' %}" class="app-nav-item {% if gns == 'accounts:groups' and un == 'matrix' %}active{% endif %}"{% if gns == 'accounts:groups' and un == 'matrix' %} aria-current="page"{% endif %}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+            <span>Permission matrix</span>
+          </a>
+        {% endwith %}
         {% endif %}
 
         {% if perms.staff.manage_executive_position or perms.staff.manage_executive_tenure %}
@@ -430,39 +455,6 @@
         {% endif %}
       </div>
     </div>
-
-    {# ---------------- User Management (Stage 3: groups & permissions) ---------------- #}
-    {% if request.user.is_superuser or perms.accounts.change_user or perms.accounts.assign_groups %}
-      {% with gns=request.resolver_match.namespace %}
-      <div class="app-nav-group {% if gns == 'accounts:groups' %}is-open{% endif %}" data-group="user-management" style="--nav-c:var(--qa-c-red)">
-        <button type="button" class="app-nav-group-head" aria-expanded="{% if gns == 'accounts:groups' %}true{% else %}false{% endif %}">
-          <span class="qa-nav-tile" data-tone="red" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
-        <span class="app-nav-group-title">User Management</span>
-          <svg class="app-nav-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div class="app-nav-group-body">
-          <a data-tone="sky" href="{% url 'accounts:groups:users' %}" class="app-nav-item {% if gns == 'accounts:groups' and un == 'users' or gns == 'accounts:groups' and un == 'user_groups' %}active{% endif %}"{% if gns == 'accounts:groups' and un == 'users' or gns == 'accounts:groups' and un == 'user_groups' %} aria-current="page"{% endif %}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span>Users</span>
-          </a>
-          <a data-tone="violet" href="{% url 'accounts:groups:list' %}" class="app-nav-item {% if gns == 'accounts:groups' and un in 'list create detail update delete' %}active{% endif %}"{% if gns == 'accounts:groups' and un in 'list create detail update delete' %} aria-current="page"{% endif %}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            <span>Groups</span>
-          </a>
-          {% if request.user.is_superuser or perms.accounts.assign_groups %}
-            <a data-tone="coral" href="{% url 'accounts:groups:roles' %}" class="app-nav-item {% if gns == 'accounts:groups' and un == 'roles' or gns == 'accounts:groups' and un == 'role_groups' %}active{% endif %}"{% if gns == 'accounts:groups' and un == 'roles' or gns == 'accounts:groups' and un == 'role_groups' %} aria-current="page"{% endif %}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg>
-              <span>Roles</span>
-            </a>
-          {% endif %}
-          <a data-tone="graphite" href="{% url 'accounts:groups:matrix' %}" class="app-nav-item {% if gns == 'accounts:groups' and un == 'matrix' %}active{% endif %}"{% if gns == 'accounts:groups' and un == 'matrix' %} aria-current="page"{% endif %}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-            <span>Permission Matrix</span>
-          </a>
-        </div>
-      </div>
-      {% endwith %}
-    {% endif %}
 
     {# ---------------- Management ---------------- #}
     {% if perms.workflow.change_approvalchain or perms.messaging.change_memoroute or perms.messaging.manage_memoroute %}

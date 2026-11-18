@@ -4,6 +4,7 @@ from environment variables only (doc 30 §5.3 / doc 31 §10) - never config_regi
 `.env` is loaded at import time if present (silently no-ops if absent, so
 production running purely on real env vars is unaffected)."""
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -166,6 +167,13 @@ QA_PORTAL_URL = os.environ.get("QA_PORTAL_URL", "").strip()
 # QA e-mails go through the configured delivery engine by default. Set
 # QA_EMAIL_DELIVERY=console explicitly for a local, log-only development run.
 QA_EMAIL_DELIVERY = os.environ.get("QA_EMAIL_DELIVERY", "queue").strip().lower()
+# E-mail never runs inside a request: it is handed to Celery (when a worker
+# is running) or to core.background's thread pool after commit. Tests run it
+# inline so they stay deterministic.
+EMAIL_DELIVERY_INLINE = os.environ.get("EMAIL_DELIVERY_INLINE", "") == "1" or "pytest" in sys.modules
+# A provider that fails (bad key, outage) is skipped for this many seconds so
+# later e-mails go straight to one that works.
+EMAIL_PROVIDER_COOLDOWN = int(os.environ.get("EMAIL_PROVIDER_COOLDOWN", "900"))
 
 # --- QA payments (Master Plan §10.1). Secrets live here, never in ConfigEntry.
 REMITA_BASE_URL = os.environ.get("REMITA_BASE_URL", "https://remitademo.net/remita").rstrip("/")
@@ -255,13 +263,47 @@ STORAGES = {
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
 
+# v2.3 (owner decision 7): uploaded files on Cloudflare R2 via django-storages.
+# FILE_STORAGE=r2 switches both media stores to R2 buckets; anything else keeps
+# the local folders above. Two buckets keep the split: R2_PUBLIC_BUCKET (served
+# from R2_PUBLIC_DOMAIN) and R2_PRIVATE_BUCKET (never public — downloads stream
+# through core.views.protected_download). See deploy/R2_STORAGE.md.
+FILE_STORAGE = os.environ.get("FILE_STORAGE", "local").strip().lower()
+if FILE_STORAGE == "r2":
+    _r2_missing = [n for n in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+                               "R2_PUBLIC_BUCKET", "R2_PRIVATE_BUCKET") if not os.environ.get(n, "").strip()]
+    if _r2_missing:
+        from django.core.exceptions import ImproperlyConfigured
+
+        raise ImproperlyConfigured("FILE_STORAGE=r2 needs: " + ", ".join(_r2_missing) + ". See deploy/R2_STORAGE.md.")
+    _r2_common = {
+        "endpoint_url": f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+        "access_key": os.environ["R2_ACCESS_KEY_ID"],
+        "secret_key": os.environ["R2_SECRET_ACCESS_KEY"],
+        "region_name": "auto",
+        "signature_version": "s3v4",
+        "file_overwrite": False,
+    }
+    STORAGES = {
+        **STORAGES,
+        "default": {"BACKEND": "core.storage.R2PublicStorage", "OPTIONS": {
+            **_r2_common, "bucket_name": os.environ["R2_PUBLIC_BUCKET"],
+            "custom_domain": os.environ.get("R2_PUBLIC_DOMAIN", "").strip() or None,
+            "querystring_auth": not os.environ.get("R2_PUBLIC_DOMAIN", "").strip(),
+            "default_acl": None}},
+        "restricted": {"BACKEND": "core.storage.R2RestrictedStorage", "OPTIONS": {
+            **_r2_common, "bucket_name": os.environ["R2_PRIVATE_BUCKET"], "querystring_auth": True,
+            "querystring_expire": 300, "default_acl": None}},
+    }
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SITE_NAME = os.environ.get("SITE_NAME", "NBTE ICT Directorate")
 CONFIG_CACHE_TTL = 300
 
 PROTECTED_MEDIA_URL = "/protected/"
-USE_X_ACCEL_REDIRECT = os.environ.get("USE_X_ACCEL_REDIRECT", "False") == "True"
+USE_X_ACCEL_REDIRECT = (os.environ.get("USE_X_ACCEL_REDIRECT", "False") == "True"
+                        and FILE_STORAGE != "r2")  # R2 files are streamed, never X-Accel
 
 # --- Celery (doc 31 §6) ------------------------------------------------------
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
@@ -281,76 +323,29 @@ VOICE_MAX_SECONDS = 900  # 15 minutes
 # =============================================================================
 # Email delivery engine (doc 30 §5.4)
 # =============================================================================
-# Provider order (tried top-to-bottom by notifications.engine):
-#   1. brevo_smtp  — Brevo SMTP relay over port 587 (preferred)
-#   2. brevo       — Brevo HTTP API via django-anymail (fallback 1)
-#   3. gmail       — Gmail SMTP app-password (fallback 2)
+# E-mail goes out through ONE door only: the Brevo HTTP API (django-anymail).
+# SMTP (Brevo relay, Gmail) was removed on 15 Nov 2026: a bad SMTP key made
+# every action wait 4-18 s for "Authentication failed" before the API was
+# tried. The engine (notifications.engine) still reads EMAIL_PROVIDERS, so a
+# test can plug in another backend, but the site itself only defines "brevo".
 #
-# The engine reads EMAIL_PROVIDERS and iterates the configured keys in the
-# order returned by provider_order(). Override at runtime with the
-# config-registry key "email.provider_override" if needed.
-#
-# Every credential comes from environment variables only. See .env.example.
+# The only credential is BREVO_API_KEY (environment variable). See .env.example.
 
 ANYMAIL = {
     "BREVO_API_KEY": os.environ.get("BREVO_API_KEY", ""),
 }
 
-# Django's own default backend — used only by code that bypasses the engine
-# (e.g. a direct `django.core.mail.send_mail()` call). Points at Brevo SMTP
-# so those calls also go through the working transport.
-EMAIL_BACKEND = os.environ.get(
-    "EMAIL_BACKEND",
-    "django.core.mail.backends.smtp.EmailBackend",
-)
-
-# Shared SMTP credentials — used by both `brevo_smtp` and any direct Django send.
-BREVO_SMTP_HOST = os.environ.get("BREVO_SMTP_HOST", "smtp-relay.brevo.com")
-BREVO_SMTP_PORT = int(os.environ.get("BREVO_SMTP_PORT", "587"))
-BREVO_SMTP_LOGIN = os.environ.get("BREVO_SMTP_LOGIN", "")
-BREVO_SMTP_KEY = os.environ.get("BREVO_SMTP_KEY", "")
-
-# Django's top-level SMTP settings — only consulted when EMAIL_BACKEND is
-# Django's smtp backend and no per-provider OPTIONS are supplied.
-EMAIL_HOST = BREVO_SMTP_HOST
-EMAIL_PORT = BREVO_SMTP_PORT
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False
-EMAIL_HOST_USER = BREVO_SMTP_LOGIN
-EMAIL_HOST_PASSWORD = BREVO_SMTP_KEY
+# Django's own default backend, used only by code that bypasses the engine
+# (a direct `django.core.mail.send_mail()` call): the same Brevo API.
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "anymail.backends.brevo.EmailBackend")
+if "smtp" in EMAIL_BACKEND:  # an old .env line must not bring SMTP back
+    EMAIL_BACKEND = "anymail.backends.brevo.EmailBackend"
 EMAIL_TIMEOUT = 20
 
 EMAIL_PROVIDERS = {
-    # --- 1. Brevo SMTP relay (preferred) -------------------------------------
-    "brevo_smtp": {
-        "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
-        "OPTIONS": {
-            "host": BREVO_SMTP_HOST,
-            "port": BREVO_SMTP_PORT,
-            "use_tls": True,
-            "use_ssl": False,
-            "username": BREVO_SMTP_LOGIN,
-            "password": BREVO_SMTP_KEY,
-            "timeout": 20,
-        },
-    },
-    # --- 2. Brevo HTTP API via anymail ---------------------------------------
     "brevo": {
         "BACKEND": "anymail.backends.brevo.EmailBackend",
         "OPTIONS": {},
-    },
-    # --- 3. Gmail SMTP app-password ------------------------------------------
-    "gmail": {
-        "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
-        "OPTIONS": {
-            "host": "smtp.gmail.com",
-            "port": 587,
-            "use_tls": True,
-            "use_ssl": False,
-            "username": os.environ.get("GMAIL_USER", ""),
-            "password": os.environ.get("GMAIL_APP_PASSWORD", ""),
-            "timeout": 20,
-        },
     },
 }
 
@@ -740,6 +735,8 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    # v2.3 Phase 1 (D10): one schema without the /qa-portal/ path mirror (no duplicate operationIds).
+    "PREPROCESSING_HOOKS": ["api.schema.drop_portal_path_mirror"],
     # Swagger UI is served from our own static files (pinned 5.17.14) so the
     # docs page works without internet access.
     "SWAGGER_UI_DIST": "/" + STATIC_URL.strip("/") + "/vendor/swagger-ui",
@@ -747,7 +744,11 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "DoorEnum": ["staff", "portal"],
         "MemoStatusEnum": ["draft", "awaiting", "returned", "published", "rejected", "cancelled"],
-        "MemoVisibilityEnum": ["specific_user", "all_staff", "all_directors", "department", "role", "individuals"],
+        # v2.3 Phase 1: Memo.VISIBILITY_CHOICES gained staff_filter / no_staff, which broke the
+        # old six-value override silently (test api/tests/test_tasks.py::test_schema_still_validates).
+        "MemoVisibilityEnum": ["specific_user", "all_staff", "all_directors", "department", "role", "individuals",
+                               "staff_filter", "no_staff"],
+        "MemoKindEnum": ["internal", "external", "general"],
         "ComplaintMessageVisibilityEnum": ["public", "internal"],
         # --- qa_staff ---
         "QAFirstPassDecisionEnum": ["approved", "rejected", "needs_info"],
@@ -781,3 +782,10 @@ SESSION_COOKIE_AGE = 12 * 60 * 60
 # v2.2 (Phase G): Content-Security-Policy (core.middleware.ContentSecurityPolicyMiddleware)
 CSP_ENABLED = os.environ.get("CSP_ENABLED", "True") == "True"
 CSP_REPORT_ONLY = os.environ.get("CSP_REPORT_ONLY", "False") == "True"
+
+# The mobile API is mounted twice under the namespace "api": the staff door
+# (/api/v1/ on the internal host) and the portal door (portal host). Each host
+# has its own URLconf, so reverse("api:…") always finds the right one; on the
+# internal URLconf the staff door is included first and wins. Django cannot
+# know about the host split, so its duplicate-namespace warning is silenced.
+SILENCED_SYSTEM_CHECKS = [*globals().get("SILENCED_SYSTEM_CHECKS", []), "urls.W005"]

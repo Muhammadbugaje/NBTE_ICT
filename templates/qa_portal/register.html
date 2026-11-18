@@ -7,7 +7,9 @@
   <link rel="stylesheet" href="{% static 'css/qa-p2.css' %}">
   <link rel="stylesheet" href="{% static 'css/qa-public.css' %}">
   <link rel="stylesheet" href="{% static 'css/apple.css' %}">
+  <link rel="stylesheet" href="{% static 'css/signin-magic.css' %}">{# light finish, scoped to .rg-magic #}
 {% endblock %}
+{% block body_class %} rg-magic{% endblock %}
 {% block dock %}{% endblock %}
 {% block content %}
 
@@ -52,8 +54,9 @@
       <nav class="rg-steps" data-rg-steps>
         <a href="#rg-institution" class="is-active"><b>1</b>Institution</a>
         <a href="#rg-location"><b>2</b>Location and contacts</a>
-        <a href="#rg-account"><b>3</b>Your account</a>
-        <a href="#rg-declare"><b>4</b>Declaration</a>
+        <a href="#rg-ce"><b>3</b>Chief Executive</a>
+        <a href="#rg-account"><b>4</b>Your account</a>
+        <a href="#rg-declare"><b>5</b>Declaration</a>
       </nav>
       <div class="rg-aside-card">
         <h2>Already registered with NBTE?</h2>
@@ -84,7 +87,7 @@
         <legend class="rg-legend"><span class="rg-legend__in"><b>2</b><span>Location and contacts<small>The permanent site, and how NBTE reaches the institution.</small></span></span></legend>
         <div class="qa-fields">
           <div class="qa-field{% if form.state.errors %} has-error{% endif %}"><label for="{{ form.state.id_for_label }}">State <span class="qa-muted" aria-hidden="true">*</span></label>
-            <select class="input" name="state" id="{{ form.state.id_for_label }}" hx-get="{% url 'qa_portal:public_lga_options' %}" hx-target="#rg-lga" hx-swap="innerHTML" hx-trigger="change" hx-include="this" data-qa-no-overlay>
+            <select class="input" name="state" id="{{ form.state.id_for_label }}" required hx-get="{% url 'qa_portal:public_lga_options' %}" hx-target="#rg-lga" hx-swap="innerHTML" hx-trigger="change" hx-include="this" data-qa-no-overlay>
               {% for v, l in form.state.field.choices %}<option value="{{ v }}"{% if form.state.value|stringformat:"s" == v|stringformat:"s" %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
             {% for e in form.state.errors %}<div class="qa-field__error" role="alert">{{ e }}</div>{% endfor %}</div>
           {# X49: a real dependent <select>; without JavaScript every LGA is listed, grouped by state. #}
@@ -140,13 +143,12 @@
         <li>Checking your details</li>
         <li>Creating the institution record</li>
         <li>Creating your Head of ICT account</li>
-        <li>Sending the Chief Executive their private set-up link</li>
+        <li>{% if ce_auto_email %}Sending the Chief Executive their private set-up link{% else %}Recording the Chief Executive for NBTE to invite{% endif %}</li>
         <li>Telling NBTE a new institution has registered</li>
         <li>Preparing your onboarding checklist</li>
       </ol>
       <span class="rg-loader__hint" data-rg-hint>This usually takes a few seconds. Please keep this page open.</span>
     </div>
-  </div>
   </div>
 {% endif %}
 </div>
@@ -181,7 +183,8 @@ html.rg-loading,html.rg-loading body{overflow:hidden}
 @keyframes rg-pop{from{transform:scale(.6)}}
 @media (prefers-reduced-motion:reduce){.rg-loader,.rg-loader__card,.rg-loader__logo img,.rg-loader__steps li::before{animation:none!important}}
 </style>
-<script src="{% static 'js/forms-dynamic.js' %}?v=2" defer></script>
+<script src="{% static 'js/forms-dynamic.js' %}" defer></script>
+<script src="{% static 'js/signin-magic.js' %}" defer></script>{# show/hide + Caps Lock hint on the password fields #}
 <script>
   /* Highlight the section in view in the side rail. */
   (function () {
@@ -200,18 +203,41 @@ html.rg-loading,html.rg-loading body{overflow:hidden}
     var form = document.querySelector("[data-rg-form]");
     var processing = document.querySelector("[data-rg-processing]");
     if (!form || !processing) return;
-    var firstError = form.querySelector(".qa-field.has-error");
+    function reset() {
+      /* Back/forward cache: a page restored after submitting must not come
+         back with the loader up and the button disabled. */
+      processing.hidden = true;
+      document.documentElement.classList.remove("rg-loading");
+      form.removeAttribute("aria-busy");
+      var b = form.querySelector('button[type="submit"]');
+      if (b) b.disabled = false;
+    }
+    window.addEventListener("pageshow", reset);
+    var errorCount = form.querySelectorAll(".qa-field.has-error").length + (form.querySelector(".qa-callout--danger") ? 1 : 0);
+    var firstError = form.querySelector(".qa-callout--danger, .qa-field.has-error");
     if (firstError) {
       var invalidField = firstError.querySelector("input:not([type='hidden']), select, textarea");
-      if (invalidField) {
-        invalidField.focus({ preventScroll: true });
-        firstError.scrollIntoView({ block: "center" });
-      }
+      if (invalidField) invalidField.focus({ preventScroll: true });
+      firstError.scrollIntoView({ block: "center" });
+      if (window.QA && QA.toast) QA.toast("error", errorCount > 1 ? errorCount + " things need fixing" : "One thing needs fixing",
+        "Your answers are kept. Fix the highlighted field" + (errorCount > 1 ? "s" : "") + ", then press Register again.");
     }
     form.addEventListener("submit", function (event) {
       if (!form.checkValidity()) {
         event.preventDefault();
-        form.reportValidity();
+        /* Find the first invalid control the user can actually see, scroll to
+           it and say what is wrong — reportValidity() alone can be silent when
+           the control is off-screen or inside a collapsed wrapper. */
+        var bad = Array.prototype.filter.call(form.elements, function (el) { return !el.disabled && !el.checkValidity(); });
+        var target = bad[0];
+        if (target) {
+          var wrap = target.closest("[data-field-wrap], .qa-field") || target;
+          wrap.classList.add("has-error");
+          wrap.scrollIntoView({ block: "center", behavior: "smooth" });
+          setTimeout(function () { try { target.focus({ preventScroll: true }); target.reportValidity(); } catch (e) {} }, 350);
+          var label = (wrap.querySelector("label, legend") || {}).textContent || target.name;
+          if (window.QA && QA.toast) QA.toast("error", "Check “" + label.replace(/\*/g, "").trim() + "”", target.validationMessage || "This field needs an answer.");
+        }
         return;
       }
       if (navigator.onLine === false) {

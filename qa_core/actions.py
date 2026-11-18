@@ -78,6 +78,14 @@ class ActionHandler:
     def snapshot(self, target):
         return {}
 
+    def clash_key(self, payload):
+        """What makes two pending items on the same target clash. None (the
+        default) means any open item of this action on the target clashes;
+        a handler that targets a parent (e.g. a mapping on its institution)
+        returns the payload key of the real item, so items on different
+        children don't block each other."""
+        return None
+
     def check_initiator(self, target, payload, actor):
         """Extra initiator checks beyond the policy permission (raise PermissionDenied)."""
 
@@ -425,13 +433,19 @@ def initiate(code, *, actor, target=None, payload=None, reason="", impersonating
         if target is not None:
             # Lock the target so two officers cannot both open a change on it.
             locked = _target_queryset_for_lock(target).filter(pk=target.pk).first()
-            clash = PendingAction.objects.select_for_update().filter(
+            open_items = PendingAction.objects.select_for_update().filter(
                 policy=policy, content_type=ct, object_id=str(target.pk), status=PendingAction.PENDING,
-            ).first()
+            )
+            key = handler.clash_key(payload)
+            clash = next((c for c in open_items
+                          if key is None or handler.clash_key(c.payload or {}) == key), None)
             if clash is not None:
+                when = timezone.localtime(clash.created_at).strftime("%d %b %Y")
+                by = getattr(clash, "initiated_by", None)
                 raise ValidationError(
-                    f"{clash.reference} is already waiting for confirmation on this item. "
-                    "Withdraw it or wait for a decision.")
+                    f"{clash.reference} ({clash.target_label or 'this item'}), started"
+                    f"{' by ' + (by.get_full_name() or by.email) if by else ''} on {when}, is already waiting "
+                    "for a second officer. Open Pending confirmations to confirm, reject or withdraw it first.")
         now = timezone.now()
         # The version is read from the locked database row, not from the
         # object passed in (which may be an older copy of the same row).

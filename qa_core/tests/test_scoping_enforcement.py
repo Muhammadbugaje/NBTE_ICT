@@ -198,6 +198,11 @@ def tenants(qa_seed, make_institution, make_user):
 def test_scope_to_institution_rules(tenants):
     from django.contrib.auth.models import AnonymousUser
 
+    from qa_core.tests.phase3_fixtures import set_config
+
+    # These are the department-mode rules (a fresh install defaults to "assignment").
+    set_config("qa.privacy.mode", "department")
+
     from institutions.models import Institution
 
     codes = lambda user: set(Institution.objects.for_user(user).values_list("code", flat=True))  # noqa: E731
@@ -271,6 +276,9 @@ def _fill(route, pk):
 # Settings rows, flows, formats and templates are global configuration, not
 # institution data; they are the same for every tenant by design (§14).
 GLOBAL_CONFIG_ROUTES = ("qa/settings/",)
+# NBTE's programme master list is a shared catalogue (every institution picks
+# from it), so any institution may open any row of it.
+PORTAL_GLOBAL_ROUTES = ("application/programmes/master/",)
 
 
 @pytest.mark.django_db
@@ -292,7 +300,7 @@ def test_layer3_cross_tenant_requests_answer_404(tenants, make_user, portal_host
     portal.force_login(tenants["a_user"])
     portal_routes = [r for r, _p in _patterns(settings.QA_PORTAL_URLCONF) if not r.startswith(("static", "^static"))]
     for route in portal_routes:
-        if "<" not in route:
+        if "<" not in route or route.startswith(PORTAL_GLOBAL_ROUTES):
             continue
         for pk in (tenants["b"].pk, tenants["b_user"].pk, b_pending.pk):
             r = portal.get(_fill(route, pk))

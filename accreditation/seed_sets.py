@@ -304,7 +304,15 @@ def seed_demo_onboarding_v2(ctx):
             ce_user = User.objects.get(email="ce.review@demo-poly.local")
             onboarding_v2.declare_and_pay(app, user=ce_user, declaration=True)
             inst_ = acc.instance_of(app)
-            flow.transition(inst_, "payment_confirmed", None, metadata={"demo": True})
+            # v2.3: the v4 onboarding flow names its payment step per fee mode;
+            # take whichever confirmation the flow offers from here.
+            confirm = next((code for code in ("payment_confirmed", "fees_confirmed", "processing_fee_confirmed")
+                            if flow.can(inst_, code)), None)
+            if confirm:
+                flow.transition(inst_, confirm, None, metadata={"demo": True})
+            else:
+                ctx.note("demo.onboarding_v2: payment step not offered by the current flow; review demo left at "
+                         + ", ".join(st.code for st in flow.stages_of(inst_)))
             onboarding_v2.auto_submit(app, reason="demo")
         plan = {  # document kind → what happens (design 23 states)
             "cac": "returned", "c-of-o": "awaiting", "physical-master-plan": "recommended_return",

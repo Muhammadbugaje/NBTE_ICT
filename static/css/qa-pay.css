@@ -77,21 +77,29 @@
 
 /* Steps of the chosen method */
 .qa-paysteps { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; counter-reset: qa-ps; }
-.qa-paystep { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 4px 12px; align-items: center; padding: 14px;
-  border-radius: 18px; border: 1px solid var(--border); background: var(--surface-2); }
-.qa-paystep::before { counter-increment: qa-ps; content: counter(qa-ps); grid-row: 1 / span 2; align-self: start;
-  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 800;
-  background: var(--surface-3); color: var(--text-muted); }
-.qa-paystep.is-done::before { content: "✓"; background: var(--success); color: #fff; }
+.qa-paystep { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px 12px; align-items: center; padding: 14px;
+  border-radius: 16px; border: 1px solid var(--border); background: var(--surface-2); }
+.qa-paystep::before { counter-increment: qa-ps; content: counter(qa-ps); grid-row: 1 / span 2; align-self: start; box-sizing: border-box;
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums; border: 1.5px solid var(--border-strong, var(--border)); background: var(--surface); color: var(--text-muted); }
+/* done: solid green disc with a crisp white check (SVG, not a text glyph) */
+.qa-paystep.is-done::before { content: ""; border-color: var(--success); background: var(--success)
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 15px 15px no-repeat; }
 .qa-paystep.is-now { background: var(--surface); border-color: var(--primary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 14%, transparent); }
-.qa-paystep.is-now::before { background: var(--primary); color: var(--text-on-primary); }
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent); }
+.qa-paystep.is-now::before { border-color: var(--primary); background: var(--primary); color: var(--text-on-primary, #fff); }
 .qa-paystep > div { min-width: 0; }
 .qa-paystep > form, .qa-paystep > .btn, .qa-paystep > .qa-chip, .qa-paystep > .fpv-pair { grid-column: 2; justify-self: start; margin-top: 6px; }
 .qa-paystep b { display: block; font-size: 0.90625rem; }
 .qa-paystep span { font-size: 0.8125rem; color: var(--text-muted); overflow-wrap: anywhere; }
+/* Bank transfer: the "I have paid" step carries the button that opens the proof form */
+.qa-paystep--proof { border-style: dashed; border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); background: color-mix(in srgb, var(--primary) 5%, var(--surface)); }
+.qa-paystep--proof .btn svg { flex: none; }
+.qa-proof.is-flash { animation: qa-proof-flash 1.4s ease-out 1; }
+@keyframes qa-proof-flash { 0% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 35%, transparent); } 100% { box-shadow: 0 0 0 4px transparent; } }
+@media (prefers-reduced-motion: reduce) { .qa-proof.is-flash { animation: none; } }
 @media (min-width: 720px) {
-  .qa-paystep { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  .qa-paystep { grid-template-columns: 28px minmax(0, 1fr) auto; }
   .qa-paystep::before { grid-row: auto; align-self: center; }
   .qa-paystep > form, .qa-paystep > .btn, .qa-paystep > .qa-chip, .qa-paystep > .fpv-pair { grid-column: 3; margin-top: 0; justify-self: end; }
 }
@@ -100,19 +108,19 @@
 .qa-hidden-note svg { flex: 0 0 auto; margin-top: 2px; }
 .qa-linkbtn { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-weight: 650; cursor: pointer;
   text-decoration: underline; text-underline-offset: 2px; }
-.qa-proof { margin-top: 14px; }
+.qa-proof { margin-top: 14px; scroll-margin-top: 84px; }
 
 /* Status timeline */
 .qa-card__head.qa-card__head--icon { display: flex; align-items: center; justify-content: flex-start; gap: 12px; text-align: left; }
 .qa-card__head--icon h2, .qa-card__head--icon p { text-align: left; margin-left: 0; }
 .qa-card__head--icon > div { min-width: 0; }
 .qa-stl { display: grid; margin: 0; padding: 4px 18px 18px; list-style: none; }
-.qa-stl__i { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; padding-bottom: 18px; position: relative; }
-.qa-stl__i::before { content: ""; position: absolute; left: 14px; top: 32px; bottom: 0; width: 2px; background: var(--border-strong); }
+.qa-stl__i { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding-bottom: 18px; position: relative; }
+.qa-stl__i::before { content: ""; position: absolute; left: 13px; top: 32px; bottom: 0; width: 2px; background: var(--border-strong); }
 .qa-stl__i:last-child { padding-bottom: 0; }
 .qa-stl__i:last-child::before { display: none; }
 .qa-stl__i.is-done::before { background: var(--success); }
-.qa-stl__dot { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3);
+.qa-stl__dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3);
   color: var(--text-muted); box-shadow: 0 0 0 1px var(--border-strong); }
 .qa-stl__dot svg { display: block; margin: 0; flex: none; }
 .qa-stl__i.is-done .qa-stl__dot { background: var(--success); color: #fff; box-shadow: none; }
@@ -120,7 +128,7 @@
   box-shadow: 0 0 0 5px var(--warning-subtle); }
 .qa-stl__i > div { min-width: 0; }
 .qa-stl b { display: block; font-size: 0.875rem; }
-.qa-stl span { display: block; font-size: 0.78125rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.qa-stl__i > div > span { display: block; font-size: 0.78125rem; color: var(--text-muted); overflow-wrap: anywhere; }
 
 /* Give the payment history enough hierarchy to read as a guided timeline. */
 

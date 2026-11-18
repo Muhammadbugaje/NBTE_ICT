@@ -1,0 +1,28 @@
+{% load qa_tags %}
+{# Completed (SOP-03 closed) cases: separate from the stage grid. HTMX target #case-done. #}
+<section class="qa-card cb-done" aria-labelledby="cb-done-h">
+  <header class="qa-card__head">
+    <div><h2 id="cb-done-h">Completed cases <span class="qa-chip qa-tone-success">{{ done.total }}</span></h2>
+      <p>SOP-03 is finished for these. They are kept for reference and never appear in the stage grid.</p></div>
+    <form class="cb-done__search" role="search" method="get" action="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#case-done" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input[type=search], submit" data-qa-no-overlay>
+      {% if view %}<input type="hidden" name="view" value="{{ view }}">{% endif %}{% if filters.q %}<input type="hidden" name="q" value="{{ filters.q }}">{% endif %}{% if filters.department %}<input type="hidden" name="department" value="{{ filters.department }}">{% endif %}{% if filters.flag %}<input type="hidden" name="flag" value="{{ filters.flag }}">{% endif %}
+      <label class="qa-search"><span class="sr-only">Search completed cases</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" id="cb-done-q" name="cq" value="{{ done_q }}" placeholder="Search completed cases" autocomplete="off"></label>
+    </form>
+  </header>
+  {% if done.rows %}
+  <div class="qa-table-wrap"><table class="qa-table cb-done__table">
+    <thead><tr><th scope="col">Case</th><th scope="col">Institution</th><th scope="col">QA type</th><th scope="col">Department</th><th scope="col" class="qa-num">Programmes</th><th scope="col">Completed</th></tr></thead>
+    <tbody>{% for c in done.rows %}<tr>
+      <td data-label="Case"><a class="qa-mono" href="{% url 'qa_case:detail' c.pk %}" hx-get="{% url 'qa_case:detail' c.pk %}" hx-target="#qa-panel" hx-push-url="true">{{ c.reference }}</a></td>
+      <td data-label="Institution"><strong>{{ c.institution.name }}</strong></td>
+      <td data-label="QA type">{{ c.qa_request.qa_type.name|default:"—" }}</td>
+      <td data-label="Department">{{ c.owning_department.name|default:"—" }}</td>
+      <td data-label="Programmes" class="qa-num">{{ c.programme_count }}</td>
+      <td data-label="Completed">{% if c.completed_at %}{{ c.completed_at|date:"j M Y" }}{% else %}<span class="qa-muted">—</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% include "qa_core/partials/_pagination.html" with page=done target="#case-done" %}
+  {% else %}
+  <p class="qa-card__body qa-muted">{% if done_q or filters.q or filters.department or filters.flag %}No completed case matches this search.{% else %}No case has completed SOP-03 yet.{% endif %}</p>
+  {% endif %}
+</section>

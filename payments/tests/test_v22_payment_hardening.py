@@ -140,3 +140,37 @@ def test_director_of_finance_can_open_reconciliation(p2, client):
     assert resp.status_code == 200 and b"Trial balance" in resp.content
     resp = client.post("/qa/finance/reconciliation/run/", HTTP_HX_REQUEST="true", HTTP_HX_TARGET="qa-panel")
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# The "Make payment" window must never turn into a mini copy of the site
+# ---------------------------------------------------------------------------
+def test_continue_forms_swap_only_the_payment_card(bill, inst_user, client_for, portal_host):
+    """Regression: the Continue to Paystack/Remita forms used to send an HTMX
+    request with no target, so a 422 (provider unreachable) rendered the whole
+    shell and swapped it into the tiny form — the site inside a small window."""
+    from payments import services
+
+    services.choose_method(bill, "paystack", user=inst_user)
+    client = client_for(inst_user, portal_host)
+    html = client.get(f"/payments/{bill.pk}/", HTTP_HOST=portal_host).content.decode()
+    start = html.index("Continue to Paystack")
+    form = html[html.rindex("<form", 0, start):html.index("</form>", start)]
+    assert 'hx-target="#qa-main"' in form
+    assert 'hx-select="#qa-payment"' in form
+
+
+def test_unreachable_provider_keeps_the_payment_page(bill, inst_user, client_for, portal_host, paystack):
+    from payments import providers
+
+    paystack["init_error"] = providers.ProviderUnreachable("no route", timeout=True)
+    client = client_for(inst_user, portal_host)
+    resp = client.post(f"/payments/{bill.pk}/online/", {"provider": "paystack"}, HTTP_HOST=portal_host,
+                       HTTP_HX_REQUEST="true", HTTP_HX_TARGET="qa-main")
+    assert resp.status_code == 422
+    assert resp["HX-Retarget"] == "#qa-main" and resp["HX-Reselect"] == "#qa-payment"
+    html = resp.content.decode()
+    assert 'id="qa-payment"' in html
+    assert "<html" not in html.lower()          # a partial, not the whole shell
+    assert "reach the payment provider" in html  # plain-language title
+    assert "internet connection" in html        # plain-language offline message

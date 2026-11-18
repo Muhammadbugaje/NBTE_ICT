@@ -53,7 +53,15 @@
         </div>
       {% endif %}
       <div class="btn-group">
-        {% if flags.can_accept_start %}
+        {% if flags.can_accept_start and qa_link_url and qa_link_open %}
+          {# v2.3: one accept path for QA work — accepts the task and the QA assignment, then opens QA #}
+          <form method="post" action="{% url 'tasks:accept_proceed' task.pk %}">{% csrf_token %}
+            <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-lg">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              Accept &amp; proceed to QA
+            </button>
+          </form>
+        {% elif flags.can_accept_start %}
           <form method="post" action="{% url 'tasks:accept_start' task.pk %}">{% csrf_token %}
             <button type="submit" class="tsk-btn tsk-btn-primary tsk-btn-lg">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>
@@ -110,6 +118,22 @@
    </div>
   </header>
 
+  {% if qa_link_url and qa_link_open and can_return %}
+    {# v2.3: the three ways out of QA work, each with a remark pinned to the task #}
+    <details class="v3-respond">
+      <summary>Can't take this on? Return, decline or reject it</summary>
+      <form method="post" action="{% url 'tasks:qa_respond' task.pk %}" class="v3-respond__form">{% csrf_token %}
+        <fieldset class="v3-respond__kinds"><legend class="sr-only">Why</legend>
+          <label class="v3-choice"><input type="radio" name="kind" value="return" required> <span><strong>Return to the Director</strong><small>I can't do it now; it goes back to the queue.</small></span></label>
+          <label class="v3-choice"><input type="radio" name="kind" value="decline"> <span><strong>Decline — conflict of interest</strong><small>Recorded; the rotation will skip you for this work.</small></span></label>
+          <label class="v3-choice"><input type="radio" name="kind" value="reject"> <span><strong>Reject — wrong task</strong><small>Wrong programme or department; the Director must correct it.</small></span></label>
+        </fieldset>
+        <label for="qa-respond-reason" class="v3-label">Remark (required)</label>
+        <textarea id="qa-respond-reason" name="reason" class="input" rows="2" minlength="5" required></textarea>
+        <div><button type="submit" class="tsk-btn tsk-btn-ghost">Send</button></div>
+      </form>
+    </details>
+  {% endif %}
   {% if qa_link_url %}
     <div class="tsk-info-strip tsk-qa-panel">
       {% if task.qa_link.stage_code == "capacity_assessment" %}

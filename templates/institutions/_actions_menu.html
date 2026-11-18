@@ -7,9 +7,9 @@
       <div class="qa-menu__grid">
         {% for a in g.items %}{% if a.code != "institutions.add_tvet" and a.code != "institutions.bulk_import" %}
           {% if a.enabled %}
-            <a class="qa-act" role="menuitem" href="{{ a.url }}" hx-get="{{ a.url }}" hx-target="#qa-panel" hx-push-url="true">
+            <a class="qa-act{% if a.code in "institutions.delist institutions.wipe_requests institutions.revert_qa_history institutions.suspend_portal_access institutions.drop_programmes" %} vx-act--danger{% endif %}" role="menuitem" href="{{ a.url }}" hx-get="{{ a.url }}" hx-target="#qa-panel" hx-push-url="true">
               <span class="qa-act__icon">{% icon a.icon 16 %}</span>
-              <span class="qa-act__text"><strong>{{ a.label }}</strong><small>{% if a.two_step %}Needs a second officer{% else %}Single step, audited{% endif %}</small></span>
+              <span class="qa-act__text"><strong>{{ a.label }}</strong><small>{% if a.code == "institutions.impersonate" %}Read-only, audited{% elif a.two_step %}A second officer confirms{% else %}Applies at once, audited{% endif %}{% if a.code in "institutions.delist institutions.wipe_requests institutions.revert_qa_history institutions.suspend_portal_access institutions.drop_programmes" %} · hard to undo{% endif %}</small></span>
             </a>
           {% else %}
             <span class="qa-act is-disabled" role="menuitem" aria-disabled="true" tabindex="0" title="{{ a.reason }}">

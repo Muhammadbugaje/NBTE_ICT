@@ -1,17 +1,62 @@
-{% load qa_tags %}
+{% load qa_tags static %}
+{% comment %}
+  QA e-mail outbox as a two-pane mail viewer: message list (left, #qa-rows — search,
+  filters and pagination swap only this) and a reading pane (right). js/qa-outbox.js
+  fills the reading pane from the <template> inside each row; HTML bodies are shown in
+  a sandboxed iframe (no scripts). On a phone the list and the message are one at a time.
+{% endcomment %}
+<div class="vx vx-mail" data-vx-mail>
 <header class="qa-hero">
   <div>
     <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} Quality Assurance · E-mail</span>
     <h1 data-qa-focus>QA e-mail outbox</h1>
-    <p>{% if mode == "console" %}E-mail is in log-only mode: QA messages are written to the server log and kept here, but are not sent. Set <span class="qa-mono">QA_EMAIL_DELIVERY=queue</span> to deliver through the configured e-mail provider.{% else %}Delivery is on (<span class="qa-mono">{{ mode }}</span>); this list shows messages logged while it was off.{% endif %}</p>
+    <p>Every e-mail the QA system wrote while delivery was in log-only mode. Pick a message from the list to read it exactly as the recipient would see it.</p>
+    <p class="vx-chips vx-mail__mode">
+      {% if mode == "console" %}<span class="vx-chip vx-t-amber">Log-only mode — messages are kept here, not sent</span>
+      {% else %}<span class="vx-chip vx-t-green">Delivery is on ({{ mode }})</span><span class="vx-chip vx-t-slate vx-chip--plain">This list shows messages logged while it was off</span>{% endif %}
+    </p>
+    {% if mode == "console" %}<p class="vx-hint">To deliver through the configured e-mail provider, set <span class="qa-mono">QA_EMAIL_DELIVERY=queue</span>.</p>{% endif %}
   </div>
 </header>
-<section class="qa-card" aria-label="Messages">
+<section class="qa-card vx-mail__card" aria-label="Messages">
   <form class="qa-toolbar" role="search" hx-get="{% url 'qa:outbox' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input, change" data-qa-no-overlay>
     <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Recipient, subject or text"></label>
     <select class="input qa-select" name="category" aria-label="Category"><option value="">Every category</option>{% for c in categories %}<option value="{{ c }}"{% if filters.category == c %} selected{% endif %}>{{ c }}</option>{% endfor %}</select>
     <select class="input qa-select" name="period" aria-label="Period"><option value="">Any time</option><option value="1d"{% if filters.period == "1d" %} selected{% endif %}>Last 24 hours</option><option value="7d"{% if filters.period == "7d" %} selected{% endif %}>Last 7 days</option><option value="30d"{% if filters.period == "30d" %} selected{% endif %}>Last 30 days</option></select>
-    <label class="qa-search"><span class="sr-only">Sent to</span><input class="input" type="search" name="to" value="{{ filters.to|default:'' }}" placeholder="Sent to (e-mail)" autocomplete="off" inputmode="email"></label>
+    <label class="qa-search"><span class="sr-only">Sent to</span>{% icon "user" 16 "2.2" %}<input class="input" type="search" name="to" value="{{ filters.to|default:'' }}" placeholder="Sent to (e-mail)" autocomplete="off" inputmode="email"></label>
   </form>
-  <div id="qa-rows" class="qa-region" data-qa-region aria-live="polite">{% include "qa_core/_outbox_rows.html" %}</div>
+  <div class="vx-mail__panes">
+    <div id="qa-rows" class="qa-region vx-mail__list" data-qa-region aria-live="polite">{% include "qa_core/_outbox_rows.html" %}</div>
+    <article class="vx-mail__reader" data-vx-mail-reader aria-live="polite" aria-label="Message">
+      <div class="vx-mail__placeholder" data-vx-mail-placeholder>
+        <span class="vx-empty__icon vx-t-blue" aria-hidden="true">{% icon "mail" 26 "2" %}</span>
+        <h3>Select a message</h3>
+        <p>Choose an e-mail from the list to read it here.</p>
+      </div>
+      <div class="vx-mail__message" data-vx-mail-message hidden>
+        <header class="vx-mail__head">
+          <button class="btn btn-sm btn-subtle vx-mail__back" type="button" data-vx-mail-back>{% icon "back" 14 "2.4" %} All messages</button>
+          <h2 data-vx-mail-subject tabindex="-1"></h2>
+          <div class="vx-mail__meta">
+            <span class="vx-mail__avatar" data-vx-mail-avatar aria-hidden="true"></span>
+            <div class="vx-mail__who">
+              <strong>{{ site_info.qa_name|default:"NBTE Quality Assurance" }}</strong>
+              <span>To <span data-vx-mail-to></span></span>
+            </div>
+            <div class="vx-mail__when"><span data-vx-mail-chip></span><time data-vx-mail-time></time></div>
+          </div>
+          <div class="vx-mail__views" role="tablist" aria-label="Message view" data-vx-mail-views>
+            <button type="button" role="tab" data-vx-mail-view="html" aria-selected="true">Formatted</button>
+            <button type="button" role="tab" data-vx-mail-view="text" aria-selected="false">Plain text</button>
+          </div>
+        </header>
+        <div class="vx-mail__body">
+          <iframe data-vx-mail-frame title="Message, formatted" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" loading="lazy"></iframe>
+          <pre data-vx-mail-text hidden></pre>
+        </div>
+      </div>
+    </article>
+  </div>
 </section>
+</div>
+<script src="{% static 'js/qa-outbox.js' %}"></script>

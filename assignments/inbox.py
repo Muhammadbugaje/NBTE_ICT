@@ -42,6 +42,11 @@ def task_url(wa):
         return _url("qa_req:ssq", wa.subject_id), "Review SSQ"
     if kind == WorkAssignment.SSQ_REVIEW and subject_model == "onboardingssq":
         return _url("qa_app:onboarding_ssq", wa.subject_id), "Assess self-study"
+    if kind in (WorkAssignment.VISIT_PANEL, WorkAssignment.VISIT_LEAD) and subject_model == "inspection":
+        # The visit team works on the inspection page (record the visit, write
+        # and compile the report) — not the case cockpit, which they cannot open.
+        return _url("qa_insp:inspection", wa.subject_id), (
+            "Lead the visit" if kind == WorkAssignment.VISIT_LEAD else "Open the visit")
     if subject_model == "qacase":
         return _url("qa_case:detail", wa.subject_id), "Open case"
     if kind == WorkAssignment.COMPLAINT_TASK and subject_model == "complaint":

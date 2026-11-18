@@ -990,6 +990,42 @@
 
     // Busy buttons must not stay stuck after back/forward or htmx requests.
     window.addEventListener("pageshow", function (e) { if (e.persisted) clearBusy(); });
+    // Back/forward: htmx snapshots <body> into its history cache, possibly
+    // while a request is in flight — the snapshot then holds the loading
+    // overlay, skeleton classes and disabled buttons, and restoring it left
+    // the page "stuck loading". Scrub before the snapshot and after restore.
+    function scrubLoadingState(root) {
+      root = root || document;
+      Array.prototype.forEach.call(root.querySelectorAll(".global-loader"), function (el) { el.remove(); });
+      overlayEl = null;
+      Array.prototype.forEach.call(root.querySelectorAll(".qa-is-loading, [aria-busy='true']"), function (el) {
+        el.classList.remove("qa-is-loading"); el.removeAttribute("aria-busy");
+      });
+      Array.prototype.forEach.call(root.querySelectorAll("[data-qa-busy], .is-busy"), function (b) {
+        b.disabled = false; b.classList.remove("is-busy"); b.removeAttribute("data-qa-busy");
+      });
+      var pl = document.getElementById("page-loader");
+      if (pl) { pl.classList.remove("is-shown"); pl.classList.add("hidden"); pl.setAttribute("aria-hidden", "true"); }
+      document.documentElement.classList.remove("is-loading", "rg-loading");
+      var bar = document.querySelector(".htmx-progress, #htmx-progress, .top-progress");
+      if (bar) bar.classList.remove("is-active", "active");
+      clearBusy();
+    }
+    NBTE.scrubLoadingState = scrubLoadingState;
+    // CSP forbids unsafe-eval, so htmx hx-on attributes never run here:
+    // their two former uses are handled by plain listeners instead.
+    document.addEventListener("click", function (e) {
+      var track = e.target.closest && e.target.closest("[data-workspace-track]");
+      if (track && e.target.value) track.dataset.active = e.target.value;
+    });
+    document.body.addEventListener("htmx:afterRequest", function (e) {
+      var f = e.detail && e.detail.elt;
+      if (f && f.matches && f.matches("form[data-reset-on-204]") && e.detail.xhr && e.detail.xhr.status === 204) f.reset();
+    });
+    document.body.addEventListener("htmx:beforeHistorySave", function (e) { scrubLoadingState((e.detail && e.detail.historyElt) || document); });
+    document.body.addEventListener("htmx:historyRestore", function () { scrubLoadingState(document); });
+    window.addEventListener("pageshow", function () { scrubLoadingState(document); });
+    window.addEventListener("popstate", function () { setTimeout(function () { scrubLoadingState(document); }, 60); });
     document.body.addEventListener("htmx:afterRequest", function (e) {
       var elt = e.detail && e.detail.elt;
       var form = elt && elt.closest && elt.closest("form");

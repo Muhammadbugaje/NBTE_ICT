@@ -114,6 +114,15 @@
     }
   }
 
+  function resetBusy() {
+    inflight = 0;
+    if (overlayTimer) { window.clearTimeout(overlayTimer); overlayTimer = null; }
+    overlay(false);
+  }
+  document.addEventListener("htmx:historyRestore", resetBusy);
+  window.addEventListener("pageshow", resetBusy);
+  window.addEventListener("popstate", resetBusy);
+
   function endBusy(evt) {
     var d = evt.detail || {};
     inflight = Math.max(0, inflight - 1);

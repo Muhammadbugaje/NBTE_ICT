@@ -1,0 +1,22 @@
+{% load qa_tags %}
+{# Requirement rows + pagination (HTMX target #req-rows). Needs `page`, `filters`, `can_catalogue`. #}
+{% if page.rows %}
+<div class="qa-table-wrap"><table class="qa-table rq-table">
+  <thead><tr><th scope="col">Programme</th><th scope="col">Item</th><th scope="col">Kind</th><th scope="col" class="qa-num">Required</th>
+    <th scope="col" class="qa-num">Weight</th><th scope="col">Version</th>{% if can_catalogue %}<th scope="col"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+  <tbody>{% for item in page.rows %}
+    <tr{% if not item.is_active %} class="is-muted"{% endif %}>
+      <td data-label="Programme">{% if item.programme_name %}{{ item.programme_name }}{% elif item.category %}<span class="qa-muted">Every programme in</span> {{ item.category.name }}{% else %}—{% endif %}</td>
+      <td data-label="Item"><strong>{{ item.name }}</strong>{% if item.is_critical %} <span class="qa-chip qa-tone-danger">Critical</span>{% endif %}{% if item.min_spec %}<div class="qa-small qa-muted">{{ item.min_spec }}</div>{% endif %}</td>
+      <td data-label="Kind"><span class="qa-chip {{ item.kind|tone }}">{{ item.get_kind_display }}</span></td>
+      <td data-label="Required" class="qa-num">{{ item.required_quantity|floatformat:"-2" }} <span class="qa-muted">{{ item.unit }}</span></td>
+      <td data-label="Weight" class="qa-num">{{ item.weight|floatformat:"-2"|default:"1" }}</td>
+      <td data-label="Version">v{{ item.version }} <span class="qa-small qa-muted">from {{ item.effective_from|date:"j M Y" }}</span></td>
+      {% if can_catalogue %}<td class="qa-actions-cell">{% if item.is_active %}<form method="post" action="{% url 'qa_programmes:requirements_retire' item.pk %}" hx-trigger="qa:confirmed" hx-post="{% url 'qa_programmes:requirements_retire' item.pk %}" hx-swap="none" data-qa-confirm="New SSQs no longer list this item. Submitted SSQs keep it." data-qa-confirm-title="Retire {{ item.name }}?" data-qa-confirm-label="Retire" data-qa-confirm-tone="danger">{% csrf_token %}<button class="btn btn-sm btn-subtle qa-btn-reject" type="submit">Retire</button></form>{% else %}<span class="qa-chip">Retired</span>{% endif %}</td>{% endif %}
+    </tr>
+  {% endfor %}</tbody>
+</table></div>
+{% include "qa_core/partials/_pagination.html" with target="#req-rows" %}
+{% else %}
+<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "sheet" 28 %}</span><h3 class="nbte-empty-state__title">{% if filters.q or filters.kind or filters.programme %}No requirement matches these filters{% else %}No requirements yet{% endif %}</h3><p class="nbte-empty-state__body">{% if can_catalogue %}Add a line below, or import a workbook.{% else %}The catalogue is maintained by the Curriculum Department.{% endif %}</p></div>
+{% endif %}

@@ -139,7 +139,7 @@ def test_tokenised_link_confirms_without_sign_in_and_expires(invited, portal_hos
     assert "/password/forgot/?email=registrar%40coren.test" in page.content.decode()
     assert "?next=/visit-invitations/" not in page.content.decode()
     assert b"Set or reset password securely" in page.content
-    assert b"reply to this invitation above without signing in" in page.content
+    assert b"reply above without signing in" in page.content
     assert b"white-space: normal" in page.content
     assert c.get(f"/invite/{inv.token}/letter/").status_code == 200
     assert c.get("/invite/not-a-real-token-at-all-xxxxxxxx/").status_code == 404

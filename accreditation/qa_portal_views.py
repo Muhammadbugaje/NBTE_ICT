@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import datetime
 
+from django import forms
+from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
@@ -108,8 +110,13 @@ def _new_context(request, inst, qa_type=None, **extra):
         types.append({"type": t, "available": ok, "reason": why})
     programmes = svc.eligible_programmes(inst, qa_type) if qa_type is not None else []
     asked = extra.pop("asked", {})
+    justified = extra.pop("justified", {})
+    if "chosen" not in extra:  # ?chosen=<pk>: pre-tick (e.g. a programme just proposed)
+        extra["chosen"] = [int(i) for i in request.GET.getlist("chosen") if str(i).isdigit()]
     for row in programmes:  # Phase 8: the streams box per programme
         row["streams"] = asked.get(row["programme"].pk) or svc.default_streams(row["programme"], qa_type)
+        row["nd_warning"] = svc.nd_prerequisite_warning(row["programme"])  # v2.3: HND without ND
+        row["justification"] = justified.get(row["programme"].pk, "")
     return _shell_context(request, "qa_requests", inst=inst, types=types, qa_type=qa_type, programmes=programmes,
                           window=svc.window_months(), max_streams=svc.max_streams(), **extra)
 
@@ -163,11 +170,15 @@ def request_new(request):
         try:
             if qa_type is None:
                 raise ValidationError("Choose a QA type.")
-            req = svc.create_request(inst, qa_type, programmes, user=user, streams=asked)
+            justified = {p.pk: request.POST.get(f"justify_{p.pk}", "") for p in programmes}
+            req = svc.create_request(inst, qa_type, programmes, user=user, streams=asked,
+                                     justifications=justified)
         except (ValidationError, PermissionDenied) as exc:
             response = render(request, "qa_portal/qa_requests/new.html",
                               _new_context(request, inst, qa_type, error=_msg(exc), chosen=ids,
-                                           asked={k: v for k, v in asked.items()}), status=422)
+                                           asked={k: v for k, v in asked.items()},
+                                           justified={p.pk: request.POST.get(f"justify_{p.pk}", "")
+                                                      for p in programmes}), status=422)
             return toast(response, "error", "Not created", _msg(exc))
         url = reverse("qa_portal:qa_request", args=[req.pk])
         if is_htmx(request):
@@ -417,7 +428,8 @@ def _ws_context(request, req, ssq, section_key=None, **extra):
             f["choices"] = engine.option_pairs(field)
             if field["type"] == "catalogue":
                 qty = value or {}
-                f["items"] = [{"item": item, "quantity": qty.get(str(item.pk), "")}
+                f["items"] = [{"item": item, "quantity": qty.get(str(item.pk), ""),
+                               "not_working": qty.get(f"d{item.pk}", "")}
                               for item in engine.catalogue_items(field, programme)]
             if field["type"] == "table":
                 f["rows"] = list(value or [])
@@ -473,7 +485,9 @@ def _problem_list(sections, problems):
     for section in sections:
         for field in section.get("fields", []):
             if field["key"] in problems:
-                out.append({"section": section, "field": field})
+                why = problems[field["key"]]
+                out.append({"section": section, "field": field,
+                            "why": "" if why in ("Required.", "") else why})
     return out
 
 
@@ -518,8 +532,9 @@ def _collect_section(request, ssq, section_key):
         if ftype == "multi_choice":
             values[key] = post.getlist(name)
         elif ftype == "catalogue":
-            values[key] = {k[len(prefix):]: v for k, v in post.items() if k.startswith(prefix) and k[len(prefix):]
-                           .isdigit()}
+            # v2.3: "<id>" = working, "d<id>" = not working
+            values[key] = {k[len(prefix):]: v for k, v in post.items() if k.startswith(prefix)
+                           and k[len(prefix):].lstrip("d").isdigit()}
         elif ftype == "table":
             rows = {}
             for k, v in post.items():
@@ -811,3 +826,82 @@ def staff_dashboard_context(request):
             "internal_queue": internal_url(request, "/qa/requests/ssq/"),
             "staff_counts": {"requests": len(work["requests"]), "ssqs": len(work["ssqs"]),
                              "queries": len(work["queries"])}}
+
+
+# ===========================================================================
+# Propose a new programme (approved institutions) → Resource Inspection
+# ===========================================================================
+class ProposeProgrammeForm(forms.Form):
+    CUSTOM = "custom"
+    source = forms.ChoiceField(label="Programme", choices=(),
+                               help_text="Choose the programme as it appears on NBTE's programme list.")
+    name = forms.CharField(max_length=200, required=False, label="Programme name")
+    level = forms.ModelChoiceField(None, required=False, label="Level")
+    streams = forms.IntegerField(min_value=1, max_value=10, initial=1, label="Streams you plan to run",
+                                 help_text="How many parallel classes (streams) you want approved.")
+
+    def __init__(self, *args, institution=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from institutions.models import ProgrammeLevel, ProgrammeMaster
+
+        self.institution = institution
+        have = set(Programme.unscoped.filter(institution=institution).exclude(status="dropped")
+                   .values_list("name", "level_id"))
+        masters = [m for m in ProgrammeMaster.objects.filter(is_active=True).select_related("level").order_by("name")
+                   if (m.name, m.level_id) not in have]
+        self._masters = {str(m.pk): m for m in masters}
+        self.fields["source"].choices = ([("", "Choose…")] + [(str(m.pk), str(m)) for m in masters]
+                                         + [(self.CUSTOM, "Not on the NBTE list — type it in")])
+        self.fields["level"].queryset = ProgrammeLevel.objects.filter(is_active=True).order_by("sort_order")
+
+    def clean(self):
+        d = super().clean()
+        src = d.get("source")
+        if src == self.CUSTOM:
+            if len((d.get("name") or "").strip()) < 3:
+                self.add_error("name", "Type the programme's full name.")
+            if not d.get("level"):
+                self.add_error("level", "Choose the level.")
+        elif src not in self._masters:
+            self.add_error("source", "Choose a programme, or 'Not on the NBTE list'.")
+        master = self._masters.get(src or "")
+        name = master.name if master else " ".join((d.get("name") or "").split())
+        level = master.level if master else d.get("level")
+        if name and level and Programme.unscoped.filter(institution=self.institution, name__iexact=name,
+                                                         level=level).exclude(status="dropped").exists():
+            raise ValidationError("This programme is already on your record — use it in a QA request.")
+        d["master"], d["final_name"], d["final_level"] = master, name, level
+        return d
+
+
+@institution_required
+@profile_gate
+@require_http_methods(["GET", "POST"])
+def programme_propose(request):
+    """An approved institution adds a programme it plans to run. It is recorded
+    as *proposed* and goes through a Resource Inspection request (SOP-02 →
+    SOP-03) like any new programme — NBTE decides; nothing is approved here."""
+    from qa_core import timeline
+
+    user = request.user
+    inst = _inst(request)
+    if not svc.can_manage_requests(user, inst):
+        raise Http404
+    form = ProposeProgrammeForm(request.POST or None, institution=inst)
+    if request.method == "POST" and form.is_valid():
+        d = form.cleaned_data
+        m = d["master"]
+        p = Programme.unscoped.create(
+            institution=inst, name=d["final_name"], level=d["final_level"],
+            category=getattr(m, "programme_category", None), master=m,
+            professional_body=getattr(m, "professional_body", None),
+            status="proposed", requested_streams=d.get("streams") or 1, not_in_master=m is None)
+        timeline.record(inst, "programme.proposed", subject=p, actor=user, visibility="public",
+                        public_text=f"New programme proposed: {p}. Next: a Resource Inspection request.")
+        messages.success(request, f"{p} is on your record as a proposed programme. Now ask NBTE for a Resource "
+                                  "Inspection — it is ticked for you below.")
+        ri = QAType.objects.filter(code="resource_inspection", is_active=True).first()
+        url = reverse("qa_portal:qa_request_new") + (f"?type={ri.code}&chosen={p.pk}" if ri else "")
+        return redirect(url)
+    return render(request, "qa_portal/qa_requests/propose_programme.html",
+                  _shell_context(request, "qa_requests", form=form, inst=inst))

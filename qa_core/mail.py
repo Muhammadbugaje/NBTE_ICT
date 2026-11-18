@@ -66,9 +66,7 @@ def send(subject, recipients, template_name, context=None, *, category="qa", att
         ctx = {"site_name": getattr(settings, "SITE_NAME", "NBTE"), "site_url": getattr(settings, "SITE_URL", "")}
         ctx.update(context or {})
         try:
-            from django.template.loader import render_to_string
-
-            html = render_to_string(template_name, ctx)
+            html = _render_to_string(template_name, ctx)
         except Exception:  # a template problem must never break the action
             logger.exception("QA e-mail template %s failed", template_name)
             html = ""
@@ -86,7 +84,9 @@ def send(subject, recipients, template_name, context=None, *, category="qa", att
     ctx = {"site_name": getattr(settings, "SITE_NAME", "NBTE"), "site_url": getattr(settings, "SITE_URL", "")}
     ctx.update(context or {})
     try:
-        html = render_to_string(template_name, ctx)
+        # v2.3 fix: this branch used a name the queue branch imported locally,
+        # so every console/outbox e-mail was stored with an empty body.
+        html = _render_to_string(template_name, ctx)
     except Exception:  # a template problem must never break the action
         logger.exception("QA e-mail template %s failed", template_name)
         html = ""
@@ -153,15 +153,35 @@ def _send_now_with_attachments(subject, recipients, template_name, context, cate
     log = EmailLog.objects.create(subject=subject[:255], recipients=recipients, recipient_text=", ".join(recipients),
                                   category=category, scheduled_for=timezone.now(),
                                   body_html="" if category in EmailLog.sensitive_categories() else html)
+    from core import background
+
+    # The provider call happens after the action commits, off the request:
+    # a slow or broken mail service never slows the page. The log records it.
+    background.submit(_deliver_logged, log.pk, subject, recipients, html, text, category, attachments,
+                      label=f"QA e-mail {log.pk}")
+    return log
+
+
+def _deliver_logged(log_id, subject, recipients, html, text, category, attachments):
+    from django.utils import timezone
+
+    from notifications import engine
+    from notifications.models import EmailLog
+
     trail = []
-    log.attempts = 1
     try:
         provider = engine.send(subject, recipients, html, text, category=category, trail=trail,
                                attachments=attachments)
     except Exception as exc:
-        log.status, log.last_error, log.attempt_trail = EmailLog.FAILED, engine.safe_error_message(exc), trail
-        log.save(update_fields=["status", "last_error", "attempt_trail", "attempts"])
-        raise
-    log.status, log.provider, log.sent_at, log.attempt_trail = EmailLog.SENT, provider, timezone.now(), trail
-    log.save(update_fields=["status", "provider", "sent_at", "attempt_trail", "attempts"])
-    return log
+        EmailLog.objects.filter(pk=log_id).update(status=EmailLog.FAILED, last_error=engine.safe_error_message(exc),
+                                                  attempt_trail=trail, attempts=1)
+        logger.warning("QA e-mail %s not delivered: %s", log_id, engine.safe_error_message(exc))
+        return
+    EmailLog.objects.filter(pk=log_id).update(status=EmailLog.SENT, provider=provider, sent_at=timezone.now(),
+                                              attempt_trail=trail, attempts=1, last_error="")
+
+
+def _render_to_string(template_name, ctx):
+    from django.template.loader import render_to_string
+
+    return render_to_string(template_name, ctx)

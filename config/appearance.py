@@ -176,6 +176,9 @@ def site_appearance():
     return out
 
 
+KEPT_KEYS = ("tours",)  # not appearance: guided-tour progress (qa_core/tours.py) survives a save
+
+
 def clean_preferences(data, *, partial=True, current=None):
     """Validate a user's preference payload. Returns the new dict to store.
     An empty string, None or "site" removes a key (back to the site default);
@@ -195,7 +198,7 @@ def clean_preferences(data, *, partial=True, current=None):
         if value not in USER_CHOICES[key]:
             raise ValidationError(f"{key}: {value!r} is not one of {', '.join(USER_CHOICES[key])}.")
         prefs[key] = value
-    prefs = {k: v for k, v in prefs.items() if k in USER_CHOICES}
+    prefs = {k: v for k, v in prefs.items() if k in USER_CHOICES or k in KEPT_KEYS}
     prefs["stamp"] = int(time.time() * 1000)
     return prefs
 

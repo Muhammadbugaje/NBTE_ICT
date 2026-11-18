@@ -221,7 +221,8 @@ def workspace(ssq, user):
             item["prefilled"] = field["key"] in prefilled
             if field["type"] == "catalogue":
                 qty = item["value"] or {}
-                item["items"] = [{"item": catalogue, "quantity": qty.get(str(catalogue.pk), "")}
+                item["items"] = [{"item": catalogue, "quantity": qty.get(str(catalogue.pk), ""),
+                                  "not_working": qty.get(f"d{catalogue.pk}", "")}
                                  for catalogue in engine.catalogue_items(field, ssq.programme)]
             elif field["type"] == "table":
                 item["rows"] = list(item["value"] or [])

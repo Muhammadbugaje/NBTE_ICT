@@ -127,14 +127,17 @@ def qa_home(request):
 
     user = request.user
     imp = int(bool(getattr(request, "is_impersonating", False)))
-    # Per-user key; any write in the QA data apps bumps the epoch, so figures refresh at once (20 s safety TTL).
-    data = fastcache.cached(fastcache.HOME, f"home{imp}", lambda: home.build(user, request), ttl=20, user=user)
+    # Per-user key; any write in the QA data apps bumps the epoch, so figures refresh at once.
+    # v2.3 Phase 1: safety TTL 20 s -> 120 s. With 20 s, a quiet test server rebuilt the whole
+    # home (~150 queries) on almost every visit; freshness comes from the epoch, not the TTL.
+    data = fastcache.cached(fastcache.HOME, f"home{imp}", lambda: home.build(user, request), ttl=120, user=user)
     ctx = {"home": data, "now": timezone.now(), "spotlight": spotlight.new_institutions(request.user),
            "tracked": spotlight.tracked(request.user)}
     ctx.update(inbox.context(request.user))   # v2.3: "Your work"
+    ctx["present"] = home.present(data, ctx.get("work_rows"))   # each thing once: list at the top, compact areas below
     from . import home_charts
 
-    ctx["charts"] = fastcache.cached(fastcache.HOME, "charts", lambda: home_charts.build(user), ttl=60, user=user)   # v2.3: charts by permission
+    ctx["charts"] = fastcache.cached(fastcache.HOME, "charts", lambda: home_charts.build(user), ttl=300, user=user)   # v2.3: charts by permission
     return render_qa(request, "qa_core/home.html", ctx)
 
 
@@ -185,11 +188,6 @@ def _decorate(entries, user):
         e.can_edit, e.cannot_edit_reason = settings_service.can_edit(user, e)
         e.control = settings_service.control_label(e)
         e.display = settings_service.display_value(e.value_type, e.value)
-        if e.key == "qa.cqac.recommendation_mode":
-            e.display = {
-                "shared": "Shared recommendation",
-                "individual": "Individual votes · majority (ties return)",
-            }.get(e.value, "Shared recommendation")
         e.pending_reference = pending.get(str(e.pk), "")
     return entries
 

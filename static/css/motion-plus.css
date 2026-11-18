@@ -1,0 +1,164 @@
+/* ==========================================================================
+   NBTE — motion-plus: one shared micro-interaction layer on EXISTING classes.
+   Linked (not bundled) from templates/base.html and qa_portal/base_portal.html,
+   after the "finish" bundle. Companion: static/js/motion-plus.js.
+
+   Rules this file keeps:
+     · Only opacity, box-shadow, background-color and transforms move. Movement
+       uses the individual transform properties (translate / scale / rotate), so
+       it composes with any `transform` a component already sets instead of
+       replacing it.
+     · 120-260ms. Arriving = decelerate or a small spring; leaving = calm, quicker.
+     · Nothing starts hidden. Entry animations begin from a visible state and
+       have no fill-mode, so content reads the same with no JS, after Back, and
+       in a screenshot taken mid-animation.
+     · No visibility / pointer-events / layout properties are animated, so
+       everything stays clickable and hit-testable while it moves.
+     · Hover lifts only on real pointers (hover: hover) and only on things that
+       are links or buttons. Static cards get a shadow change, not a jump.
+     · The whole file sits inside prefers-reduced-motion: no-preference; the
+       in-app switch (html[data-motion=off|reduce|reduced]) is zeroed by base.css
+       and again at the foot of this file.
+   Already animated elsewhere and deliberately not repeated here: .btn hover /
+   press / ripple (components.css), .toast in / out (components.css),
+   .modal-root (components.css), :focus-visible ring (base.css), a.vx-kpi,
+   a.ux-stat, a.dash-kpi, a.qa-stat--link, a.card, .vv-tile.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+
+  :root {
+    --mp-fast: 140ms;
+    --mp: 200ms;
+    --mp-slow: 260ms;
+    --mp-out: var(--ease-standard, cubic-bezier(.25, 1, .5, 1));   /* arriving */
+    --mp-calm: cubic-bezier(.4, 0, .2, 1);                         /* leaving / colour */
+    --mp-spring: cubic-bezier(.2, .9, .25, 1.15);                  /* small overshoot */
+  }
+
+  /* ---- 1. Cards and tiles ------------------------------------------------ */
+  /* Static cards: the shadow deepens a step under the pointer. No movement. */
+  .qa-card, .dash-card, .ux-card, .pf-card, .hrd-card, .mm-card, .nbr-card, .att-stat {
+    transition: box-shadow var(--mp) var(--mp-calm);
+  }
+  /* Cards that are links lift 2px. */
+  a.qa-card, a.dash-card, a.ux-card, a.pf-card, a.hrd-card, a.mm-card, a.nbr-card, .qa-card-case {
+    transition: box-shadow var(--mp) var(--mp-calm), translate var(--mp-slow) var(--mp-spring), transform var(--mp) var(--mp-out), scale var(--mp-fast) var(--mp-calm), border-color var(--mp) var(--mp-calm);
+  }
+  @media (hover: hover) {
+    .qa-card:hover, .dash-card:hover, .ux-card:hover, .pf-card:hover, .hrd-card:hover, .mm-card:hover, .nbr-card:hover, .att-stat:hover {
+      box-shadow: var(--shadow-sm);
+    }
+    a.qa-card:hover, a.dash-card:hover, a.ux-card:hover, a.pf-card:hover, a.hrd-card:hover, a.mm-card:hover, a.nbr-card:hover {
+      translate: 0 -2px; box-shadow: var(--shadow-md);
+    }
+  }
+  a.qa-card:active, a.dash-card:active, a.ux-card:active, a.pf-card:active, a.hrd-card:active, a.mm-card:active, a.nbr-card:active,
+  a.vx-kpi:active, a.ux-stat:active, a.dash-kpi:active, a.qa-stat--link:active {
+    translate: 0 0; scale: .985; transition-duration: 90ms;
+  }
+
+  /* Kanban case cards lift like the other link cards (they only changed border and shadow). */
+  .cb-card { transition: border-color 120ms ease, box-shadow var(--mp) var(--mp-calm), translate var(--mp-slow) var(--mp-spring), scale var(--mp-fast) var(--mp-calm); }
+  @media (hover: hover) { .cb-card:hover { translate: 0 -2px; } }
+
+  /* Link tiles that already lift (home modules, KPI cards, portal tiles, work
+     items, quick links): the icon inside answers the pointer, and the tile
+     gives slightly when pressed. :where() = zero specificity, so an icon that
+     has its own transition keeps it. */
+  :where(.module-icon, .kpi-card-icon, .home-action-icon, .pp-tile__ic, .ux-row__icon, .ux-card__icon, .qh-quick__dot, .wb-panel__icon, .vx-kpi__icon, .dash-kpi-icon) {
+    transition: scale var(--mp-slow) var(--mp-spring);
+  }
+  @media (hover: hover) {
+    .module-card:hover .module-icon, .kpi-card:hover .kpi-card-icon, .home-action:hover .home-action-icon, .pp-tile:hover .pp-tile__ic,
+    .ux-row:hover .ux-row__icon, .ux-card:hover > .ux-card__head .ux-card__icon, .qh-quick__link:hover .qh-quick__dot, .wb-panel:hover .wb-panel__icon,
+    a.vx-kpi:hover .vx-kpi__icon, a.dash-kpi:hover .dash-kpi-icon { scale: 1.07; }
+  }
+  .module-card:active, .kpi-card:active, .home-action:active, .pp-tile:active, .wb-item:active, .qh-quick__link:active, .cb-card:active, .ux-filter:active {
+    scale: .985;
+  }
+
+  /* Row links (inbox, lists): the leading badge and trailing arrow answer the pointer. */
+  .qa-rowlink__badge { transition: scale var(--mp-slow) var(--mp-spring); }
+  .qa-rowlink__side > svg:last-child { transition: translate var(--mp) var(--mp-out); }
+  @media (hover: hover) {
+    .qa-rowlink:hover .qa-rowlink__badge { scale: 1.06; }
+    .qa-rowlink:hover .qa-rowlink__side > svg:last-child { translate: 3px 0; }
+  }
+  .qa-rowlink:active .qa-rowlink__badge { scale: .96; transition-duration: 90ms; }
+
+  /* Hero "back" link and the tour buttons on help pages: icon nudge. */
+  .nbte-hero__back svg { transition: translate var(--mp) var(--mp-out); }
+  .tg-btn { transition: translate var(--mp-slow) var(--mp-spring), scale var(--mp-fast) var(--mp-calm), box-shadow var(--mp) var(--mp-calm); }
+  .tg-btn svg { transition: rotate var(--mp-slow) var(--mp-spring); }
+  .tg__go { display: inline-block; transition: translate var(--mp) var(--mp-out); }
+  @media (hover: hover) {
+    .nbte-hero__back:hover svg { translate: -3px 0; }
+    .tg-btn:hover { translate: 0 -1px; box-shadow: 0 8px 18px -10px rgba(0, 0, 0, .45); }
+    .tg-btn:hover svg, .tg-btn:focus-visible svg { rotate: 45deg; }
+    .tg__item:hover .tg__go { translate: 3px 0; }
+  }
+  .tg-btn:active { translate: 0 0; scale: .97; transition-duration: 90ms; }
+
+
+  /* ---- 2. Chips and badges: a soft pop when they appear ------------------- */
+  /* Scale only (opacity stays 1), so a chip is readable from its first frame.
+     .badge and .app-nav-badge keep their own badge-pop (components.css). */
+  .qa-chip, .vx-chip, .ux-chip, .wf-pill, .tsk-chip, .tk-chip, .sv-chip, .hr-chip, .mm-pill, .hrd-tag, .pp-tag, .wf-tab-count {
+    animation: mp-pop var(--mp-slow) var(--mp-spring);
+  }
+  /* Not inside tables: a long list would pop hundreds of chips at once. */
+  td .qa-chip, td .vx-chip, td .ux-chip, td .wf-pill, td .tsk-chip, td .tk-chip, td .sv-chip, td .hr-chip, td .mm-pill, td .hrd-tag { animation: none; }
+  @keyframes mp-pop { from { scale: .9; } }
+
+  /* ---- 3. Tabs: colour, surface and shadow glide between states ----------- */
+  /* (.tab already has NBTE.tabs' sliding .tabs-indicator, components.css.) */
+  .qa-tabs a, .wf-tab, .portal-tab {
+    transition: background-color var(--mp) var(--mp-calm), color var(--mp) var(--mp-calm), box-shadow var(--mp) var(--mp-calm),
+      scale var(--mp-fast) var(--mp-calm), opacity var(--mp-fast) var(--mp-calm);
+  }
+  .qa-tabs a:active, .wf-tab:active, .portal-tab:active { scale: .97; }
+  /* While its HTMX request is in flight the pressed tab sits back a little. */
+  .wf-tab.htmx-request, .portal-tab.htmx-request { opacity: .7; }
+
+  /* ---- 4. Native dialogs: scale and fade in, backdrop fades ---------------- */
+  /* :where() keeps specificity at zero so a dialog with its own animation wins. */
+  :where(dialog[open]) { animation: mp-dialog-in var(--mp-slow) var(--mp-out); }
+  :where(dialog[open])::backdrop { animation: mp-fade-in var(--mp) ease-out; }
+  @keyframes mp-dialog-in { from { opacity: .4; scale: .96; } }
+  @keyframes mp-fade-in { from { opacity: 0; } }
+
+  /* ---- 5. Table rows: the hover tint eases instead of snapping ------------ */
+  .att-table tbody tr, .att-summary tbody tr, .files-table tbody tr, .admin-table tbody tr, .wf-table tbody tr, .v3-table tbody tr,
+  .earnings-table tbody tr, .hr-table tbody td, .vx-table tbody td {
+    transition: background-color var(--mp-fast) var(--mp-calm);
+  }
+  /* A row that is itself a link target gets a tint even where the table had none. */
+  @media (hover: hover) {
+    :where(table) tbody tr:where([data-href], [hx-get]):hover { background-color: color-mix(in srgb, var(--primary-subtle) 55%, transparent); }
+  }
+
+  /* ---- 6. details / summary: the body eases in after the user opens it ----- */
+  /* motion-plus.js adds .mp-toggled on the first summary click, so a details
+     that is open when the page loads does not animate. */
+  details.mp-toggled[open] > :not(summary) { animation: mp-reveal var(--mp) var(--mp-out); }
+  @keyframes mp-reveal { from { opacity: .3; translate: 0 -4px; } }
+  summary { transition: color var(--mp-fast) var(--mp-calm), background-color var(--mp-fast) var(--mp-calm); }
+
+  /* ---- 7. Focus: fields grow their ring instead of flashing it ------------- */
+  .input, .qa-select, .qa-field input, .qa-field select, .qa-field textarea, .portal-field input, .portal-field select, .portal-field textarea,
+  .qa-search input {
+    transition: border-color var(--mp-fast) var(--mp-calm), box-shadow var(--mp) var(--mp-calm), background-color var(--mp-fast) var(--mp-calm);
+  }
+  .qa-rowlink { transition: background-color var(--mp-fast) var(--mp-calm), box-shadow var(--mp-fast) var(--mp-calm); }
+
+  /* ---- 8. HTMX: content that was just swapped in --------------------------- */
+  /* Run by motion-plus.js with the Web Animations API (a 220ms fade with a 6px
+     rise, user-initiated swaps only, never polling), so no class can be left
+     behind on the content and nothing here can hide it. */
+}
+
+/* The in-app motion switch (appearance settings) turns all of it off too. */
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) :is(.qa-chip, .vx-chip, .ux-chip, .wf-pill, .tsk-chip, .tk-chip, .sv-chip, .hr-chip, .mm-pill, .hrd-tag, .pp-tag, .wf-tab-count, dialog[open]),
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) details.mp-toggled[open] > :not(summary) { animation: none !important; }
+:root:is([data-motion="off"], [data-motion="reduce"], [data-motion="reduced"]) :is(a.qa-card, a.dash-card, a.ux-card, a.pf-card, a.hrd-card, a.mm-card, a.nbr-card, .cb-card, .tg-btn):hover { translate: none; }

@@ -1,0 +1,98 @@
+{% load qa_tags %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Honoraria payment list · {{ batch.reference }}</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 34px 46px; font: 13px/1.45 "Helvetica Neue", Arial, sans-serif; color: #111; background: #fff; }
+  .bar { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 18px; }
+  .bar a, .bar button { font: inherit; padding: 8px 14px; border: 1px solid #bbb; border-radius: 6px; background: #fff; color: #111; cursor: pointer; text-decoration: none; }
+  .bar button { background: #123f2a; color: #fff; border-color: #123f2a; }
+  header { border-bottom: 3px double #123f2a; padding-bottom: 12px; margin-bottom: 16px; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: 10px; color: #555; }
+  h1 { margin: 4px 0 2px; font-size: 20px; }
+  h1 small { display: block; font-size: 12px; font-weight: 400; color: #444; margin-top: 4px; }
+  .meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 22px; margin: 14px 0 18px; }
+  .meta div { border-left: 3px solid #d9e6de; padding-left: 9px; }
+  .meta span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #666; }
+  .meta strong { font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border-bottom: 1px solid #dcdcdc; padding: 7px 6px; text-align: left; vertical-align: top; }
+  th { background: #f3f6f4; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #333; }
+  .num { text-align: right; white-space: nowrap; }
+  tfoot th { background: #eef3f0; font-size: 12px; }
+  .mono { font-family: "SFMono-Regular", Consolas, monospace; }
+  .muted { color: #777; font-size: 11px; }
+  .warn { color: #8a4b00; font-size: 11px; font-weight: 600; }
+  .sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; margin-top: 40px; }
+  .sign div { border-top: 1px solid #333; padding-top: 5px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #555; }
+  footer { margin-top: 22px; font-size: 10px; color: #777; }
+  @media print {
+    body { padding: 6mm 8mm; }
+    .bar { display: none; }
+    a { color: inherit; text-decoration: none; }
+    tr { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <a href="{% url 'honoraria_sched:batch_export' batch.pk %}">Download CSV</a>
+  <button type="button" onclick="window.print()">Print this list</button>
+</div>
+<header>
+  <span class="eyebrow">National Board for Technical Education · QA Finance</span>
+  <h1>Honoraria payment list
+    <small>{{ batch.reference }}{% if institution %} · {{ institution.name }}{% endif %}</small>
+  </h1>
+</header>
+<div class="meta">
+  <div><span>Teller / reference</span><strong class="mono">{{ batch.payment_reference|default:"—" }}</strong></div>
+  <div><span>Total to pay</span><strong>{{ batch.total|naira }}</strong></div>
+  <div><span>Payees</span><strong>{{ lines|length }}</strong></div>
+  <div><span>Prepared by</span><strong>{{ batch.created_by.get_full_name|default:"Finance" }}</strong></div>
+  <div><span>Paid from</span><strong>{% if batch.funding_account %}{{ batch.funding_account.bank_name }} · {{ batch.funding_account.account_name }}<br><span class="mono">{{ batch.funding_account.account_number }}</span>{% else %}To be chosen by Finance{% endif %}</strong></div>
+  <div><span>Status</span><strong>{{ batch.get_status_display }}{% if batch.es_decided_by %} · ES {{ batch.es_decided_by.get_full_name|default:"approved" }}{% endif %}</strong></div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>#</th><th>Payee</th><th>Work</th><th>Bank</th><th>Account name</th><th>Account number</th><th class="num">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for line in lines %}
+    <tr>
+      <td>{{ forloop.counter }}</td>
+      <td><strong>{{ line.name|default:line.person }}</strong></td>
+      <td>{{ line.role|default:"—" }}</td>
+      {% if line.payment_details %}
+      <td>{{ line.payment_details.bank }}</td>
+      <td>{{ line.payment_details.account_name }}</td>
+      <td class="mono">{{ line.payment_details.account_number }}</td>
+      {% else %}
+      <td colspan="3" class="warn">No confirmed bank details — do not pay this line yet.</td>
+      {% endif %}
+      <td class="num"><strong>{{ line.amount|naira }}</strong></td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="7" class="muted">No unpaid payee on this batch.</td></tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr><th colspan="6">Total</th><th class="num">{{ batch.total|naira }}</th></tr>
+  </tfoot>
+</table>
+<div class="sign">
+  <div>Prepared — Director of Finance</div>
+  <div>Approved — Executive Secretary</div>
+  <div>Paid / teller checked by</div>
+</div>
+<footer>
+  Generated {{ generated_at|date:"j M Y, H:i" }}. Bank details are released to the Director of Finance only and this release is logged.
+</footer>
+</body>
+</html>

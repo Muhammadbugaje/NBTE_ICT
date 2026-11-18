@@ -53,8 +53,31 @@ def batch_enabled():
 
 
 def recommendation_mode():
-    mode = str(config.get("qa.cqac.recommendation_mode", "shared") or "shared").strip().lower()
-    return mode if mode in ("shared", "individual") else "shared"
+    """v2.3 Phase 2 (owner decision 10): every CQAC member always votes on their own.
+    The old "shared" mode (one record any member could overwrite) is gone; the
+    setting ``qa.cqac.recommendation_mode`` was removed (accreditation 0030)."""
+    return "individual"
+
+
+# v2.3 Phase 2 (owner decision 4): every approver decides on an empty form.
+# The Chairman sees the panel's votes but his own form starts blank; the ES sees
+# no earlier decision until he has recorded his own.
+BLIND_STAGES = (Decision.CHAIR, Decision.ES)
+
+
+def reveal_earlier(case, stage, user):
+    """May ``user`` see the earlier decision stages of this case now?
+
+    Everyone may, except the person who must still decide at a blind stage:
+    the Chairman / ES sees earlier decisions only after saving his own for
+    every programme of the case."""
+    if stage not in BLIND_STAGES:
+        return True
+    ok, _why = can_decide(case, user, stage)
+    if not ok:
+        return True
+    saved = decisions_at(case, stage)
+    return all(row.pk in saved for row in rows(case))
 
 
 def is_decision_stage(stage_code):
@@ -91,7 +114,17 @@ def _report_for(case, row):
 
 
 def suggestion(case, row, stage):
-    """Initial values for ``row`` at ``stage`` (never saved by itself)."""
+    """Starting values for ``row`` at ``stage``: always an empty form (v2.3).
+
+    Nothing is pre-selected at any decision stage: not the panel's view for
+    the Chairman, not the Chairman's for the ES. ``report`` is still returned
+    so the form can link the evidence."""
+    return {"outcome": "", "approval_type": None, "approved_streams": "", "commencement_date": None,
+            "weaknesses": [], "note": "", "from": _report_for(case, row)}
+
+
+def legacy_suggestion(case, row, stage):
+    """The pre-v2.3 carried-forward values (used only by the demo seeder)."""
     previous = PREVIOUS.get(stage)
     if previous:
         earlier = Decision.unscoped.filter(case=case, qa_request_programme=row, stage=previous) \
@@ -342,11 +375,14 @@ def problems(case, stage_code):
 
 def board(case, stage_code, user):
     """Rows for the decision form at ``stage_code``: programme, the saved
-    decision (if any), the starting values and the earlier stages' decisions."""
+    decision (if any), the starting values and the earlier stages' decisions
+    (hidden from a blind decider until he has saved his own)."""
     stage = STAGE_OF_FLOW.get(stage_code)
     if stage is None:
         return []
     saved = decisions_at(case, stage)
+    show_earlier = reveal_earlier(case, stage, user)
+    chair_tally = stage == Decision.CHAIR
     from . import capacity
 
     history = {}
@@ -377,9 +413,12 @@ def board(case, stage_code, user):
                      "weaknesses": list(vote.weaknesses or []), "note": vote.note, "from": None}
         report = _report_for(case, row)
         voted_user_ids = {item.user_id for item in panel_votes}
+        tally = _vote_tally(case, row) if chair_tally else None
         out.append({"row": row, "programme": row.programme, "decision": decision, "start": start,
                     "weaknesses_text": "\n".join(start["weaknesses"]),
-                    "history": [d for d in history.get(row.pk, []) if d.stage != stage],
+                    "history": [d for d in history.get(row.pk, []) if d.stage != stage] if show_earlier else [],
+                    "earlier_hidden": not show_earlier,
+                    "vote_tally": tally,
                     "report": report, "capacity": capacity.overall(row), "vote": vote,
                     "capacity_review": capacity_reviews[row.pk]["review"],
                     "capacity_review_current": capacity_reviews[row.pk]["is_current"],
@@ -606,3 +645,25 @@ def apply_final(case, *, actor=None):
             except ValidationError:
                 pass
     return issued
+
+
+def _vote_tally(case, row):
+    """The CQAC panel's individual votes for one programme, for the Chairman:
+    counts per outcome and every member's reasons (names stay off the tally)."""
+    votes = list(CQACVote.unscoped.filter(case=case, qa_request_programme=row)
+                 .select_related("approval_type").order_by("pk"))
+    if not votes:
+        return None
+    labels = dict(Decision.OUTCOME_CHOICES)
+    counts = Counter(v.outcome for v in votes)
+    total = len(votes)
+    lines = [{"outcome": o, "label": labels.get(o, o), "count": counts[o],
+              "pct": round(counts[o] * 100 / total)} for o in ("approve", "deny", "return") if counts.get(o)]
+    reasons = []
+    for v in votes:
+        text = "; ".join([*(v.weaknesses or []), v.note]).strip("; ").strip()
+        if v.outcome == Decision.APPROVE and v.approval_type is not None:
+            text = (f"{v.approval_type.name}, {v.approved_streams} stream(s)" + (f" — {text}" if text else ""))
+        if text:
+            reasons.append({"outcome": labels.get(v.outcome, v.outcome), "text": text})
+    return {"total": total, "lines": lines, "reasons": reasons}

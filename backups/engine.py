@@ -315,6 +315,68 @@ def tar_folder(folder, out_path):
     return files
 
 
+def zip_folder(folder, out_path, *, prefix=""):
+    """v2.3 (Phase 4): the files as a ZIP with their folder paths kept
+    (``prefix/<path as stored>``), so a restore puts every file back where the
+    database expects it and every link works again without relinking."""
+    import zipfile
+
+    files = 0
+    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6,
+                         allowZip64=True) as zf:
+        if folder.is_dir():
+            for root, dirs, names in os.walk(folder):
+                dirs.sort()
+                for name in sorted(names):
+                    full = Path(root) / name
+                    if full.is_symlink() or not full.is_file():
+                        continue
+                    arc = str(full.relative_to(folder)).replace(os.sep, "/")
+                    zf.write(full, arcname=f"{prefix}/{arc}" if prefix else arc)
+                    files += 1
+    return files
+
+
+def extract_archive(path, root, *, prefix=""):
+    """Unpack a media artefact (``.tar.gz`` from older backups, or ``.zip``)."""
+    import zipfile
+
+    path = Path(path)
+    if zipfile.is_zipfile(path):
+        root_resolved = Path(root).resolve()
+        with zipfile.ZipFile(path) as zf:
+            for member in zf.infolist():
+                name = member.filename
+                if member.is_dir():
+                    continue
+                if prefix:
+                    if not name.startswith(prefix + "/"):
+                        continue
+                    name = name[len(prefix) + 1:]
+                target = (root_resolved / name).resolve()
+                if root_resolved not in target.parents:  # never write outside the root
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(member) as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+        return
+    with tarfile.open(path, "r:gz") as tar:
+        tar.extractall(root, filter="data")
+
+
+def data_workbook(out_path):
+    """v2.3 (Phase 4): the Excel workbook that mirrors the database (Data Hub
+    format: one sheet per table, natural keys, no secrets, no password hashes).
+    It can be read by anyone and re-imported table by table through the Data
+    Hub's preview (New / Changed / Conflicts) — the selective restore."""
+    from core.datahub import engine as hub
+
+    data = hub.export_workbook(None, include_rows=True, source_label="Backup",
+                               include_password_hashes=False)
+    Path(out_path).write_bytes(data)
+    return len(data)
+
+
 def settings_snapshot(out_path):
     from django.core import serializers
 
@@ -392,10 +454,19 @@ def build_artefacts(run, stage):
     pct = 25
     for stem, setting_name, root in media_roots():
         _progress(run, pct, f"Archiving {setting_name} ({root})")
-        out = stage / f"{stem}.tar.gz"
-        n = tar_folder(root, out)
-        plain.append((stem, out, {"source_setting": setting_name, "files": n, "exists": root.is_dir()}))
-        pct += 20
+        out = stage / f"{stem}.zip"  # v2.3: ZIP with the stored paths kept (was .tar.gz)
+        n = zip_folder(root, out)
+        plain.append((stem, out, {"source_setting": setting_name, "files": n, "exists": root.is_dir(),
+                                  "format": "zip"}))
+        pct += 15
+
+    _progress(run, 58, "Writing the Excel workbook (Data Hub format)")
+    book = stage / "data.xlsx"
+    try:
+        size = data_workbook(book)
+        plain.append(("workbook", book, {"format": "xlsx", "bytes": size}))
+    except Exception as exc:  # the workbook is a convenience; the dump is the backup
+        run.warnings = list(run.warnings or []) + [f"Excel workbook not written: {exc}"]
 
     _progress(run, 65, "Saving the settings snapshot")
     snap = stage / "settings.json"
@@ -795,6 +866,15 @@ def django_check(engine, scratch):
 
 
 def _open_one_file(tar_path):
+    import zipfile
+
+    if zipfile.is_zipfile(tar_path):
+        with zipfile.ZipFile(tar_path) as zf:
+            for info in zf.infolist():
+                if not info.is_dir():
+                    data = zf.read(info)
+                    return info.filename, len(data) == info.file_size, info.file_size
+        return None, True, 0
     with tarfile.open(tar_path, "r:gz") as tar:
         for member in tar:
             if member.isfile():
@@ -972,8 +1052,7 @@ def restore(*, run=None, from_dir=None, include_db=True, include_media=True, log
                     os.replace(root, aside)
                     log(f"Moved the current {setting_name} to {aside}.")
                 root.mkdir(parents=True, exist_ok=True)
-                with tarfile.open(tar_path, "r:gz") as tar:
-                    tar.extractall(root, filter="data")
+                extract_archive(tar_path, root)
                 log(f"{setting_name} restored into {root}.")
         return manifest
     finally:

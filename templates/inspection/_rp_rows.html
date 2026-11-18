@@ -1,20 +1,21 @@
 {% load qa_tags %}
 {% if page.rows %}
-<div class="qa-table-wrap"><table class="qa-table">
+<div class="qa-table-wrap"><table class="qa-table vx-table">
   <caption class="sr-only">Resource persons</caption>
   <thead><tr><th scope="col">Name</th><th scope="col">Source · rank</th><th scope="col">Disciplines</th><th scope="col">Current load</th><th scope="col">Last served</th><th scope="col">Status</th></tr></thead>
   <tbody>{% for rp in page.rows %}
     <tr>
       <td><a href="{% url 'qa_insp:rp_detail' rp.pk %}" hx-get="{% url 'qa_insp:rp_detail' rp.pk %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ rp.full_name }}</strong></a><br><span class="qa-small qa-muted">{{ rp.email }}</span></td>
       <td>{{ rp.get_source_display }}<br><span class="qa-small qa-muted qa-mono">{{ rp.rank|default:"—" }}</span></td>
-      <td>{% for d in rp.disciplines.all %}<span class="qa-chip{% if d.is_primary %} qa-tone-info{% endif %}">{{ d.discipline.name }}</span> {% endfor %}</td>
+      <td>{% for d in rp.disciplines.all %}<span class="vx-chip vx-chip--plain {% if d.is_primary %}vx-t-blue{% else %}vx-t-slate{% endif %}"{% if d.is_primary %} title="Primary discipline"{% endif %}>{{ d.discipline.name }}</span> {% endfor %}</td>
       <td data-label="Current load">{% include "inspection/_load.html" with load=rp.load %}</td>
       <td>{{ rp.totals.last_served|date:"j M Y"|default:"—" }}</td>
-      <td><span class="qa-chip {{ rp.status|tone }}">{{ rp.get_status_display }}</span>{% if rp.lapsed %} <span class="qa-chip qa-tone-warn qa-badge-lapsed">No longer eligible</span>{% endif %}</td>
+      <td><span class="vx-chip {{ rp.status|vx_tone }}">{{ rp.get_status_display }}</span>{% if rp.lapsed %} <span class="vx-chip vx-t-red">No longer eligible</span>{% endif %}</td>
     </tr>{% endfor %}
   </tbody>
 </table></div>
+<p class="vx-legend"><b>Status</b><span class="vx-chip vx-t-amber">Nominated — waiting for vetting</span><span class="vx-chip vx-t-green">Active</span><span class="vx-chip vx-t-red">Suspended / not eligible</span><span class="vx-chip vx-t-slate">Retired</span></p>
 {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
 {% else %}
-<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "users" 28 %}</span><h3 class="nbte-empty-state__title">Nobody here</h3><p class="nbte-empty-state__body">Try clearing the filters.</p></div>
+<div class="vx-empty"><span class="vx-empty__icon vx-t-teal" aria-hidden="true">{% icon "users" 26 "2" %}</span><h3>Nobody matches</h3><p>No resource person fits these filters. Try clearing the search or choosing “Any status”.</p></div>
 {% endif %}

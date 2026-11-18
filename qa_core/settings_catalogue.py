@@ -254,6 +254,12 @@ G_QA_REQUESTS = "QA · Requests and SSQ"
 SETTINGS_PHASE3 = [
     ("qa.programme.reassessment_window_months", "6", "int", G_QA_REQUESTS,
      "How many months before expiry a programme may apply for reaccreditation (Requirement 4).", EDIT, False),
+    # v2.3 (owner answer 6): not stated in the SOP — an NBTE policy item to confirm. 24 months is
+    # the working default (one ND cohort, two academic years). 0 switches the rule off.
+    ("qa.programme.min_running_months_before_accreditation", "24", "int", G_QA_REQUESTS,
+     "How long a new programme must have run (from its approval-to-commence date) before it may ask for "
+     "Accreditation. Default 24 months (one ND cohort). 0 = no minimum. POLICY ITEM: to be confirmed by NBTE.",
+     EDIT, False),
     ("qa.programme.expiry_warning_days", json.dumps([180, 90, 30]), "json", G_QA_REQUESTS,
      "Days before expiry at which institutions are reminded.", EDIT, False),
     ("qa.portal.staff_sign_in_enabled", "true", "bool", G_ACCESS,
@@ -401,11 +407,6 @@ SETTINGS_PHASE8 = [
     # Decisions, approval and expiry
     ("qa.cqac.batch_approval_enabled", "true", "bool", G_DECISIONS,
      "The CQAC Chairman may approve recommendations in a batch, one programme category at a time (B23).",
-     EDIT, False),
-    ("qa.cqac.recommendation_mode", "shared", "str", G_DECISIONS,
-     "Stage 14: shared lets one member submit for the CQAC panel; individual requires every assigned member to vote "
-     "on every programme. Outcome is by full-panel majority; approval details by majority of approving votes. Ties "
-     "return for review.",
      EDIT, False),
     ("qa.programme.renewal_reminder_days", json.dumps([180, 90, 30, 7]), "json", G_DECISIONS,
      "Days before expiry at which the institution and its handling department are reminded to renew "
@@ -677,6 +678,9 @@ for type_code, type_label, _base, _proc, _unconfirmed in INSTITUTION_FEE_TYPES:
 SETTINGS = SETTINGS + SETTINGS_INSTITUTION_FEE_BY_OWNERSHIP
 # v2.1 Phase F — generated documents, QR verification and Scan (spec_v21 G5.h; X22–X26)
 SETTINGS_V21_PHASE_F_DOCUMENTS = [
+    ("qa.documents.crest_watermark", json.dumps({"enabled": True, "opacity": 0.06, "size_cm": 11}), "json",
+     G_DOCUMENTS, "v2.3: the NBTE crest drawn faintly behind the text of every official document: enabled, "
+     "opacity (0.02–0.2) and size in cm.", EDIT, False),
     ("qa.documents.provisional_watermark",
      json.dumps({"text": "PROVISIONAL — OFFICIAL COPY TO FOLLOW", "opacity": 0.14, "angle": 45}), "json", G_DOCUMENTS,
      "Diagonal watermark on documents sent to institutions before the signed official copy (X25).", EDIT, False),
@@ -699,9 +703,7 @@ SETTINGS = SETTINGS + SETTINGS_V21_PHASE_F_DOCUMENTS
 # Official letters pipeline (documents.official_letters): provisional -> signed official copy
 SETTINGS_OFFICIAL_LETTERS = [
     ("qa.documents.official_copy_sla_days", "7", "int", G_DOCUMENTS,
-     "Days NBTE has to upload the signed official copy of a provisional letter (approval, accreditation, ...). "
-     "After that the handling department's Director (and the staff preparing it) are reminded and the letter is "
-     "escalated to the ES (manage.py qa_stage_reminders / qa_official_letters).", EDIT, False),
+     'Days NBTE has to upload the signed official copy of a provisional letter. After that the handling Director and the staff preparing it are reminded, then the ES (manage.py qa_official_letters).', EDIT, False),
 ]
 SETTINGS = SETTINGS + SETTINGS_OFFICIAL_LETTERS
 G_PROGRAMMES = "QA · Programmes and professional bodies"  # v2.1 Phase R (X42-X44)
@@ -830,24 +832,17 @@ SETTINGS_V25_REFUNDS = [
     ("qa.refund.void_unpaid_bills", "true", "bool", G_REFUNDS,
      "Unpaid bills of a cancelled request or application are voided (cancelled) automatically.", EDIT, False),
     ("qa.refund.stage_bands", "{}", "json", G_REFUNDS,
-     'Override which band a stage falls in, e.g. {"qa_case:generate_cost": "before_assignment"}. Keys are '
-     "flow:stage (qa_request, qa_case, onboarding); bands are before_assignment, under_assessment, "
-     "after_cost_approval or none (cannot be cancelled). Empty = the built-in table.", EDIT, True),
+     'Override a stage\'s refund band, e.g. {"qa_case:generate_cost": "before_assignment"}. Keys are flow:stage; bands are before_assignment, under_assessment, after_cost_approval or none. Empty = the built-in table.', EDIT, True),
 ]
 SETTINGS = SETTINGS + SETTINGS_V25_REFUNDS
 
 # Linear onboarding (accreditation/onboarding_linear.py): self-study review → approval → formal QA request
 SETTINGS_ONBOARDING_LINEAR = [
     ("qa.onboarding.stage_sla_days", "5", "int", G_WORKFLOW,
-     "Days a programme self-study may wait at one step (officer assignment, assessment, director's clearance) "
-     "before the person holding it is reminded. After twice this the director is told (the ES when the director "
-     "holds it); after three times the ES. Runs hourly in working hours (manage.py qa_onboarding_reminders).",
+     'Days a programme self-study may wait at one step before its holder is reminded. After twice this the director is told (the ES if the director holds it); after three times the ES (manage.py qa_onboarding_reminders).',
      EDIT, False),
     ("qa.onboarding.auto_request_type", "accreditation", "str", G_QA_REQUESTS,
-     "QA type code (Settings → QA types) of the formal QA request NBTE starts by itself when the ES confirms an "
-     "institution's approval, for the programmes whose onboarding self-studies were cleared. Their self-studies "
-     "are used as the request's SSQs (the institution does not fill them again). Write 'none' to stop starting "
-     "requests automatically.", EDIT, True),
+     "QA type code of the first QA request NBTE starts by itself when an institution is Cleared for QA, for the programmes whose self-studies were cleared (reused as the SSQs). Write 'none' to stop this.", EDIT, True),
     ("qa.onboarding.auto_request_fee_waived", "false", "bool", G_FEES,
      "On: the automatically started QA request skips the QA fee and goes straight to the SSQ / QA case. Off "
      "(default): the fee is billed as for any QA request and the case opens once it is paid.", EDIT, True),
@@ -878,11 +873,7 @@ SETTINGS_SOP03_PEOPLE = [
         "acad-allow-member": {"department": "owning", "grade_min": 7, "grade_max": 16},
         "dta-support": {"grade_max": 8}, "honorarium-rp": {"external_only": True},
         "audit-supervision": {"department": "audit", "department_strict": True, "visit": False}}), "json", G_HONORARIA,
-     "Who each rate-table line is for (keyed by rate code): lead (team-lead roles only, one per sheet), department "
-     "('owning' = the case's handling department, or audit / finance / ict / a department code; preferred, or the "
-     "only one allowed with department_strict), grade_min / grade_max (a known grade outside locks the person), "
-     "external_only (NBTE staff locked), visit: false (not a visiting line). Rates not listed prefer the handling "
-     "department.", EDIT, False),
+     "Who each rate line is for, by rate code: lead (team leads, one per sheet), department ('owning', audit, finance, ict or a code; strict with department_strict), grade_min/grade_max, external_only, visit: false. Unlisted: handling department.", EDIT, False),
 ]
 SETTINGS = SETTINGS + SETTINGS_SOP03_PEOPLE
 

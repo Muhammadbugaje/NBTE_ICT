@@ -159,16 +159,36 @@ def _complete_ssq(ssq, user):
         if not field.get("required"):
             continue
         ftype = field["type"]
+        rules = field.get("validation") or {}  # v2.3: respect the template's own limits
         if ftype in ("text", "textarea"):
-            values[field["key"]] = "Demo answer"
+            text = "Demo answer"
+            need = int(rules.get("min_length") or 0)
+            if need > len(text):
+                text = (text + " — completed for the walkthrough demo case. ") * (need // 40 + 1)
+            values[field["key"]] = text.strip()
         elif ftype in ("number", "integer"):
-            values[field["key"]] = "2"
+            low, high = rules.get("min"), rules.get("max")
+            value = 2
+            if low is not None and value < float(low):
+                value = int(float(low)) + (40 if float(low) >= 1900 else 0)
+            if high is not None and value > float(high):
+                value = int(float(high))
+            values[field["key"]] = str(value)
         elif ftype == "yes_no":
             values[field["key"]] = "yes"
         elif ftype == "date":
             values[field["key"]] = "2024-10-01"
         elif ftype == "choice":
             values[field["key"]] = svc.engine.option_pairs(field)[0][0]
+        elif ftype == "multi_choice":  # v2.3: the v2.4 templates have required multi-choice fields
+            pairs = svc.engine.option_pairs(field)
+            values[field["key"]] = [pairs[0][0]] if pairs else []
+        elif ftype == "phone":
+            values[field["key"]] = "08030000000"
+        elif ftype == "email":
+            values[field["key"]] = "demo@example.org"
+        elif ftype == "file":
+            _demo_evidence(ssq, field["key"], user)
         elif ftype == "table":
             rows = max(1, int(field.get("min_rows") or 1))
             row = {}
@@ -181,6 +201,21 @@ def _complete_ssq(ssq, user):
                     row[col["key"]] = opt.get("value") if isinstance(opt, dict) else opt
             values[field["key"]] = [dict(row) for _ in range(rows)]
     svc.save_fields(ssq, values, user=user)
+
+
+def _demo_evidence(ssq, field_key, user):
+    """A one-page placeholder PDF for a required file field (demo only)."""
+    from django.core.files.base import ContentFile
+
+    from .models import Evidence
+
+    if Evidence.unscoped.filter(ssq=ssq, field_key=field_key).exclude(status="removed").exists():
+        return
+    pdf = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj "
+           b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n")
+    ev = Evidence(ssq=ssq, field_key=field_key, uploaded_by=user, original_name=f"{field_key}.pdf")
+    ev.file.save(f"demo-{field_key}.pdf", ContentFile(pdf), save=False)
+    ev.save()
 
 
 def _waive(req, people):
@@ -372,11 +407,17 @@ def record_demo_decisions(case, stage_code, user, *, commencement=None):
 
     stage = dec.STAGE_OF_FLOW[stage_code]
     saved = dec.decisions_at(case, stage)
+    if stage == dec.Decision.CQAC:
+        # v2.3: individual votes only — every panel member votes, then the panel result is recorded.
+        # A panel decision already recorded (through the screen) is never overwritten.
+        if not all(row.pk in saved for row in dec.rows(case)):
+            _demo_cqac_votes(case, commencement=commencement)
+        return
     for row in dec.rows(case):
         if row.pk in saved:
             continue
-        start = dec.suggestion(case, row, stage)
-        outcome = start["outcome"] if start["outcome"] != "return" else "approve"
+        start = dec.legacy_suggestion(case, row, stage)
+        outcome = start["outcome"] if start["outcome"] not in ("return", "") else "approve"
         approval = start["approval_type"]
         if outcome == "approve" and approval is None:
             from .models import ApprovalType
@@ -387,6 +428,26 @@ def record_demo_decisions(case, stage_code, user, *, commencement=None):
                    commencement_date=commencement or start["commencement_date"],
                    weaknesses=start["weaknesses"] or ([] if outcome == "approve" else ["Demo weakness"]),
                    note="Demo decision")
+
+
+def _demo_cqac_votes(case, *, commencement=None):
+    from . import decisions as dec
+    from .models import ApprovalType
+
+    panel = dec.cqac_panel_members(case)
+    for member in panel:
+        for row in dec.rows(case):
+            start = dec.legacy_suggestion(case, row, dec.Decision.CQAC)
+            outcome = start["outcome"] if start["outcome"] not in ("return", "") else "approve"
+            approval = start["approval_type"] or (ApprovalType.objects.filter(code="full").first()
+                                                  if outcome == "approve" else None)
+            dec._save_cqac_vote(case, row, user=member, values={
+                "outcome": outcome, "approval_type": approval, "approved_streams": start["approved_streams"] or 1,
+                "commencement_date": commencement or start["commencement_date"],
+                "weaknesses": start["weaknesses"] or ([] if outcome == "approve" else ["Demo weakness"]),
+                "note": "Demo vote"})
+    if panel:
+        dec._aggregate_cqac_votes(case, actor=panel[0])
 
 
 def run_demo_capacity(case, user):

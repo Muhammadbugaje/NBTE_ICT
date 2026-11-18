@@ -10,6 +10,7 @@ urlpatterns = [
     path("history/", views.history, name="history"),
     path("runs/<int:pk>/progress/", views.run_progress, name="progress"),
     path("runs/<int:pk>/manifest/", views.manifest, name="manifest"),
+    path("runs/<int:pk>/files/<str:kind>/", views.artefact, name="artefact"),  # v2.3: the three formats
     path("runs/<int:pk>/drill/", views.run_drill, name="drill"),
     path("destinations/new/", views.destination_save, name="destination_add"),
     path("destinations/<int:pk>/", views.destination_save, name="destination_save"),

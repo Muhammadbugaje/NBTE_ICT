@@ -170,7 +170,7 @@ def _setup_checklist(inst):
     ce, ict = account_link(inst, "chief_executive"), account_link(inst, "ict_head")
     acc_missing = [label for label, link in (("Chief Executive", ce), ("Head of ICT", ict)) if link is None]
     accounts = Step("accounts", "Chief Executive and Head of ICT accounts", ok=not acc_missing, missing=acc_missing,
-                    detail=("Both accounts are set up." if not acc_missing
+                    detail=(_accounts_detail(ce) if not acc_missing
                             else "Add the " + " and ".join(acc_missing) + " account."),
                     action_label="Open users", action_url="/institution/users/")
     board = role_board(inst)
@@ -234,3 +234,13 @@ def require_profile_complete(inst):
     """Service-level guard (API and web reuse it)."""
     if gate_enabled() and not profile_complete(inst):
         raise PermissionDenied("Complete your institution's setup first (profile and management team).")
+
+
+def _accounts_detail(ce_link):
+    """Both accounts exist; say plainly if the Chief Executive has not yet
+    activated theirs (set a password from the e-mailed link)."""
+    user = getattr(ce_link, "user", None)
+    if user is not None and not user.has_usable_password() and not user.last_login:
+        return ("Both accounts are created. The Chief Executive has not activated theirs yet — they set a password "
+                "from the link e-mailed to them.")
+    return "Both accounts are set up."

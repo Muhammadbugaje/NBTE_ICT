@@ -49,4 +49,10 @@ echo
   echo "  Applying database updates…"
   "$PY" manage.py migrate
 }
+# Reference data (flows, fees, templates, settings) ships with the code, not
+# with migrations: seed it on every start. Idempotent and never overwrites
+# edits — without this a newer onboarding flow (e.g. SOP-01 v4) stays absent.
+echo "  Checking reference data…"
+"$PY" manage.py seed_nbte --skip facilities.register,facilities.programme_masters >/dev/null 2>&1 \
+  || echo "  (seed_nbte reported a problem — run it by hand to see why)"
 exec "$PY" manage.py runserver 0.0.0.0:8000

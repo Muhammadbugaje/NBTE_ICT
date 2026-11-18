@@ -1,15 +1,23 @@
 {% load qa_tags static %}
 {% comment %}
-  v2.3 QA home: hero → numbers → your work (opens each task) → charts by
-  permission → spotlight → everything else you can see. Widgets come from
-  qa_core.home.build (need-to-know); charts from qa_core.home_charts.
+  QA home — every thing is said once:
+    1. hero
+    2. "Needs you now": ONE prioritised list (assignments.inbox rows, each with its action)
+       + one line for every other area that is waiting (confirmations, complaints …)
+    3. official letters to upload / new institutions needing an officer (their own action cards)
+    4. "At a glance" numbers
+    5. "Your areas": compact status cards (count, figures, link — no task text again);
+       areas with nothing waiting collapse into one "All clear" line
+    6. charts by permission, quick links
+  Data: qa_core.home.build (cached) → qa_core.home.present (dedupe, in the view);
+  charts from qa_core.home_charts.
 {% endcomment %}
 <div class="qh qh--v23" data-qa-home>
 <header class="ux-hero">
   <div>
     <span class="ux-hero__eyebrow">Quality Assurance · {% now "l j F" %}</span>
     <h1 data-qa-focus>{% if request.user.first_name %}Welcome back, {{ request.user.first_name }}{% else %}Your QA home{% endif %}</h1>
-    <p class="qh-today" data-qh-today="{{ home.today }}">{% if work_summary.total %}<strong>{{ work_summary.total }}</strong> thing{{ work_summary.total|pluralize }} need{{ work_summary.total|pluralize:"s," }} you{% if work_summary.overdue %} — <strong>{{ work_summary.overdue }} overdue</strong>{% endif %}. Start with the first one below.{% else %}Nothing needs you right now. Here is how NBTE's quality assurance is moving.{% endif %}</p>
+    <p class="qh-today" data-qh-today="{{ home.today }}">{% if work_summary.total %}<strong>{{ work_summary.total }}</strong> thing{{ work_summary.total|pluralize }} need{{ work_summary.total|pluralize:"s," }} you{% if work_summary.overdue %} — <strong>{{ work_summary.overdue }} overdue</strong>{% endif %}. Start with the first one below.{% elif present.also or present.journey %}A few things are waiting for you — they are listed first, below.{% else %}Nothing needs you right now. Here is how NBTE's quality assurance is moving.{% endif %}</p>
   </div>
   <div class="ux-hero__actions">
     <a class="btn btn-ghost" href="{% url 'assignments:my_work' %}">My work</a>
@@ -17,87 +25,106 @@
   </div>
 </header>
 
-{% include "accreditation/onboarding/_next_actions.html" with journey_actions=home.journey_actions %}
+{# ---- 2. Needs you now: the one list ---- #}
+<div class="qh-now">
+  {% if work_rows or not present.also and not present.journey %}{% include "partials/_work_inbox.html" with inbox_title="Needs you now" %}{% endif %}
+  {% include "accreditation/onboarding/_next_actions.html" with journey_actions=present.journey %}
+  {% if present.also %}
+  <section class="ux-card qh-also" aria-labelledby="qh-also-h">
+    <header class="ux-card__head"><div><h2 id="qh-also-h">Also waiting for you</h2><p>Queues that need you. Each opens the page where you act.</p></div></header>
+    <ul class="qh-also__list" role="list">
+      {% for a in present.also %}
+      <li class="{% if a.overdue %}vx-t-red{% else %}vx-t-amber{% endif %}">
+        <span class="qh-also__dot" aria-hidden="true"></span>
+        <span class="qh-also__text"><strong>{{ a.text }}</strong><small>{{ a.title }}</small></span>
+        {% if a.overdue %}<span class="vx-chip">Overdue</span>{% endif %}
+        {% if a.url %}<a class="btn btn-sm btn-primary" href="{{ a.url }}">{{ a.label }} →</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
 
+{# ---- 3. Action cards with their own controls ---- #}
 {% with olw=home.by_key.official_letters %}{% if olw and olw.count %}{% include "documents/official/_home_card.html" with w=olw %}{% endif %}{% endwith %}
+{% include "qa_core/_spotlight.html" %}
 
+{# ---- 4. At a glance ---- #}
 {% if charts.kpis %}
-<section class="ux-stats" aria-label="At a glance">
+<div class="ux-section-title qh-sec"><div><h2>At a glance</h2><p>The headline numbers for the part of QA you can see.</p></div></div>
+<section class="vx-kpis qh-kpis" aria-label="At a glance">
   {% for k in charts.kpis %}
-  {% if k.url %}<a class="ux-stat{% if k.tone %} ux-stat--{{ k.tone }}{% endif %}" href="{{ k.url }}">{% else %}<div class="ux-stat{% if k.tone %} ux-stat--{{ k.tone }}{% endif %}">{% endif %}
-    <span class="ux-stat__label">{{ k.label }}</span>
-    <span class="ux-stat__value">{{ k.value }}</span>
-    <span class="ux-stat__hint">{{ k.hint }}</span>
+  {% if k.url %}<a class="vx-kpi vx-t-{% if k.tone == 'gold' %}amber{% else %}{{ k.tone|default:'green' }}{% endif %}" href="{{ k.url }}">{% else %}<div class="vx-kpi vx-t-{% if k.tone == 'gold' %}amber{% else %}{{ k.tone|default:'green' }}{% endif %}">{% endif %}
+    <span class="vx-kpi__icon" aria-hidden="true">{% if "Institution" in k.label %}{% icon "building" 18 "2.2" %}{% elif "Onboarding" in k.label %}{% icon "flag" 18 "2.2" %}{% elif "Payment" in k.label %}{% icon "bank" 18 "2.2" %}{% elif "ocument" in k.label %}{% icon "file" 18 "2.2" %}{% elif "case" in k.label %}{% icon "layers" 18 "2.2" %}{% elif "Income" in k.label %}{% icon "trend" 18 "2.2" %}{% else %}{% icon "chart" 18 "2.2" %}{% endif %}</span>
+    <span class="vx-kpi__label">{{ k.label }}</span>
+    <strong class="vx-kpi__value">{{ k.value }}</strong>
+    <span class="vx-kpi__hint">{{ k.hint }}{% if k.url %} <span class="qh-kpi-go" aria-hidden="true">→</span>{% endif %}</span>
   {% if k.url %}</a>{% else %}</div>{% endif %}
   {% endfor %}
 </section>
 {% endif %}
 
-<div class="ux-grid">
-  <div class="{% if charts.panels %}ux-span-7{% else %}ux-span-12{% endif %}">{% include "partials/_work_inbox.html" %}</div>
-  {% if charts.panels %}
-  <div class="ux-span-5">
-    {% with p=charts.panels.0 %}
-    <section class="ux-card" aria-labelledby="ch-{{ p.id }}-h">
-      <header class="ux-card__head"><div><h2 id="ch-{{ p.id }}-h">{{ p.title }}</h2><p>{{ p.sub }}</p></div></header>
-      <div class="ux-chart{% if p.type == 'money' %} ux-chart--lg{% endif %}"><canvas data-ux-chart="{{ p.id }}" aria-label="{{ p.title }}" role="img"></canvas></div>
-    </section>
-    {% endwith %}
-  </div>
-  {% endif %}
-</div>
-
-{% if charts.panels|length > 1 %}
-<div class="ux-grid">
-  {% for p in charts.panels|slice:"1:" %}
-  <section class="ux-card {% if forloop.counter == 1 and charts.panels|length == 2 %}ux-span-12{% elif p.type == 'doughnut' %}ux-span-4{% else %}ux-span-8{% endif %}" aria-labelledby="ch-{{ p.id }}-h">
-    <header class="ux-card__head"><div><h2 id="ch-{{ p.id }}-h">{{ p.title }}</h2><p>{{ p.sub }}</p></div></header>
-    <div class="ux-chart"><canvas data-ux-chart="{{ p.id }}" aria-label="{{ p.title }}" role="img"></canvas></div>
-  </section>
-  {% endfor %}
-</div>
-{% endif %}
-{% if charts.panels %}{{ charts.panels|json_script:"ux-chart-data" }}{% endif %}
-
-{% include "qa_core/_spotlight.html" %}
-
-{% if home.widgets %}
-<div class="ux-section-title"><h2>Everything you can see</h2>{% if home.today %}<span class="ux-muted">{{ home.today }} item{{ home.today|pluralize }} today</span>{% endif %}</div>
-<div class="qh-grid qh-grid--v23">
-  {% for w in home.widgets %}{% if w.key != "official_letters" or not w.count %}
-  <section class="ux-card qh-card qh-tone-{{ w.tone }}" data-widget="{{ w.key }}" aria-labelledby="qh-{{ w.key }}-h">
+{# ---- 5. Your areas: status only ---- #}
+{% if present.areas or present.clear %}
+<div class="ux-section-title qh-sec"><div><h2>Your areas</h2><p>The state of each part of QA you are responsible for or may see — numbers and a link, nothing repeated from the list above.</p></div>
+  {% if present.areas %}<span class="vx-chips" aria-label="Colour key"><span class="vx-chip vx-t-red">Overdue</span><span class="vx-chip vx-t-amber">Needs attention</span><span class="vx-chip vx-t-green">On track</span><span class="vx-chip vx-t-blue">For information</span></span>{% endif %}</div>
+{% if present.areas %}
+<div class="qh-grid qh-grid--v23 qh-areas">
+  {% for a in present.areas %}{% with w=a.w %}
+  <section class="ux-card qh-card qh-area qh-tone-{{ w.tone }} vx-t-{{ a.colour }}" data-widget="{{ w.key }}" aria-labelledby="qh-{{ w.key }}-h">
     <header class="ux-card__head">
-      <div><h2 id="qh-{{ w.key }}-h">{{ w.title }}</h2><p>{{ w.why }}</p></div>
+      <div><span class="vx-chip qh-card__state">{{ a.state }}</span>
+        <h2 id="qh-{{ w.key }}-h">{{ w.title }}</h2><p>{{ w.why }}</p></div>
       <strong class="qh-count" data-count="{{ w.count }}" aria-label="{{ w.count }}">{{ w.count }}</strong>
     </header>
-    {% if w.action %}<p class="qh-action-line">→ {{ w.action }}</p>{% endif %}
     {% if w.stats %}
     <dl class="qh-stats">{% for s in w.stats %}<div><dt>{{ s.0 }}</dt><dd>{{ s.1 }}</dd></div>{% endfor %}</dl>
     {% endif %}
     {% if w.pipeline %}
     <ul class="ux-bars" aria-label="Open cases by stage">{% for p in w.pipeline %}<li><span>{{ p.label }}</span><span class="ux-bars__track"><i style="width:{{ p.pct }}%"></i></span><b>{{ p.count }}</b></li>{% endfor %}</ul>
     {% endif %}
-    {% if w.items %}
+    {% if a.items %}
     <ul class="qh-items" role="list">
-      {% for it in w.items %}
-      <li class="{% if it.overdue %}is-overdue{% endif %}">
+      {% for it in a.items %}
+      <li>
         {% if it.url %}<a href="{{ it.url }}">{{ it.label }}</a>{% else %}<span class="qh-items__t">{{ it.label }}</span>{% endif %}
         {% if it.sub %}<span class="qh-items__s">{{ it.sub }}</span>{% endif %}
-        {% if it.due_at %}<span class="ux-chip {% if it.overdue %}ux-chip--red{% else %}ux-chip--gold{% endif %}">{% if it.overdue %}Overdue · {% else %}Due {% endif %}{{ it.due_at|date:"j M" }}</span>{% endif %}
+        {% if it.due_at %}<span class="ux-chip ux-chip--gold">{{ it.due_at|date:"j M" }}</span>{% endif %}
       </li>
       {% endfor %}
     </ul>
     {% endif %}
     {% if w.url %}<p class="qh-more"><a class="btn btn-sm btn-subtle" href="{{ w.url }}">{{ w.url_label }} →</a></p>{% endif %}
   </section>
-  {% endif %}{% endfor %}
+  {% endwith %}{% endfor %}
 </div>
+{% endif %}
+{% if present.clear %}
+<p class="qh-clear vx-t-green"><span class="qh-clear__icon" aria-hidden="true">{% icon "check" 16 "3" %}</span>
+  <span><strong>All clear{% if not present.areas %} — nothing is waiting in any of your areas{% endif %}:</strong>
+  {% for c in present.clear %}{% if c.url %}<a href="{{ c.url }}" data-widget="{{ c.key }}">{{ c.title }}</a>{% else %}<span data-widget="{{ c.key }}">{{ c.title }}</span>{% endif %}{% if not forloop.last %}<span aria-hidden="true"> · </span>{% endif %}{% endfor %}</span></p>
+{% endif %}
+{% endif %}
+
+{# ---- 6. Charts ---- #}
+{% if charts.panels %}
+<div class="ux-section-title qh-sec"><div><h2>How QA is moving</h2><p>Live charts of what you are allowed to see.</p></div></div>
+<div class="ux-grid qh-charts{% if charts.panels|length == 1 %} qh-charts--solo{% endif %}">
+  {% for p in charts.panels %}
+  <section class="ux-card {% if charts.panels|length == 1 %}ux-span-12{% elif p.type == 'doughnut' %}ux-span-4{% elif p.type == 'money' %}ux-span-12{% else %}ux-span-8{% endif %}" aria-labelledby="ch-{{ p.id }}-h">
+    <header class="ux-card__head"><div><h2 id="ch-{{ p.id }}-h">{{ p.title }}</h2><p>{{ p.sub }}</p></div></header>
+    <div class="ux-chart{% if p.type == 'money' %} ux-chart--lg{% endif %}"><canvas data-ux-chart="{{ p.id }}" aria-label="{{ p.title }}" role="img"></canvas></div>
+  </section>
+  {% endfor %}
+</div>
+{{ charts.panels|json_script:"ux-chart-data" }}
 {% endif %}
 
 {% if home.links %}
-<nav class="ux-card ux-mt" aria-labelledby="qh-links-h">
-  <header class="ux-card__head"><div><h2 id="qh-links-h">Quick links</h2></div></header>
-  <div class="ux-filters" style="margin:0">{% for l in home.links %}<a class="ux-filter" href="{{ l.url }}">{{ l.label }}</a>{% endfor %}</div>
+<nav class="qh-quick" aria-labelledby="qh-links-h">
+  <div class="ux-section-title qh-sec"><div><h2 id="qh-links-h">Quick links</h2><p>Jump straight to the pages you use most.</p></div></div>
+  <div class="qh-quick__grid">{% for l in home.links %}<a class="qh-quick__link {% cycle 'vx-t-green' 'vx-t-blue' 'vx-t-violet' 'vx-t-amber' 'vx-t-teal' 'vx-t-pink' %}" href="{{ l.url }}"><span class="qh-quick__dot" aria-hidden="true">{% icon "arrow" 14 "2.4" %}</span>{{ l.label }}</a>{% endfor %}</div>
 </nav>
 {% endif %}
 <script src="{% static 'js/ux-charts.js' %}" data-chart-lib="{% static 'vendor/chart-4.4.1.umd.js' %}" defer></script>

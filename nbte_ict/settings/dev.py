@@ -89,7 +89,11 @@ if _database_backend == "sqlite":
             # competing connection WAIT up to 30 s for the lock instead of
             # failing immediately. WAL mode + a per-connection busy timeout
             # are set in core/apps.py on every connection.
-            "OPTIONS": {"timeout": 30},
+            # IMMEDIATE: a transaction takes the write lock when it starts, so
+            # two writers (a page and the background e-mail sender) queue
+            # behind each other for up to ``timeout`` instead of one failing at
+            # once with "database is locked" when it upgrades a read to a write.
+            "OPTIONS": {"timeout": 30, "transaction_mode": "IMMEDIATE"},
         }
     }
 elif _database_backend == "url":

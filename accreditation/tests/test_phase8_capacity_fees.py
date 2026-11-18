@@ -253,6 +253,7 @@ def test_qa_request_fee_and_estimate_use_streams(p3):
 
 def test_portal_estimate_recalculates_with_streams(p3, client_for, portal_host):
     set_config("qa.fee.qa_request.per_additional_stream", "40000")
+    set_config("qa.onboarding.profile_gate_enabled", "false")  # the fixture institution has no full profile
     c = client_for(p3.admin, host=portal_host)
     url = "/qa-requests/estimate/"
     r = c.get(url, {"type": "increase_capacity", "programmes": [p3.cs.pk], f"streams_{p3.cs.pk}": "2"},

@@ -58,7 +58,8 @@ BUNDLES = {
     # link it from the page body, i.e. after everything else)
     "finish": [(None, ["apple.css", "polish.css", "qa-redesign.css", "v21-platform.css", "nbte-ux.css", "ux-pages.css",
                                     "ux-finance.css", "ux-portal.css", "ux-appdetail.css", "ux-case.css",
-                                    "work-hub.css"])],   # Requests / Tasks / Tickets heroes + polish
+                                    "work-hub.css",
+                                    "qa-v23.css"])],   # Requests / Tasks / Tickets heroes + polish; v2.3 redesign layer last
     # Same for the public and sign-in shells (no qa-redesign)
     "finish-public": [(None, ["apple.css", "polish.css", "nbte-ux.css"])],
     # QA portal sign-in shell (templates/qa_portal/base_auth.html)

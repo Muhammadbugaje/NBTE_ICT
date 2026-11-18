@@ -232,11 +232,24 @@ def w_clearances(user, prof):
     from accreditation.services import clearance_rows
 
     rows = clearance_rows(user, status="pending")
-    n = len(rows)
+    n_docs = len(rows)
+    try:  # programme clearance (onboarding) is a separate queue, often for another department (NTIRD)
+        from accreditation import onboarding_programmes as op
+
+        n_prog = len(op.queue(user, status="pending"))
+    except Exception:
+        n_prog = 0
+    n = n_docs + n_prog
     if not n and prof["directed"] is None:
         return None
-    w = Widget("clearances", "Department clearances", f"Applications waiting for {user.department.name}'s "
-               "clearance.", count=n, url=_url("qa_app:clearance"), url_label="Clearance queue", actionable=n,
+    if n_prog and not n_docs:
+        url, label = _url("qa_app:programmes"), "Programme clearance queue"
+    else:
+        url, label = _url("qa_app:clearance"), "Clearance queue"
+    detail = f"Applications waiting for {user.department.name}'s clearance."
+    if n_prog:
+        detail += f" {n_prog} programme list{'s' if n_prog != 1 else ''} to clear."
+    w = Widget("clearances", "Department clearances", detail, count=n, url=url, url_label=label, actionable=n,
                tone="warn" if n else "ok", priority=30)
     for row in rows[:5]:
         app = getattr(row, "application", None)
@@ -544,6 +557,74 @@ def w_oversight(user, prof):
     return w
 
 
+def team_workload(department, now=None):
+    """v2.3: open QA tasks (case stages, reviews, complaints) per member of ``department`` (people with
+    none are included), busiest first, plus segregation-of-duties conflicts
+    on that department's open cases: one person holding two of the desk,
+    supervising Audit and supervising Finance roles."""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count, Q
+
+    from accreditation.models import QACase
+    from tasks.models import TaskAssignee
+
+    now = now or timezone.now()
+    User = get_user_model()
+    people = list(User.objects.filter(is_active=True, user_type="staff", department=department)
+                  .order_by("first_name", "last_name")[:80])
+    open_rows = (TaskAssignee.objects.filter(user__in=people, task__qa_link__closed_at__isnull=True)
+                 .exclude(state__in=(TaskAssignee.DONE, TaskAssignee.DECLINED))
+                 .values("user_id").annotate(n=Count("task_id", distinct=True),
+                                             late=Count("task_id", distinct=True,
+                                                        filter=Q(task__qa_link__due_at__lt=now))))
+    counts = {r["user_id"]: r for r in open_rows}
+    rows = [{"user": u, "open": counts.get(u.pk, {}).get("n", 0), "late": counts.get(u.pk, {}).get("late", 0)}
+            for u in people]
+    rows.sort(key=lambda r: (-r["open"], -r["late"], (r["user"].get_full_name() or r["user"].email).lower()))
+    conflicts = []
+    for case in (QACase.unscoped.filter(owning_department=department, completed_at__isnull=True)
+                 .select_related("institution", "desk_officer")[:300]):
+        roles = {"desk officer": case.desk_officer_id, "Audit officer": case.supervising_audit_officer_id,
+                 "Finance officer": case.supervising_finance_officer_id}
+        seen = {}
+        for role, uid in roles.items():
+            if uid and uid in seen:
+                conflicts.append({"case": case, "roles": (seen[uid], role)})
+            elif uid:
+                seen[uid] = role
+    return {"rows": rows, "conflicts": conflicts,
+            "open": sum(r["open"] for r in rows), "late": sum(r["late"] for r in rows)}
+
+
+def w_team_load(user, prof):
+    """Directors (and their delegates): who on the team holds what."""
+    department = prof["directed"] or (user.department if prof["lead"] else None)
+    if department is None:
+        return None
+    data = team_workload(department)
+    if not data["rows"]:
+        return None
+    busy = [r for r in data["rows"] if r["open"]]
+    w = Widget("team_load", f"Your team's workload — {department.name}",
+               "Open QA tasks each person holds — case stages, reviews and complaints — busiest first.",
+               count=data["open"], url=_url("qa_case:board"), url_label="Case board",
+               tone="danger" if data["conflicts"] else ("warn" if data["late"] else "ok"),
+               overdue=0, priority=55)
+    w.stats = [("People", len(data["rows"])), ("Open tasks", data["open"]), ("Overdue", data["late"]),
+               ("Duty conflicts", len(data["conflicts"]))]
+    top = max([r["open"] for r in busy] + [1])
+    w.pipeline = [{"label": (r["user"].get_full_name() or r["user"].email) + (f" · {r['late']} late" if r["late"] else ""),
+                   "count": r["open"], "pct": round(100 * r["open"] / top)} for r in busy[:8]]
+    for c in data["conflicts"][:4]:
+        w.items.append(Item(f"{c['case'].reference}: one person is both {c['roles'][0]} and {c['roles'][1]}",
+                            c["case"].institution.name, _url("qa_case:detail", c["case"].pk), None, True))
+    if data["conflicts"]:
+        w.actionable = len(data["conflicts"])
+        w.action = (f"Fix {len(data['conflicts'])} segregation-of-duties conflict"
+                    f"{'s' if len(data['conflicts']) != 1 else ''}")
+    return w
+
+
 # ---------------------------------------------------------------------------
 # The page
 # ---------------------------------------------------------------------------
@@ -590,7 +671,7 @@ def build(user, request=None):
 
     prof = profile(user)
     builders = (w_my_work, w_finance, w_honoraria_financial, w_honoraria, w_cases, w_complaints, w_document_reviews, w_clearances,
-                w_ssq, w_visits, w_supervised, w_official_letters, w_oversight)
+                w_ssq, w_visits, w_supervised, w_official_letters, w_team_load, w_oversight)
     widgets = [_safe(b, user, prof) for b in builders] + [_safe(w_decisions, user, request)]
     widgets = [w for w in widgets if w is not None]
     widgets.sort(key=lambda w: w.priority)
@@ -613,3 +694,44 @@ def build(user, request=None):
         "overdue": sum(w.overdue for w in widgets if w.key != "oversight"),
         "links": quick_links(nav),
     }
+
+
+# ---------------------------------------------------------------------------
+# Presentation: say each thing once
+# ---------------------------------------------------------------------------
+# Widgets whose actionable items are already rows of the "Needs you now" list
+# (assignments.inbox: document reviews, case stages, work assignments, onboarding actions).
+_IN_INBOX = {"my_work", "document_reviews", "cases"}
+_STATE = {"danger": ("Overdue", "red"), "warn": ("Needs attention", "amber"), "ok": ("On track", "green"),
+          "info": ("For information", "blue")}
+
+
+def present(data, work_rows):
+    """Split the cached ``build()`` result for the template so nothing is repeated:
+
+    ``journey``  onboarding next-actions that are *not* already a row of the work list;
+    ``also``     one line per actionable area the work list does not cover (confirmations, complaints…);
+    ``areas``    compact status cards (count, figures, link) for areas that have something to show;
+    ``clear``    areas with nothing waiting, for a single "All clear" line.
+    Read-only: the cached widgets are not changed.
+    """
+    seen = {r.get("url") for r in work_rows or [] if r.get("url")}
+    journey = [a for a in data.get("journey_actions") or [] if a.get("url") not in seen]
+    seen |= {a.get("url") for a in journey}
+    also, areas, clear = [], [], []
+    for w in data.get("widgets") or []:
+        if w.key == "official_letters" and w.count:
+            continue  # has its own card
+        if w.actionable and w.action and w.key not in _IN_INBOX and w.url not in seen:
+            also.append({"text": w.action, "title": w.title, "url": w.url, "label": w.url_label,
+                         "overdue": bool(w.overdue)})
+        if w.tone == "ok" and not w.count and not w.actionable and not w.overdue:
+            clear.append({"key": w.key, "title": w.title, "url": w.url})
+            continue
+        label, colour = _STATE.get(w.tone, _STATE["info"])
+        items = []
+        if w.tone == "info":   # reference lists only; anything to act on is in the list at the top
+            items = [it for it in w.items if getattr(it, "url", "") not in seen][:3]
+        areas.append({"w": w, "state": label, "colour": colour, "items": items})
+    also.sort(key=lambda a: 0 if a["overdue"] else 1)
+    return {"journey": journey, "also": also, "areas": areas, "clear": clear}

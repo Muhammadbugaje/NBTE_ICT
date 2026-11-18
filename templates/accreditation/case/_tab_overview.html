@@ -14,47 +14,28 @@
     </section>
     {% endif %}
 
-    {% if started and earlier_stages %}{% include "accreditation/case/_change_requests.html" with change_kind="rollback" %}{% endif %}
+    {% if started and earlier_stages %}
+      {% if open_change %}{% include "accreditation/case/_change_requests.html" with change_kind="rollback" %}
+      {% else %}<details class="v3-fold">
+        <summary><span class="v3-fold__icon" aria-hidden="true">{% icon "rotate" 15 "2.2" %}</span><span><strong>Send the case back to an earlier stage</strong><small>Director review, then ES approval. Only needed when earlier work must be redone.</small></span></summary>
+        {% include "accreditation/case/_change_requests.html" with change_kind="rollback" %}
+      </details>{% endif %}
+    {% endif %}
 
     {% if journey %}
     <section class="c3-sec" aria-labelledby="c3-jr-h">
       <header class="c3-sec__head"><span class="c3-sec__num">{% icon "layers" 14 "2.4" %}</span>
         <div><h2 id="c3-jr-h">The whole journey</h2><p>Every SOP-03 step, who holds it and for how long. Finished steps show who did them and when.</p></div></header>
-      <ol class="c3-journey">
-        {% for st in journey %}
-        <li class="c3-journey__step is-{{ st.state }}{% if st.overdue %} is-overdue{% endif %}"{% if st.state == "current" %} aria-current="step"{% endif %}>
-          <span class="c3-journey__dot" aria-hidden="true">{% if st.state == "done" %}{% icon "check" 13 "3" %}{% elif st.no == 0 %}{% icon "flag" 12 "2.4" %}{% else %}{{ st.no }}{% endif %}</span>
-          <div class="c3-journey__body">
-            <div class="c3-journey__top">
-              <strong>{{ st.label }}</strong>
-              {% if st.state == "current" %}<span class="qa-chip qa-tone-pending">Now</span>{% endif %}
-              {% if st.overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}
-              {% if st.state == "done" and st.done_at %}<span class="c3-journey__when">{{ st.done_at|date:"j M Y" }}</span>{% endif %}
-            </div>
-            {% if st.state != "todo" %}
-            <ul class="c3-journey__parts" role="list">
-              {% for p in st.parts %}
-              <li class="is-{{ p.state }}">
-                {% if st.is_parallel %}<span class="c3-journey__part">{% if p.code == "assign_audit_officer" %}Audit{% elif p.code == "assign_finance_officer" %}Finance{% elif p.code == "assign_ict_officer" %}ICT{% else %}{{ p.label }}{% endif %}</span>{% endif %}
-                {% if p.link %}
-                  <span class="c3-journey__who">{% for u in p.holders %}<span class="c3-person c3-person--sm"><span class="c3-av" aria-hidden="true">{{ u|initials }}</span>{{ u|who }}</span>{% empty %}<span class="qa-chip qa-tone-warn">Department queue</span>{% endfor %}</span>
-                  <span class="c3-muted">{% if p.since %}holding for {{ p.since }}{% endif %}{% if p.due_at %} · {% if p.overdue %}<strong class="c3-late">was due {{ p.due_at|date:"j M" }}</strong>{% else %}due {{ p.due_at|date:"j M" }}{% endif %}{% endif %}</span>
-                  {% if can_remind and p.holders and request.user not in p.holders %}
-                  <form class="c3-remind" method="post" action="{% url 'qa_case:remind' case.pk p.code %}" hx-post="{% url 'qa_case:remind' case.pk p.code %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="overview">
-                    <button class="btn btn-xs btn-subtle" type="submit">{% icon "bell" 12 "2.2" %} Remind</button></form>
-                  {% endif %}
-                {% elif p.done_by %}
-                  <span class="c3-muted">by {% for u in p.done_by %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if p.done_at %} · {{ p.done_at|date:"j M, H:i" }}{% endif %}</span>
-                {% elif p.state == "done" %}<span class="c3-muted">Done</span>
-                {% else %}<span class="c3-muted">{{ p.who }}</span>{% endif %}
-              </li>
-              {% endfor %}
-            </ul>
-            {% else %}<span class="c3-muted c3-journey__next">{{ st.guide.who|default:"" }}</span>{% endif %}
-          </div>
-        </li>
-        {% endfor %}
-      </ol>
+      {% with done_n=journey_done|length %}
+      {% if done_n > 3 %}
+      <details class="v3-journey-done">
+        <summary><span class="v3-journey-done__dot" aria-hidden="true">{% icon "check" 13 "3" %}</span><span><strong>{% if journey_done_steps %}Stages 1–{{ journey_done_steps }} done{% else %}Case opened{% endif %}</strong><small>Show who did them and when</small></span></summary>
+        <ol class="c3-journey">{% for st in journey_done %}{% include "accreditation/case/_journey_step.html" %}{% endfor %}</ol>
+      </details>
+      <ol class="c3-journey" start="{{ done_n|add:1 }}">{% for st in journey_rest %}{% include "accreditation/case/_journey_step.html" %}{% endfor %}</ol>
+      {% else %}
+      <ol class="c3-journey">{% for st in journey %}{% include "accreditation/case/_journey_step.html" %}{% endfor %}</ol>
+      {% endif %}{% endwith %}
     </section>
     {% endif %}
   </div>
@@ -86,7 +67,21 @@
         <div><dt>Supervising Finance officer</dt><dd>{{ case.supervising_finance_officer|who:"Not chosen" }}</dd></div>
         <div><dt>Tracking ICT officer{{ ict_required|pluralize }}</dt><dd>{% for u in tracking_ict %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% empty %}Not chosen{% endfor %}</dd></div>
         <div><dt>Team lead</dt><dd>{{ visit.team_lead|default:"Not chosen" }}</dd></div>
+        <div><dt>Division Director <small class="c3-muted">(confirms stages 4 and 9)</small></dt><dd>{% if division_director %}{{ division_director|who }}{% else %}The Director{% endif %}</dd></div>
       </dl>
+      {% if can_set_division_director %}
+      <form class="v3-dd-form" method="post" action="{% url 'qa_case:division_director' case.pk %}" hx-post="{% url 'qa_case:division_director' case.pk %}" hx-target="#qa-panel">{% csrf_token %}
+        <label for="dd-pick" class="v3-dd-form__label">Division Director for this case</label>
+        <div class="v3-dd-form__row">
+          <select id="dd-pick" name="director" class="form-control">
+            <option value="">— The Director confirms —</option>
+            {% for u in division_director_candidates %}<option value="{{ u.pk }}"{% if division_director and division_director.pk == u.pk %} selected{% endif %}>{{ u|who }}{% if u.role %} · {{ u.role.name }}{% endif %}</option>{% endfor %}
+          </select>
+          <button class="btn btn-sm btn-subtle" type="submit">Save</button>
+        </div>
+        <p class="c3-muted c3-small">Advisory and confirmation only — no extra approval step. You can still act on stages 4 and 9 yourself.</p>
+      </form>
+      {% endif %}
     </section>
 
     <section class="c3-card" aria-labelledby="c3-visit-h">

@@ -180,16 +180,25 @@ class ReportForm(QAForm):
     recommendation = forms.ChoiceField(choices=[("", "—")] + PostVisitReport.RECOMMENDATION_CHOICES, required=False,
                                        label="Team recommendation")
 
-    def __init__(self, *args, report=None, **kwargs):
+    def __init__(self, *args, report=None, digest=None, **kwargs):
         super().__init__(*args, **kwargs)
+        # v2.3: empty sections start from the accepted attendee reports (digest)
+        digest = digest or {}
+        self.prefilled = []
         for key, label, help_text in REPORT_SECTIONS:
             self.fields[f"f_{key}"] = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), required=False,
                                                       label=label, help_text=help_text)
             if report is not None and not self.is_bound:
-                self.initial[f"f_{key}"] = (report.findings or {}).get(key, "")
+                value = (report.findings or {}).get(key, "")
+                if not (value or "").strip() and (digest.get("findings") or {}).get(key):
+                    value = digest["findings"][key]
+                    self.prefilled.append(key)
+                self.initial[f"f_{key}"] = value
         if report is not None and not self.is_bound:
-            self.initial["summary"] = report.summary
-            self.initial["recommendation"] = report.recommendation
+            self.initial["summary"] = report.summary or digest.get("summary", "")
+            self.initial["recommendation"] = report.recommendation or digest.get("recommendation", "")
+            if not (report.summary or "").strip() and digest.get("summary"):
+                self.prefilled.append("summary")
         self.order_fields([f"f_{k}" for k, _l, _h in REPORT_SECTIONS] + ["summary", "recommendation"])
 
     def findings(self):

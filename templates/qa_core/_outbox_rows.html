@@ -1,9 +1,29 @@
+{% load qa_tags %}
 {% if page.rows %}
+  <ul class="vx-mail__items" role="list">
   {% for m in page.rows %}
-    <details class="qa-mail">
-      <summary class="qa-row qa-row--between"><span><strong>{{ m.subject }}</strong><span class="qa-desc">To {{ m.recipients|join:", " }}</span></span><span class="qa-small qa-muted">{{ m.created_at|date:"j M Y, H:i:s" }} · {{ m.category }}</span></summary>
-      <pre>{{ m.body_text|urlize }}</pre>
-    </details>
+    <li>
+      <button class="vx-mail__item {% if m.category == 'reset' %}vx-t-amber{% elif m.category == 'qa' %}vx-t-green{% else %}vx-t-blue{% endif %}" type="button" data-vx-mail-item
+              data-subject="{{ m.subject }}" data-to="{{ m.recipients|join:', ' }}" data-category="{{ m.category|default:'e-mail' }}"
+              data-time="{{ m.created_at|date:'l j F Y, H:i:s' }}" data-has-html="{% if m.body_html %}1{% else %}0{% endif %}">
+        <span class="vx-mail__avatar" aria-hidden="true">{{ m.recipients.0|default:"?"|slice:":1"|upper }}</span>
+        <span class="vx-mail__item-main">
+          <span class="vx-mail__item-top"><span class="vx-mail__item-to">{{ m.recipients.0|default:"No recipient" }}{% if m.recipients|length > 1 %} <span class="vx-mail__more">+{{ m.recipients|length|add:"-1" }}</span>{% endif %}</span><time datetime="{{ m.created_at|date:'c' }}">{{ m.created_at|date:"j M, H:i" }}</time></span>
+          <span class="vx-mail__item-subject">{{ m.subject }}</span>
+          <span class="vx-mail__item-snippet">{{ m.body_text|truncatechars:120 }}</span>
+          <span class="vx-chip">{{ m.category|default:"e-mail" }}</span>
+        </span>
+        <template data-vx-mail-html>{{ m.body_html }}</template>
+        <template data-vx-mail-text>{{ m.body_text }}</template>
+      </button>
+    </li>
   {% endfor %}
+  </ul>
   {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
-{% else %}<div class="nbte-empty-state qa-empty"><h3 class="nbte-empty-state__title">No messages</h3></div>{% endif %}
+{% else %}
+  <div class="vx-empty">
+    <span class="vx-empty__icon vx-t-slate" aria-hidden="true">{% icon "inbox" 26 "2" %}</span>
+    <h3>No messages</h3>
+    <p>{% if filters.q or filters.category or filters.period or filters.to %}Nothing matches these filters. Try clearing the search or choosing “Any time”.{% else %}Nothing has been logged yet. Messages appear here when the QA system writes an e-mail in log-only mode.{% endif %}</p>
+  </div>
+{% endif %}

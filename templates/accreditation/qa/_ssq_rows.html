@@ -1,37 +1,38 @@
 {% load qa_tags %}
+{% comment %}
+  SSQ queue rows (HTMX target #qa-rows). One row = one SSQ: institution and
+  programme, submitted date, stage chip, who holds it, time at the stage, and
+  one primary action (Review). "Details" holds the routing facts and the
+  reminder form (_ssq_who.html).
+{% endcomment %}
 {% if page.rows %}
-  <ul class="ssq-rows" role="list">
+  <div class="sq-list" role="table" aria-label="SSQs">
+    <div class="sq-head" role="row">
+      <span role="columnheader">Institution and programme</span><span role="columnheader">Submitted</span><span role="columnheader">Stage</span>
+      <span role="columnheader">Now with</span><span role="columnheader">At this stage</span><span role="columnheader" class="sr-only">Action</span>
+    </div>
     {% for s in page.rows %}
       {% with r=s.qa_request_programme.qa_request w=s.who %}
-      <li class="ssq-row{% if w.overdue %} is-overdue{% endif %}">
-        <div class="ssq-row__main">
-          <span class="ssq-row__code" aria-hidden="true">{{ r.institution.code|default:"—" }}</span>
-          <div class="ssq-row__title">
-            {% if s.can_open %}<a href="{% url 'qa_req:ssq' s.pk %}" hx-get="{% url 'qa_req:ssq' s.pk %}" hx-target="#qa-panel" hx-push-url="true"><strong>{{ s.qa_request_programme.programme }}</strong></a>{% else %}<strong>{{ s.qa_request_programme.programme }}</strong>{% endif %}
-            <span class="qa-small">{{ r.institution.name }}</span>
-            <span class="ssq-row__meta qa-small qa-muted"><span class="qa-mono">{{ r.reference }}</span> · {{ r.qa_type.name }} · v{{ s.version }}{% if s.submitted_at %} · submitted {{ s.submitted_at|date:"j M Y" }}{% endif %}</span>
-          </div>
+      <div class="sq-row{% if w.overdue %} is-overdue{% endif %}" role="row">
+        <div class="sq-cell sq-cell--main" role="cell">
+          <strong class="sq-inst">{{ r.institution.name }}</strong>
+          <span class="sq-prog">{% if s.can_open %}<a href="{% url 'qa_req:ssq' s.pk %}" hx-get="{% url 'qa_req:ssq' s.pk %}" hx-target="#qa-panel" hx-push-url="true">{{ s.qa_request_programme.programme }}</a>{% else %}{{ s.qa_request_programme.programme }}{% endif %}</span>
+          <span class="sq-meta"><span class="qa-mono">{{ r.reference }}</span> · {{ r.qa_type.name }} · v{{ s.version }}</span>
         </div>
-        <div class="ssq-row__who">
-          <span class="qa-chip {{ w.tone }}">{{ w.label }}</span>
-          <span class="qa-small"><span class="qa-muted">Dept:</span> {{ w.department.name|default:"—" }}</span>
-          <span class="qa-small"><span class="qa-muted">Now with:</span> <strong>{{ w.holder_label|default:"—" }}</strong>{% if w.holder_role %} <span class="qa-muted">({{ w.holder_role|lower }})</span>{% endif %}</span>
-          {% if w.is_open and w.approver %}<span class="qa-small"><span class="qa-muted">Approves:</span> {{ w.approver|who }}</span>{% endif %}
+        <div class="sq-cell" role="cell" data-label="Submitted">{% if s.submitted_at %}{{ s.submitted_at|date:"j M Y" }}{% else %}<span class="qa-muted">Not yet</span>{% endif %}</div>
+        <div class="sq-cell" role="cell" data-label="Stage"><span class="qa-chip {{ w.tone }}" title="{{ w.label }}">{% if w.stage == "awaiting_assignment" %}Needs an officer{% elif w.stage == "offered" %}Offered to officer{% elif w.stage == "under_assessment" %}Under assessment{% elif w.stage == "awaiting_approval" %}Awaiting approval{% elif w.stage == "approved" %}Approved{% elif w.stage == "returned" %}Returned{% elif w.stage == "with_institution" %}With the institution{% else %}{{ w.label }}{% endif %}</span></div>
+        <div class="sq-cell sq-cell--who" role="cell" data-label="Now with"><span class="sq-who">{{ w.holder_label|default:"—" }}</span>{% if w.holder_role %}<span class="sq-meta">{{ w.holder_role }}{% if w.department and w.holder_role != "Institution" %} · {{ w.department.name }}{% endif %}</span>{% endif %}</div>
+        <div class="sq-cell" role="cell" data-label="At this stage">{% if w.days is not None and w.is_open %}<span class="qa-chip {% if w.overdue %}qa-tone-danger{% endif %} sq-age">{{ w.days }} day{{ w.days|pluralize }}{% if w.overdue %} · overdue{% endif %}</span>{% else %}<span class="qa-muted">—</span>{% endif %}</div>
+        <div class="sq-cell sq-cell--act" role="cell">
+          {% if s.can_open %}<a class="btn btn-sm btn-primary" href="{% url 'qa_req:ssq' s.pk %}" hx-get="{% url 'qa_req:ssq' s.pk %}" hx-target="#qa-panel" hx-push-url="true">Review<span class="sr-only"> {{ s.qa_request_programme.programme }}, {{ r.institution.name }}</span></a>{% endif %}
+          <details class="qa-menu sq-more"><summary class="btn btn-sm btn-subtle" title="Who is handling it{% if s.can_nudge %}, and send a reminder{% endif %}">Details</summary>
+            <div class="qa-menu__panel sq-more__panel">{% include "accreditation/qa/_ssq_who.html" with who=w ssq=s compact=True can_nudge=s.can_nudge nudge_from="queue" %}</div>
+          </details>
         </div>
-        <div class="ssq-row__side">
-          {% if w.days is not None and w.is_open %}<span class="ssq-row__days{% if w.overdue %} is-overdue{% endif %}"><strong>{{ w.days }}</strong> day{{ w.days|pluralize }}</span>{% endif %}
-          {% if w.overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}
-          <div class="ssq-row__actions">
-            {% if s.can_open %}<a class="btn btn-sm btn-primary" href="{% url 'qa_req:ssq' s.pk %}" hx-get="{% url 'qa_req:ssq' s.pk %}" hx-target="#qa-panel" hx-push-url="true">Open</a>{% endif %}
-            <details class="ssq-row__more"><summary class="btn btn-sm btn-subtle">Who is handling it</summary>
-              <div class="ssq-row__panel">{% include "accreditation/qa/_ssq_who.html" with who=w ssq=s compact=True can_nudge=s.can_nudge nudge_from="queue" %}</div>
-            </details>
-          </div>
-        </div>
-      </li>
+      </div>
       {% endwith %}
     {% endfor %}
-  </ul>
+  </div>
   {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
 {% else %}
   <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "check" 28 %}</span><h3 class="nbte-empty-state__title">Nothing here</h3><p class="nbte-empty-state__body">{% if status == "submitted" %}No SSQ is waiting at NBTE in your scope.{% elif status == "unassigned" %}Every SSQ at NBTE has an officer.{% elif status == "overdue" %}Nothing is overdue.{% else %}No SSQs match these filters.{% endif %}</p></div>

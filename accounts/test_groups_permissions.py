@@ -440,10 +440,14 @@ def test_user_access_list_view(client, admin_user, people):
 
 
 def test_sidebar_section_visibility(client, admin_user, people):
+    # v2.3: "User Management" is merged into "People & access"; the access
+    # screens' links are what admins see and plain staff do not.
+    access = reverse("accounts:groups:users").encode()
     client.force_login(admin_user)
-    assert b"User Management" in client.get(reverse("core:home")).content
+    page = client.get(reverse("core:home")).content
+    assert b"People &amp; access" in page and access in page
     client.force_login(people["staff"])
-    assert b"User Management" not in client.get(reverse("core:home")).content
+    assert access not in client.get(reverse("core:home")).content
 
 
 # ---------------------------------------------------------------------------

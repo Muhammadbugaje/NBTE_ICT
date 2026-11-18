@@ -586,14 +586,50 @@ def clear(ssq, *, by, remark=""):
                     public_text=f"NBTE cleared the self-study for {ssq.programme}.",
                     internal_text=f"{_name(by)} cleared {ssq.programme}.")
     if ready_for_approval(app):
-        timeline.record(inst, "onboarding.ready_for_approval", subject=app, actor=by, visibility="internal",
-                        internal_text=f"Every programme self-study of {app.reference} is cleared — ready for "
-                                      "institution approval.")
-        people = approvers(app)
-        _later(lambda: _notify(people, title=f"{inst.name} has cleared everything — ready for approval",
-                               body="Every programme self-study is cleared. Press “Approve institution”; the ES "
-                                    "confirms it.", url=application_url(app), kind="ready"))
+        clear_for_qa(app, by=by)
     return review
+
+
+def clear_for_qa(app, *, by=None):
+    """v2.3 (owner decision 1 + SOP §6.1 exit condition): the last programme
+    self-study is cleared → onboarding is over. The institution is marked
+    "Cleared for QA" and its first QA request starts at once; it becomes
+    "Approved" only when the ES's final approval of that SOP-03 case is applied
+    (``onboarding_v4.finalise_institution`` at stage 17). There is no separate
+    director "Approve institution" + ES confirmation step any more."""
+    from institutions import services as inst_services
+    from institutions.models import Institution
+    from qa_core import timeline
+
+    inst = Institution.unscoped.get(pk=app.institution_id)
+    if inst.cleared_for_qa_at is None:
+        inst.cleared_for_qa_at = timezone.now()
+        inst.save(update_fields=["cleared_for_qa_at", "updated_at"])
+    timeline.record(inst, "onboarding.cleared_for_qa", subject=app, actor=by, visibility="public",
+                    public_text=f"Onboarding complete: {inst.name} is cleared for quality assurance. NBTE will now "
+                                "arrange the quality assurance visit; the institution is approved when the "
+                                "Executive Secretary gives final approval.",
+                    internal_text=f"Every programme self-study of {app.reference} is cleared — cleared for QA; "
+                                  "the first QA request starts now (approval at the end of SOP-03).")
+    _later(lambda: inst_services.notify_institution(
+        inst, "onboarding.cleared_for_qa", {"reference": app.reference}, url="/"))
+    people = approvers(app)
+    _later(lambda: _notify(people, title=f"{inst.name} is cleared for QA",
+                           body="Every programme self-study is cleared. The QA request has started on its own; the "
+                                "institution is approved at the end of SOP-03.", url=application_url(app),
+                           kind="ready"))
+    from .models import OnboardingQAStart
+    if OnboardingQAStart.objects.filter(application=app, qa_request__isnull=False).exists():
+        return None
+    try:
+        with transaction.atomic():
+            return start_formal_qa(app, actor=by)
+    except Exception as exc:  # the clearance stands; NBTE can start the request by hand
+        logger.exception("Could not start the formal QA request for %s", app.reference)
+        msg = " ".join(getattr(exc, "messages", [str(exc)]))[:2000]
+        OnboardingQAStart.objects.create(application=app, started_by=by if getattr(by, "pk", None) else None,
+                                         error=msg or type(exc).__name__)
+        return None
 
 
 @transaction.atomic
@@ -717,6 +753,8 @@ def ready_for_approval(app):
     inst = app.institution
     if app.status != "ssq_submitted" or inst.status not in ("proposed", "under_review"):
         return False
+    if inst.cleared_for_qa_at is not None:  # v2.3: already cleared for QA (no approval step any more)
+        return False
     try:
         expected = {r.programme_id for r in cleared_reviews(app)}
     except ValidationError:
@@ -748,6 +786,18 @@ def approval_blocker(inst):
     app = onboarding_application(inst)
     if app is None:
         return ""
+    from . import onboarding_v4
+
+    if onboarding_v4.is_v4(app):
+        # v2.3: clearance of the last self-study only clears the institution
+        # for QA; approval happens when its first SOP-03 case completes
+        # (case_services.on_completed → onboarding_v4.finalise_institution).
+        # A manual approval here would skip SOP-02/SOP-03 entirely.
+        if getattr(inst, "cleared_for_qa_at", None):
+            return (f"{app.reference}: cleared for QA. The institution is approved automatically when its first "
+                    "SOP-03 accreditation case is completed — it cannot be approved by hand.")
+        return (f"{app.reference}: still in onboarding (SOP-01). The institution is approved at the end of its "
+                "first SOP-03 case, not from this menu.")
     has_studies = OnboardingSSQ.unscoped.filter(application=app).exists()
     if not (onboarding_v3.is_v3(app) or has_studies):
         return ""
@@ -904,8 +954,8 @@ def start_formal_qa(app, *, actor=None):
         raise ValidationError(f"{qa_type.name} is switched off (Settings → QA types).")
     # No published template is needed: every programme here carries its
     # onboarding self-study over (a programme added later needs the template).
-    if inst.status != Institution.APPROVED:
-        raise ValidationError("The institution is not approved.")
+    if inst.status != Institution.APPROVED and inst.cleared_for_qa_at is None:
+        raise ValidationError("The institution is neither approved nor cleared for QA.")
     reviews = list(OnboardingSSQReview.objects.filter(ssq__application=app, stage=CLEARED)
                    .select_related("ssq__programme", "cleared_by"))
     rows = []

@@ -1,10 +1,10 @@
 {% comment %}v2.3 — "Your work": every task opens where it is done (primary button = the task itself,
 "Institution" = the file). Context: work_rows, work_summary (total, overdue, decide, bulk, filters).
-Optional: inbox_title, inbox_hide_all_link.{% endcomment %}
+Optional: inbox_title, inbox_hide_all_link, inbox_sub (My work: subtitle counts the rows listed here).{% endcomment %}
 <section class="ux-card ux-card--accent wx" aria-labelledby="inbox-h" id="your-work" data-wx>
   <header class="ux-card__head">
     <div class="ux-card__title"><span class="ux-card__icon" aria-hidden="true">✦</span>
-      <div><h2 id="inbox-h">{{ inbox_title|default:"Your work" }}</h2><p>{% if work_summary.total %}{{ work_summary.total }} thing{{ work_summary.total|pluralize }} waiting for you{% if work_summary.overdue %} · <strong class="wx-overdue-text">{{ work_summary.overdue }} overdue</strong>{% endif %}. Each one opens where you act.{% else %}You are all caught up.{% endif %}</p></div></div>
+      <div><h2 id="inbox-h">{{ inbox_title|default:"Your work" }}</h2><p>{% if inbox_sub %}{{ work_rows|length }} more task{{ work_rows|length|pluralize }}, soonest first. Each one opens where you act.{% elif work_summary.total %}{{ work_summary.total }} thing{{ work_summary.total|pluralize }} waiting for you{% if work_summary.overdue %} · <strong class="wx-overdue-text">{{ work_summary.overdue }} overdue</strong>{% endif %}. Each one opens where you act.{% else %}You are all caught up.{% endif %}</p></div></div>
     {% if not inbox_hide_all_link %}<a class="btn btn-sm btn-subtle" href="{% url 'assignments:my_work' %}">All my work</a>{% endif %}
   </header>
   {% if work_rows %}

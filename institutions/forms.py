@@ -264,6 +264,9 @@ class InstitutionActionForm(ReasonMixin, QAForm):
         self.institution = institution
         self.user = user
         super().__init__(*args, **kwargs)
+        # Say what changes first; the reason for the change comes last.
+        if "reason" in self.fields:
+            self.order_fields([n for n in self.fields if n != "reason"] + ["reason"])
 
     def payload(self):
         return {}
@@ -282,34 +285,91 @@ class DropProgrammesForm(InstitutionActionForm):
         return {"programme_ids": [p.pk for p in self.cleaned_data["programmes"]]}
 
 
-class UpdateProgrammeForm(InstitutionActionForm):
-    """v2.1 R.7 (X48): inline Edit on the institution page (second officer confirms)."""
-    programme = forms.ModelChoiceField(Programme.objects.none())
-    name = forms.CharField(max_length=200, label="Programme name")
-    level = forms.ModelChoiceField(ProgrammeLevel.objects.filter(is_active=True))
+class UpdateProgrammeForm(DynamicFormMixin, InstitutionActionForm):
+    """v2.1 R.7 (X48): correct one programme (second officer confirms).
+
+    Redesigned: pick the programme, then the correct entry from NBTE's
+    programme master list — name, level and category follow from it, so
+    nothing is retyped. Only when the programme is not on the list do the
+    free-text fields appear; left blank they keep the current value."""
+    CUSTOM = "custom"
+    programme = forms.ModelChoiceField(Programme.objects.none(), label="Programme to correct")
+    source = forms.ChoiceField(label="Correct NBTE programme", choices=(),
+                               help_text="Choose the programme as it appears on NBTE's master list.")
+    name = forms.CharField(max_length=200, label="Programme name", required=False,
+                           help_text="Leave blank to keep the current name.")
+    level = forms.ModelChoiceField(ProgrammeLevel.objects.filter(is_active=True), required=False,
+                                   help_text="Leave blank to keep the current level.")
     category = forms.ModelChoiceField(ProgrammeCategory.objects.filter(is_active=True), required=False)
-    professional_body = forms.ModelChoiceField(None, required=False, label="Professional body")
+    professional_body = forms.ModelChoiceField(None, required=False, label="Professional body",
+                                               help_text="Leave blank to use the programme's usual body.")
+    show_if = {"name": {"source": [CUSTOM]}, "level": {"source": [CUSTOM]}, "category": {"source": [CUSTOM]}}
+    # The action page shows these as steps 1-2-3 (templates/institutions/_action_panel.html).
+    numbered_steps = True
+    fieldsets = [
+        ("Choose the programme", ["programme"]),
+        ("Choose what it should be", ["source", "name", "level", "category", "professional_body"]),
+        ("Say why", ["reason"]),
+    ]
+    fieldset_hints = {
+        "Choose the programme": "The programme whose details are wrong on this institution's file.",
+        "Choose what it should be": "Pick it from NBTE's programme list; name, level and category follow from it.",
+        "Say why": "The second officer reads this before confirming.",
+    }
+
+    def programme_facts(self):
+        """{pk: current details} for the read-only summary card (no extra request)."""
+        out = {}
+        for p in self.fields["programme"].queryset.select_related("level", "category", "professional_body", "master"):
+            out[str(p.pk)] = {
+                "name": p.name, "level": str(p.level) if p.level_id else "",
+                "category": str(p.category) if p.category_id else "",
+                "body": str(p.professional_body) if p.professional_body_id else "",
+                "master": str(p.master) if p.master_id else "", "status": p.get_status_display(),
+            }
+        return out
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from .models import ProfessionalBody
+        from .models import ProfessionalBody, ProgrammeMaster
 
         self.fields["programme"].queryset = (Programme.objects.for_user(self.user)
                                              .filter(institution=self.institution).exclude(status="dropped")
                                              .select_related("level").order_by("name"))
         self.fields["professional_body"].queryset = ProfessionalBody.objects.filter(is_active=True)
+        masters = list(ProgrammeMaster.objects.filter(is_active=True).select_related("level").order_by("name"))
+        self._masters = {str(m.pk): m for m in masters}
+        self.fields["source"].choices = ([("", "Choose…")] + [(str(m.pk), str(m)) for m in masters]
+                                         + [(self.CUSTOM, "Not on the NBTE list — type the details")])
         pk = self.initial.get("programme")
         if pk and not self.is_bound:
             p = self.fields["programme"].queryset.filter(pk=pk).first()
             if p is not None:
-                self.initial.update({"name": p.name, "level": p.level_id, "category": p.category_id,
+                self.initial.update({"source": str(p.master_id) if p.master_id else self.CUSTOM,
                                      "professional_body": p.professional_body_id})
+
+    def clean(self):
+        data = super().clean()
+        if data.get("source") not in self._masters and data.get("source") != self.CUSTOM:
+            self.add_error("source", "Choose the correct programme, or 'Not on the NBTE list'.")
+        return data
 
     def payload(self):
         d = self.cleaned_data
-        return {"programme_id": d["programme"].pk, "name": " ".join(d["name"].split()), "level_id": d["level"].pk,
-                "category_id": d["category"].pk if d.get("category") else None,
-                "professional_body_id": d["professional_body"].pk if d.get("professional_body") else None}
+        p = d["programme"]
+        master = self._masters.get(d.get("source") or "")
+        if master is not None:
+            name, level_id = master.name, master.level_id
+            category_id = master.programme_category_id or p.category_id
+            body = d.get("professional_body") or master.professional_body
+        else:
+            name = " ".join((d.get("name") or "").split()) or p.name
+            level_id = d["level"].pk if d.get("level") else p.level_id
+            category_id = d["category"].pk if d.get("category") else p.category_id
+            body = d.get("professional_body") or p.professional_body
+        return {"programme_id": p.pk, "master_id": master.pk if master else None, "name": name,
+                "level_id": level_id, "category_id": category_id,
+                "professional_body_id": body.pk if body else None}
 
 
 class UpdateStateLgaForm(InstitutionActionForm):

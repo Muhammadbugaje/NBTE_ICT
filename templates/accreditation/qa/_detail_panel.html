@@ -39,7 +39,8 @@
             <span class="qa-rowlink__badge">{{ row.programme.level.code|upper|default:"—" }}</span>
             <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ row.programme.name }}</span>
               <span class="qa-rowlink__meta"><span>{{ row.programme.get_status_display }}</span>{% if row.programme.expiry_date %}<span>· expires {{ row.programme.expiry_date|date:"j M Y" }}</span>{% endif %}{% if row.is_new_programme %}<span>· new programme</span>{% endif %}
-                {% if row.dropped_reason %}<span>· “{{ row.dropped_reason }}”</span>{% endif %}{% if row.replaced_by %}<span>· replaced by {{ row.replaced_by.programme }}</span>{% endif %}</span></span>
+                {% if row.dropped_reason %}<span>· “{{ row.dropped_reason }}”</span>{% endif %}{% if row.replaced_by %}<span>· replaced by {{ row.replaced_by.programme }}</span>{% endif %}</span>
+              {% if row.prerequisite_note %}<span class="v3-warn v3-warn--inline">{% icon "alert" 13 %} <span><strong>HND without an accredited ND.</strong> Institution's reason: “{{ row.prerequisite_note }}”</span></span>{% endif %}</span>
             <span class="qa-rowlink__side"><span class="qa-chip {{ row.status|tone }}">{{ row.get_status_display }}</span>{% if row.clearance_status %}<span class="qa-chip {{ row.clearance_status|tone }}">Clearance: {{ row.clearance_status }}</span>{% endif %}</span>
           </li>
         {% endfor %}
@@ -95,7 +96,7 @@
     {% endif %}
     {% nbte_withdraw_card req %}{# v2.5 #}
     <section class="qa-card" aria-labelledby="req-hist"><header class="qa-card__head"><h2 id="req-hist">History</h2></header>
-      <div class="qa-card__body"><ol class="qa-tl">{% for e in history %}<li><span class="qa-tl__text"><strong>{{ e.action_code|humanize_code }}</strong> → {{ e.to_stage|humanize_code }}{% if e.remark %} — “{{ e.remark }}”{% endif %}</span><small>{{ e.actor|who:"System" }} · <time datetime="{{ e.at|date:'c' }}">{{ e.at|date:"j M Y, H:i" }}</time></small></li>{% empty %}<li class="qa-muted">No events.</li>{% endfor %}</ol></div>
+      <div class="qa-card__body"><ol class="qa-tl">{% for e in history %}<li><span class="qa-tl__text"><strong>{{ e.action_code|humanize_code }}</strong>{% if e.to_stage and e.to_stage|humanize_code != e.action_code|humanize_code %} <span class="qa-muted">· now: {{ e.to_stage|humanize_code }}</span>{% endif %}{% if e.remark %} — “{{ e.remark }}”{% endif %}</span><small>{{ e.actor|who:"System" }} · <time datetime="{{ e.at|date:'c' }}">{{ e.at|date:"j M Y, H:i" }}</time></small></li>{% empty %}<li class="qa-muted">No events.</li>{% endfor %}</ol></div>
     </section>
   </aside>
 </div>

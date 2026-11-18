@@ -59,14 +59,15 @@
       {% if vvt.rows %}
       {% if vvt.missing %}<p class="c3-callout c3-callout--warn" role="status">Findings are locked until all {{ vvt.missing }} panel member{{ vvt.missing|pluralize }} record a conflict-of-interest declaration above.</p>{% elif vvt.conflicts %}<p class="c3-callout c3-callout--warn" role="status">Findings are locked until the declared conflict is resolved and the panel member is replaced.</p>{% endif %}
       <form method="post" action="{% url 'qa_insp:report_vvt' report.pk %}" hx-post="{% url 'qa_insp:report_vvt' report.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="op" value="findings"><fieldset {% if not vvt.can_write or vvt.missing or vvt.conflicts %}disabled{% endif %}>
-        <div class="qa-table-wrap" role="region" aria-label="Facilities and equipment findings table" tabindex="0"><table class="qa-table qa-table--scroll"><thead><tr><th>Item</th><th class="num">Required</th><th class="num">Declared</th><th class="num">Found</th><th>Falsified</th><th>Remark</th></tr></thead><tbody>
+        <div class="qa-table-wrap" role="region" aria-label="Facilities and equipment findings table" tabindex="0"><table class="qa-table qa-table--scroll"><thead><tr><th>Item</th><th class="num">Required</th><th class="num">Declared</th><th class="num">Found working</th><th class="num">Found not working</th><th>Falsified</th><th>Remark</th></tr></thead><tbody>
         {% for r in vvt.rows %}<tr><td>{{ r.item.name }}<input type="hidden" name="name_{{ r.item.pk }}" value="{{ r.item.name }}"></td><td class="num">{{ r.item.required_quantity|floatformat:"-1" }}</td>
           <td class="num"><input class="input vvt-n" name="declared_{{ r.item.pk }}" value="{% if r.declared != '' %}{{ r.declared|floatformat:'-1' }}{% elif r.finding %}{{ r.finding.declared_quantity|floatformat:'-1' }}{% endif %}" inputmode="decimal" readonly aria-label="Quantity declared on the institution's submitted SSQ"></td>
-          <td class="num"><input class="input vvt-n" name="found_{{ r.item.pk }}" value="{{ r.finding.found_quantity|floatformat:'-1'|default:'' }}" inputmode="decimal"></td>
+          <td class="num"><input class="input vvt-n" name="found_{{ r.item.pk }}" value="{{ r.finding.found_quantity|floatformat:'-1'|default:'' }}" inputmode="decimal" aria-label="Found working: {{ r.item.name }}"></td>
+          <td class="num"><input class="input vvt-n" name="notworking_{{ r.item.pk }}" value="{{ r.finding.found_not_working|floatformat:'-1'|default:'' }}" inputmode="decimal" placeholder="0" aria-label="Found not working: {{ r.item.name }}">{% if r.declared_not_working %}<small class="qa-muted"> ({{ r.declared_not_working }} declared)</small>{% endif %}</td>
           <td><input type="checkbox" name="falsified_{{ r.item.pk }}" {% if r.finding.is_falsified %}checked{% endif %} aria-label="Falsified"></td>
           <td><input class="input" name="remark_{{ r.item.pk }}" value="{{ r.finding.remark|default:'' }}"></td></tr>{% endfor %}
         </tbody></table></div>
-        <p class="qa-small qa-muted">An item declared but not found at all is marked falsified automatically.</p>
+        <p class="qa-small qa-muted">An item declared but not found at all is marked falsified automatically (a fine applies). An item found but not working is recorded as declined — a shortfall, not a fine. Items the institution declared as not working are never penalised.</p>
         <button class="btn btn-primary btn-sm" type="submit">Save findings</button></fieldset></form>
       {% else %}<p class="qa-muted qa-small">No curriculum catalogue items for this programme yet. Publish its list from Facilities &amp; equipment → the programme → Publish to catalogue.</p>{% endif %}
     </details>

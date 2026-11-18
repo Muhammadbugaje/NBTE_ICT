@@ -29,6 +29,7 @@ from documents import views_scan as document_scan  # v2.1 Phase F (X26)
 from config import appearance_views  # v2.1 A10
 from . import portal_account_views as account_views  # Phase 9
 from . import portal_public
+from . import tour_views  # guided tours ("Guide me")
 from . import portal_views as views
 
 portal_patterns = ([
@@ -40,6 +41,7 @@ portal_patterns = ([
     path("sw.js", core_pwa.service_worker, name="service_worker"),  # NBTE offline page on the portal host too
     path("offline/", core_pwa.offline, name="offline"),
     path("me/preferences/", appearance_views.my_preferences, name="my_preferences"),  # v2.1 A10 (both hosts)
+    path("me/tours/", tour_views.tour_state, name="tour_state"),  # guided tours: done / dismissed
     path("how-to/", portal_public.how_to, name="how_to"),
     path("guides/<slug:slug>/", portal_public.guide, name="guide"),
     path("guides/<slug:slug>/read/", portal_public.guide_read, name="guide_read"),  # v2.2 preview
@@ -84,7 +86,7 @@ portal_patterns = ([
     path("pb/programmes/<int:pk>/approve/", pb_portal.pb_programme_approve, name="pb_programme_approve"),
     path("pb/institutions/", pb_portal.pb_institutions, name="pb_institutions"),
     path("pb/visits/", pb_portal.pb_visits, name="pb_visits"),
-    path("pb/visits/assign/", pb_portal.pb_assign_rep, name="pb_assign_rep"),
+    path("pb/visits/<int:case_pk>/assign/", pb_portal.pb_assign_rep, name="pb_assign_rep"),
     path("pb/reports/", pb_portal.pb_reports, name="pb_reports"),
     path("pb/reports/new/", pb_portal.pb_report_new, name="pb_report_new"),
     path("pb/reports/<int:pk>/", pb_portal.pb_report, name="pb_report"),
@@ -110,6 +112,7 @@ portal_patterns = ([
     path("qa-requests/", qa_views.requests_list, name="qa_requests"),
     path("qa-requests/new/", qa_views.request_new, name="qa_request_new"),
     path("qa-requests/estimate/", qa_views.request_estimate, name="qa_request_estimate"),  # Phase 8
+    path("qa-requests/new-programme/", qa_views.programme_propose, name="programme_propose"),
     path("qa-requests/<int:pk>/", qa_views.request_detail, name="qa_request"),
     path("qa-requests/<int:pk>/submit/", qa_views.request_submit, name="qa_request_submit"),
     path("qa-requests/<int:pk>/cancel/", qa_views.request_cancel, name="qa_request_cancel"),

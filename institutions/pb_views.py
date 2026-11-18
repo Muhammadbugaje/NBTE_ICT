@@ -108,8 +108,16 @@ def body_list(request):
         qs = qs.filter(email="")
     elif f.get("contact") == "ok":
         qs = qs.exclude(email="")
+    totals = ProfessionalBody.objects.aggregate(
+        all=Count("pk"), active=Count("pk", filter=Q(is_active=True)),
+        no_email=Count("pk", filter=Q(email="", is_active=True)))
+    from core import importdiff
+
+    spec = importdiff.get_spec("professional_bodies")
     ctx = {**_base_ctx(request), "page": paginate(request, qs), "filters": f, "levels": _levels(),
-           "section": "bodies"}
+           "section": "bodies", "totals": totals,
+           "mapping_total": ProgrammeBodyMapping.objects.filter(is_active=True, body__is_active=True).count(),
+           "can_import": bool(spec is not None and spec.can_use(request.user))}
     return render_qa(request, "institutions/pb/bodies.html", ctx,
                      {"qa-panel": "institutions/pb/_bodies_panel.html", "qa-rows": "institutions/pb/_bodies_rows.html"})
 
@@ -118,7 +126,7 @@ def body_list(request):
 @require_GET
 def body_detail(request, pk):
     body = get_object_or_404(ProfessionalBody, pk=pk)
-    mappings = body.mappings.select_related("level").order_by("programme_name", "level__sort_order")
+    mappings = list(body.mappings.select_related("level", "body").order_by("programme_name", "level__sort_order"))
     from accreditation.models import ProfessionalBodyNotice
 
     notices = (ProfessionalBodyNotice.objects.for_user(request.user).filter(body=body)
@@ -129,6 +137,9 @@ def body_detail(request, pk):
     ctx = {**_base_ctx(request), "body": body, "mappings": mappings, "notices": notices, "programmes": programmes,
            "map_form": pb_forms.MappingForm(body=body) if can_manage(request.user) else None,
            "programme_names": _programme_names(), "section": "bodies",
+           "mapping_active": sum(1 for m in mappings if m.is_active),
+           "case_total": ProfessionalBodyNotice.objects.for_user(request.user).filter(body=body)
+           .values("case").distinct().count(),
            # v2.1 R.5 (X43): letters the body uploaded and its portal accounts
            "letters": BodyLetter.unscoped.filter(body=body).select_related("programme", "programme__institution")[:25],
            "body_users": body.users.select_related("role").order_by("email") if can_manage(request.user) else []}
@@ -323,10 +334,20 @@ def export(request):
 
     from .professional_body_io import export_xlsx
 
-    audit.log("other", request.user, actor=request.user, note="exported professional bodies")
-    response = HttpResponse(export_xlsx(), content_type=XLSX)
-    response["Content-Disposition"] = (f'attachment; filename="nbte-professional-bodies-'
-                                       f'{timezone.localdate().isoformat()}.xlsx"')
+    # ?body=<pk>: only that body and its programme mappings (the body page's Export button).
+    raw = request.GET.get("body") or ""
+    body = get_object_or_404(ProfessionalBody, pk=raw) if raw.isdigit() else None
+    if raw and body is None:
+        raise Http404
+    stem = "nbte-professional-bodies"
+    if body is not None:
+        from django.utils.text import slugify
+
+        stem = f"nbte-professional-body-{slugify(body.acronym or body.name)[:40] or body.pk}"
+    audit.log("other", request.user, actor=request.user,
+              note=f"exported professional bod{'y ' + body.name if body is not None else 'ies'}")
+    response = HttpResponse(export_xlsx(body=body), content_type=XLSX)
+    response["Content-Disposition"] = f'attachment; filename="{stem}-{timezone.localdate().isoformat()}.xlsx"'
     return response
 
 

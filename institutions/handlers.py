@@ -381,7 +381,7 @@ class UpdateProgrammeHandler(InstitutionHandler):
     code = "institutions.update_programme"
     form_class = forms.UpdateProgrammeForm
     icon = "edit"
-    summary = "Correct a programme's name, level, category or professional body."
+    summary = "Correct a programme against NBTE's programme list (name, level, category, professional body)."
 
     def _programme(self, target, payload):
         return (Programme.unscoped.filter(institution=target, pk=payload.get("programme_id"))
@@ -419,7 +419,14 @@ class UpdateProgrammeHandler(InstitutionHandler):
         level = ProgrammeLevel.objects.filter(pk=payload.get("level_id")).first()
         cat = ProgrammeCategory.objects.filter(pk=payload.get("category_id")).first()
         body = ProfessionalBody.objects.filter(pk=payload.get("professional_body_id")).first()
-        return [DiffRow("Name", p.name, payload.get("name", "")),
+        from .models import ProgrammeMaster
+
+        master = ProgrammeMaster.objects.filter(pk=payload.get("master_id")).first() if payload.get("master_id") else None
+        rows = []
+        if "master_id" in payload:
+            rows.append(DiffRow("NBTE programme (master list)", _name(p.master) if p.master_id else "—",
+                                str(master) if master else "Not on the list"))
+        return rows + [DiffRow("Name", p.name, payload.get("name", "")),
                 DiffRow("Level", _name(p.level), _name(level)),
                 DiffRow("Category", _name(p.category), _name(cat)),
                 DiffRow("Professional body", _name(p.professional_body), _name(body))]
@@ -429,6 +436,8 @@ class UpdateProgrammeHandler(InstitutionHandler):
         before = str(p)
         p.name = payload["name"]
         p.level_id = payload["level_id"]
+        if "master_id" in payload:
+            p.master_id = payload.get("master_id")
         p.category_id = payload.get("category_id")
         if p.professional_body_id != payload.get("professional_body_id"):
             p.professional_body_id = payload.get("professional_body_id")

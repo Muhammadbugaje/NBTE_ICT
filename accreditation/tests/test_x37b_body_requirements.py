@@ -38,6 +38,12 @@ def w(qa_seed, db):
                                     status="in_workflow")
     row = QARequestProgramme.unscoped.create(qa_request=req, programme=ns.programme)
     ns.ssq = SSQ.unscoped.create(qa_request_programme=row, template=template, status="submitted")
+    # Every real SSQ has its flow (accept_ssq moves it); start it at "submitted".
+    from qa_core import flow
+
+    flow.force_stage(flow.start("ssq", ns.ssq, actor=ns.reviewer), "submitted", ns.reviewer,
+                     remark="Test fixture: submitted")
+    ns.ssq.refresh_from_db()
     ns.requirement = BodyRequirement.objects.create(body=ns.body, code="premises", text="Premises registered",
                                                     kind="document", is_mandatory=True)
     return ns

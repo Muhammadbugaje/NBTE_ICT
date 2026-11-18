@@ -86,8 +86,75 @@ def _draw_watermark(canvas, w, h, mark):
     canvas.restoreState()
 
 
+CREST_DEFAULT = {"enabled": True, "opacity": 0.06, "size_cm": 11}
+FIT_SCALES = (1.0, 0.94, 0.88, 0.83, 0.78)
+
+
+def crest_setting():
+    """v2.3 (Phase 3): the NBTE crest drawn faintly behind the body of every
+    official document (``qa.documents.crest_watermark``)."""
+    import config
+
+    value = config.get("qa.documents.crest_watermark", CREST_DEFAULT)
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = CREST_DEFAULT
+    return {**CREST_DEFAULT, **(value if isinstance(value, dict) else {})}
+
+
+def _draw_crest(canvas, w, h, logo, crest):
+    """The crest, centred behind the text, very faint (never on top of it)."""
+    if not logo or not crest.get("enabled", True):
+        return
+    from reportlab.lib.units import cm
+    from reportlab.lib.utils import ImageReader
+
+    try:
+        size = max(4.0, min(float(crest.get("size_cm", 11)), 16.0)) * cm
+        opacity = max(0.02, min(float(crest.get("opacity", 0.06)), 0.2))
+    except (TypeError, ValueError):
+        size, opacity = 11 * cm, 0.06
+    canvas.saveState()
+    try:
+        canvas.setFillAlpha(opacity)
+        canvas.setStrokeAlpha(opacity)
+    except AttributeError:  # pragma: no cover - very old reportlab
+        pass
+    try:
+        canvas.drawImage(ImageReader(str(logo)), (w - size) / 2, (h - size) / 2 - 0.6 * cm, width=size,
+                         height=size, preserveAspectRatio=True, mask="auto")
+    except Exception:  # pragma: no cover - a broken logo must not stop the document
+        pass
+    canvas.restoreState()
+
+
+def page_count(pdf_bytes):
+    try:
+        from pypdf import PdfReader
+    except ImportError:  # pragma: no cover - counted from the raw bytes instead
+        return pdf_bytes.count(b"/Type /Page") - pdf_bytes.count(b"/Type /Pages")
+    return len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+
+
 def render(spec):
-    """Return PDF bytes for ``spec`` (see module docstring for the keys)."""
+    """Return PDF bytes for ``spec`` (see module docstring for the keys).
+
+    v2.3: every page carries the faint NBTE crest behind the text. A letter
+    (``fit_one_page``) is fitted onto one page: the type and spacing step down
+    a little at a time (never below ~8 pt body text) until it fits."""
+    if not spec.get("fit_one_page"):
+        return _render(spec, 1.0)
+    pdf = b""
+    for scale in FIT_SCALES:
+        pdf = _render(spec, scale)
+        if page_count(pdf) <= 1:
+            return pdf
+    return pdf
+
+
+def _render(spec, scale=1.0):
     from reportlab.lib.colors import HexColor
     from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
     from reportlab.lib.pagesizes import A4
@@ -111,11 +178,14 @@ def render(spec):
     footer_left = f"{spec.get('reference', '')} · {spec.get('kind_label', 'Document')}"
     footer_right = spec.get("footer_hint") or ""
 
-    body = ParagraphStyle("DBody", fontName=regular, fontSize=10.5, leading=15.5, textColor=HexColor(INK),
-                          alignment=TA_JUSTIFY, spaceAfter=8)
-    small = ParagraphStyle("DSmall", parent=body, fontSize=9.5, leading=13, alignment=TA_LEFT, spaceAfter=0)
+    k = scale
+    body = ParagraphStyle("DBody", fontName=regular, fontSize=10.5 * k, leading=15.5 * k, textColor=HexColor(INK),
+                          alignment=TA_JUSTIFY, spaceAfter=8 * k)
+    small = ParagraphStyle("DSmall", parent=body, fontSize=9.5 * k, leading=13 * k, alignment=TA_LEFT, spaceAfter=0)
     right = ParagraphStyle("DRight", parent=small, alignment=TA_RIGHT)
-    muted = ParagraphStyle("DMuted", parent=small, fontSize=8.5, leading=11, textColor=HexColor(MUTED))
+    muted = ParagraphStyle("DMuted", parent=small, fontSize=8.5 * max(k, 0.9), leading=11 * max(k, 0.9),
+                           textColor=HexColor(MUTED))
+    crest = crest_setting()
     centre_muted = ParagraphStyle("DMutedC", parent=muted, alignment=TA_CENTER)
     subject = ParagraphStyle("DSubject", parent=body, fontName=bold, alignment=TA_LEFT, spaceBefore=4,
                              spaceAfter=10)
@@ -127,6 +197,7 @@ def render(spec):
     def on_page(canvas, doc):
         canvas.saveState()
         w, h = doc.pagesize
+        _draw_crest(canvas, w, h, logo, crest)  # v2.3: behind everything else on the page
         top = h - 1.3 * cm
         size = 1.7 * cm
         x = MARGIN
@@ -168,7 +239,7 @@ def render(spec):
     ref_tbl = Table([[Paragraph(f"Ref: {escape(spec.get('reference', ''))}", small),
                       Paragraph(escape(spec.get("date", "")), right)]], colWidths=[content_w * 0.6, content_w * 0.4])
     ref_tbl.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    story += [ref_tbl, Spacer(1, 12)]
+    story += [ref_tbl, Spacer(1, 12 * k)]
     for line in spec.get("addressee") or []:
         story.append(Paragraph(escape(line), small))
     if spec.get("addressee"):
@@ -186,7 +257,7 @@ def render(spec):
         tbl = Table(rows, colWidths=[content_w * 0.32, content_w * 0.68])
         tbl.setStyle(TableStyle([
             ("LINEBELOW", (0, 0), (-1, -2), 0.4, HexColor(LINE)),
-            ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 6 * k), ("BOTTOMPADDING", (0, 0), (-1, -1), 6 * k),
             ("LEFTPADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]))
         story += [Spacer(1, 4), tbl, Spacer(1, 8)]
@@ -213,7 +284,7 @@ def render(spec):
     left.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
     right_cell = [""]
     if spec.get("qr_url"):
-        qr = Image(io.BytesIO(qr_png(spec["qr_url"])), width=2.9 * cm, height=2.9 * cm)
+        qr = Image(io.BytesIO(qr_png(spec["qr_url"])), width=2.9 * cm * max(k, 0.85), height=2.9 * cm * max(k, 0.85))
         right_cell = [qr, Paragraph("Scan to verify", centre_muted)]
         if spec.get("short_code"):
             right_cell.append(Paragraph(f"<b>{escape(spec['short_code'])}</b>",
@@ -221,7 +292,7 @@ def render(spec):
     block = Table([[left, right_cell]], colWidths=[content_w * 0.7, content_w * 0.3])
     block.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("ALIGN", (1, 0), (1, 0), "CENTER"),
                                ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    story += [Spacer(1, 14), KeepTogether([block])]
+    story += [Spacer(1, 14 * k), KeepTogether([block])]
     if spec.get("cc"):
         story += [Spacer(1, 10), Paragraph(escape(spec["cc"]), muted)]
     if spec.get("verify_note"):

@@ -24,10 +24,12 @@ sync never double counts.
 
 Paying: the DoF names a pay officer once (standing) or per file. The pay
 officer ticks ready lines and prepares a batch (a PaymentSchedule draft) —
-seeing MASKED bank numbers only. The DoF approves with one click, which
-records the payment (ledger + audit, ``schedules.mark_paid``) and tells every
-payee "Paid — please confirm receipt". Payees confirm on My earnings
-(``schedules.confirm_receipt``) and the file updates.
+seeing MASKED bank numbers only. The Director of Finance reviews the prepared
+payment list (printable / downloadable with full bank details, logged),
+sends it to the Executive Secretary for approval, and pays once the ES
+approves — all payees or only some. Payees confirm receipt on My earnings
+(``schedules.confirm_receipt``) or report that the money never arrived
+(``schedules.dispute_receipt``), and the file updates.
 """
 from __future__ import annotations
 
@@ -611,6 +613,11 @@ def prepare_batch(file, *, user, line_ids, funding_account_id=None, payment_refe
     payment_reference = str(payment_reference or "").strip()[:100]
     from . import references
 
+    if not payment_reference:
+        payment_reference = references.issue(
+            "honoraria_teller",
+            unique_check=lambda ref: PaymentSchedule.objects.filter(payment_reference=ref).exists())
+
     today = timezone.localdate()
     start = min(timezone.localdate(line.accrued_at) for line in lines)
     schedule = PaymentSchedule.objects.create(
@@ -651,33 +658,163 @@ def prepare_batch(file, *, user, line_ids, funding_account_id=None, payment_refe
     if not is_dof(user):
         from payments.services import final_approvers
 
-        title = f"Approve honoraria — {file.institution.name}"
+        title = f"Review honoraria and send to the ES — {file.institution.name}"
         body = (f"{_name(user)} prepared {schedule.reference}: {len(lines)} item(s), ₦{schedule.total:,.2f}. "
-                "Approve it to record the payment and tell each payee.")
-        url = file_url(file)
+                "Review it, print the payment list for the Executive Secretary, then send it for approval.")
+        url = _batch_url(schedule)
         approvers = list(final_approvers())
         transaction.on_commit(lambda: _send(approvers, title, body, url, level="warning"))
     return schedule
 
 
-def can_approve_batch(user, schedule):
+def _batch_url(schedule):
+    from django.urls import reverse
+
+    return reverse("honoraria_sched:detail", args=[schedule.pk])
+
+
+def es_recipients():
+    """The Executive Secretary (and nobody else) approves a prepared batch."""
+    import org
+
+    people = list(org.users_with_role(org.ES_ROLE, staff_only=True))
+    if not people:
+        people = list(org.users_with_role(org.ES_ROLE))
+    return people
+
+
+def can_send_to_es(user, schedule):
     return bool(is_dof(user) and schedule.honorarium_file_id and schedule.status == "draft")
 
 
+def can_es_decide(user, schedule):
+    import org
+
+    if not schedule.honorarium_file_id or schedule.status != "awaiting_es":
+        return False
+    if not getattr(user, "is_authenticated", False) or not getattr(user, "is_active", False):
+        return False
+    return bool(org.is_es(user) or getattr(user, "is_superuser", False))
+
+
 @transaction.atomic
-def approve_and_pay(schedule, *, user, payment_reference="", funding_account_id=None):
-    """The DoF's one click: approve the prepared batch and record it paid.
+def send_to_es(schedule, *, user, remark=""):
+    """The DoF sends the reviewed batch to the ES. Nothing is paid yet."""
+    from core import audit
+
+    schedule = PaymentSchedule.objects.select_for_update().select_related(
+        "honorarium_file__institution").get(pk=schedule.pk)
+    if not can_send_to_es(user, schedule):
+        raise PermissionDenied("Only the Director of Finance can send a prepared batch to the Executive Secretary.")
+    if not schedule.lines.filter(paid_at__isnull=True).exists():
+        raise ValidationError("Every payee on this batch has already been paid.")
+    now = timezone.now()
+    schedule.status = "awaiting_es"
+    schedule.sent_to_es_at, schedule.sent_to_es_by = now, user
+    schedule.es_decided_at = schedule.es_decided_by = None
+    schedule.es_remark = (remark or "").strip()
+    schedule.save(update_fields=["status", "sent_to_es_at", "sent_to_es_by", "es_decided_at",
+                                 "es_decided_by", "es_remark", "updated_at"])
+    inst = schedule.honorarium_file.institution.name
+    audit.log(audit._action("state_change"), schedule, actor=user,
+              changes={"status": {"old": "draft", "new": "awaiting_es"}},
+              note=f"honoraria batch sent to the ES — {inst}"[:255])
+    people = es_recipients()
+    if people:
+        title = f"Approve honoraria — {inst}"
+        body = (f"{_name(user)} sent {schedule.reference} for approval: "
+                f"{schedule.lines.count()} payee line(s), ₦{schedule.total:,.2f}. "
+                "Review the payment list and approve it or return it with a note.")
+        url = _batch_url(schedule)
+        transaction.on_commit(lambda: _send(people, title, body, url, level="warning"))
+    return schedule
+
+
+@transaction.atomic
+def es_approve(schedule, *, user, remark=""):
+    """ES approval: the batch comes back to the DoF ready to pay."""
+    from core import audit
+
+    schedule = PaymentSchedule.objects.select_for_update().select_related(
+        "honorarium_file__institution").get(pk=schedule.pk)
+    if not can_es_decide(user, schedule):
+        raise PermissionDenied("Only the Executive Secretary can approve a batch that is with them.")
+    now = timezone.now()
+    remark = (remark or "").strip()
+    schedule.status = "approved"
+    schedule.approved_by, schedule.approved_at = user, now
+    schedule.es_decided_at, schedule.es_decided_by, schedule.es_remark = now, user, remark
+    schedule.save(update_fields=["status", "approved_by", "approved_at", "es_decided_at",
+                                 "es_decided_by", "es_remark", "updated_at"])
+    inst = schedule.honorarium_file.institution.name
+    audit.log(audit._action("state_change"), schedule, actor=user,
+              changes={"status": {"old": "awaiting_es", "new": "approved"}},
+              note=f"honoraria batch approved by the ES — {inst}"[:255])
+    from payments.services import final_approvers
+
+    people = [p for p in final_approvers() if p is not None]
+    creator = schedule.created_by
+    if creator is not None and creator.pk not in {p.pk for p in people}:
+        people.append(creator)
+    if people:
+        title = f"ES approved — pay the batch — {inst}"
+        body = (f"{_name(user)} approved {schedule.reference}: "
+                f"{schedule.lines.count()} payee line(s), ₦{schedule.total:,.2f}. "
+                "Choose the NBTE account, check the teller number and record who was paid.")
+        url = _batch_url(schedule)
+        transaction.on_commit(lambda: _send(people, title, body, url, level="success"))
+    return schedule
+
+
+@transaction.atomic
+def es_return(schedule, *, user, remark):
+    """The ES sends the batch back to the DoF with a note; nothing is paid."""
+    from core import audit
+
+    schedule = PaymentSchedule.objects.select_for_update().select_related(
+        "honorarium_file__institution").get(pk=schedule.pk)
+    if not can_es_decide(user, schedule):
+        raise PermissionDenied("Only the Executive Secretary can return a batch that is with them.")
+    remark = (remark or "").strip()
+    if len(remark) < 5:
+        raise ValidationError("Say why the batch is being returned (at least 5 characters); Finance sees it.")
+    now = timezone.now()
+    schedule.status = "draft"
+    schedule.es_decided_at, schedule.es_decided_by, schedule.es_remark = now, user, remark[:2000]
+    schedule.save(update_fields=["status", "es_decided_at", "es_decided_by", "es_remark", "updated_at"])
+    inst = schedule.honorarium_file.institution.name
+    audit.log(audit._action("state_change"), schedule, actor=user,
+              changes={"status": {"old": "awaiting_es", "new": "draft"}},
+              note=f"honoraria batch returned by the ES: {remark}"[:255])
+    from payments.services import final_approvers
+
+    people = [p for p in final_approvers() if p is not None]
+    creator = schedule.created_by
+    if creator is not None and creator.pk not in {p.pk for p in people}:
+        people.append(creator)
+    if people:
+        title = f"ES returned the honoraria batch — {inst}"
+        body = f"{_name(user)} returned {schedule.reference}: {remark}"
+        url = _batch_url(schedule)
+        transaction.on_commit(lambda: _send(people, title, body, url, level="warning"))
+    return schedule
+
+
+@transaction.atomic
+def pay_batch(schedule, *, user, payment_reference="", funding_account_id=None, line_ids=None):
+    """The DoF pays an ES-approved file batch — everyone, or only the ticked
+    payees. Unticked payees stay on the batch for a later run.
     ``schedules.mark_paid`` posts each line to the ledger, writes the audit
     entry and tells each payee "Paid — please confirm receipt"."""
     from . import schedules as sched
 
     if not is_dof(user):
-        raise PermissionDenied("Only the Director of Finance can approve honoraria.")
+        raise PermissionDenied("Only the Director of Finance can pay honoraria.")
     schedule = PaymentSchedule.objects.select_for_update().get(pk=schedule.pk)
     if schedule.honorarium_file_id is None:
         raise ValidationError("This schedule was not prepared from an honorarium file.")
-    if schedule.status != "draft":
-        raise ValidationError("This batch has already been decided.")
+    if schedule.status != "approved":
+        raise ValidationError("The Executive Secretary must approve this batch before it is paid.")
     funding = funding_account_id or schedule.funding_account_id
     if not funding:
         from payments.models import BankAccount
@@ -687,20 +824,29 @@ def approve_and_pay(schedule, *, user, payment_reference="", funding_account_id=
             funding = accounts[0].pk
     if not funding:
         raise ValidationError("Choose the NBTE bank account the payment was made from.")
-    reference = (str(payment_reference or "").strip() or schedule.payment_reference or schedule.reference)
-    sched.approve(schedule, user=user)
-    sched.mark_paid(schedule, user=user, funding_account_id=funding, payment_reference=reference)
+    reference = str(payment_reference or "").strip() or schedule.payment_reference
+    if not reference:
+        from . import references
+
+        reference = references.issue(
+            "honoraria_teller",
+            unique_check=lambda ref: PaymentSchedule.objects.filter(payment_reference=ref).exists())
+    sched.mark_paid(schedule, user=user, funding_account_id=funding, payment_reference=reference,
+                    line_ids=line_ids)
     file = schedule.honorarium_file
     reconcile(file)
     from core import audit
 
     audit.log(audit._action("state_change"), file, actor=user,
-              changes={"batch": {"new": schedule.reference}}, note="honoraria batch approved and paid")
+              changes={"batch": {"new": schedule.reference}},
+              note="honoraria batch paid by the Director of Finance")
     officer = schedule.created_by
     if officer is not None and officer.pk != user.pk:
-        title = f"Approved and paid — {file.institution.name}"
-        body = f"{_name(user)} approved {schedule.reference} (₦{schedule.total:,.2f}). Payees were asked to confirm."
-        url = file_url(file)
+        title = f"Paid — {file.institution.name}"
+        body = (f"{_name(user)} recorded {schedule.reference} as paid "
+                f"({schedule.lines.filter(paid_at__isnull=False).count()} of {schedule.lines.count()} "
+                "payee lines). Payees were asked to confirm receipt.")
+        url = _batch_url(schedule)
         transaction.on_commit(lambda: _send([officer], title, body, url, email=False))
     if not file.lines.filter(status__in=FL.OUTSTANDING).exists():
         _close_work(file)
@@ -709,13 +855,15 @@ def approve_and_pay(schedule, *, user, payment_reference="", funding_account_id=
 
 @transaction.atomic
 def cancel_batch(schedule, *, user, reason=""):
-    """Withdraw a prepared (draft) batch: its lines become ready to pay again."""
+    """Withdraw a prepared batch (draft or with the ES): its lines become
+    ready to pay again."""
     if not (is_dof(user) or (schedule.created_by_id == getattr(user, "pk", None)
                              and schedule.honorarium_file_id and can_prepare(user, schedule.honorarium_file))):
         raise PermissionDenied("Only the Director of Finance or whoever prepared it can withdraw this batch.")
     schedule = PaymentSchedule.objects.select_for_update().get(pk=schedule.pk)
-    if schedule.status != "draft":
-        raise ValidationError("Only a batch waiting for approval can be withdrawn.")
+    if schedule.status not in ("draft", "awaiting_es"):
+        raise ValidationError("Only a batch waiting to be sent or with the ES can be withdrawn.")
+    old = schedule.status
     schedule.status = "cancelled"
     schedule.save(update_fields=["status", "updated_at"])
     HonorariumEntry.objects.filter(schedule=schedule, status=HonorariumEntry.SCHEDULED).update(
@@ -727,7 +875,7 @@ def cancel_batch(schedule, *, user, reason=""):
     from core import audit
 
     audit.log(audit._action("state_change"), schedule, actor=user,
-              changes={"status": {"old": "draft", "new": "cancelled"}}, note=(reason or "batch withdrawn")[:255])
+              changes={"status": {"old": old, "new": "cancelled"}}, note=(reason or "batch withdrawn")[:255])
     if schedule.honorarium_file_id:
         reconcile(schedule.honorarium_file)
     return schedule

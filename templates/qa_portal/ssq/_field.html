@@ -22,14 +22,15 @@
   {% elif f.type == "catalogue" %}
     {% if f.items %}
     <div class="qa-table-wrap"><table class="qa-table qa-table--compact qa-ssq-catalogue" aria-labelledby="lbl-{{ f.key }}">
-      <thead><tr><th scope="col">Item (from NBTE’s curriculum catalogue)</th><th scope="col">Unit</th><th scope="col" class="qa-num">You have</th></tr></thead>
+      <thead><tr><th scope="col">Item (from NBTE’s curriculum catalogue)</th><th scope="col">Unit</th><th scope="col" class="qa-num">Working</th><th scope="col" class="qa-num">Not working</th></tr></thead>
       <tbody>{% for row in f.items %}<tr>
         <th scope="row" data-label="Item">{{ row.item.name }}</th>
         <td data-label="Unit">{{ row.item.unit }}</td>
         <td data-label="You have" class="qa-num"><label class="sr-only" for="in-{{ f.key }}-{{ row.item.pk }}">Quantity of {{ row.item.name }}</label><input class="input qa-input-qty" id="in-{{ f.key }}-{{ row.item.pk }}" name="{{ name }}__{{ row.item.pk }}" value="{{ row.quantity }}" inputmode="decimal" autocomplete="off"></td>
+        <td data-label="Not working" class="qa-num"><label class="sr-only" for="in-{{ f.key }}-d{{ row.item.pk }}">How many {{ row.item.name }} do not work</label><input class="input qa-input-qty" id="in-{{ f.key }}-d{{ row.item.pk }}" name="{{ name }}__d{{ row.item.pk }}" value="{{ row.not_working }}" inputmode="decimal" autocomplete="off" placeholder="0"></td>
       </tr>{% endfor %}</tbody>
     </table></div>
-    <p class="qa-help">{% icon "lock" 12 %} Enter how many you have that work today. Item names come from NBTE’s catalogue.</p>
+    <p class="qa-help">{% icon "lock" 12 %} Enter how many work today, and how many you have that do not work. Declaring broken items honestly is never penalised; items found missing on the visit are. Item names come from NBTE’s catalogue.</p>
     {% else %}<p class="qa-small qa-muted">NBTE’s catalogue has no {{ f.catalogue.kind }} items for this programme yet.</p>{% endif %}
   {% elif f.type == "table" %}<input type="hidden" name="{{ name }}__present" value="1">
     <div class="qa-table-wrap"><table class="qa-table qa-table--compact qa-ssq-table" aria-labelledby="lbl-{{ f.key }}" data-ssq-table="{{ f.key }}">

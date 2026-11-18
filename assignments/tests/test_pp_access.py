@@ -23,6 +23,8 @@ def fresh(u):
 
 def test_p1_department_mode_is_todays_rule(pp):
     from assignments.access import FULL
+
+    set_config("qa.privacy.mode", "department")  # a fresh install defaults to "assignment"
     assert ids(pp.superuser) is FULL
     assert ids(pp.dpap_idle) == {pp.a.pk}  # department mode: whole handling department
     assert ids(pp.legal_officer) == set()
@@ -30,6 +32,8 @@ def test_p1_department_mode_is_todays_rule(pp):
 
 def test_p1_document_assignment_opens_temporary_access_in_department_mode(pp):
     from assignments import work
+
+    set_config("qa.privacy.mode", "department")
     from assignments.access import can_see, journey_variant
     from assignments.models import WorkAssignment
     from institutions.models import Institution, InstitutionDocument
@@ -243,7 +247,8 @@ def test_p2_cache_invalidates_on_assignment(pp):
 def test_p11_privacy_mode_is_dual_control(pp):
     from config.models import ConfigEntry
     entry = ConfigEntry.objects.get(key="qa.privacy.mode")
-    assert entry.dual_control and entry.value == "department"
+    # A fresh install starts in "assignment" mode (v2.1 X1); either way it is dual control.
+    assert entry.dual_control and entry.value in ("assignment", "department")
 
 
 def test_p5_weekly_digest(pp):

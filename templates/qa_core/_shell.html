@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends qa_shell_base|default:"base.html" %}
 {% load static %}
 {% comment %}
   Shell for the Phase 2 internal QA screens (institutions, applications,
@@ -18,21 +18,24 @@
   <link rel="stylesheet" href="{% static 'css/qa-p8.css' %}">
   <link rel="stylesheet" href="{% static 'css/qa-privacy.css' %}">
   <link rel="stylesheet" href="{% static 'css/qa-pr.css' %}">
+  <link rel="stylesheet" href="{% static 'css/qa-home.css' %}">{# QA home is also reached by HTMX swap, so its CSS lives in the shell #}
+  <link rel="stylesheet" href="{% static 'css/qa-vx.css' %}">{# colourful-but-calm layer: home, outbox, inspection, drift (not bundled) #}
 {% endblock %}
-{% block extra_css_last %}<link rel="stylesheet" href="{% static 'css/qa-live.css' %}?v=2">{% endblock %}
-{% block content %}
+{% block extra_css_last %}<link rel="stylesheet" href="{% static 'css/qa-live.css' %}">{% endblock %}
+{% block content %}{% if not qa_panel_only %}
 <div class="qa-page" data-qa-area="{{ request.resolver_match.namespace }}">
-  <div id="qa-panel" class="qa-region" data-qa-region>
+  <div id="qa-panel" class="qa-region" data-qa-region>{% endif %}
     {% block panel %}{% endblock %}
-  </div>
-</div>
+{% if not qa_panel_only %}  </div>
+</div>{% endif %}
 {% endblock %}
 {% block extra_js %}
   <script>document.body.setAttribute("data-qa-timeout", "{{ qa_timeout_ms|default:15000 }}");</script>
   <script src="{% static 'js/qa.js' %}" defer></script>
-  <script src="{% static 'js/qa-live.js' %}?v=1" defer></script>
+  <script src="{% static 'js/qa-live.js' %}" defer></script>
   <script src="{% static 'js/network-guard.js' %}" defer></script>
   <script src="{% static 'js/qa-redesign.js' %}" defer></script>
   <script src="{% static 'js/forms-dynamic.js' %}" defer></script>
+  <script src="{% static 'js/qa-action.js' %}" defer></script>{# TVET Support action pages: current-programme summary #}
   <script src="{% static 'js/person-picker.js' %}" defer></script>{# SOP-03 redesign: searchable person picker #}
 {% endblock %}

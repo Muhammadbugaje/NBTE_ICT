@@ -245,7 +245,8 @@ GUIDES = {
         "summary": "Registering a new institution and getting it approved.",
         "accent": "0F9F9A",
         "intro": [
-            "Onboarding turns a proposed institution into one NBTE has approved. It follows one simple, "
+            "Onboarding registers a proposed institution with NBTE and clears it for quality assurance; the "
+            "institution is approved when its first accreditation case ends. It follows one simple, "
             "step-by-step path, and every step happens on the portal.",
             "This guide takes you through all of it: registering, completing your application, uploading your "
             "documents, departmental clearance, the institutional fee and what happens next.",
@@ -256,7 +257,8 @@ GUIDES = {
             "The **state**, **LGA** and **permanent-site address**.",
             "The **official e-mail address**, a **phone number** and the **head of institution's name**.",
             "For a private institution: the **CAC RC number**.",
-            "Your own details as the **institution administrator** (usually the Registrar).",
+            "The **Chief Executive's** name, e-mail and phone (they get their own sign-in to declare, pay and submit).",
+            "Your own details as the **Head of ICT** — the portal administrator who registers and uploads.",
             "Scanned copies (PDF, JPG or PNG) of the documents listed in Part 3.",
         ],
         "blocks": [
@@ -286,7 +288,7 @@ GUIDES = {
             ("part", "Step 1: Register your institution",
              "About fifteen minutes. You can upload documents afterwards."),
             ("p", "On the portal's home page, choose **Register your institution**. The registration page shows "
-                  "where you are in onboarding, and a side panel lists the four sections of the form."),
+                  "where you are in onboarding, and a side panel lists the five sections of the form (institution, location, Chief Executive, your account, declaration)."),
             ("shot", "register_top", "The registration page.", [
                 (1, "Where registration fits: you are at step 1 of onboarding."),
                 (2, "**Institution**: the details as they appear on official documents."),

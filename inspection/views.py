@@ -398,7 +398,7 @@ def finder_map(request):
     response = render(request, "inspection/_finder_panel.html", ctx, status=422 if error else 200)
     if error:
         return toast(response, "error", "Not mapped", error)
-    status = "Mapped" if pa.status == "applied" else f"Booked — waiting for confirmation ({pa.reference})"
+    status = "Mapped" if pa.status == "applied" else f"Dates held — waiting for Director and ES approval ({pa.reference})"
     return toast(response, "success", status, f"{person} → {need.row.programme} ({mapping.get_duty_display()}).")
 
 
@@ -562,6 +562,10 @@ def _inspection_ctx(request, inspection, **extra):
     team = services.team(inspection)
     attendance = services.attendance(inspection)
     ok, why = services.can_complete(inspection, user)
+    end = inspection.scheduled_end
+    if ok and end and timezone.localdate() < end:
+        ok, why = False, (f"The visit is planned to end on {end:%d %b %Y}. You can record it from that day. "
+                          "If the dates change, ask for a date change on the case page first.")
     reports = list(services.visible_reports(user).filter(inspection=inspection).select_related(
         "qa_request_programme__programme", "submitted_by"))
     can_override = (not services.is_monitor(user) and inspection.status in ("completed", "closed")
@@ -569,8 +573,7 @@ def _inspection_ctx(request, inspection, **extra):
     ctx = {"inspection": inspection, "case": inspection.case, "team": team, "attendance": attendance,
            "can_complete": ok, "complete_why": why, "reports": reports, "can_override": can_override,
            "complete_form": forms.CompleteVisitForm(team=team, initial={
-               "actual_start": inspection.scheduled_start, "actual_end": min(inspection.scheduled_end,
-                                                                             timezone.localdate())}),
+               "actual_start": inspection.scheduled_start, "actual_end": inspection.scheduled_end}),
            "attendance_form": forms.AttendanceForm(attendance=attendance) if can_override else None,
            "service": list(services.visible_service(user).filter(inspection=inspection).order_by("pk"))
            if services.can_view_service(user) else [],
@@ -706,6 +709,8 @@ def _report_ctx(request, report, **extra):
                   .order_by("-pinned_at")[:3]) \
         if link else []
     member_counts = services.member_report_counts(report)
+    digest = (services.member_digest(report) if can_write and report.status in ("draft", "returned")
+              else {})
     my_member_row = next((row for row in member_roster
                           if getattr(row.attendee.user, "pk", None) == user.pk), None)
     skipped_rows = [row for row in member_roster
@@ -726,7 +731,8 @@ def _report_ctx(request, report, **extra):
            "review_attendee_pk": extra.get("review_attendee_pk"),
            "compile_pending": services.member_reports_ready(report),
            "layer": services.LAYER_LABEL.get(services.LAYER_FOR_STAGE.get(report.status, ""), ""),
-           "form": forms.ReportForm(report=report), "endorse_form": forms.EndorseForm(),
+           "form": forms.ReportForm(report=report, digest=digest), "endorse_form": forms.EndorseForm(),
+           "member_digest": digest,
            "sections": forms.REPORT_SECTIONS,
            "endorsements": services.endorsements_of(report),
            "rp_findings": services.rp_findings_for(report),
@@ -979,8 +985,10 @@ def report_save(request, pk):
         else:
             report.refresh_from_db()
             response = render(request, "inspection/_report_panel.html", _report_ctx(request, report))
-            return toast(response, "success", "Submitted to the Division Head" if submit else "Draft saved",
-                         "Your task closed; the Division Head has a new one." if submit else "")
+            who = {"submitted": "the Division Head", "division_endorsed": "the Deputy Director",
+                   "deputy_verified": "the Director"}.get(report.status, "the next endorser")
+            return toast(response, "success", f"Submitted to {who}" if submit else "Draft saved",
+                         f"Your task closed; {who} has a new one." if submit else "")
     response = render(request, "inspection/_report_panel.html", _report_ctx(request, report, form=form), status=422)
     return toast(response, "error", "Not saved", "Check the highlighted fields.")
 
@@ -1179,7 +1187,11 @@ def service_history(request):
     qs = _service_qs(request)
     totals = list(qs.values("person_type", "person_id", "person_name").annotate(
         visits=Sum("visit_count"), ssqs=Sum("ssq_count"), last=Max("served_to")).order_by("-visits", "person_name")[:12])
-    ctx = {"page": paginate(request, qs), "filters": request.GET, "duties": DUTY_CHOICES,
+    # Presentation: headline figures for the tiles (same filters as the table).
+    summary = qs.aggregate(visits=Sum("visit_count"), ssqs=Sum("ssq_count"), last=Max("served_to"))
+    summary["people"] = qs.order_by().values("person_type", "person_id").distinct().count()
+    summary["institutions"] = qs.order_by().exclude(institution__isnull=True).values("institution_id").distinct().count()
+    ctx = {"page": paginate(request, qs), "filters": request.GET, "duties": DUTY_CHOICES, "summary": summary,
            "person_types": [("", "Everyone")] + list(ServiceRecord.PERSON_TYPES), "disciplines": _discipline_list(),
            "totals": totals, "can_export": request.user.is_superuser or request.user.has_perm(
                "inspection.export_service_history")}
@@ -1280,6 +1292,7 @@ def report_vvt(request, pk):
                     rows.append({"item_id": item_id, "name": request.POST.get(f"name_{item_id}", ""),
                                  "declared_quantity": request.POST.get(f"declared_{item_id}") or 0,
                                  "found_quantity": request.POST.get(key),
+                                 "found_not_working": request.POST.get(f"notworking_{item_id}"),
                                  "is_falsified": request.POST.get(f"falsified_{item_id}") == "on",
                                  "remark": request.POST.get(f"remark_{item_id}", "")})
             vr.save_findings(report, user=request.user, rows=rows)
