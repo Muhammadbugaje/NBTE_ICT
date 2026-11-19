@@ -245,7 +245,7 @@ def prefill_ict(inspection):
         "institution_category": getattr(inst.category, "name", "") or getattr(inst.institution_type, "name", ""),
         "zone_state": ", ".join(x for x in (inst.zone, getattr(inst.state, "name", "")) if x),
         "batch_reference": case.reference, "request_type": req.qa_type.name,
-        "gps_registered": getattr(inst, "gps", "") or "",
+        "gps_registered": _registered_gps(inst),
         "c_ssq_digital": "yes" if dates else "", "c_programmes": str(len(rows)),
         "c_capacity": str(capacity), "c_workstations": str(workstations), "c_lms": lms,
         "c_compliance": "; ".join(compliance), "d_programmes": programmes,
@@ -625,3 +625,16 @@ def pdf_bytes(form):
         if pairs:
             rep.kv(pairs, cols=1)
     return rep.build()
+
+
+def _registered_gps(inst):
+    """The institution's recorded GPS ("lat, lng"), from its current addresses
+    (Institution itself has no GPS field)."""
+    try:
+        from .visit_report import institution_sites
+
+        sites = institution_sites(inst)
+    except Exception:  # a prefill must never break the form
+        return ""
+    return f"{sites[0][0]:.6f}, {sites[0][1]:.6f}" if sites else ""
+

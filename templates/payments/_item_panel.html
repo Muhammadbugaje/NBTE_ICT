@@ -48,7 +48,7 @@
       <div class="qa-card__body qa-evidence">
         {% for p in proofs %}
           <div class="qa-ev{% if p.fraud_flag %} qa-ev--warn{% endif %}">
-            <div class="qa-ev__head"><span>{% icon "file" 16 %} {{ p.get_kind_display }}{% if p.fraud_flag %} — same file as another bill's proof{% endif %}</span><span class="fpv-pair">{% preview_button p.download_url p.display_name p.size_bytes %}<a class="btn btn-sm btn-subtle" href="{{ p.download_url }}">{% icon "download" 14 %} Download</a></span></div>
+            <div class="qa-ev__head"><span>{% icon "file" 16 %} {{ p.get_kind_display }}{% if p.fraud_flag %} — same file as another bill's proof{% endif %}{% if p.withdrawn_at %} — withdrawn by the institution {{ p.withdrawn_at|date:"j M Y, H:i" }}: “{{ p.withdrawn_reason }}”{% endif %}</span><span class="fpv-pair">{% preview_button p.download_url p.display_name p.size_bytes %}<a class="btn btn-sm btn-subtle" href="{{ p.download_url }}">{% icon "download" 14 %} Download</a></span></div>
             <div class="qa-ev__kv">
               <span><small>Amount claimed</small>{{ p.amount_claimed|naira }}</span><span><small>Paid on</small>{{ p.paid_on|date:"j M Y"|default:"—" }}</span>
               <span><small>Bank</small>{{ p.bank_name|default:"—" }}</span><span><small>Teller / transaction</small>{{ p.teller_number|default:"—" }}</span>
@@ -56,9 +56,9 @@
             </div>
           </div>
         {% endfor %}
-        {% for a in attempts %}{% if a.status == "provider_reported_paid" or a.verify_result or a.status == "abandoned" %}
+        {% for a in attempts %}{% if a.status == "provider_reported_paid" or a.verify_result or a.status == "abandoned" or a.reported_failed_by_institution %}
           <div class="qa-ev{% if a.status == 'provider_reported_paid' %} qa-ev--ok{% elif a.status == 'failed' %} qa-ev--warn{% elif a.status == 'abandoned' %} qa-ev--muted{% endif %}">
-            <div class="qa-ev__head"><span>{% icon "card" 16 %} {{ a.get_provider_display }} · {{ a.provider_reference }}</span><span class="qa-chip {{ a.status|tone }}">{{ a.get_status_display }}</span></div>
+            <div class="qa-ev__head"><span>{% icon "card" 16 %} {{ a.get_provider_display }} · {{ a.provider_reference }}{% if a.reported_failed_by_institution %} — institution reported this payment failed / reversed{% endif %}{% if a.superseded %} (superseded){% endif %}</span><span class="qa-chip {{ a.status|tone }}">{{ a.get_status_display }}</span></div>
             <div class="qa-ev__kv">
               <span><small>Attempt amount</small>{{ a.amount|naira }}</span>
               <span><small>Server-side verify</small>{% if a.verify_result.paid %}Paid{% else %}Not paid ({{ a.verify_result.status|default:"—" }}){% endif %}</span>

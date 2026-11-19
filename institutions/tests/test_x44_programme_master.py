@@ -9,6 +9,15 @@ from qa_core.tests.conftest import hx
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _profile_gate_off(qa_seed):
+    """The fixture institutions have no management team: switch the portal's
+    profile gate off (it has its own tests), as test_v21_phase0 does."""
+    from qa_core.tests.phase3_fixtures import set_config
+
+    set_config("qa.onboarding.profile_gate_enabled", "false")
+
+
 @pytest.fixture
 def master_data(qa_seed):
     from institutions.models import (Discipline, ProfessionalBody, ProgrammeCategory, ProgrammeLevel,
@@ -94,6 +103,7 @@ def test_x44_portal_typeahead_and_add(master_data, selecting_app, inst_user, cli
     m = master_data.rows[("Computer Science", "hnd")]
     r = c.get(f"/application/programmes/master/{m.pk}/", **hx("qa-prog-pick"))
     assert f'name="master" value="{m.pk}"'.encode() in r.content and b"Demo Computing Council" in r.content
+    # The fixture's list already holds ND Computer Science, so its HND may be added.
     r = c.post("/application/programmes/", {"master": m.pk, "streams": 1}, **hx("qa-prog-card"))
     assert r.status_code == 200, r.content[:400]
     p = Programme.unscoped.get(institution=selecting_app.institution, master=m)

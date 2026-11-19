@@ -10,18 +10,25 @@
   <div>
     <span class="qa-eyebrow">{% icon "mail" 14 "2.2" %} Quality Assurance · E-mail</span>
     <h1 data-qa-focus>QA e-mail outbox</h1>
-    <p>Every e-mail the QA system wrote while delivery was in log-only mode. Pick a message from the list to read it exactly as the recipient would see it.</p>
+    <p>{% if source == "sent" %}Every e-mail the QA system has sent, with its delivery status.{% else %}E-mails written while delivery was in log-only mode (kept here, never sent).{% endif %} Pick a message to read it exactly as the recipient would see it.</p>
     <p class="vx-chips vx-mail__mode">
       {% if mode == "console" %}<span class="vx-chip vx-t-amber">Log-only mode — messages are kept here, not sent</span>
-      {% else %}<span class="vx-chip vx-t-green">Delivery is on ({{ mode }})</span><span class="vx-chip vx-t-slate vx-chip--plain">This list shows messages logged while it was off</span>{% endif %}
+      {% else %}<span class="vx-chip vx-t-green">Delivery is on</span>{% endif %}
+      {% if failed_count %}<a class="vx-chip vx-t-amber" href="?source=sent&amp;status=failed">{{ failed_count }} failed to deliver</a>{% endif %}
     </p>
     {% if mode == "console" %}<p class="vx-hint">To deliver through the configured e-mail provider, set <span class="qa-mono">QA_EMAIL_DELIVERY=queue</span>.</p>{% endif %}
   </div>
 </header>
 <section class="qa-card vx-mail__card" aria-label="Messages">
   <form class="qa-toolbar" role="search" hx-get="{% url 'qa:outbox' %}" hx-target="#qa-rows" hx-push-url="true" hx-trigger="input changed delay:350ms from:find input, change" data-qa-no-overlay>
+    <input type="hidden" name="source" value="{{ source }}">
+    <nav class="vx-mail__views" aria-label="Which messages">
+      <a class="btn btn-sm {% if source == 'sent' %}btn-primary{% else %}btn-subtle{% endif %}" href="?source=sent"{% if source == "sent" %} aria-current="page"{% endif %}>Sent ({{ sent_count }})</a>
+      {% if log_count %}<a class="btn btn-sm {% if source == 'log' %}btn-primary{% else %}btn-subtle{% endif %}" href="?source=log"{% if source == "log" %} aria-current="page"{% endif %}>Log-only ({{ log_count }})</a>{% endif %}
+    </nav>
     <label class="qa-search"><span class="sr-only">Search</span>{% icon "search" 16 "2.2" %}<input class="input" type="search" name="q" value="{{ filters.q|default:'' }}" placeholder="Recipient, subject or text"></label>
     <select class="input qa-select" name="category" aria-label="Category"><option value="">Every category</option>{% for c in categories %}<option value="{{ c }}"{% if filters.category == c %} selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+    {% if source == "sent" %}<select class="input qa-select" name="status" aria-label="Delivery status"><option value="">Any status</option>{% for v, l in status_choices %}<option value="{{ v }}"{% if filters.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>{% endif %}
     <select class="input qa-select" name="period" aria-label="Period"><option value="">Any time</option><option value="1d"{% if filters.period == "1d" %} selected{% endif %}>Last 24 hours</option><option value="7d"{% if filters.period == "7d" %} selected{% endif %}>Last 7 days</option><option value="30d"{% if filters.period == "30d" %} selected{% endif %}>Last 30 days</option></select>
     <label class="qa-search"><span class="sr-only">Sent to</span>{% icon "user" 16 "2.2" %}<input class="input" type="search" name="to" value="{{ filters.to|default:'' }}" placeholder="Sent to (e-mail)" autocomplete="off" inputmode="email"></label>
   </form>

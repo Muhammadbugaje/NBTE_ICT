@@ -121,6 +121,43 @@ def verification_record(letter, decision):
         issued_by=letter.generated_by, issued_at=letter.generated_at, subject_ct=ct, subject_id=letter.pk)
 
 
+def letter_paragraphs(letter, decision, settings_snapshot):
+    """The body of the letter (salutation → closing), shared by the PDF and the
+    on-screen copy in the portal / verification page."""
+    tpl = settings_snapshot["template"]
+    data = _fields(letter, decision)
+    paragraphs = [str(tpl.get("salutation", "Dear Sir/Madam,")).format_map(data)]
+    paragraphs += [str(p).format_map(data) for p in (tpl.get("approve" if decision.outcome == "approve" else "deny")
+                                                     or [])]
+    weaknesses = [str(w).strip() for w in (decision.weaknesses or []) if str(w).strip()]
+    if weaknesses:
+        intro = str(tpl.get("weaknesses_intro", "The following weaknesses were identified:")).format_map(data)
+        paragraphs.append(intro + "\n" + "\n".join(f"{i}. {w}" for i, w in enumerate(weaknesses, start=1)))
+    closing = str(tpl.get("closing", "")).format_map(data)
+    if closing:
+        paragraphs.append(closing)
+    return paragraphs
+
+
+def document_preview(doc):
+    """(paragraphs, signers) for an IssuedDocument that records an outcome letter,
+    else None. Older registry rows were written without the body, so the
+    on-screen copy is rebuilt from the letter's frozen template snapshot."""
+    from django.contrib.contenttypes.models import ContentType
+
+    if not doc.subject_id or doc.subject_ct_id != ContentType.objects.get_for_model(OutcomeLetter).pk:
+        return None
+    letter = OutcomeLetter.unscoped.filter(pk=doc.subject_id).select_related("decision").first()
+    if letter is None or letter.decision_id is None:
+        return None
+    snapshot = letter.template_snapshot or template_settings()
+    sig = snapshot.get("signatory") or {}
+    title = (sig.get("title") or "Executive Secretary").strip()
+    designation = title if title.lower() == "executive secretary" else f"{title} · For: Executive Secretary, NBTE"
+    return letter_paragraphs(letter, letter.decision, snapshot), [{"name": sig.get("name") or "",
+                                                                   "designation": designation}]
+
+
 def render_pdf(letter, decision, settings_snapshot, *, duplicate=False):
     """The letter as PDF bytes, on the one NBTE document engine
     (``documents.render``): letterhead, the faint crest behind the text, the
@@ -132,16 +169,7 @@ def render_pdf(letter, decision, settings_snapshot, *, duplicate=False):
     tpl, sig, mark = settings_snapshot["template"], settings_snapshot["signatory"], settings_snapshot["watermark"]
     data = _fields(letter, decision)
     record = verification_record(letter, decision)
-    paragraphs = [str(tpl.get("salutation", "Dear Sir/Madam,")).format_map(data)]
-    paragraphs += [str(p).format_map(data) for p in (tpl.get("approve" if decision.outcome == "approve" else "deny")
-                                                     or [])]
-    weaknesses = [str(w).strip() for w in (decision.weaknesses or []) if str(w).strip()]
-    if weaknesses:
-        intro = str(tpl.get("weaknesses_intro", "The following weaknesses were identified:")).format_map(data)
-        paragraphs.append(intro + "\n" + "\n".join(f"{i}. {w}" for i, w in enumerate(weaknesses, start=1)))
-    closing = str(tpl.get("closing", "")).format_map(data)
-    if closing:
-        paragraphs.append(closing)
+    paragraphs = letter_paragraphs(letter, decision, settings_snapshot)
     title = (sig.get("title") or "Executive Secretary").strip()
     designation = title if title.lower() == "executive secretary" else f"{title} · For: Executive Secretary, NBTE"
     heading = str(tpl.get("heading", "")).format_map(data).strip()

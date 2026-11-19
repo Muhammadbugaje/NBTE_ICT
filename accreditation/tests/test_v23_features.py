@@ -212,19 +212,18 @@ def test_qa_task_accept_and_proceed_and_respond(p4):
     assert set(ts.QA_RESPONSES) == {"return", "decline", "reject"}
 
 
-def test_portal_request_must_explain_an_hnd_without_nd(p3):
-    """The portal form passes the justification box for every programme; an
-    HND with no accredited ND needs ≥ 10 characters, which are kept on the row.
-    System callers (no form) are never blocked."""
+def test_portal_request_refuses_an_hnd_without_its_nd(p3):
+    """Owner rule (hard, portal path): an HND needs the ND of the same
+    programme running at the institution or on the same request; a
+    justification no longer gets it through. System callers (no form) are
+    never blocked."""
     from accreditation import qa_services as svc
-    from accreditation.models import QARequestProgramme, QAType
+    from accreditation.models import QAType
 
-    if not svc.nd_prerequisite_warning(p3.eee):
+    if not svc.hnd_block_reason(p3.eee):
         pytest.skip("fixture HND has an ND")
     qa_type = QAType.objects.get(code="reaccreditation")
-    with pytest.raises(ValidationError, match="without an accredited ND"):
-        svc.create_request(p3.inst, qa_type, [p3.eee], user=p3.admin, justifications={p3.eee.pk: "short"})
-    req = svc.create_request(p3.inst, qa_type, [p3.eee], user=p3.admin,
-                             justifications={p3.eee.pk: "Our ND is under accreditation this cycle."})
-    row = QARequestProgramme.unscoped.get(qa_request=req, programme=p3.eee)
-    assert row.prerequisite_note.startswith("Our ND is under accreditation")
+    with pytest.raises(ValidationError, match="HND"):
+        svc.create_request(p3.inst, qa_type, [p3.eee], user=p3.admin,
+                           justifications={p3.eee.pk: "Our ND is under accreditation this cycle."})
+    assert svc.create_request(p3.inst, qa_type, [p3.eee], user=p3.admin) is not None  # system caller

@@ -65,8 +65,13 @@ def engagement_row(m):
     from inspection import services
 
     can_write, why = services.findings_open(m)
-    programme = m.qa_request_programme.programme
-    return {"id": m.pk, "programme": {"id": programme.pk, "name": str(programme)},
+    programme = m.programme  # v2.9: None for a whole-institution engagement
+    return {"id": m.pk, "programme": ({"id": programme.pk, "name": str(programme)} if programme is not None
+                                      else {"id": 0, "name": "Whole institution"}),
+            "scope": m.scope, "scope_label": m.get_scope_display(),
+            "rp_response": m.rp_response, "rp_response_label": m.get_rp_response_display(),
+            "can_respond": bool(services.response_open(m)[0] and not m.rp_response),
+            "rp_recommendation": m.rp_recommendation,
             "institution": m.case.institution.name, "duty": m.duty, "duty_label": m.get_duty_display(),
             "from_date": m.from_date, "to_date": m.to_date, "status": m.status, "status_label": status_label(m),
             "role": my_role(m), "findings": m.findings or "", "can_write_findings": bool(can_write),

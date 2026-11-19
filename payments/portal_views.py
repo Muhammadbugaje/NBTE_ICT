@@ -137,7 +137,9 @@ def _detail_context(request, ob, **extra):
     ctx = {
         "ob": ob, "public_label": services.stage_label(ob, public=True), "slip": slip, "attempts": attempts,
         "proofs": proofs, "advices": advices, "payable": payable, "online_methods": online,
-        "bank_transfer": options["bank_transfer"],
+        "bank_transfer": options["bank_transfer"], "can_pay_again": options["can_pay_again"],
+        "pay_again_error": extra.pop("pay_again_error", ""),
+        "reported_failed": "payment_reported_failed" in (ob.flags or []) and payable,
         "proof_form": extra.pop("proof_form", None) or ProofForm(initial={"amount_claimed": ob.balance,
                                                                             "paid_on": timezone.localdate()}),
         "receipt_form": ReceiptForm(), "receipt_needed": options["receipt_needed"], "rejected": rejected,
@@ -253,8 +255,12 @@ def pay_options(ob, attempts, proofs, *, readonly=False, item=None):
                       and not any(p.kind == "provider_receipt" for p in proofs)
                       and str(config.get("qa.payment.receipt_required_for_provider_payments", False)).lower()
                       in ("true", "1") and not readonly)
+    # Pay again: while a claim waits for Finance the institution can say the
+    # payment failed or was reversed by the bank, and pay again (any method).
+    can_pay_again = services.can_pay_again(ob) and not readonly
     return {"payable": payable, "online_methods": online, "receipt_needed": receipt_needed,
-            "bank_transfer": bank, "chosen_method": chosen, "gateway_verified": gateway}
+            "bank_transfer": bank, "chosen_method": chosen, "gateway_verified": gateway,
+            "can_pay_again": can_pay_again}
 
 
 def _steps(ob):
@@ -343,10 +349,14 @@ def payment_slip(request, pk):
 @require_POST
 def payment_method(request, pk):
     """P9: choose a method (the others disappear) or, with an empty method,
-    "Change method" (every method comes back; open attempts are abandoned)."""
+    "Change method" (every method comes back; open attempts are abandoned).
+    With ``pay_again``: "My payment failed or was reversed — pay again"
+    (withdraws the claim awaiting Finance; reason required)."""
     ob = _obligation(request, pk)
     if getattr(request, "is_impersonating", False):
         raise Http404
+    if request.POST.get("pay_again"):
+        return _pay_again(request, ob)
     method = (request.POST.get("method") or "").strip()
     try:
         if method:
@@ -359,6 +369,30 @@ def payment_method(request, pk):
         return toast(response, "error", "Not changed", " ".join(exc.messages))
     ob.refresh_from_db()
     return render(request, "qa_portal/payments/detail.html", _detail_context(request, ob))
+
+
+def _pay_again(request, ob):
+    reason = (request.POST.get("reason") or "").strip()
+    try:
+        services.report_payment_failed(ob, user=request.user, reason=reason)
+    except ValidationError as exc:
+        kind = getattr(exc, "kind", "")
+        ob.refresh_from_db()
+        message = " ".join(exc.messages)
+        response = render(request, "qa_portal/payments/detail.html",
+                          _detail_context(request, ob, pay_again_error=message, open_pay_again=kind != "already_paid",
+                                          pay_again_reason=reason),
+                          status=200 if kind == "already_paid" else 422)
+        if is_htmx(request):
+            response["HX-Retarget"] = "#qa-main"
+            response["HX-Reselect"] = "#qa-payment"
+        if kind == "already_paid":
+            return toast(response, "success", "Already paid", message)
+        return toast(response, "error", "Not changed", message)
+    ob.refresh_from_db()
+    response = render(request, "qa_portal/payments/detail.html", _detail_context(request, ob))
+    return toast(response, "success", "You can pay again",
+                 "Your earlier payment was withdrawn and NBTE Finance has been told. Choose how to pay.")
 
 
 @institution_required

@@ -322,7 +322,8 @@ def nd_prerequisite_warning(programme):
     accredited (or interim) ND in the same field at the institution.
 
     Same field = the same master discipline, or else the same programme name
-    once "ND/HND" and "Technology" are ignored. A warning, never a block."""
+    once "ND/HND" and "Technology" are ignored. A warning for system callers;
+    the institution's own (portal) requests use the hard ``hnd_block_reason``."""
     level = getattr(programme, "level", None)
     if level is None or (level.code or "").lower() != "hnd":
         return ""
@@ -338,6 +339,53 @@ def nd_prerequisite_warning(programme):
             return ""
     return (f"{programme.name} (HND): your institution has no accredited ND in this field. You can still "
             "apply; explain why in the box (for example, the ND is under accreditation now).")
+
+
+ND_ON_ITS_WAY = ("resource_inspected", "approval_to_commence")
+
+
+def hnd_block_reason(programme, together=()):
+    """"" or why the HND ``programme`` cannot go on a portal request: the ND of
+    the same programme must run at the institution (accredited / interim, or
+    already inspected / approved to commence), sit on an open request, or be
+    added together (``together``: the other programmes on this request).
+    The hard form of ``nd_prerequisite_warning`` for the institution's own
+    requests (owner rule: never an HND without its ND)."""
+    from institutions.programme_master import ND_ESTABLISHED, field_key, level_code
+
+    if level_code(getattr(programme, "level", None)) != "hnd":
+        return ""
+    key = field_key(programme.name)
+    if any(level_code(p.level) == "nd" and field_key(p.name) == key for p in together):
+        return ""
+    nds = [p for p in Programme.unscoped.filter(institution_id=programme.institution_id, level__code__iexact="nd")
+           .exclude(status="dropped") if field_key(p.name) == key]
+    for nd in nds:
+        if nd.status in ND_ESTABLISHED + ND_ON_ITS_WAY:
+            return ""
+        if QARequestProgramme.unscoped.filter(programme=nd, status=QARequestProgramme.ACTIVE).exclude(
+                qa_request__status__in=("cancelled", "decided")).exists():
+            return ""
+    if nds:
+        return (f"{programme.name} (HND): its ND is not accredited yet. Tick ND {nds[0].name} on this request "
+                "too, or apply for the HND once the ND runs.")
+    return (f"{programme.name} (HND): your institution has no ND of this programme. An HND needs the ND of the "
+            "same programme — propose the ND first.")
+
+
+def _prerequisite_note(programme, programmes, justifications):
+    """What NBTE reads on an HND row whose ND is not accredited yet."""
+    if not nd_prerequisite_warning(programme):
+        return ""
+    note = (justifications.get(programme.pk, "") or "").strip()
+    if note:
+        return note[:4000]
+    from institutions.programme_master import field_key, level_code
+
+    key = field_key(programme.name)
+    if any(p.pk != programme.pk and level_code(p.level) == "nd" and field_key(p.name) == key for p in programmes):
+        return "The ND of the same programme is on this request."
+    return ""
 
 
 @transaction.atomic
@@ -358,18 +406,17 @@ def create_request(inst, qa_type, programmes, *, user, streams=None, justificati
         eligible, reason = programme_eligibility(programme, qa_type)
         if not eligible:
             raise ValidationError(f"{programme}: {reason}")
-    # The portal form always passes ``justifications`` (a dict, possibly empty)
-    # and so must explain every HND warning. System callers (the onboarding
-    # auto-start, imports) pass None: the warning stays visible to NBTE on the
-    # request, but there is nobody to ask, so it never blocks them.
+    # The portal form always passes ``justifications`` (a dict, possibly empty):
+    # there an HND without the ND of the same programme is refused outright
+    # (``hnd_block_reason``); an optional note is kept for NBTE. System callers
+    # (the onboarding auto-start, imports) pass None: the warning stays visible
+    # to NBTE on the request, but it never blocks them.
     ask = justifications is not None
+    if ask:  # the portal: an HND without its ND is a hard stop (owner rule)
+        blocked = [why for why in (hnd_block_reason(p, together=programmes) for p in programmes) if why]
+        if blocked:
+            raise ValidationError(" ".join(blocked))
     justifications = {k: (v or "").strip() for k, v in (justifications or {}).items()}
-    missing = [p for p in programmes if ask and nd_prerequisite_warning(p)
-               and len(justifications.get(p.pk, "")) < JUSTIFICATION_MIN]
-    if missing:
-        raise ValidationError(
-            "Explain why you are applying for " + ", ".join(f"{p.name} (HND)" for p in missing)
-            + " without an accredited ND in the same field (at least 10 characters each).")
     streams = streams or {}
     asked = {p.pk: _streams_for(p, qa_type, streams.get(p.pk)) for p in programmes}
     _accepting, cycle = cycle_for(qa_type)
@@ -380,8 +427,8 @@ def create_request(inst, qa_type, programmes, *, user, streams=None, justificati
         QARequestProgramme.unscoped.create(qa_request=req, programme=programme,
                                            is_new_programme=programme.status == "proposed",
                                            requested_streams=asked[programme.pk],
-                                           prerequisite_note=justifications.get(programme.pk, "")[:4000]
-                                           if nd_prerequisite_warning(programme) else "")
+                                           prerequisite_note=_prerequisite_note(programme, programmes,
+                                                                                justifications))
     container_type = InstitutionRequestType.objects.filter(code="qa").first()
     if container_type is not None:
         container = InstitutionRequest.unscoped.create(
@@ -419,6 +466,12 @@ def add_programme(req, programme, *, user, remark="", streams=None):
     eligible, reason = programme_eligibility(programme, req.qa_type)
     if not eligible:
         raise ValidationError(f"{programme}: {reason}")
+    if getattr(user, "user_type", "") == "institution":  # never an HND without its ND (portal)
+        on_request = [r.programme for r in QARequestProgramme.unscoped.filter(
+            qa_request=req, status=QARequestProgramme.ACTIVE).select_related("programme__level")]
+        why = hnd_block_reason(programme, together=on_request)
+        if why:
+            raise ValidationError(why)
     row = QARequestProgramme.unscoped.create(qa_request=req, programme=programme,
                                              is_new_programme=programme.status == "proposed",
                                              requested_streams=_streams_for(programme, req.qa_type, streams))
@@ -585,13 +638,12 @@ def on_clearance_opened(ctx):
     req = ctx.subject
     QARequestProgramme.unscoped.filter(qa_request=req, status=QARequestProgramme.ACTIVE, is_new_programme=True) \
         .exclude(clearance_status="cleared").update(clearance_status="pending", updated_at=timezone.now())
-    scope = getattr(ctx.transition.to_stage, "actor_scope", "") or ""
-    from staff.models import Department
-
-    dept = Department.objects.filter(code=scope).first()
+    # Only the institution's handling department's Director clears (never a
+    # hard-coded NTIRD): tell that Director (the ES when the seat is empty).
+    dept = clearance_department(req)
 
     def _send():
-        users = inst_services.staff_in_department(dept, perm="accreditation.clear_qa_programmes")
+        users = inst_services.director_or_es(dept)
         inst_services.notify_role("qa_request.clearance", {"reference": req.reference,
                                                            "institution": req.institution.name},
                                   users, url=f"/qa/requests/{req.pk}/")
@@ -723,25 +775,46 @@ def on_cancelled(ctx):
 # ---------------------------------------------------------------------------
 # Programme clearance (new programmes)
 # ---------------------------------------------------------------------------
+def clearance_department(req):
+    """The department whose Director clears a request's new programmes: the
+    institution's handling department. NTIRD handles only institutions that
+    are not approved yet; for an approved institution still pointing at the
+    onboarding department (a stale handling department) the category's
+    department is used instead."""
+    from institutions.models import Institution
+
+    inst = req.institution
+    dept = inst.handling_department if inst.handling_department_id else None
+    if inst.status not in (Institution.PROPOSED, Institution.UNDER_REVIEW):
+        onboarding = inst_services.proposed_department()
+        if dept is None or (onboarding is not None and dept.pk == onboarding.pk):
+            dept = inst.derive_handling_department() or dept
+    return dept or inst.derive_handling_department()
+
+
 def can_clear(req, user):
-    if getattr(user, "user_type", "staff") != "staff" or not user.has_perm("accreditation.clear_qa_programmes"):
+    """(allowed, reason) for clearing or returning a request's new programmes:
+    the handling department's Director, the Executive Secretary or a superuser."""
+    import org
+
+    if user is None or not getattr(user, "is_authenticated", False) \
+            or getattr(user, "user_type", "staff") != "staff":
+        return False, "Only NBTE staff clear programmes."
+    dept = clearance_department(req)
+    if not (user.is_superuser or org.is_es(user) or (dept is not None and org.is_director(user, dept))):
+        return False, (f"Programme clearance belongs to the Director of "
+                       f"{getattr(dept, 'name', 'the handling department')}.")
+    if not user.has_perm("accreditation.clear_qa_programmes"):
         return False, "You do not hold accreditation.clear_qa_programmes."
-    instance = request_instance(req)
-    stage = flow.stage(instance, "programme_clearance")
-    scope = getattr(stage, "actor_scope", "") if stage else ""
-    if scope and not user.is_superuser and not user.has_perm("qa_core.confirm_any_department") \
-            and (getattr(user.department, "code", "") or "").lower() != scope.lower():
-        return False, "Programme clearance belongs to another department."
     if req.status != "programme_clearance":
         return False, "The request is not waiting for programme clearance."
     return True, ""
 
 
 def clearance_queue(user, *, limit=200):
-    """Requests waiting for ``user``'s programme clearance. Clearance may
-    belong to a department other than the institution's handling department
-    (NTIRD by default), so this reads past the institution scope and keeps
-    only the requests ``can_clear`` allows."""
+    """Requests waiting for ``user``'s programme clearance (the Director of
+    each institution's handling department, the ES or a superuser). Reads past
+    the institution scope and keeps only the requests ``can_clear`` allows."""
     if getattr(user, "user_type", "staff") != "staff" or not user.has_perm("accreditation.clear_qa_programmes"):
         return []
     reqs = (QARequest.unscoped.filter(status="programme_clearance")
@@ -770,6 +843,9 @@ def return_programmes(req, *, user, remark):
     ok, why = can_clear(req, user)
     if not ok:
         raise PermissionDenied(why)
+    remark = (remark or "").strip()
+    if len(remark) < 3:
+        raise ValidationError("Write the remark the institution will see.")
     flow.transition(request_instance(req), "return", user, remark=remark)
     req.refresh_from_db()
     return req

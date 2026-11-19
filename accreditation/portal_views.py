@@ -127,6 +127,10 @@ def _context(request, inst, app, **extra):
                                  self_studies=ctx.get("self_studies"), hold=ctx["hold"], v3=ctx["v3"])
     ctx["fee_timing"] = (head or {}).get("fee_timing")
     ctx.update(extra)
+    if ctx.get("selecting") and inst is not None:  # every catalogue programme for the institution's type
+        from institutions.programme_master import picker
+
+        ctx["picker"] = picker(inst, picked=ctx.get("picked_ids") or [])
     return _shell_context(request, "application", **ctx)
 
 
@@ -585,6 +589,9 @@ class ProgrammeForm(QAForm):
     with its professional body (``name``, ``level``, ``category``, ``body``)."""
     master = forms.ModelChoiceField(ProgrammeMaster.objects.filter(is_active=True), required=False,
                                     widget=forms.HiddenInput)
+    # The picker's ticked levels (ND alone, or ND + HND of the same programme).
+    masters = forms.ModelMultipleChoiceField(ProgrammeMaster.objects.filter(is_active=True), required=False,
+                                             widget=forms.MultipleHiddenInput)
     name = forms.CharField(max_length=200, label="Programme name", required=False)
     level = forms.ModelChoiceField(ProgrammeLevel.objects.filter(is_active=True).exclude(code="admin"),
                                    required=False)
@@ -607,11 +614,13 @@ class ProgrammeForm(QAForm):
 
 def _programme_estimate(inst, programmes, pending=None):
     """Phase 8: the programme processing fee for the listed programmes (and
-    the one being typed, if any), one line per programme."""
+    the ones being added, if any), one line per programme."""
     from payments.services import fee_estimate
 
     pairs = [(p, p.requested_streams) for p in programmes if p.status != "dropped"]
-    if pending is not None:
+    if isinstance(pending, list):
+        pairs.extend(pending)
+    elif pending is not None:
         pairs.append(pending)
     if not pairs:
         return None
@@ -634,25 +643,40 @@ def programmes(request):
     if request.method == "POST":
         if not selecting:
             raise Http404
+        picked = []
         if form.is_valid():
             d = form.cleaned_data
+            from django.db import transaction
+
             from institutions.programme_master import add_programme
 
+            picked = list(d.get("masters") or []) + ([d["master"]] if d.get("master") else [])
+            # ND before HND: the HND of a programme is allowed with its ND in the same go.
+            picked = sorted({m.pk: m for m in picked}.values(),
+                            key=lambda m: (m.level.sort_order if m.level_id else 0, m.name.lower()))
             try:
-                add_programme(inst, user=request.user, master=d.get("master"), typed_name=d.get("name") or "",
-                              level=d.get("level"), category=d.get("category"), body=d.get("body"),
-                              application=app, streams=d["streams"])
+                with transaction.atomic():
+                    if picked:
+                        added = [add_programme(inst, user=request.user, master=m, application=app,
+                                               streams=d["streams"]) for m in picked]
+                    else:
+                        added = [add_programme(inst, user=request.user, typed_name=d.get("name") or "",
+                                               level=d.get("level"), category=d.get("category"),
+                                               body=d.get("body"), application=app, streams=d["streams"])]
             except ValidationError as exc:
-                field = "body" if "body" in " ".join(exc.messages).lower() and not d.get("master") else None
+                field = "body" if "body" in " ".join(exc.messages).lower() and not picked else None
                 form.add_error(field, " ".join(exc.messages))
             else:
                 response = render(request, "qa_portal/application/_programmes.html",
                                   _context(request, inst, app, form=ProgrammeForm(), selecting=selecting))
+                if len(added) > 1:
+                    return toast(response, "success", f"{len(added)} programmes added",
+                                 ", ".join(str(p) for p in added))
                 return toast(response, "success", "Programme added")
         return render(request, "qa_portal/application/_programmes.html",
                       _context(request, inst, app, form=form, selecting=selecting,
-                               picked=form.cleaned_data.get("master") if hasattr(form, "cleaned_data") else None,
-                               manual_open=not request.POST.get("master")), status=422)
+                               picked_ids=[m.pk for m in picked],
+                               manual_open=not picked and bool(request.POST.get("name"))), status=422)
     return render(request, "qa_portal/application/_programmes.html",
                   _context(request, inst, app, form=form, selecting=selecting))
 
@@ -699,9 +723,20 @@ def programme_remove(request, pk):
     if programme is None or app is None or app.status != "programme_selection" or programme.status != "proposed" \
             or getattr(request, "is_impersonating", False) or _locked(app, programme):
         raise Http404
-    inst_services.remove_proposed_programme(programme, user=request.user)
+    from institutions.programme_master import remove_programme
+
+    try:  # removing an ND takes the HND of the same programme with it
+        removed = remove_programme(programme, user=request.user, locked=lambda p: _locked(app, p))
+    except ValidationError as exc:
+        response = render(request, "qa_portal/application/_programmes.html",
+                          _context(request, inst, app, form=ProgrammeForm(), selecting=True,
+                                   prog_error=" ".join(exc.messages)), status=422)
+        return toast(response, "error", "Not removed", " ".join(exc.messages))
     response = render(request, "qa_portal/application/_programmes.html",
                       _context(request, inst, app, form=ProgrammeForm(), selecting=True))
+    if len(removed) > 1:
+        return toast(response, "info", "Programmes removed",
+                     f"{', '.join(str(p) for p in removed[1:])} went with its ND.")
     return toast(response, "info", "Programme removed")
 
 
@@ -742,30 +777,40 @@ def programme_estimate(request):
     if app is None:
         raise Http404
     programmes = list(Programme.objects.for_user(request.user).filter(institution=inst))
-    pending, problems = None, []
+    pending, problems = [], []
     name = (request.GET.get("name") or "").strip()
     raw = request.GET.get("streams")
-    if name or raw:
+    ids = [int(i) for i in request.GET.getlist("masters") + request.GET.getlist("master") if str(i).isdigit()]
+    ticked = list(ProgrammeMaster.objects.filter(pk__in=ids, is_active=True).select_related("level"))
+    if name or raw or ticked:
         try:
             n = clean_streams(raw or 1)
         except ValidationError as exc:
             problems.append(" ".join(exc.messages))
             n = 1
-        pending = (Programme(name=name or "New programme", status="proposed"), n)
+        if ticked:
+            pending = [(Programme(name=m.name, level=m.level, status="proposed"), n) for m in ticked]
+        else:
+            pending = [(Programme(name=name or "New programme", status="proposed"), n)]
     return render(request, "qa_portal/qa_requests/_fee_estimate.html",
                   {"estimate": _programme_estimate(inst, programmes, pending), "problems": problems,
-                   "qa_type": True, "count": len(programmes)})
+                   "qa_type": True, "count": len(programmes) + len(pending)})
 
 
 @institution_required
 def programme_master_search(request):
     """v2.1 R.4 (X44): type-ahead over the programme master list (HTMX listbox)."""
-    from institutions.programme_master import search_master
+    from institutions.programme_master import normalise, picker
 
+    inst = _inst(request)
     q = request.GET.get("q", "")
-    results = search_master(q)
+    data = picker(inst)
+    words = normalise(q).split()
+    if words:  # without JavaScript the filter box submits here
+        data["groups"] = [g for g in data["groups"] if all(w in g["search"] for w in words)]
     return render(request, "qa_portal/application/_master_options.html",
-                  {"results": results, "q": q, "searched": len(q.strip()) >= 2})
+                  {"picker": data, "q": q, "inst": inst, "picker_field": "masters",
+                   "onboarding": True})
 
 
 @institution_required

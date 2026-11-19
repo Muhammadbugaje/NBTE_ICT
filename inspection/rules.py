@@ -225,7 +225,7 @@ def _person_filter(c, prefix=""):
 class Need:
     """What a mapping is for."""
     case: object
-    row: object                    # QARequestProgramme
+    row: object                    # QARequestProgramme, or None for the whole institution (v2.9)
     duty: str
     start: datetime.date
     end: datetime.date
@@ -233,7 +233,11 @@ class Need:
 
     @property
     def programme(self):
-        return self.row.programme
+        return self.row.programme if self.row is not None else None
+
+    @property
+    def scope(self):
+        return "programme" if self.row is not None else "institution"
 
     @property
     def institution_id(self):
@@ -287,7 +291,8 @@ def assignment_problems(person, need, *, stop_early=False):
         allowed = c.primary_disciplines | (c.secondary_disciplines if _bool(
             "qa.matching.allow_secondary_discipline", False) else set())
         if disc not in allowed:
-            label = getattr(getattr(need.programme.category, "discipline", None), "name", "the programme's")
+            label = getattr(getattr(getattr(need.programme, "category", None), "discipline", None), "name",
+                            "the programme's")
             if add(Problem("discipline", "qa.matching.allow_secondary_discipline",
                            f"{c.name} does not cover the {label} discipline")):
                 return p
@@ -300,11 +305,12 @@ def assignment_problems(person, need, *, stop_early=False):
         m = clash[0]
         if add(Problem("double_booking", "qa.matching.travel_buffer_days",
                        f"{c.name} is booked {m.from_date:%d %b}–{m.to_date:%d %b %Y} "
-                       f"({m.qa_request_programme.programme}) within the {buffer.days}-day travel buffer")):
+                       f"({m.target_label}) within the {buffer.days}-day travel buffer")):
             return p
     # 4. one programme at a time (R-11) and the concurrent load
-    others = {m.qa_request_programme.programme_id for m in live}
-    if others and others != {need.programme.pk}:
+    # A whole-institution mapping is not "another programme" (v2.9).
+    others = {m.qa_request_programme.programme_id for m in live if m.qa_request_programme_id}
+    if others and need.programme is not None and others != {need.programme.pk}:
         if add(Problem("one_programme", "", f"{c.name} already holds live work on another programme (R-11)")):
             return p
     cap = _int("qa.resource_person.max_active_engagements", 2)
@@ -475,7 +481,8 @@ def book(person, need, *, actor, expected_version=None, status="proposed", pendi
     if updated != 1:
         raise BookingConflict(f"{locked} was booked by someone else a moment ago. Refresh the list and try again.")
     kwargs = {"resource_person": locked} if model is ResourcePerson else {"qa_personnel": locked}
-    return QAMapping.unscoped.create(case=need.case, qa_request_programme=need.row, duty=need.duty, status=status,
+    return QAMapping.unscoped.create(case=need.case, qa_request_programme=need.row, scope=need.scope,
+                                     duty=need.duty, status=status,
                                      from_date=need.start, to_date=need.end, created_by=actor,
                                      created_via=pending_action, **kwargs)
 

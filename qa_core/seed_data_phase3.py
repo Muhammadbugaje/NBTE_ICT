@@ -286,7 +286,7 @@ QA_REQUEST_FLOW = {
         ("draft", "Draft", "Draft — choose your programmes, then submit", "start", "institution", {}),
         ("submitted", "Submitted", "Submitted to NBTE", "system", "system", {}),
         ("programme_clearance", "Programme clearance", "New programmes under review by NBTE", "action",
-         "role_in_department", {"actor_scope": "ntird", "sla_hours": 120}),
+         "role_in_department", {"actor_scope": "owning", "sla_hours": 120}),  # the handling department's Director
         ("fee_due", "QA fee due", "QA processing fee due", "action", "institution", {}),
         ("payment_pending_confirmation", "Payment awaiting Finance confirmation",
          "Institution claims paid — awaiting Finance confirmation", "action", "finance_director", {}),

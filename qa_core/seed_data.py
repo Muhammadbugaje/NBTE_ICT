@@ -319,6 +319,12 @@ PAYMENT_FLOW = {
          "Confirm part payment (Director of Finance)", FINAL),
         ("partially_paid", "awaiting_payment", "pay_balance", "Pay the balance", {}),
         ("rejected", "awaiting_payment", "repay", "Pay again", {}),
+        # The institution reports that the claimed payment failed or was
+        # reversed by the bank: the claim is withdrawn and it can pay again.
+        *[(src, "awaiting_payment", "report_payment_failed", "My payment failed or was reversed — pay again",
+           {"requires_remark": True})
+          for src in ("provider_processing", "provider_reported_paid", "proof_submitted",
+                      "awaiting_finance_confirmation", "finance_confirmation_overdue")],
         ("confirmed", "overpaid", "record_overpayment", "Record overpayment", {}),
         ("confirmed", "refund_requested", "request_refund", "Request refund",
          {"requires_confirmation": True, "requires_remark": True}),

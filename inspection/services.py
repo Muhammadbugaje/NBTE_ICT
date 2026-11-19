@@ -237,6 +237,7 @@ def register_qa_personnel(staff, *, actor, disciplines, is_verification_officer=
 # Mapping (Edit QA Mapping)
 # ===========================================================================
 def need_for(case, row, duty, start=None, end=None, *, exclude_mapping_id=None):
+    """The need a mapping fills. ``row`` None = the whole institution (v2.9)."""
     from accreditation import case_services as cs
 
     if start is None or end is None:
@@ -262,19 +263,92 @@ def person_from_key(key):
     return None
 
 
+# ---------------------------------------------------------------------------
+# v2.9: resource-person mapping is ES-led.
+#   * the ES suggests (picks) people; Audit (the case's supervising audit
+#     officer or the Audit Director) verifies and may also suggest its own;
+#   * ONLY the ES approves — nobody else, not the handling Director;
+#   * a mapping covers one programme of the case or the whole institution;
+#   * an approved resource person sees the engagement on the portal,
+#     confirms availability (accept / decline) and submits a report.
+# ---------------------------------------------------------------------------
+def is_case_audit(case, user):
+    """The case's supervising audit officer, or the Audit department's Director."""
+    if user is None or not getattr(user, "is_authenticated", False) or not user.is_active:
+        return False
+    if case.supervising_audit_officer_id and case.supervising_audit_officer_id == user.pk:
+        return True
+    import org
+    from qa_core.departments import qa_department
+
+    dept = qa_department("audit")
+    return bool(dept is not None and org.is_director(user, dept))
+
+
+def _suggested_by_role(case, user):
+    import org
+
+    if org.is_es(user):
+        return "es"
+    if is_case_audit(case, user):
+        return "audit"
+    return "other"
+
+
+def can_suggest_mapping(case, user):
+    """The ES and the case's Audit may suggest people for the case (holders of
+    ``initiate_edit_qa_mapping`` keep the availability finder)."""
+    if user is None or not getattr(user, "is_authenticated", False) or getattr(user, "user_type", "") != "staff":
+        return False, "Sign in as NBTE staff."
+    if is_monitor(user):
+        return False, "The ICT monitor has read-only access (R-13)."
+    import org
+
+    if user.is_superuser or org.is_es(user) or is_case_audit(case, user) \
+            or user.has_perm("inspection.initiate_edit_qa_mapping"):
+        return True, ""
+    return False, "Only the ES or the case's Audit officer suggests resource persons."
+
+
 @transaction.atomic
-def propose_mapping(case, row, *, duty, person, actor, start=None, end=None, expected_version=None, reason=""):
+def propose_mapping(case, row, *, duty, person, actor, start=None, end=None, expected_version=None, reason="",
+                    scope=None):
     """Book ``person`` (a proposed mapping, under the guard) and open the
     *Edit QA Mapping* pending action; a second officer's confirmation makes it
-    active. Without a second-officer policy it applies at once."""
+    active. Without a second-officer policy it applies at once.
+
+    ``row`` None (or ``scope="institution"``) maps the person to the whole
+    institution instead of one programme. Audit's own suggestion counts as
+    verified; the ES still approves every mapping."""
     from qa_core import actions
 
     _staff(actor)
-    if row.qa_request_id != case.qa_request_id or row.status != "active":
+    scope = scope or (QAMapping.INSTITUTION if row is None else QAMapping.PROGRAMME)
+    if scope not in (QAMapping.PROGRAMME, QAMapping.INSTITUTION):
+        raise ValidationError("Choose a programme or the whole institution.")
+    if scope == QAMapping.INSTITUTION:
+        row = None
+    elif row is None or row.qa_request_id != case.qa_request_id or row.status != "active":
         raise ValidationError("Choose an active programme of this case.")
+    ok, why = can_suggest_mapping(case, actor)
+    if not ok:
+        raise PermissionDenied(why)
     need = need_for(case, row, duty, start, end)
     mapping = rules.book(person, need, actor=actor, expected_version=expected_version)
-    reason = (reason or "").strip() or f"Map {person} to {row.programme} ({mapping.get_duty_display()})"
+    role = _suggested_by_role(case, actor)
+    extra = {"suggested_by_role": role}
+    if role == "audit":
+        extra.update(audit_verified_by=actor, audit_verified_at=timezone.now(),
+                     audit_remark="Suggested by Audit")
+    QAMapping.unscoped.filter(pk=mapping.pk).update(**extra)
+    target = row.programme if row is not None else "the whole institution"
+    reason = (reason or "").strip() or f"Map {person} to {target} ({mapping.get_duty_display()})"
+    if not (actor.is_superuser or actor.has_perm("inspection.initiate_edit_qa_mapping")):
+        # v2.9: the ES / Audit suggest without the Edit QA Mapping pending
+        # action — the Audit → ES approval is the control. The booking stays
+        # "proposed" until the ES approves (activates) or rejects (releases) it.
+        mapping.refresh_from_db()
+        return mapping, None
     pa = actions.initiate("inspection.edit_qa_mapping", actor=actor, target=case.institution,
                           payload={"mapping_id": mapping.pk, "reason": reason}, reason=reason)
     QAMapping.unscoped.filter(pk=mapping.pk).update(created_via=pa)
@@ -283,17 +357,17 @@ def propose_mapping(case, row, *, duty, person, actor, start=None, end=None, exp
 
 
 def mapping_approval_state(mapping):
-    """Where a mapping sits in the v2.7 two-step approval (Director → ES)."""
+    """Where a mapping sits in the v2.9 ES-led approval (Audit verifies → ES approves)."""
     if mapping.es_approved_at:
         return "es_approved", "Approved by the ES"
-    if mapping.director_approved_at:
-        return "director_approved", "Director approved — waiting for the ES"
-    return "pending", "Waiting for the Director"
+    if mapping.audit_verified_at:
+        return "audit_verified", "Verified by Audit — waiting for the ES"
+    return "pending", "Waiting for Audit to verify"
 
 
 def can_approve_mapping(mapping, user, layer):
-    """Director layer: the handling department's Director (or the ES /
-    superuser). ES layer: the ES (or a superuser)."""
+    """``layer`` "audit" (verify; "director" is an old alias): the case's Audit.
+    ``layer`` "es" (approve): the Executive Secretary only."""
     if user is None or not getattr(user, "is_authenticated", False):
         return False, "Sign in as NBTE staff."
     if is_monitor(user):
@@ -303,57 +377,87 @@ def can_approve_mapping(mapping, user, layer):
     if user.is_superuser:
         return True, ""
     if layer == "es":
-        return (org.is_es(user), "Only the Executive Secretary approves this step.")
-    if org.is_es(user):
+        return (org.is_es(user), "Only the Executive Secretary approves a resource-person mapping.")
+    if is_case_audit(mapping.case, user):
         return True, ""
-    dept = mapping.case.owning_department or getattr(mapping.case.institution, "handling_department", None)
-    if dept is not None and org.is_director(user, dept):
-        return True, ""
-    return False, ("Only the handling department Director approves the mapping "
-                   "(the ES may also act).")
+    return False, "Only the case's Audit officer (or the Audit Director) verifies the mapping."
+
+
+def _mapping_event(mapping, actor, text):
+    try:
+        timeline.record(mapping.case.institution, event_code="qa.mapping.approved", subject=mapping.case,
+                        actor=actor, internal_text=f"{mapping.person} → {mapping.target_label} "
+                                                   f"({mapping.get_duty_display()}): {text}")
+    except Exception:  # noqa: BLE001 — the decision itself must stand
+        pass
+
+
+def _notify_rp_engaged(mapping):
+    person = mapping.resource_person
+    if person is None or not person.user_id or not person.user.is_active:
+        return
+    from notifications.services import notify
+
+    body = (f"{mapping.case.institution.name} — {mapping.target_label}, "
+            f"{mapping.from_date:%d %b %Y} to {mapping.to_date:%d %b %Y}. "
+            "Confirm your availability and submit your report in My engagements.")
+    transaction.on_commit(lambda user=person.user: notify(
+        user, title="The ES approved your QA engagement", body=body, url="/engagements/"))
 
 
 @transaction.atomic
 def approve_mapping(mapping, *, actor, layer, approve=True, remark=""):
-    """v2.7: the Director approves (or sends back) a mapping, then the ES
-    confirms it. Approval is visibility, not eligibility: rules still decide
-    who may be mapped, and every mapping is shown to the whole case team."""
+    """v2.9: Audit verifies (or sends back) a mapping; then ONLY the ES
+    approves it (or rejects it, which releases the booking). Approval is
+    visibility and consent, not eligibility: the §9 rules still decide who may
+    be mapped."""
     mapping = QAMapping.unscoped.select_for_update().get(pk=mapping.pk)
+    layer = "audit" if layer in ("audit", "director") else layer
+    if layer not in ("audit", "es"):
+        raise ValidationError("Unknown approval step.")
     ok, why = can_approve_mapping(mapping, actor, layer)
     if not ok:
         raise PermissionDenied(why)
+    remark = (remark or "").strip()[:255]
     now = timezone.now()
-    if layer == "director":
+    if mapping.status in ("released", "overridden"):
+        raise ValidationError("This mapping is no longer live.")
+    if layer == "audit":
         if mapping.es_approved_at:
             raise ValidationError("The ES has already approved this mapping.")
-        mapping.director_approved_by = actor if approve else None
-        mapping.director_approved_at = now if approve else None
-        if not approve:
-            mapping.es_approved_by = None
-            mapping.es_approved_at = None
+        if not approve and len(remark) < 3:
+            raise ValidationError({"remark": "Say why Audit cannot verify this mapping."})
+        mapping.audit_verified_by = actor if approve else None
+        mapping.audit_verified_at = now if approve else None
+        mapping.audit_remark = remark
+        mapping.save(update_fields=["audit_verified_by", "audit_verified_at", "audit_remark", "updated_at"])
+        _mapping_event(mapping, actor, ("verified by Audit" if approve else "Audit sent it back")
+                       + (f" — {remark}" if remark else ""))
+        return mapping
+    if approve:
+        if not mapping.audit_verified_at:
+            raise ValidationError("Audit must verify the mapping before the ES approves it.")
+        if mapping.status == "proposed":
+            mapping = rules.activate(mapping, actor=actor)
+        mapping.es_approved_by, mapping.es_approved_at, mapping.es_remark = actor, now, remark
+        mapping.save(update_fields=["es_approved_by", "es_approved_at", "es_remark", "updated_at"])
+        on_mapping_active(mapping)
+        _notify_rp_engaged(mapping)
     else:
-        if not mapping.director_approved_at:
-            raise ValidationError("The Director must approve the mapping first.")
-        mapping.es_approved_by = actor if approve else None
-        mapping.es_approved_at = now if approve else None
-    mapping.save(update_fields=["director_approved_by", "director_approved_at", "es_approved_by",
-                                "es_approved_at", "updated_at"])
-    try:
-        from qa_core import timeline
-
-        timeline.record(mapping.case.institution, event_code="qa.mapping.approved", subject=mapping.case,
-                        actor=actor,
-                        internal_text=(f"{mapping.person} → {mapping.qa_request_programme.programme} "
-                                       f"({mapping.get_duty_display()}): {layer} "
-                                       f"{'approved' if approve else 'sent back'}"
-                                       f"{(' — ' + remark) if remark else ''}"))
-    except Exception:  # the approval itself must stand
-        pass
+        if len(remark) < 3:
+            raise ValidationError({"remark": "Give the reason for not approving."})
+        mapping.es_approved_by, mapping.es_approved_at, mapping.es_remark = None, None, remark
+        mapping.save(update_fields=["es_approved_by", "es_approved_at", "es_remark", "updated_at"])
+        rules.release(mapping, reason="not approved by the ES")
+        mapping.refresh_from_db()
+    _mapping_event(mapping, actor, ("approved by the ES" if approve else "not approved by the ES")
+                   + (f" — {remark}" if remark else ""))
     return mapping
 
 
 def on_mapping_active(mapping):
-    """An active visit-duty mapping joins the planned team of a scheduled inspection."""
+    """An active visit-duty mapping joins the planned team of a scheduled
+    inspection. The resource person hears of it once the ES has approved."""
     if mapping.duty not in VISIT_DUTIES:
         return
     inspection = Inspection.unscoped.filter(case=mapping.case, status="scheduled").order_by("-pk").first()
@@ -361,7 +465,7 @@ def on_mapping_active(mapping):
                                                                             qa_mapping=mapping).exists():
         InspectionTeamMember.unscoped.create(inspection=inspection, qa_mapping=mapping,
                                              role_on_team=mapping.get_duty_display())
-    if inspection is not None and mapping.resource_person_id:
+    if inspection is not None and mapping.resource_person_id and mapping.es_approved_at:
         person = mapping.resource_person
         if person.user_id and person.user.is_active:
             from django.db import transaction
@@ -380,6 +484,42 @@ def on_mapping_active(mapping):
                     url="/engagements/",
                 )
             )
+
+
+def case_rp_mappings(case, user=None):
+    """Every resource-person / QA-personnel mapping of the case with its ES-led
+    approval state, the person's reply and report — for the handling
+    department, CQAC and the ES (case page ``rp_mappings``)."""
+    rows = list(QAMapping.unscoped.filter(case=case).exclude(status="overridden")
+                .select_related("qa_request_programme__programme", "resource_person", "qa_personnel__staff",
+                                "audit_verified_by", "es_approved_by", "created_by")
+                .order_by("qa_request_programme__programme__name", "pk"))
+    out = []
+    for m in rows:
+        state, label = mapping_approval_state(m)
+        out.append({
+            "mapping": m, "pk": m.pk, "person": str(m.person), "person_kind": m.person_kind,
+            "scope": m.scope, "scope_label": m.get_scope_display(), "target": m.target_label,
+            "programme": m.programme, "duty": m.duty, "duty_label": m.get_duty_display(),
+            "from_date": m.from_date, "to_date": m.to_date, "status": m.status,
+            "status_label": m.get_status_display(),
+            "suggested_by": m.created_by, "suggested_by_role": m.suggested_by_role,
+            "suggested_by_label": m.get_suggested_by_role_display() if m.suggested_by_role else "",
+            "approval_state": state, "approval_label": label,
+            "audit_verified_by": m.audit_verified_by, "audit_verified_at": m.audit_verified_at,
+            "audit_remark": m.audit_remark,
+            "es_approved_by": m.es_approved_by, "es_approved_at": m.es_approved_at, "es_remark": m.es_remark,
+            "rp_response": m.rp_response, "rp_response_label": m.get_rp_response_display(),
+            "rp_response_at": m.rp_response_at, "rp_response_note": m.rp_response_note,
+            "report": m.findings, "report_recommendation": m.rp_recommendation,
+            "report_recommendation_label": m.get_rp_recommendation_display() if m.rp_recommendation else "",
+            "report_submitted_at": m.findings_submitted_at,
+            "can_verify": bool(user is not None and not m.es_approved_at and m.status in QAMapping.LIVE
+                               and can_approve_mapping(m, user, "audit")[0]),
+            "can_es_approve": bool(user is not None and not m.es_approved_at and m.status in QAMapping.LIVE
+                                   and can_approve_mapping(m, user, "es")[0]),
+        })
+    return out
 
 
 # ===========================================================================
@@ -628,8 +768,8 @@ def _programme_for(pvp):
         kind = {"resource_person": pvp.resource_person_id} if pvp.resource_person_id else {
             "qa_personnel": pvp.qa_personnel_id}
         mapping = (QAMapping.unscoped.filter(case=pvp.inspection.case, duty__in=VISIT_DUTIES, **{f"{k}_id": v
-                   for k, v in kind.items()}).select_related("qa_request_programme__programme__category")
-                   .order_by("-pk").first())
+                   for k, v in kind.items()}, qa_request_programme__isnull=False)
+                   .select_related("qa_request_programme__programme__category").order_by("-pk").first())
         if mapping is not None:
             programme = mapping.qa_request_programme.programme
             return programme, getattr(programme.category, "discipline", None)
@@ -759,6 +899,9 @@ def _member_programmes(inspection, attendee):
                 "qa_request_programme_id", flat=True))
         identity = {"qa_personnel_id": qa_personnel.pk}
     mappings = QAMapping.unscoped.filter(case=inspection.case, duty__in=VISIT_DUTIES, **identity)
+    if mappings.filter(scope=QAMapping.INSTITUTION).exists():  # v2.9: covers every programme
+        return set(PostVisitReport.unscoped.filter(inspection=inspection).values_list(
+            "qa_request_programme_id", flat=True))
     programme_ids = set(mappings.values_list("qa_request_programme_id", flat=True))
     if programme_ids:
         return programme_ids
@@ -1535,9 +1678,57 @@ def rp_of(user):
 
 
 def rp_engagements(rp):
-    return (QAMapping.unscoped.filter(resource_person=rp)
+    """v2.9: the portal shows an engagement once the ES has approved it."""
+    return (QAMapping.unscoped.filter(resource_person=rp, es_approved_at__isnull=False)
             .select_related("case__institution", "qa_request_programme__programme")
             .order_by("-from_date", "-pk"))
+
+
+def response_open(mapping):
+    """May the resource person accept / decline this engagement now?"""
+    if not mapping.es_approved_at:
+        return False, "The ES has not approved this engagement yet."
+    if mapping.status not in QAMapping.LIVE:
+        return False, "This engagement is closed."
+    if mapping.findings_submitted_at:
+        return False, "You have already submitted your report."
+    return True, ""
+
+
+@transaction.atomic
+def rp_respond(mapping, *, user, accept, note=""):
+    """The resource person confirms availability (accept) or declines. A
+    decline releases the booking and tells the ES and Audit."""
+    mapping = QAMapping.unscoped.select_for_update().select_related("case__institution").get(pk=mapping.pk)
+    rp = rp_of(user)
+    if rp is None or mapping.resource_person_id != rp.pk:
+        raise PermissionDenied("This engagement is not yours.")
+    ok, why = response_open(mapping)
+    if not ok:
+        raise ValidationError(why)
+    note = (note or "").strip()[:255]
+    if not accept and len(note) < 3:
+        raise ValidationError({"note": "Say briefly why you cannot take this engagement."})
+    mapping.rp_response = "accepted" if accept else "declined"
+    mapping.rp_response_at = timezone.now()
+    mapping.rp_response_note = note
+    mapping.save(update_fields=["rp_response", "rp_response_at", "rp_response_note", "updated_at"])
+    if not accept:
+        rules.release(mapping, reason="declined by the resource person")
+        mapping.refresh_from_db()
+    _mapping_event(mapping, user, ("availability confirmed by the resource person" if accept else
+                                   "declined by the resource person") + (f" — {note}" if note else ""))
+    recipients = [u for u in (mapping.es_approved_by, mapping.audit_verified_by, mapping.created_by)
+                  if u is not None and u.is_active]
+    if recipients:
+        from notifications.services import notify
+
+        title = (f"{rp.full_name} accepted the engagement" if accept else f"{rp.full_name} declined the engagement")
+        body = f"{mapping.case.reference} · {mapping.target_label}" + (f": {note}" if note else "")
+        for recipient in {u.pk: u for u in recipients}.values():
+            transaction.on_commit(lambda r=recipient: notify(r, title=title, body=body,
+                                                             url=f"/qa/cases/{mapping.case_id}/"))
+    return mapping
 
 
 def rp_service(rp):
@@ -1550,10 +1741,19 @@ def rp_files(rp):
 
 
 def findings_open(mapping):
-    """A resource person writes findings for a visit they are on, until the
-    team submits the programme's report."""
-    if mapping.duty not in VISIT_DUTIES or mapping.status not in ("active", "released"):
+    """A resource person writes their report once the ES has approved the
+    engagement and they have confirmed availability. For a programme visit the
+    report also feeds the team's compilation, so it closes when the team
+    submits that programme's report."""
+    if mapping.status not in ("active", "released"):
         return False, "Findings open once your engagement is confirmed."
+    if not mapping.es_approved_at:
+        return False, "Your report opens once the ES approves the engagement."
+    if mapping.resource_person_id and mapping.rp_response != "accepted":
+        return False, ("You declined this engagement." if mapping.rp_response == "declined"
+                       else "Confirm your availability first.")
+    if mapping.duty not in VISIT_DUTIES:
+        return True, ""
     inspection = live_inspection(mapping.case)
     if inspection is not None and inspection.status == "closed":
         attended = PostVisitPersonnel.unscoped.filter(
@@ -1562,15 +1762,16 @@ def findings_open(mapping):
                {"qa_personnel": mapping.qa_personnel}), attended=True).exists()
         if not attended:
             return False, "You were recorded as absent and cannot submit visit findings."
-    report = PostVisitReport.unscoped.filter(inspection__case=mapping.case,
-                                             qa_request_programme=mapping.qa_request_programme).first()
-    if report is not None and report.status not in ("draft", "returned"):
-        return False, "The team has submitted this programme's report."
+    if mapping.qa_request_programme_id:
+        report = PostVisitReport.unscoped.filter(inspection__case=mapping.case,
+                                                 qa_request_programme=mapping.qa_request_programme).first()
+        if report is not None and report.status not in ("draft", "returned"):
+            return False, "The team has submitted this programme's report."
     return True, ""
 
 
 @transaction.atomic
-def submit_findings(mapping, *, user, text):
+def submit_findings(mapping, *, user, text, recommendation=None):
     mapping = QAMapping.unscoped.select_for_update().get(pk=mapping.pk)
     rp = rp_of(user)
     if rp is None or mapping.resource_person_id != rp.pk:
@@ -1581,8 +1782,14 @@ def submit_findings(mapping, *, user, text):
     text = (text or "").strip()
     if len(text) < 20:
         raise ValidationError({"findings": "Write your findings (at least 20 characters)."})
-    QAMapping.unscoped.filter(pk=mapping.pk).update(findings=text)
-    mapping.findings = text
+    update = {"findings": text, "findings_submitted_at": timezone.now()}
+    if recommendation is not None:
+        if recommendation and recommendation not in dict(QAMapping.RECOMMENDATION_CHOICES):
+            raise ValidationError({"recommendation": "Choose a recommendation."})
+        update["rp_recommendation"] = recommendation
+    QAMapping.unscoped.filter(pk=mapping.pk).update(**update)
+    for field, value in update.items():
+        setattr(mapping, field, value)
     inspection = Inspection.unscoped.filter(case=mapping.case, status__in=("scheduled", "closed")) \
         .select_related("team_lead").order_by("-pk").first()
     if inspection and inspection.team_lead_id:
@@ -1595,7 +1802,7 @@ def submit_findings(mapping, *, user, text):
                 recipient,
                 title="Resource-person findings submitted",
                 body=f"{mapping.resource_person.full_name} submitted findings for "
-                     f"{mapping.qa_request_programme.programme}.",
+                     f"{mapping.target_label}.",
                 url=f"/qa/inspection/inspections/{inspection.pk}/",
             )
         )

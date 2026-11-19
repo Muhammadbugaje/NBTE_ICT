@@ -826,13 +826,27 @@ def _can_read_outbox(user):
 @require(_can_read_outbox)
 @require_GET
 def outbox(request):
-    from .mail import delivery_mode
+    from notifications.models import EmailLog
+
+    from .mail import delivery_mode, html_to_text
     from .models import OutboundEmail
 
-    qs = OutboundEmail.objects.all()
+    # Delivered mail (queue mode, the normal setting) is logged in EmailLog; only
+    # log-only (console) runs write OutboundEmail. Show the sent mail by default.
+    mode = delivery_mode()
+    source = request.GET.get("source") or ("log" if mode == "console" else "sent")
+    if source not in ("sent", "log"):
+        source = "sent"
+    sent = source == "sent"
+    model = EmailLog if sent else OutboundEmail
+    qs = model.objects.all()
     q = (request.GET.get("q") or "").strip()
     if q:
-        qs = qs.filter(Q(subject__icontains=q) | Q(recipients__icontains=q) | Q(body_text__icontains=q))
+        body = Q(body_html__icontains=q) if sent else Q(body_text__icontains=q)
+        qs = qs.filter(Q(subject__icontains=q) | Q(recipients__icontains=q) | body)
+    status = request.GET.get("status", "") if sent else ""
+    if status in (EmailLog.QUEUED, EmailLog.SENT, EmailLog.RETRYING, EmailLog.FAILED):
+        qs = qs.filter(status=status)
     category = request.GET.get("category", "")
     if category:
         qs = qs.filter(category=category)
@@ -847,8 +861,17 @@ def outbox(request):
     if to:
         qs = qs.filter(recipients__icontains=to)
     page = paginate(request, qs.order_by("-created_at", "-id"))
-    ctx = {"page": page, "filters": request.GET, "mode": delivery_mode(),
-           "categories": sorted(set(OutboundEmail.objects.values_list("category", flat=True)))}
+    if sent:
+        sensitive = set(EmailLog.sensitive_categories())
+        for m in page["rows"]:
+            m.is_log = True
+            m.body_text = ("(Content not kept for security e-mails.)" if m.category in sensitive and not m.body_html
+                           else html_to_text(m.body_html or ""))
+    ctx = {"page": page, "filters": request.GET, "mode": mode, "source": source,
+           "sent_count": EmailLog.objects.count(), "log_count": OutboundEmail.objects.count(),
+           "failed_count": EmailLog.objects.filter(status=EmailLog.FAILED).count(),
+           "status_choices": EmailLog.STATUS_CHOICES,
+           "categories": sorted(c for c in set(model.objects.values_list("category", flat=True)) if c)}
     return render_qa(request, "qa_core/outbox.html", ctx, {"qa-panel": "qa_core/_outbox_panel.html",
                                                            "qa-rows": "qa_core/_outbox_rows.html"})
 

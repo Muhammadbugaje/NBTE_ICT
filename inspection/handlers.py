@@ -126,7 +126,7 @@ class EditQAMappingHandler(ActionHandler):
         m = self._mapping(payload)
         if m is None:
             return []
-        return [DiffRow("Person", "—", str(m.person)), DiffRow("Programme", "—", str(m.qa_request_programme.programme)),
+        return [DiffRow("Person", "—", str(m.person)), DiffRow("Programme", "—", m.target_label),
                 DiffRow("Duty", "—", m.get_duty_display()),
                 DiffRow("Dates", "—", f"{m.from_date:%d %b %Y} – {m.to_date:%d %b %Y}"),
                 DiffRow("Case", "—", m.case.reference)]

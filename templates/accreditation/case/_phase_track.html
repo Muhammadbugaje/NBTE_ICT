@@ -1,0 +1,34 @@
+{% load qa_tags %}{% comment %}
+  SOP-03 mini-journey for one phase of the case (static/css/sop3.css, .s3-track).
+  Include with lo= and hi= (SOP stage numbers) and an optional track_label.
+  Reads `journey` when the tab has it (who finished each stage and when; v2.9:
+  visit, funds, reports, decisions), else `stepper`; plus `actions` (who holds
+  the current stage and for how long). Display only.
+{% endcomment %}
+<ol class="s3-track" aria-label="{{ track_label|default:'Stages in this part of the case' }}">
+  {% for st in journey|default:stepper %}{% if st.no >= lo and st.no <= hi %}
+  <li class="s3-track__step is-{{ st.state }}"{% if st.state == "current" %} aria-current="step"{% endif %}>
+    <span class="s3-track__dot" aria-hidden="true">{% if st.state == "done" %}{% icon "check" 12 "3" %}{% else %}{{ st.no }}{% endif %}</span>
+    <span class="s3-track__body">
+      <span class="s3-track__label"><span class="sr-only">{% if st.state == "done" %}Done: {% elif st.state == "current" %}Current: {% else %}Upcoming: {% endif %}stage {{ st.no }}, </span>{{ st.label }}</span>
+      <span class="s3-track__state">
+        {% if st.state == "done" %}Done{% for part in st.parts %}{% if part.done_by %}{% if forloop.first %} by {% else %}, {% endif %}{% for u in part.done_by %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% endfor %}{% if st.done_at %} · {{ st.done_at|date:"j M" }}{% endif %}
+        {% elif st.state == "current" %}
+          {% if st.code == "post_visit_report" %}Visit team is reporting
+          {% else %}{% for a in actions %}{% if a.stage.code == st.code %}{% if a.can %}<strong>Your turn</strong>{% else %}With {% for u in a.holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% empty %}the department queue{% endfor %}{% endif %}{% if a.since %} · {{ a.since }}{% endif %}{% if a.overdue %} · <span class="c3-late">overdue</span>{% endif %}{% endif %}{% endfor %}{% endif %}
+        {% elif st.code == "generate_cost" or st.code == "add_personnel" or st.code == "add_visit_details" %}Desk officer
+        {% elif st.code == "confirm_personnel" or st.code == "confirm_visit_details" or st.code == "post_visit_recommendation" %}Director
+        {% elif st.code == "audit_personnel_cost" %}Audit officer
+        {% elif st.code == "confirm_audit_cost" %}Director of Audit
+        {% elif st.code == "es_approve_cost" or st.code == "es_approve_visit" or st.code == "es_final_approval" %}Executive Secretary
+        {% elif st.code == "request_fund_release" %}Pay Officer
+        {% elif st.code == "post_visit_report" %}Visit team
+        {% elif st.code == "cqac_recommendation" %}CQAC members
+        {% elif st.code == "cqac_chair_approval" %}CQAC Chairman
+        {% elif st.code == "programme_auto_update" %}Automatic
+        {% else %}Upcoming{% endif %}
+      </span>
+    </span>
+  </li>
+  {% endif %}{% endfor %}
+</ol>

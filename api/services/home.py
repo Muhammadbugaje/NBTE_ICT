@@ -338,12 +338,12 @@ def resource_person_home(user, request):
     todo = []
     for m in live.filter(duty="ssq_review").order_by("to_date", "pk")[:10]:
         todo.append({"kind": "ssq_review", "id": m.pk,
-                     "title": f"Review SSQ: {m.qa_request_programme.programme.name} ({m.case.institution.name})",
+                     "title": f"Review SSQ: {m.target_label} ({m.case.institution.name})",
                      "due_label": due_label(m.to_date, today)})
     for m in engagements.filter(duty__in=VISIT_DUTIES, findings="", from_date__lte=today).order_by("to_date")[:20]:
         if services.findings_open(m)[0]:
             todo.append({"kind": "report", "id": m.pk,
-                         "title": f"Write findings: {m.qa_request_programme.programme.name} "
+                         "title": f"Write findings: {m.target_label} "
                                   f"({m.case.institution.name})",
                          "due_label": due_label(m.to_date, today)})
 

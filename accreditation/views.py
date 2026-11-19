@@ -385,6 +385,43 @@ def programme_decide(request, pk):
                  "The institution has been told.")
 
 
+@require_or_404(_can_open_programme_queue)
+@require_POST
+def programme_decide_bulk(request, pk):
+    """Clear (or return) the ticked programmes of one application in one go,
+    with one remark for all. Director of the clearing department, ES or
+    superuser only (``onboarding_programmes.can_clear``)."""
+    from . import onboarding_programmes as op
+
+    app = Application.unscoped.filter(pk=pk).first()
+    if app is None:
+        raise Http404
+    item = next((i for i in op.queue(request.user, status="all") if i["app"].pk == app.pk), None)
+    if item is None:
+        raise Http404
+    decision = request.POST.get("decision", "")
+    error, done = "", []
+    try:
+        done = op.decide_many(app, request.POST.getlist("reviews"), user=request.user, decision=decision,
+                              remark=request.POST.get("remark", ""), impersonating=_impersonating(request))
+    except (ValidationError, PermissionDenied) as exc:
+        error = " ".join(getattr(exc, "messages", [str(exc)]))
+    item = next((i for i in op.queue(request.user, status="all") if i["app"].pk == app.pk), item)
+    response = render(request, "accreditation/_programme_app.html", {"item": item, "error": error},
+                      status=422 if error else 200)
+    if error:
+        return toast(response, "error", "Not done", error)
+    app.refresh_from_db()
+    if app.status == "programme_fee_due":
+        return toast(response, "success", "All programmes cleared", "The programme processing fee was issued.")
+    if app.status == "programme_selection":
+        return toast(response, "success", "Returned to the institution",
+                     "The returned programmes reopen; cleared ones stay cleared.")
+    verb = "cleared" if decision == "clear" else "returned"
+    return toast(response, "success", f"{len(done)} programme{'s' if len(done) != 1 else ''} {verb}",
+                 "The institution has been told.")
+
+
 # ---------------------------------------------------------------------------
 # Phase 0 (O10): the director names clearance delegates for the department
 # ---------------------------------------------------------------------------

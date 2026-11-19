@@ -1,8 +1,9 @@
 """Onboarding programme submission and programme clearance (Phase 0: Q1, Q2).
 
     programme_selection --submit_programmes (Chief Executive, X12)--> programme_clearance
-    programme_clearance: NTIRD (or the setting's department) clears or returns
-        each programme (one OnboardingProgrammeReview per programme per round)
+    programme_clearance: the Director of NTIRD (or the setting's department),
+        the ES or a superuser clears or returns each programme, one at a time
+        or in bulk (one OnboardingProgrammeReview per programme per round)
       all cleared  --clear_programmes (effect: programme_processing bill)--> programme_fee_due
       any returned --return--> programme_selection (only the returned programmes
                                 reopen; cleared programmes stay locked)
@@ -56,16 +57,30 @@ def clearance_department(app):
     return qa_department(code) or inst_services.proposed_department()
 
 
+def is_clearing_director(app, user, dept=None):
+    """The handling (clearing) department's Director, the Executive Secretary
+    or a superuser: the only people who clear or return programmes."""
+    import org
+
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser or org.is_es(user):
+        return True
+    dept = dept if dept is not None else clearance_department(app)
+    return bool(dept is not None and org.is_director(user, dept))
+
+
 def can_clear(app, user):
-    """(allowed, reason) for clearing or returning programmes of ``app``."""
+    """(allowed, reason) for clearing or returning programmes of ``app``.
+    Clearance belongs to the Director of the clearing department (the
+    institution's handling department during onboarding: NTIRD by default),
+    the Executive Secretary or a superuser."""
     if user is None or not user.is_authenticated or getattr(user, "user_type", "staff") != "staff":
         return False, "Only NBTE staff clear programmes."
-    if not (user.is_superuser or user.has_perm(CLEAR_PERM)):
-        return False, "You do not hold accreditation.clear_qa_programmes."
     dept = clearance_department(app)
-    if not (user.is_superuser or user.has_perm("qa_core.confirm_any_department")) \
-            and (dept is None or user.department_id != dept.pk):
-        return False, f"Programme clearance belongs to {getattr(dept, 'name', 'another department')}."
+    if not is_clearing_director(app, user, dept):
+        return False, (f"Only the Director of {getattr(dept, 'name', 'the handling department')} clears "
+                       "programmes.")
     if app.status != "programme_clearance":
         return False, "The application is not waiting for programme clearance."
     from assignments import access
@@ -75,21 +90,10 @@ def can_clear(app, user):
 
 
 def clearers_for(app):
-    """Who hears that programmes wait. Need-to-know (X1/X4): the clearing
-    department's director plus anyone already working on the institution;
-    department mode: every holder of the clear permission in the department."""
-    dept = clearance_department(app)
-    from assignments import access
-    if not access.assignment_mode():
-        return [u for u in inst_services.staff_in_department(dept) if u.has_perm(CLEAR_PERM)]
-    import org
-    out = [u for u in (org.director_of(dept),) if u is not None] if dept is not None else []
-    from assignments.models import WorkAssignment
-    for wa in (WorkAssignment.objects.filter(institution=app.institution, department=dept,
-                                             status__in=WorkAssignment.WORKING).select_related("assignee")):
-        if wa.assignee not in out and wa.assignee.has_perm(CLEAR_PERM):
-            out.append(wa.assignee)
-    return out
+    """Who hears that programmes wait: the people who may clear them, i.e. the
+    clearing department's Director (the Executive Secretary when the seat is
+    empty)."""
+    return inst_services.director_or_es(clearance_department(app))
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +132,10 @@ def submission_blockers(app):
     for p in programmes:
         if not p.requested_streams or p.requested_streams < 1:
             out.append(f"Set the number of streams for {p.name}.")
+    from institutions.programme_master import orphan_hnds
+
+    for p in orphan_hnds(programmes):  # never an HND without the ND of the same programme
+        out.append(f"HND {p.name} needs ND {p.name} on the list: add the ND or remove the HND.")
     if inst_services.active_hold(app):
         out.append("The application is on hold.")
     return out
@@ -211,6 +219,39 @@ def submit_programmes(app, *, user, impersonating=False):
 # ---------------------------------------------------------------------------
 # Q2: programme clearance (per programme)
 # ---------------------------------------------------------------------------
+def _clean_decision(decision, remark):
+    remark = (remark or "").strip()
+    if decision not in ("clear", "return"):
+        raise ValidationError("Choose clear or return.")
+    if decision == "return" and len(remark) < 3:
+        raise ValidationError("Write the remark the institution will see.")
+    return remark
+
+
+def _label(programme):
+    return f"{programme.name} ({programme.level.name})" if programme.level_id else programme.name
+
+
+def _record_one(app, review, *, user, decision, remark):
+    review.status = (OnboardingProgrammeReview.CLEARED if decision == "clear"
+                     else OnboardingProgrammeReview.RETURNED)
+    review.remark, review.decided_by, review.decided_at = remark, user, timezone.now()
+    review.save(update_fields=["status", "remark", "decided_by", "decided_at", "updated_at"])
+    label = _label(review.programme)
+    public = f"NBTE cleared {label}." if decision == "clear" else f"NBTE returned {label}: {remark}"
+    timeline.record(app.institution, f"application.programme_{'cleared' if decision == 'clear' else 'returned'}",
+                    subject=app, actor=user, visibility="public", public_text=public)
+    return label
+
+
+def _notify_decided(app, labels, decision, remark):
+    inst = app.institution
+    transaction.on_commit(lambda: inst_services.notify_institution(
+        inst, "onboarding.programme_decided",
+        {"reference": app.reference, "programme": ", ".join(labels),
+         "decision": "cleared" if decision == "clear" else "returned", "remark": remark}, url="/application/"))
+
+
 @transaction.atomic
 def decide(review, *, user, decision, remark="", impersonating=False):
     if impersonating:
@@ -223,33 +264,38 @@ def decide(review, *, user, decision, remark="", impersonating=False):
         raise PermissionDenied(why)
     if review.status != OnboardingProgrammeReview.PENDING or review.round != app.programme_round:
         raise ValidationError(f"{review.programme.name} is already {review.get_status_display().lower()}.")
-    remark = (remark or "").strip()
-    if decision == "clear":
-        review.status = OnboardingProgrammeReview.CLEARED
-    elif decision == "return":
-        if len(remark) < 3:
-            raise ValidationError("Write the remark the institution will see.")
-        review.status = OnboardingProgrammeReview.RETURNED
-    else:
-        raise ValidationError("Choose clear or return.")
-    review.remark, review.decided_by, review.decided_at = remark, user, timezone.now()
-    review.save(update_fields=["status", "remark", "decided_by", "decided_at", "updated_at"])
-    inst = app.institution
-    label = f"{review.programme.name} ({review.programme.level.name})" if review.programme.level_id \
-        else review.programme.name
-    if decision == "clear":
-        public = f"NBTE cleared {label}."
-    else:
-        public = f"NBTE returned {label}: {remark}"
-    timeline.record(inst, f"application.programme_{'cleared' if decision == 'clear' else 'returned'}",
-                    subject=app, actor=user, visibility="public", public_text=public)
-    transaction.on_commit(lambda: inst_services.notify_institution(
-        inst, "onboarding.programme_decided",
-        {"reference": app.reference, "programme": label, "decision": "cleared" if decision == "clear" else "returned",
-         "remark": remark}, url="/application/"))
+    remark = _clean_decision(decision, remark)
+    label = _record_one(app, review, user=user, decision=decision, remark=remark)
+    _notify_decided(app, [label], decision, remark)
     _maybe_finish(app, user)
     app.refresh_from_db()
     return review
+
+
+@transaction.atomic
+def decide_many(app, review_ids, *, user, decision, remark="", impersonating=False):
+    """Bulk clearance: clear (or return) the chosen pending programmes of
+    ``app`` in one go, with one remark for all of them (a return needs one).
+    Same rule as one at a time: the clearing department's Director, the ES or
+    a superuser. Returns the reviews decided."""
+    if impersonating:
+        raise PermissionDenied("You cannot decide while impersonating.")
+    app = Application.unscoped.select_for_update().select_related("institution").get(pk=app.pk)
+    ok, why = can_clear(app, user)
+    if not ok:
+        raise PermissionDenied(why)
+    remark = _clean_decision(decision, remark)
+    ids = {int(i) for i in review_ids if str(i).isdigit()}
+    reviews = list(OnboardingProgrammeReview.unscoped.select_for_update().select_related("programme__level")
+                   .filter(application=app, round=app.programme_round, pk__in=ids,
+                           status=OnboardingProgrammeReview.PENDING).order_by("programme__name"))
+    if not reviews:
+        raise ValidationError("Tick at least one programme that is still waiting.")
+    labels = [_record_one(app, r, user=user, decision=decision, remark=remark) for r in reviews]
+    _notify_decided(app, labels, decision, remark)
+    _maybe_finish(app, user)
+    app.refresh_from_db()
+    return reviews
 
 
 def _maybe_finish(app, user):
@@ -288,7 +334,9 @@ def _maybe_finish(app, user):
 # ---------------------------------------------------------------------------
 def queue(user, *, status="pending"):
     """Applications for the user's programme-clearance department.
-    Returns [{"app", "reviews", "pending", "can_clear", "why"}]."""
+    Returns [{"app", "reviews", "pending", "can_clear", "why"}]. Only the
+    clearing department's Director (or the ES / a superuser) can clear; other
+    staff of the department still see the list."""
     qs = (Application.unscoped.filter(programme_round__gt=0)
           .select_related("institution", "institution__ownership", "institution__category")
           .order_by("programmes_submitted_at", "id"))

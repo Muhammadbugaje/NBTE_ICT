@@ -322,6 +322,8 @@ def _detail_ctx(request, case, *, tab=None, focus="", **extra):
     ctx["can_release"] = bool(can.get("request_fund_release")) and cs.can_release_funds(user, case)
     if tab == "timeline":
         ctx["timeline"] = cs.case_timeline(case, user)
+    if tab in JOURNEY_TABS:  # v2.9: the phase track shows who did each stage and when
+        ctx["journey"] = ui.journey(case, ctx["stepper"], cs.case_links(case))
     if tab in ("tasks", "overview"):
         links = cs.case_links(case)
         from qa_core.task_bridge import may_reassign, qa_url
@@ -425,6 +427,8 @@ def _detail_ctx(request, case, *, tab=None, focus="", **extra):
         ctx.update(_capacity_ctx(request, case))
     if tab == "decisions":  # Phase 8: stages 14–16
         ctx.update(_decisions_ctx(request, case, current))
+    if tab in RP_MAPPING_TABS:  # v2.9: ES-led resource-person mappings (inspection.QAMapping)
+        ctx.update(_rp_mappings_ctx(request, case))
     if tab == "letters":  # Phase 8: outcome letters (B24)
         from . import letters
 
@@ -537,6 +541,28 @@ def _capacity_ctx(request, case):
             "capacity_all_assessed": not missing, "capacity_params": capacity.parameters()}
 
 
+RP_MAPPING_TABS = ("overview", "personnel", "visit", "reports", "decisions")
+JOURNEY_TABS = ("visit", "funds", "reports", "decisions")  # overview builds its own (with link urls)
+
+
+def _rp_mappings_ctx(request, case):
+    """v2.9: the case's resource-person mappings for everyone who can open the
+    case (handling department, Audit, CQAC, ES): who was suggested (by the ES
+    or Audit), for which programme or the whole institution, Audit's
+    verification, the ES approval, the person's reply and report. Rows carry
+    ``can_verify`` / ``can_es_approve`` for the viewer; the forms post to
+    ``qa_insp:mapping_decide`` with ``next`` = this page."""
+    from inspection import services as insp
+
+    user = request.user
+    can_suggest = insp.can_suggest_mapping(case, user)[0] and not cs.is_monitor(user)
+    return {"rp_mappings": insp.case_rp_mappings(case, user),
+            "rp_mapping_next": request.get_full_path(),
+            "rp_suggest": {"can": can_suggest,
+                           "finder_url": reverse("qa_insp:finder") + f"?case={case.pk}",
+                           "institution_finder_url": reverse("qa_insp:finder") + f"?case={case.pk}&row=institution"}}
+
+
 def _decisions_ctx(request, case, current):
     from . import decisions as dec
     from .models import Decision
@@ -548,10 +574,13 @@ def _decisions_ctx(request, case, current):
            "all_decisions": dec.all_decisions(case)}
     if stage_code:
         stage = dec.STAGE_OF_FLOW[stage_code]
-        # v2.3: a blind decider (Chairman / ES still to decide) sees no earlier decisions yet.
+        # v2.3: a blind decider (the Chairman still to decide) sees no earlier decisions yet.
+        # v2.9: the ES is not blind (decisions.BLIND_STAGES).
         if not dec.reveal_earlier(case, stage, user):
             ctx["all_decisions"] = [d for d in ctx["all_decisions"] if d.stage == stage]
             ctx["earlier_hidden"] = True
+        # v2.9: everything the ES needs before deciding (read-only for the Chairman).
+        ctx["es_brief"] = dec.decision_brief(case, user, stage)
         ok, why = dec.can_decide(case, user, stage)
         can_review_evidence = False
         if stage_code in ("cqac_recommendation", "cqac_chair_approval", "es_final_approval"):

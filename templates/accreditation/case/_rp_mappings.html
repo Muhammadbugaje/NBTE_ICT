@@ -1,0 +1,83 @@
+{% load qa_tags %}{% comment %}
+  v2.9 resource-person mappings of the case (static/css/sop3.css section 10, .s3-rp).
+  Context: rp_mappings, rp_mapping_next, rp_suggest. Include with compact=True on tabs
+  where it is supporting information (Reports, Decisions). Renders nothing when there
+  is nothing to show and the viewer cannot suggest anyone.
+  The approve / reject forms post to qa_insp:mapping_decide, which answers with
+  HX-Redirect back to `next` (or a toast on error), hence hx-swap="none".
+{% endcomment %}
+{% if rp_mappings or rp_suggest.can %}
+<section class="c3-sec s3-sec s3-rp{% if compact %} s3-rp--compact{% endif %}" aria-labelledby="rp-map-h">
+  <header class="c3-sec__head"><span class="c3-sec__num">{% icon "users" 14 "2.4" %}</span>
+    <div><h2 id="rp-map-h">Resource persons</h2>
+      <p>{% if compact %}Who was suggested for this case, how far each approval has gone, and what each person replied and reported.{% else %}Suggested by the ES or Audit, verified by Audit, approved by the ES. Each person then replies on the portal and files their own report.{% endif %}</p></div>
+    {% if rp_suggest.can %}
+    <div class="c3-sec__chips">
+      <a class="btn btn-sm btn-primary c3-sec__chip" href="{{ rp_suggest.finder_url }}">{% icon "plus" 14 %} Suggest a resource person</a>
+      <a class="btn btn-sm btn-subtle c3-sec__chip" href="{{ rp_suggest.institution_finder_url }}">{% icon "building" 14 %} Suggest for the whole institution</a>
+    </div>
+    {% endif %}
+  </header>
+  {% if rp_mappings %}
+  <ul class="s3-rp__list" role="list">
+    {% for m in rp_mappings %}
+    <li class="s3-rp__row">
+      <div class="s3-rp__who">
+        <span class="c3-av c3-av--lg" aria-hidden="true">{{ m.person|slice:":1" }}</span>
+        <div><strong>{{ m.person }}</strong>
+          <span>{{ m.target }}{% if m.duty_label %} · {{ m.duty_label }}{% endif %}{% if m.from_date %} · {{ m.from_date|date:"j M" }}{% if m.to_date and m.to_date != m.from_date %} – {{ m.to_date|date:"j M Y" }}{% else %} {{ m.from_date|date:"Y" }}{% endif %}{% endif %}</span>
+          {% if m.suggested_by_label or m.suggested_by %}<span>Suggested by {{ m.suggested_by_label|default:"" }}{% if m.suggested_by %}{% if m.suggested_by_label %} ({{ m.suggested_by|who }}){% else %}{{ m.suggested_by|who }}{% endif %}{% endif %}</span>{% endif %}
+        </div>
+      </div>
+
+      <ol class="s3-rp__track" aria-label="Approval: {{ m.approval_label }}">
+        <li class="is-done">{% icon "check" 11 "3" %} Suggested</li>
+        <li class="{% if m.approval_state == 'audit_verified' or m.approval_state == 'es_approved' %}is-done{% elif m.approval_state == 'pending' %}is-current{% endif %}"{% if m.audit_verified_at %} title="{{ m.audit_verified_by|who }} · {{ m.audit_verified_at|date:'j M Y, H:i' }}"{% endif %}>{% if m.approval_state == 'audit_verified' or m.approval_state == 'es_approved' %}{% icon "check" 11 "3" %} {% endif %}Audit verified</li>
+        <li class="{% if m.approval_state == 'es_approved' %}is-done{% elif m.approval_state == 'audit_verified' %}is-current{% endif %}"{% if m.es_approved_at %} title="{{ m.es_approved_by|who }} · {{ m.es_approved_at|date:'j M Y, H:i' }}"{% endif %}>{% if m.approval_state == 'es_approved' %}{% icon "check" 11 "3" %} {% endif %}ES approved</li>
+      </ol>
+
+      <dl class="s3-rp__facts">
+        <div><dt>Status</dt><dd>{{ m.approval_label }}{% if m.status_label %}<small>{{ m.status_label }}</small>{% endif %}</dd></div>
+        <div><dt>Their reply</dt><dd>{{ m.rp_response_label|default:"No reply yet" }}{% if m.rp_response_at %}<small>{{ m.rp_response_at|date:"j M Y" }}</small>{% endif %}</dd></div>
+        <div><dt>Their report</dt><dd>{% if m.report %}{{ m.report_recommendation_label|default:"Filed" }}{% if m.report_submitted_at %}<small>{{ m.report_submitted_at|date:"j M Y" }}</small>{% endif %}{% else %}Not filed{% endif %}</dd></div>
+      </dl>
+
+      {% if m.audit_verified_at or m.audit_remark or m.es_approved_at or m.es_remark or m.rp_response_note %}
+      <ul class="s3-rp__notes" role="list">
+        {% if m.audit_verified_at or m.audit_remark %}<li><strong>Audit</strong>{% if m.audit_verified_by %} · {{ m.audit_verified_by|who }}{% endif %}{% if m.audit_verified_at %} · {{ m.audit_verified_at|date:"j M Y" }}{% endif %}{% if m.audit_remark %}<span>“{{ m.audit_remark }}”</span>{% endif %}</li>{% endif %}
+        {% if m.es_approved_at or m.es_remark %}<li><strong>ES</strong>{% if m.es_approved_by %} · {{ m.es_approved_by|who }}{% endif %}{% if m.es_approved_at %} · {{ m.es_approved_at|date:"j M Y" }}{% endif %}{% if m.es_remark %}<span>“{{ m.es_remark }}”</span>{% endif %}</li>{% endif %}
+        {% if m.rp_response_note %}<li><strong>{{ m.person }}</strong><span>“{{ m.rp_response_note }}”</span></li>{% endif %}
+      </ul>
+      {% endif %}
+
+      {% if m.report %}
+      <details class="s3-fold s3-rp__report"{% if not compact and rp_mappings|length == 1 %} open{% endif %}>
+        <summary><span class="s3-fold__title">Report</span><span class="s3-fold__meta">{{ m.report_recommendation_label|default:"" }}</span></summary>
+        <p class="c3-prose">{{ m.report|linebreaksbr }}</p>
+      </details>
+      {% endif %}
+
+      {% if m.can_verify %}
+      <form class="s3-rp__act" method="post" action="{% url 'qa_insp:mapping_decide' m.pk %}" hx-post="{% url 'qa_insp:mapping_decide' m.pk %}" hx-swap="none">{% csrf_token %}
+        <input type="hidden" name="layer" value="audit"><input type="hidden" name="next" value="{{ rp_mapping_next }}">
+        <div class="qa-field"><label for="rp-audit-remark-{{ m.pk }}">Audit remark <span class="qa-muted">(required to reject)</span></label><input class="input" id="rp-audit-remark-{{ m.pk }}" name="remark" maxlength="255" placeholder="A note for the ES, or why this person is rejected"></div>
+        <div class="s3-rp__btns"><button class="btn btn-sm btn-primary" type="submit" name="decision" value="approve">{% icon "check" 14 "2.4" %} Verify (Audit)</button>
+          <button class="btn btn-sm btn-subtle qa-btn-reject" type="submit" name="decision" value="reject">Reject</button></div>
+      </form>
+      {% endif %}
+      {% if m.can_es_approve %}
+      <form class="s3-rp__act" method="post" action="{% url 'qa_insp:mapping_decide' m.pk %}" hx-post="{% url 'qa_insp:mapping_decide' m.pk %}" hx-swap="none">{% csrf_token %}
+        <input type="hidden" name="layer" value="es"><input type="hidden" name="next" value="{{ rp_mapping_next }}">
+        <div class="qa-field"><label for="rp-es-remark-{{ m.pk }}">ES remark <span class="qa-muted">(required to reject)</span></label><input class="input" id="rp-es-remark-{{ m.pk }}" name="remark" maxlength="255" placeholder="A note, or why this person is rejected"></div>
+        <div class="s3-rp__btns"><button class="btn btn-sm btn-primary" type="submit" name="decision" value="approve">{% icon "check" 14 "2.4" %} Approve (ES)</button>
+          <button class="btn btn-sm btn-subtle qa-btn-reject" type="submit" name="decision" value="reject">Reject</button></div>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="c3-empty">{% icon "users" 22 "2" %}<p><strong>No resource person has been suggested yet.</strong> The ES or Audit suggests one for a programme or for the whole institution.</p></div>
+  {% endif %}
+</section>
+{% endif %}

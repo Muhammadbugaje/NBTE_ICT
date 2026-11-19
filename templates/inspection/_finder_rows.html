@@ -1,5 +1,5 @@
 {% load qa_tags %}
-<div class="qa-card__body vx-need"><span class="vx-need__label">Looking for</span><span class="vx-chip vx-chip--plain vx-t-blue">{{ need.row.programme }}</span><span class="vx-chip vx-chip--plain vx-t-slate">{{ need.programme.category.discipline.name|default:"no discipline" }}</span><span class="vx-chip vx-chip--plain vx-t-teal">{{ need.start|date:"j M" }}–{{ need.end|date:"j M Y" }}</span><span class="vx-chip vx-chip--plain vx-t-slate">{{ case.institution.name }}</span></div>
+<div class="qa-card__body vx-need"><span class="vx-need__label">Looking for</span><span class="vx-chip vx-chip--plain vx-t-blue">{% if need.row %}{{ need.row.programme }}{% else %}Whole institution{% endif %}</span><span class="vx-chip vx-chip--plain vx-t-slate">{{ need.programme.category.discipline.name|default:"no discipline" }}</span><span class="vx-chip vx-chip--plain vx-t-teal">{{ need.start|date:"j M" }}–{{ need.end|date:"j M Y" }}</span><span class="vx-chip vx-chip--plain vx-t-slate">{{ case.institution.name }}</span></div>
 {% if page.rows %}
 <div class="qa-table-wrap" role="region" aria-label="Available QA personnel table" tabindex="0"><table class="qa-table qa-table--scroll vx-table">
   <thead><tr><th scope="col">#</th><th scope="col">Person</th><th scope="col">Current load</th><th scope="col" class="num">Assignments this year</th><th scope="col">Last served</th><th scope="col" class="num">Rating</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
@@ -13,7 +13,7 @@
     <td class="num">{% if c.rating %}{{ c.rating|floatformat:1 }}{% else %}—{% endif %}</td>
     <td>{% if c.ok and can_map %}
       <form class="qa-line-actions" method="post" action="{% url 'qa_insp:finder_map' %}" hx-post="{% url 'qa_insp:finder_map' %}" hx-target="#qa-panel" hx-trigger="qa:confirmed" data-qa-confirm="{{ c.name }}'s dates are held now. The Director and then the ES approve the mapping (Inspection → Mappings)." data-qa-confirm-title="Map {{ c.name }}?" data-qa-confirm-label="Map">{% csrf_token %}
-        <input type="hidden" name="case" value="{{ case.pk }}"><input type="hidden" name="row" value="{{ need.row.pk }}"><input type="hidden" name="duty" value="{{ need.duty }}">
+        <input type="hidden" name="case" value="{{ case.pk }}"><input type="hidden" name="row" value="{% if need.row %}{{ need.row.pk }}{% else %}institution{% endif %}"><input type="hidden" name="duty" value="{{ need.duty }}">
         <input type="hidden" name="start" value="{{ need.start|date:'Y-m-d' }}"><input type="hidden" name="end" value="{{ need.end|date:'Y-m-d' }}">
         <input type="hidden" name="person" value="{{ c.key }}"><input type="hidden" name="version" value="{{ c.booking_version }}">
         <button class="btn btn-sm btn-primary" type="submit">Map</button></form>{% endif %}</td>

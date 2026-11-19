@@ -322,6 +322,10 @@ def who(user, default="—"):
     (safe when the user is None — e.g. a system event)."""
     if not user:
         return default
+    if isinstance(user, str):  # e.g. `x.get_short_name|default:x|who` already resolved to a name
+        return user.strip() or default
+    if not hasattr(user, "get_full_name"):
+        return str(user) or default
     return (user.get_full_name() or "").strip() or getattr(user, "email", "") or default
 
 

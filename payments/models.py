@@ -383,6 +383,14 @@ class PaymentAttempt(InstitutionScopedModelMixin, TimeStampedModel):
     def __str__(self):
         return f"{self.get_provider_display()} {self.provider_reference or '#' + str(self.pk)}"
 
+    @property
+    def reported_failed_by_institution(self):
+        return "reported_failed_by_institution" in (self.flags or [])
+
+    @property
+    def superseded(self):
+        return "superseded" in (self.flags or [])
+
 
 class ProofOfPayment(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel):
     AUDITED = True
@@ -403,6 +411,10 @@ class ProofOfPayment(InstitutionScopedModelMixin, QAFileMixin, TimeStampedModel)
     uploaded_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     fraud_flag = models.BooleanField(default=False)
     duplicate_of = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    # Pay again: the institution said this payment failed or was reversed by
+    # the bank. The proof is kept (audit) but no longer counts as a claim.
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    withdrawn_reason = models.TextField(blank=True)
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()
@@ -539,6 +551,11 @@ class PaymentVerification(InstitutionScopedModelMixin, TimeStampedModel):
     final_decision = models.CharField(max_length=10, choices=FINAL_CHOICES, blank=True)
     final_reason = models.TextField(blank=True)
     final_decided_at = models.DateTimeField(null=True, blank=True)
+    # Pay again: the institution withdrew the claim (the money failed or was
+    # reversed). The item is closed without a final decision and kept.
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    withdrawn_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    withdrawn_reason = models.TextField(blank=True)
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()

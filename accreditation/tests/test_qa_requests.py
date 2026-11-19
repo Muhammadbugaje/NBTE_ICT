@@ -231,15 +231,18 @@ def test_new_programme_goes_through_clearance(p3, resource_type):
     req = make_request(p3, [p3.proposed], type_code="resource_inspection")
     req = svc.submit(req, user=p3.ceo, declaration=True)
     assert req.status == "programme_clearance"
-    ok, why = svc.can_clear(req, p3.p2.officer)   # DPAP officer: no clear permission
+    ok, why = svc.can_clear(req, p3.p2.officer)   # DPAP officer: not the Director
     assert not ok
-    ok, why = svc.can_clear(req, p3.p2.director)  # DPAP director, but the stage belongs to NTIRD
-    assert not ok and "another department" in why
-    svc.return_programmes(req, user=p3.p2.ntird_director, remark="Add the curriculum first")
+    # An approved institution's new programme belongs to its handling
+    # department's Director (DPAP), never NTIRD (onboarding only).
+    ok, why = svc.can_clear(req, p3.p2.ntird_director)
+    assert not ok and "Director of" in why
+    assert svc.can_clear(req, p3.p2.director)[0]
+    svc.return_programmes(req, user=p3.p2.director, remark="Add the curriculum first")
     req.refresh_from_db()
     assert req.status == "draft" and req.active_programmes()[0].clearance_status == "returned"
     req = svc.submit(req, user=p3.ceo, declaration=True)
-    svc.clear_programmes(req, user=p3.p2.ntird_director, remark="Fine")
+    svc.clear_programmes(req, user=p3.p2.director, remark="Fine")
     req.refresh_from_db()
     assert req.status == "fee_due" and req.active_programmes()[0].clearance_status == "cleared"
     assert bill_of(req) is not None

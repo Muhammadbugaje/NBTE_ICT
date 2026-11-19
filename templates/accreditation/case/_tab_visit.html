@@ -1,11 +1,12 @@
-{% load qa_tags %}{% load nbte_calendar %}
-<section class="c3-sec" aria-labelledby="vi-h">
+{% load qa_tags %}{% load nbte_calendar %}{# Visit tab (stages 8–11). Look: static/css/sop3.css — the phase track says where the visit stands; the summary below says what was agreed. #}
+<section class="c3-sec s3-sec" aria-labelledby="vi-h">
   <header class="c3-sec__head"><span class="c3-sec__num">{% if can_visit and focus == "add_visit_details" %}1{% else %}8{% endif %}</span>
-    <div><h2 id="vi-h">{% if can_visit and focus == "add_visit_details" %}Step 1 · Prepare the visit details{% else %}Visit details{% endif %}</h2><p>Dates, team lead and logistics (stage 8), confirmed by the Director (stage 9) and approved by the ES (stage 10). The ES approval requests the fund release.</p></div>
+    <div><h2 id="vi-h">{% if can_visit and focus == "add_visit_details" %}Step 1 · Prepare the visit details{% else %}Visit details{% endif %}</h2><p>Dates, team lead and logistics. The Director confirms them, the ES approves, and that approval requests the fund release.</p></div>
     {% if visit %}<span class="qa-chip {{ visit.status|tone }} c3-sec__chip">{{ visit.get_status_display }}</span>{% endif %}</header>
+  {% include "accreditation/case/_phase_track.html" with lo=8 hi=11 track_label="Visit stages 8 to 11" %}
   {% if inspection %}{% include "inspection/_visit_moment.html" %}{% endif %}
   {% if can_visit %}
-  <form class="c3-form c3-form--grid" method="post" action="{% url 'qa_case:visit' case.pk %}" hx-post="{% url 'qa_case:visit' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="visit">
+  <form class="c3-form c3-form--grid s3-form" method="post" action="{% url 'qa_case:visit' case.pk %}" hx-post="{% url 'qa_case:visit' case.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="visit">
     <div class="qa-field"><label for="vi-start">First day</label><input class="input" type="date" id="vi-start" name="planned_start" min="{{ min_visit_date }}" value="{{ visit.planned_start|date:'Y-m-d' }}" required></div>
     <div class="qa-field"><label for="vi-end">Last day</label><input class="input" type="date" id="vi-end" name="planned_end" min="{{ min_visit_date }}" value="{{ visit.planned_end|date:'Y-m-d' }}" required></div>
     <div class="c3-form__wide">{% include "qa_core/partials/_person_picker.html" with pp_name="team_lead" pp_id="vi-lead" pp_label="Team lead" pp_people=lead_people pp_selected=visit.team_lead_id pp_required=True pp_noun="team lead" pp_placeholder="Choose the team lead" pp_help=lead_help %}</div>
@@ -13,17 +14,26 @@
     <div class="c3-form__row"><button class="btn btn-primary" type="submit">{% icon "check" 16 "2.4" %} Save visit details</button><span class="c3-muted c3-small">Then submit Step 2 below.</span></div>
   </form>
   {% else %}
-  <div class="c3-facts">
-    <div><span>Dates</span><strong>{% if visit.planned_start %}{{ visit.planned_start|date:"j M Y" }} – {{ visit.planned_end|date:"j M Y" }}{% else %}Not set{% endif %}</strong>{% if visit_days %}<small>{{ visit_days }} day{{ visit_days|pluralize }}</small>{% endif %}</div>
-    <div><span>Team lead</span><strong>{{ visit.team_lead|default:"Not chosen" }}</strong></div>
-    <div><span>Approved by the ES</span><strong>{% if visit.approved_by %}{{ visit.approved_by|who }}{% else %}Not yet{% endif %}</strong>{% if visit.approved_at %}<small>{{ visit.approved_at|date:"j M Y" }}</small>{% endif %}</div>
+  <div class="s3-summary">
+    <div class="s3-summary__lead">
+      <span class="s3-eyebrow">Dates</span>
+      <strong class="s3-figure">{% if visit.planned_start %}{{ visit.planned_start|date:"j M Y" }} – {{ visit.planned_end|date:"j M Y" }}{% else %}Not set{% endif %}</strong>
+      {% if visit_days %}<small>{{ visit_days }} day{{ visit_days|pluralize }}</small>{% endif %}
+    </div>
+    <dl class="s3-facts">
+      <div><dt>Team lead</dt><dd>{{ visit.team_lead|default:"Not chosen" }}</dd></div>
+      <div><dt>Approved by the ES</dt><dd>{% if visit.approved_by %}{{ visit.approved_by|who }}{% else %}Not yet{% endif %}{% if visit.approved_at %}<small>{{ visit.approved_at|date:"j M Y" }}</small>{% endif %}</dd></div>
+    </dl>
   </div>
-  {% if visit.logistics_notes %}<div class="c3-sub"><h3>Logistics</h3><p class="c3-prose">{{ visit.logistics_notes|linebreaksbr }}</p></div>{% endif %}
+  {% if visit.logistics_notes %}<div class="s3-note"><h3>Logistics</h3><p class="c3-prose">{{ visit.logistics_notes|linebreaksbr }}</p></div>{% endif %}
   {% endif %}
 </section>
-<section class="c3-sec" aria-labelledby="vi-map">
+{# The stage card (submit / confirm / approve) sits directly under the details it acts on; the supporting sections follow. #}
+{% if started %}{% with stage_tab="visit" %}{% include "accreditation/case/_stage_actions.html" %}{% endwith %}{% endif %}
+{% include "accreditation/case/_rp_mappings.html" %}
+<section class="c3-sec s3-sec s3-sec--row" aria-labelledby="vi-map">
   <header class="c3-sec__head"><span class="c3-sec__num">{% icon "search" 14 "2.4" %}</span>
-    <div><h2 id="vi-map">Resource persons and QA personnel</h2><p>Map eligible people to each programme with the Availability Finder. A second officer confirms each mapping; the ES approval creates the inspection from this list.</p></div></header>
+    <div><h2 id="vi-map">Availability Finder</h2><p>Map eligible people to each programme with the Availability Finder. A second officer confirms each mapping; the ES approval creates the inspection from this list.</p></div></header>
   <div class="c3-row">
     <a class="btn btn-primary" href="{% url 'qa_insp:finder' %}?case={{ case.pk }}">{% icon "search" 14 %} Find people</a>
     {% if inspection %}<a class="btn btn-subtle" href="{% url 'qa_insp:inspection' inspection.pk %}">{% icon "eye" 14 %} {{ inspection.reference }}</a>{% add_to_calendar "inspection" inspection %}{% endif %}

@@ -1,5 +1,71 @@
-{% load qa_tags %}{% if results %}<ul class="qa-combo__list" role="listbox" aria-label="Programmes on NBTE's master list">{% for m in results %}
-  <li role="option" aria-selected="false"><button type="button" class="qa-combo__opt" hx-get="{% url 'qa_portal:programme_master_pick' m.pk %}" hx-target="#qa-prog-pick" hx-swap="innerHTML">
-    <span class="qa-combo__name">{{ m.name }}</span>
-    <span class="qa-combo__meta">{{ m.level.code|upper }}{% if m.professional_body %} · {{ m.professional_body.acronym|default:m.professional_body.name }}{% else %} · No professional body{% endif %}</span></button></li>{% endfor %}
-</ul>{% elif searched %}<p class="qa-small qa-muted" role="status">Nothing on the master list matches “{{ q }}”. Use <strong>Not in the list?</strong> below.</p>{% endif %}
+{% load qa_tags static %}{% comment %}
+The programme picker: every catalogue programme relevant to the institution's
+type, grouped by programme with one tick per level. Typing in the box narrows
+the list as you type (static/js/programme-picker.js). An HND stays disabled
+until the ND of the same programme is ticked or already on the list.
+Context: picker {groups, count}, picker_field ("masters" or "source"), inst.
+{% endcomment %}
+<style>
+  .pp-picker { display: grid; gap: 10px; }
+  .pp-picker__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+  .pp-picker__search { position: relative; flex: 1 1 260px; display: flex; align-items: center; }
+  .pp-picker__search svg { position: absolute; left: 12px; color: var(--text-muted); pointer-events: none; }
+  .pp-picker__search .input { width: 100%; padding-left: 36px; border-radius: 999px;
+    background: color-mix(in srgb, var(--surface, #fff) 78%, transparent); }
+  .pp-picker__count { font-size: .8125rem; color: var(--text-muted); white-space: nowrap; }
+  .pp-picker__list { list-style: none; margin: 0; padding: 6px; max-height: min(420px, 55vh); overflow-y: auto;
+    overscroll-behavior: contain; border-radius: 18px; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    background: color-mix(in srgb, var(--surface, #fff) 72%, transparent);
+    -webkit-backdrop-filter: saturate(1.6) blur(18px); backdrop-filter: saturate(1.6) blur(18px);
+    box-shadow: 0 1px 0 rgba(255,255,255,.55) inset, 0 10px 30px -18px rgba(15, 23, 42, .35); }
+  .pp-picker__row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 12px;
+    border-radius: 12px; transition: background .15s ease; }
+  .pp-picker__row + .pp-picker__row { border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent); }
+  .pp-picker__row:hover, .pp-picker__row.is-picked { background: color-mix(in srgb, var(--pp-green, var(--primary)) 7%, transparent); }
+  .pp-picker__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 220px; }
+  .pp-picker__main strong { font-weight: 600; letter-spacing: -.01em; }
+  .pp-picker__levels { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pp-level { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 8px;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--surface, #fff); cursor: pointer;
+    font-size: .8125rem; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+  .pp-level input { margin: 0; accent-color: var(--pp-green, var(--primary)); }
+  .pp-level__code { font-weight: 700; letter-spacing: .02em; }
+  .pp-level__body { color: var(--text-muted); }
+  .pp-level:hover { border-color: color-mix(in srgb, var(--pp-green, var(--primary)) 45%, var(--border)); }
+  .pp-level:has(input:checked) { border-color: var(--pp-green, var(--primary));
+    background: color-mix(in srgb, var(--pp-green, var(--primary)) 12%, var(--surface, #fff));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pp-green, var(--primary)) 18%, transparent); }
+  .pp-level:has(input:focus-visible) { outline: 2px solid var(--pp-green, var(--primary)); outline-offset: 2px; }
+  .pp-level.is-disabled, .pp-level:has(input:disabled) { opacity: .5; cursor: not-allowed; background: transparent; }
+  .pp-level.is-added { opacity: .65; }
+  .pp-picker__hint { flex-basis: 100%; font-size: .78rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+  .pp-picker__hint[hidden] { display: none; }
+  .pp-picker__empty { padding: 18px 12px; text-align: center; color: var(--text-muted); font-size: .875rem; }
+  .pp-picker__row[hidden], .pp-picker__empty[hidden] { display: none; }
+</style>
+<div class="pp-picker" data-programme-picker>
+  <div class="pp-picker__bar">
+    <label class="pp-picker__search">{% icon "search" 16 "2.2" %}<span class="sr-only">Filter programmes</span>
+      <input class="input" type="search" data-picker-filter placeholder="Type to filter, e.g. comp sci" autocomplete="off" value="{{ q|default:'' }}" aria-controls="pp-picker-list"></label>
+    <span class="pp-picker__count" aria-live="polite"><span data-picker-count>{{ picker.groups|length }}</span> programme{{ picker.groups|length|pluralize }}{% if inst.institution_type %} for a {{ inst.institution_type.name }}{% endif %}</span>
+  </div>
+  <ul class="pp-picker__list" id="pp-picker-list" role="list" aria-label="Programmes on NBTE's list">
+    {% for g in picker.groups %}
+      <li class="pp-picker__row" data-search="{{ g.search }}" data-group="{{ forloop.counter }}">
+        <div class="pp-picker__main"><strong>{{ g.name }}</strong><span class="qa-small qa-muted">{{ g.discipline|default:"" }}{% if g.category and g.category != g.discipline %}{% if g.discipline %} · {% endif %}{{ g.category }}{% endif %}</span></div>
+        <div class="pp-picker__levels" role="group" aria-label="Levels of {{ g.name }}">
+          {% for o in g.options %}
+            <label class="pp-level{% if o.added %} is-added is-disabled{% elif o.blocked %} is-disabled{% endif %}"{% if o.hint %} title="{{ o.hint }}"{% endif %}>
+              <input type="{% if picker_field == 'source' %}radio{% else %}checkbox{% endif %}" name="{{ picker_field|default:'masters' }}" value="{{ o.master.pk }}" data-level="{{ o.code }}"{% if o.blocked %} data-needs-nd{% endif %}{% if o.checked %} checked{% endif %}{% if o.added or o.blocked and not o.checked %} disabled{% endif %}>
+              <span class="pp-level__code">{{ o.master.level.code|upper }}</span>
+              <span class="pp-level__body">{% if o.added %}Added{% elif o.body %}{{ o.body.acronym|default:o.body.name }}{% else %}No body{% endif %}</span>
+            </label>
+          {% endfor %}
+        </div>
+        {% for o in g.options %}{% if o.blocked %}<span class="pp-picker__hint" data-nd-hint>{% icon "lock" 12 %} {{ o.master.level.code|upper }}: {{ o.hint }}{% if picker_field != 'source' %} — tick ND to add both together{% endif %}.</span>{% endif %}{% endfor %}
+      </li>
+    {% endfor %}
+    <li class="pp-picker__empty" data-picker-empty{% if picker.groups %} hidden{% endif %}>Nothing on NBTE's list matches. Use <strong>Not in the list?</strong> below.</li>
+  </ul>
+</div>
+<script src="{% static 'js/programme-picker.js' %}" defer></script>

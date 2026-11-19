@@ -1,10 +1,10 @@
-{% load qa_tags %}{# One panel per current stage: what this step is · who must act · what to do · the form · the primary button. stage_tab limits the panels to one tab. #}
+{% load qa_tags %}{# One panel per current stage: what this step is · who must act · what to do · the form · the primary button. stage_tab limits the panels to one tab. Look: static/css/sop3.css (.s3-stage). #}
 {% for a in actions %}{% if not stage_tab or a.tab == stage_tab %}
-<section class="c3-stage{% if a.can %} is-mine{% else %} is-waiting{% endif %}{% if a.focus %} is-focus{% endif %}{% if a.overdue %} is-overdue{% endif %}" aria-labelledby="act-{{ a.stage.code }}">
+<section class="c3-stage s3-stage{% if a.can %} is-mine{% else %} is-waiting{% endif %}{% if a.focus %} is-focus{% endif %}{% if a.overdue %} is-overdue{% endif %}" aria-labelledby="act-{{ a.stage.code }}">
   <header class="c3-stage__head">
     <span class="c3-stage__no" aria-hidden="true">{{ a.stage.sop_stage_no|default:"0" }}</span>
     <div class="c3-stage__title">
-      <span class="c3-stage__kicker">{% if a.can and a.stage.code == "generate_cost" %}Step 2 · Submit cost sheet{% elif a.can and a.stage.code == "add_personnel" %}Step 2 · Submit personnel list{% elif a.can and a.stage.code == "add_visit_details" %}Step 2 · Submit visit details{% elif a.can and a.stage.code == "request_fund_release" %}Step 2 · Confirm funds released{% else %}{% if a.can %}Your step{% else %}In progress{% endif %} · Stage {{ a.stage.sop_stage_no|default:"0" }}{% endif %}</span>
+      <span class="c3-stage__kicker">{% if a.can and a.stage.code == "generate_cost" %}Step 2 · Submit cost sheet{% elif a.can and a.stage.code == "add_personnel" %}Step 2 · Submit personnel list{% elif a.can and a.stage.code == "add_visit_details" %}Step 2 · Submit visit details{% elif a.can and a.stage.code == "request_fund_release" %}Step 2 · Confirm funds released{% else %}{% if a.can %}Your step{% else %}Waiting{% endif %} · Stage {{ a.stage.sop_stage_no|default:"0" }}{% endif %}</span>
       <h2 id="act-{{ a.stage.code }}">{{ a.stage.label }}</h2>
       {% if a.guide.what %}<p>{{ a.guide.what }}</p>{% endif %}
     </div>
@@ -15,10 +15,13 @@
     </div>
   </header>
 
-  <div class="c3-stage__who">
-    <span class="c3-label">Who acts</span>
-    <span class="c3-people">{% for u in a.holders %}<span class="c3-person"><span class="c3-av" aria-hidden="true">{{ u|initials }}</span><span>{{ u|who }}{% if u == request.user %} <em class="c3-you-tag">you</em>{% endif %}</span></span>{% empty %}<span class="qa-chip qa-tone-warn">Nobody yet — in the department queue</span>{% endfor %}</span>
-    {% if a.guide.who %}<span class="c3-muted">{{ a.guide.who }}{% if a.since %} · waiting {{ a.since }}{% endif %}</span>{% elif a.since %}<span class="c3-muted">Waiting {{ a.since }}</span>{% endif %}
+  <div class="c3-stage__who s3-who">
+    <div class="s3-who__cell s3-who__cell--people">
+      <span class="c3-label">Who acts</span>
+      <span class="c3-people">{% for u in a.holders %}<span class="c3-person"><span class="c3-av" aria-hidden="true">{{ u|initials }}</span><span>{{ u|who }}{% if u == request.user %} <em class="c3-you-tag">you</em>{% endif %}</span></span>{% empty %}<span class="qa-chip qa-tone-warn">Nobody yet — in the department queue</span>{% endfor %}</span>
+    </div>
+    {% if a.guide.who %}<div class="s3-who__cell"><span class="c3-label">Role</span><span class="s3-who__text">{{ a.guide.who }}</span></div>{% endif %}
+    {% if a.since %}<div class="s3-who__cell"><span class="c3-label">Waiting</span><span class="s3-who__text">{{ a.since }}</span></div>{% endif %}
     {% if can_remind and not a.can and a.holders %}
     <form class="c3-remind" method="post" action="{% url 'qa_case:remind' case.pk a.stage.code %}" hx-post="{% url 'qa_case:remind' case.pk a.stage.code %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="{{ tab }}">
       <button class="btn btn-sm btn-subtle" type="submit" title="Send {% for u in a.holders %}{{ u|who }}{% if not forloop.last %}, {% endif %}{% endfor %} a reminder">{% icon "bell" 14 "2.2" %} Remind</button>

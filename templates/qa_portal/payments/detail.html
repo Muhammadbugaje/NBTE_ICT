@@ -62,6 +62,7 @@
   {% if gateway_verified %}{% include "qa_core/partials/_callout.html" with kind="success" title="Verified by the provider — awaiting Finance confirmation" message="Your payment was received and checked with the provider. You do not need to upload anything; NBTE’s Director of Finance confirms it, usually within 1 working day." %}
   {% elif checking_payment %}{% include "qa_core/partials/_callout.html" with kind="warn" title="We are checking your payment" message="The amount reported by the provider differs from your bill. NBTE Finance is checking it and will contact you if anything is needed." %}
   {% elif ob.status in "provider_reported_paid awaiting_finance_confirmation finance_confirmation_overdue proof_submitted" %}{% include "qa_core/partials/_callout.html" with kind="info" title="Payment received — awaiting Finance confirmation" message="Your payment has been reported. It is not final until NBTE’s Director of Finance confirms it; you will get a receipt then." %}{% endif %}
+  {% if reported_failed %}{% include "qa_core/partials/_callout.html" with kind="info" title="You can pay again" message="You told us your earlier payment failed or was reversed, so it was withdrawn and NBTE Finance was told. Choose any method below. If the earlier money does reach NBTE after all, the extra payment is refunded or kept as credit." %}{% endif %}
 
   <div class="qa-bill">
     <section class="qa-card qa-bill__main" aria-labelledby="qa-total-label">
@@ -137,6 +138,22 @@
         {% endif %}
       {% endif %}
 
+      {% if can_pay_again %}
+        <details class="qa-card qa-mt qa-pay-again" id="qa-pay-again"{% if open_pay_again %} open{% endif %}>
+          <summary class="qa-card__head qa-summary"><div><h2>My payment failed or was reversed</h2><p>If the bank or the provider reversed or refunded this payment, so NBTE never received it, withdraw it here and pay again with any method.</p></div><span class="btn btn-sm btn-subtle qa-summary__toggle">Pay again</span></summary>
+          <div class="qa-card__body">
+            {% if pay_again_error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Not changed" message=pay_again_error %}{% endif %}
+            <form method="post" action="{% url 'qa_portal:payment_method' ob.pk %}" hx-post="{% url 'qa_portal:payment_method' ob.pk %}" hx-target="#qa-main" hx-select="#qa-payment" hx-swap="innerHTML">{% csrf_token %}
+              <input type="hidden" name="pay_again" value="1">
+              <label class="qa-label" for="qa-pay-again-reason">What happened?</label>
+              <textarea class="input" id="qa-pay-again-reason" name="reason" rows="2" minlength="5" maxlength="500" required placeholder="For example: the bank reversed the transfer on 12 March">{{ pay_again_reason|default:"" }}</textarea>
+              <p class="qa-small qa-muted">Your earlier payment stays on record and NBTE Finance is told. If it is still being processed we check with the provider first; if it went through, you will not be asked to pay again.</p>
+              <div class="qa-form-actions"><button class="btn btn-primary" type="submit">Withdraw it and pay again</button></div>
+            </form>
+          </div>
+        </details>
+      {% endif %}
+
       {% if receipt_needed %}
         <section class="qa-card qa-mt"><header class="qa-card__head"><div><h2>Upload the provider’s receipt</h2><p>The provider reported your payment. Upload the receipt they gave you so Finance can confirm it.</p></div></header>
           <div class="qa-card__body"><form method="post" enctype="multipart/form-data" hx-post="{% url 'qa_portal:payment_receipt' ob.pk %}" hx-encoding="multipart/form-data" hx-target="#qa-main" hx-select="#qa-payment" hx-swap="innerHTML" class="qa-row qa-gap-sm">{% csrf_token %}
@@ -151,8 +168,8 @@
         <ul class="qa-rowlist" role="list">
           {% if slip %}<li class="fpv-row"><a class="qa-rowlink" href="{{ slip.portal_download_url }}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">Payment slip (v{{ slip.version }})</span><span class="qa-rowlink__meta">{% if slip_expired %}Expired{% else %}Valid until{% endif %} {{ slip.expires_at|date:"j M Y" }}</span></span><span class="qa-rowlink__side">{% icon "download" 16 %}</span></a>{% preview_button slip.portal_download_url "Payment slip" "" "Preview" True %}</li>{% endif %}
           {% for a in advices %}<li class="fpv-row"><a class="qa-rowlink" href="{{ a.portal_download_url }}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">Receipt {{ a.reference }}</span><span class="qa-rowlink__meta">{{ a.amount|naira }} · {{ a.generated_at|date:"j M Y" }}</span></span><span class="qa-rowlink__side">{% icon "download" 16 %}</span></a>{% preview_button a.portal_download_url a.reference "" "Preview" True %}</li>{% endfor %}
-          {% for p in proofs %}<li class="fpv-row"><a class="qa-rowlink" href="{{ p.portal_download_url }}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">Your upload: {{ p.get_kind_display }}</span><span class="qa-rowlink__meta">{% if p.amount_claimed %}{{ p.amount_claimed|naira }} · {% endif %}{{ p.created_at|date:"j M Y" }}</span></span></a></li>{% endfor %}
-          {% for a in attempts %}{% if a.status != "pending" and a.status != "initiated" %}<li><div class="qa-rowlink"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.get_provider_display }}</span><span class="qa-rowlink__meta">{{ a.amount|naira }} · {{ a.created_at|date:"j M Y H:i" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ a.status|tone }}">{{ a.get_status_display }}</span></span></div></li>{% endif %}{% endfor %}
+          {% for p in proofs %}<li class="fpv-row"><a class="qa-rowlink" href="{{ p.portal_download_url }}"><span class="qa-rowlink__main"><span class="qa-rowlink__title">Your upload: {{ p.get_kind_display }}{% if p.withdrawn_at %} (withdrawn){% endif %}</span><span class="qa-rowlink__meta">{% if p.amount_claimed %}{{ p.amount_claimed|naira }} · {% endif %}{{ p.created_at|date:"j M Y" }}</span></span></a></li>{% endfor %}
+          {% for a in attempts %}{% if a.status != "pending" and a.status != "initiated" %}<li><div class="qa-rowlink"><span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ a.get_provider_display }}</span><span class="qa-rowlink__meta">{{ a.amount|naira }} · {{ a.created_at|date:"j M Y H:i" }}</span></span><span class="qa-rowlink__side"><span class="qa-chip {{ a.status|tone }}">{% if a.reported_failed_by_institution and a.status == "failed" %}Reported failed by you{% else %}{{ a.get_status_display }}{% endif %}</span></span></div></li>{% endif %}{% endfor %}
           {% if request.user.user_type == "institution" %}<li class="qa-bill__complaint"><span class="qa-rowlink__meta">Paid but still pending?</span> {% include "complaints/portal/_raise_link.html" with kind="payment" pk=ob.pk %}</li>{% endif %}
         </ul>
       </section>

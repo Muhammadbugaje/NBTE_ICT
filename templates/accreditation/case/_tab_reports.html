@@ -1,40 +1,31 @@
 {% load qa_tags %}
-<section class="c3-sec" aria-labelledby="rp-h">
+<section class="c3-sec s3-sec" aria-labelledby="rp-h">{# Reports tab (stages 12–13). Look: static/css/sop3.css — counts first, one card per programme, attendee lists and documents fold away. #}
   <header class="c3-sec__head"><span class="c3-sec__num">12</span>
     <div><h2 id="rp-h">Post-visit reports</h2>
-      <p>Stage 12 has two separate jobs. <strong>Each attendee writes their own report</strong> for the programme they covered. <strong>Only the Team Lead</strong> reviews those reports and writes the one compiled programme report that goes for endorsement. Attendees cannot submit the compiled report; the Team Lead cannot submit on an attendee's behalf.</p>
+      <p>Each attendee writes their own report. The Team Lead compiles one report per programme, and that report goes for endorsement.</p>
     </div>
     <div class="c3-sec__chips">{% if inspection %}<a class="btn btn-sm btn-subtle c3-sec__chip" href="{% url 'qa_insp:inspection' inspection.pk %}">{% icon "eye" 14 %} {{ inspection.reference }}</a>{% endif %}
       <a class="btn btn-sm btn-subtle c3-sec__chip" href="{% url 'qa_case:devices' case.pk %}" hx-boost="false">{% icon "box" 14 %} Devices register</a>
       <a class="btn btn-sm btn-subtle c3-sec__chip" href="{% url 'qa_case:versions' case.pk %}" hx-boost="false">{% icon "layers" 14 %} Version history</a></div>
   </header>
+  {% include "accreditation/case/_phase_track.html" with lo=12 hi=13 track_label="Report stages 12 and 13" %}
 
   {% if report_summary %}
-  <div class="rp-overview" role="group" aria-label="Report progress">
-    <div class="rp-overview__step">
-      <span class="rp-overview__n">1</span>
-      <div class="rp-overview__copy">
-        <strong>Attendee reports</strong>
-        <p>Every person who attended writes their own findings.</p>
-      </div>
-      <span class="rp-overview__stat"><b>{{ report_summary.received }}</b><i>/ {{ report_summary.required }} in</i></span>
-    </div>
-    <div class="rp-overview__step">
-      <span class="rp-overview__n">2</span>
-      <div class="rp-overview__copy">
-        <strong>Team Lead compilation</strong>
-        <p>Only the Team Lead writes and submits the final report.</p>
-      </div>
-      <span class="rp-overview__stat"><b>{{ report_summary.compiled }}</b><i>/ {{ report_summary.programmes }} submitted</i></span>
-    </div>
-    <div class="rp-overview__counts">
-      <span class="rp-count rp-count--warn"><b>{{ report_summary.still }}</b> still to submit</span>
-      <span class="rp-count rp-count--info"><b>{{ report_summary.awaiting }}</b> awaiting Team Lead review</span>
-      <span class="rp-count rp-count--ok"><b>{{ report_summary.ready }}</b> ready to compile</span>
-    </div>
+  <div class="rp-overview s3-stats" role="group" aria-label="Report progress">
+    <div class="s3-stat"><span class="s3-stat__label">Attendee reports in</span><strong class="s3-stat__num">{{ report_summary.received }}<small>/ {{ report_summary.required }}</small></strong></div>
+    <div class="s3-stat"><span class="s3-stat__label">Compiled by Team Lead</span><strong class="s3-stat__num">{{ report_summary.compiled }}<small>/ {{ report_summary.programmes }}</small></strong></div>
+    <div class="s3-stat{% if report_summary.still %} is-warn{% endif %}"><span class="s3-stat__label">Still to submit</span><strong class="s3-stat__num">{{ report_summary.still }}</strong></div>
+    <div class="s3-stat"><span class="s3-stat__label">Awaiting Team Lead review</span><strong class="s3-stat__num">{{ report_summary.awaiting }}</strong></div>
+    <div class="s3-stat"><span class="s3-stat__label">Ready to compile</span><strong class="s3-stat__num">{{ report_summary.ready }}</strong></div>
   </div>
-  <p class="rp-overview__note">{% icon "shield" 14 "2.2" %} The Team Lead may skip an attendee with a written reason. That reason and every skipped report stay on the case for the CQAC to see.</p>
   {% endif %}
+  <details class="s3-how">
+    <summary>{% icon "shield" 14 "2.2" %} How stage 12 works</summary>
+    <div class="s3-how__body">
+      <p>Stage 12 has two separate jobs. <strong>Each attendee writes their own report</strong> for the programme they covered. <strong>Only the Team Lead</strong> reviews those reports and writes the one compiled programme report that goes for endorsement. Attendees cannot submit the compiled report; the Team Lead cannot submit on an attendee's behalf.</p>
+      <p>The Team Lead may skip an attendee with a written reason. That reason and every skipped report stay on the case for the CQAC to see.</p>
+    </div>
+  </details>
 
   {% if inspection %}{% include "inspection/_visit_moment.html" %}{% endif %}
   {% if inspection and inspection.status != "closed" %}
@@ -67,37 +58,12 @@
 
     <ul class="c3-reports" role="list">
       {% for r in reports %}
-      <li class="c3-report">
+      <li class="c3-report s3-report-card">
         <div class="c3-report__head">
           <div><a class="c3-report__title" href="{% url 'qa_insp:report' r.pk %}">{{ r.qa_request_programme.programme }}</a>
             <span class="c3-muted c3-small">Report v{{ r.version }}{% if r.submitted_by %} · compiled and submitted by {{ r.submitted_by|who }}{% else %} · Team Lead: {% if r.team_lead %}{{ r.team_lead|who }}{% else %}not assigned{% endif %}{% endif %}</span>
-            <div class="c3-row c3-row--tight qa-mt-xs">
-              {% if r.source_ssq %}<a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq' case.pk r.source_ssq.pk %}?back={{ request.get_full_path|urlencode }}">{% icon "file" 13 %} Institution's SSQ</a>{% endif %}
-              {% if r.source_ssq %}
-              <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk r.source_ssq.pk %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview SSQ PDF</a>
-              <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk r.source_ssq.pk %}?download=1">{% icon "download" 13 %} Download SSQ</a>
-              {% endif %}
-              <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form' case.pk r.pk 'programme_evaluation' %}">{% icon "edit" 13 %} Evaluation</a>
-              <a class="btn btn-xs btn-subtle" href="{% url 'qa_insp:report' r.pk %}">{% icon "eye" 13 %} Open report</a>
-              {% if r.can_preview_compiled_pdf %}
-              <a class="btn btn-xs btn-primary" href="{% url 'qa_insp:report_pdf' r.pk %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview compiled PDF</a>
-              <a class="btn btn-xs btn-subtle" href="{% url 'qa_insp:report_pdf' r.pk %}?download=1">{% icon "download" 13 %} Download compiled PDF</a>
-              {% endif %}
-            </div>
           </div>
           {% if r.layer %}<span class="qa-chip qa-tone-pending">With {{ r.layer }}</span>{% else %}<span class="qa-chip {{ r.status|tone }}">{{ r.status|humanize_code }}</span>{% endif %}
-        </div>
-
-        <div class="rp-report-progress">
-          <div class="rp-report-progress__top">
-            <strong>Attendee contributions</strong>
-            <span>{% if r.required %}{{ r.received }} of {{ r.required }} in{% else %}No attendees to report{% endif %}{% if r.still_to_submit %} · {{ r.still_to_submit }} still to submit{% endif %}{% if r.awaiting_review %} · {{ r.awaiting_review }} awaiting review{% endif %}</span>
-          </div>
-          <div class="rp-report-progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ r.progress_pct }}" aria-label="Attendee reports received"><span style="width: {{ r.progress_pct }}%"></span></div>
-          <div class="rp-report-progress__foot">
-            {% if r.ready_to_compile %}<span class="rp-count rp-count--ok">{% icon "check" 12 "2.6" %} Ready for the Team Lead to compile</span>{% else %}<span class="rp-count rp-count--warn">{% icon "clock" 12 "2.2" %} Waiting for {{ r.member_pending|length }} attendee{{ r.member_pending|length|pluralize }}</span>{% endif %}
-            {% if r.member_counts.skipped %}<span class="rp-count rp-count--muted">{% icon "x" 12 "2.2" %} {{ r.member_counts.skipped }} skipped</span>{% endif %}
-          </div>
         </div>
 
         {% if r.my_row %}
@@ -115,43 +81,18 @@
         </div>
         {% endif %}
 
-        {% if r.member_rows %}
-        <ul class="rp-attendees" role="list">
-          {% for row in r.member_rows %}
-          <li class="rp-attendee">
-            <span class="rp-attendee__who"><strong>{{ row.person }}</strong>{% if row.attendee.role_on_team %}<em>{{ row.attendee.role_on_team }}</em>{% endif %}</span>
-            {% if not row.attendee.attended %}
-              <span class="qa-chip qa-tone-danger">Absent</span>
-            {% elif not row.member_report %}
-              <span class="qa-chip qa-tone-pending">No portal account</span>
-            {% elif row.member_report.status == "accepted" %}
-              <span class="qa-chip qa-tone-success">Accepted</span>
-            {% elif row.member_report.status == "submitted" %}
-              <span class="qa-chip qa-tone-info">Submitted · awaiting review</span>
-            {% elif row.member_report.status == "returned" %}
-              <span class="qa-chip qa-tone-warn">Returned for changes</span>
-            {% elif row.member_report.status == "skipped" %}
-              <span class="qa-chip qa-tone-warn">Skipped by Team Lead</span>
-            {% else %}
-              <span class="qa-chip qa-tone-pending">Draft · not submitted</span>
-            {% endif %}
-          </li>
-          {% endfor %}
-        </ul>
-        {% endif %}
-
-        {% if r.skipped_rows %}
-        <div class="rp-skipped">
-          <strong>{% icon "flag" 13 "2.2" %} Skipped contributions and reasons</strong>
-          {% for row in r.skipped_rows %}<p><b>{{ row.person }}:</b> {{ row.member_report.review_note|default:"No reason recorded." }}</p>{% endfor %}
-        </div>
-        {% endif %}
-
-        <div class="c3-report__grid">
+        <div class="c3-report__grid s3-cells">
+          <div class="c3-report__cell rp-report-progress">
+            <span class="c3-label">Attendee contributions</span>
+            <strong class="s3-cell__value">{% if r.required %}{{ r.received }} of {{ r.required }} in{% else %}No attendees to report{% endif %}</strong>
+            <div class="rp-report-progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ r.progress_pct }}" aria-label="Attendee reports received"><span style="width: {{ r.progress_pct }}%"></span></div>
+            <span class="s3-cell__sub">{% if r.ready_to_compile %}{% icon "check" 12 "2.6" %} Ready for the Team Lead to compile{% else %}{% icon "clock" 12 "2.2" %} Waiting for {{ r.member_pending|length }} attendee{{ r.member_pending|length|pluralize }}{% endif %}{% if r.still_to_submit %} · {{ r.still_to_submit }} still to submit{% endif %}{% if r.awaiting_review %} · {{ r.awaiting_review }} awaiting review{% endif %}{% if r.member_counts.skipped %} · {{ r.member_counts.skipped }} skipped{% endif %}</span>
+          </div>
           {% if report_forms_available.programme_evaluation %}
           <div class="c3-report__cell">
             <span class="c3-label">Programme evaluation (NBTE/P/4A)</span>
-            <span>{% if r.eval_form %}{{ r.eval_form.get_status_display }}{% if r.eval_form.score.outcome_label %} · {{ r.eval_form.score.score|default:'—' }} % · <strong>{{ r.eval_form.score.outcome_label }}</strong>{% endif %}{% else %}Not started{% endif %}</span>
+            <strong class="s3-cell__value">{% if r.eval_form %}{{ r.eval_form.get_status_display }}{% else %}Not started{% endif %}</strong>
+            {% if r.eval_form.score.outcome_label %}<span class="s3-cell__sub">{{ r.eval_form.score.score|default:'—' }} % · <strong>{{ r.eval_form.score.outcome_label }}</strong></span>{% endif %}
             <span class="c3-row c3-row--tight">
               <a class="btn btn-xs {% if r.eval_form.status == 'submitted' %}btn-subtle{% else %}btn-primary{% endif %}" href="{% url 'qa_case:report_form' case.pk r.pk 'programme_evaluation' %}">{% if r.eval_form.status == "submitted" %}View{% elif r.eval_form %}Continue{% else %}Start{% endif %}</a>
               {% if r.eval_form %}
@@ -163,9 +104,9 @@
           {% endif %}
           <div class="c3-report__cell">
             <span class="c3-label">Team recommendation</span>
-            <strong>{{ r.get_recommendation_display|default:"—" }}</strong>
+            <strong class="s3-cell__value">{{ r.get_recommendation_display|default:"—" }}</strong>
           </div>
-          <div class="c3-report__cell c3-report__cell--wide">
+          <div class="c3-report__cell c3-report__cell--wide{% if can_recommend %} is-action{% endif %}">
             <span class="c3-label">Directorate recommendation (stage 13)</span>
             {% if can_recommend %}
             <form class="c3-form c3-form--inline" method="post" action="{% url 'qa_case:recommend' case.pk r.pk %}" hx-post="{% url 'qa_case:recommend' case.pk r.pk %}" hx-target="#qa-panel">{% csrf_token %}<input type="hidden" name="tab" value="reports">
@@ -177,11 +118,65 @@
             {% else %}<span class="c3-muted">Not yet</span>{% endif %}
           </div>
         </div>
+
+        <div class="c3-row c3-row--tight s3-report-card__actions">
+          <a class="btn btn-sm btn-subtle" href="{% url 'qa_insp:report' r.pk %}">{% icon "eye" 14 %} Open report</a>
+          {% if r.can_preview_compiled_pdf %}
+          <a class="btn btn-sm btn-primary" href="{% url 'qa_insp:report_pdf' r.pk %}" target="_blank" rel="noopener">{% icon "eye" 14 %} Preview compiled PDF</a>
+          <a class="btn btn-sm btn-subtle" href="{% url 'qa_insp:report_pdf' r.pk %}?download=1">{% icon "download" 14 %} Download compiled PDF</a>
+          {% endif %}
+        </div>
+
+        {% if r.member_rows %}
+        <details class="s3-fold"{% if not r.submitted_by %} open{% endif %}>
+          <summary><span class="s3-fold__title">Attendees</span><span class="s3-fold__meta">{{ r.member_rows|length }} on the team{% if r.skipped_rows %} · {{ r.skipped_rows|length }} skipped{% endif %}</span></summary>
+          {# s3-people (not rp-attendees): that class name also styles a card on the post-visit report page #}
+          <ul class="s3-people" role="list">
+            {% for row in r.member_rows %}
+            <li class="s3-people__row">
+              <span class="s3-people__who"><strong>{{ row.person }}</strong>{% if row.attendee.role_on_team %}<em>{{ row.attendee.role_on_team }}</em>{% endif %}</span>
+              {% if not row.attendee.attended %}
+                <span class="qa-chip qa-tone-danger">Absent</span>
+              {% elif not row.member_report %}
+                <span class="qa-chip qa-tone-pending">No portal account</span>
+              {% elif row.member_report.status == "accepted" %}
+                <span class="qa-chip qa-tone-success">Accepted</span>
+              {% elif row.member_report.status == "submitted" %}
+                <span class="qa-chip qa-tone-info">Submitted · awaiting review</span>
+              {% elif row.member_report.status == "returned" %}
+                <span class="qa-chip qa-tone-warn">Returned for changes</span>
+              {% elif row.member_report.status == "skipped" %}
+                <span class="qa-chip qa-tone-warn">Skipped by Team Lead</span>
+              {% else %}
+                <span class="qa-chip qa-tone-pending">Draft · not submitted</span>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% if r.skipped_rows %}
+          <div class="rp-skipped">
+            <strong>{% icon "flag" 13 "2.2" %} Skipped contributions and reasons</strong>
+            {% for row in r.skipped_rows %}<p><b>{{ row.person }}:</b> {{ row.member_report.review_note|default:"No reason recorded." }}</p>{% endfor %}
+          </div>
+          {% endif %}
+        </details>
+        {% endif %}
+
+        <details class="s3-fold">
+          <summary><span class="s3-fold__title">Documents</span><span class="s3-fold__meta">{% if r.source_ssq %}Institution's SSQ · {% endif %}evaluation form</span></summary>
+          <div class="c3-row c3-row--tight s3-fold__body">
+            {% if r.source_ssq %}<a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq' case.pk r.source_ssq.pk %}?back={{ request.get_full_path|urlencode }}">{% icon "file" 13 %} Institution's SSQ</a>
+            <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk r.source_ssq.pk %}" target="_blank" rel="noopener">{% icon "eye" 13 %} Preview SSQ PDF</a>
+            <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:source_ssq_pdf' case.pk r.source_ssq.pk %}?download=1">{% icon "download" 13 %} Download SSQ</a>
+            {% endif %}
+            <a class="btn btn-xs btn-subtle" href="{% url 'qa_case:report_form' case.pk r.pk 'programme_evaluation' %}">{% icon "edit" 13 %} Evaluation</a>
+          </div>
+        </details>
       </li>
       {% endfor %}
     </ul>
 
-    {% if body_reports %}<section class="c3-sec__sub qa-mt" aria-labelledby="pb-reports-h">
+    {% if body_reports %}<section class="c3-sec__sub qa-mt s3-note" aria-labelledby="pb-reports-h">
       <h3 id="pb-reports-h">Professional-body reports on this case</h3>
       <ul class="qa-rowlist" role="list">
         {% for b in body_reports %}
@@ -202,3 +197,4 @@
   <div class="c3-empty">{% icon "file" 22 "2" %}<p><strong>No reports yet.</strong> They open when the case reaches stage 12 — after the visit is recorded and the funds are released.</p></div>
   {% endif %}
 </section>
+{% include "accreditation/case/_rp_mappings.html" with compact=True %}

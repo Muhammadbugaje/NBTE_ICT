@@ -60,17 +60,21 @@ def recommendation_mode():
 
 
 # v2.3 Phase 2 (owner decision 4): every approver decides on an empty form.
-# The Chairman sees the panel's votes but his own form starts blank; the ES sees
-# no earlier decision until he has recorded his own.
-BLIND_STAGES = (Decision.CHAIR, Decision.ES)
+# The Chairman sees the panel's votes but his own form starts blank and sees
+# the panel's recommendation only after saving his own.
+# v2.9: the ES is no longer blind — before he decides at stage 16 he sees
+# everything (reports, the Directorate's recommendation, every CQAC vote and
+# comment, the Chairman's decision and remark, every remark): ``decision_brief``.
+# His form still starts empty.
+BLIND_STAGES = (Decision.CHAIR,)
 
 
 def reveal_earlier(case, stage, user):
     """May ``user`` see the earlier decision stages of this case now?
 
     Everyone may, except the person who must still decide at a blind stage:
-    the Chairman / ES sees earlier decisions only after saving his own for
-    every programme of the case."""
+    the Chairman sees earlier decisions only after saving his own for every
+    programme of the case (v2.9: the ES is not blind)."""
     if stage not in BLIND_STAGES:
         return True
     ok, _why = can_decide(case, user, stage)
@@ -667,3 +671,166 @@ def _vote_tally(case, row):
         if text:
             reasons.append({"outcome": labels.get(v.outcome, v.outcome), "text": text})
     return {"total": total, "lines": lines, "reasons": reasons}
+
+
+# ===========================================================================
+# v2.9: the decision brief — everything the ES (stage 16) sees before he
+# decides, in one structure. The CQAC Chairman (stage 15) gets the same brief
+# read-only, without the stages after his own.
+# ===========================================================================
+def brief_allowed(case, user, stage):
+    """The ES (stage 16) and the Chairman (stage 15) get the brief when they
+    may decide at their stage; a superuser always."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if stage not in (Decision.CHAIR, Decision.ES):
+        return False
+    if user.is_superuser:
+        return True
+    return can_decide(case, user, stage)[0]
+
+
+def _who(user):
+    return (user.get_full_name() or user.email) if user is not None else ""
+
+
+def _decision_dict(d):
+    if d is None:
+        return None
+    labels = dict(Decision.OUTCOME_CHOICES)
+    return {"decision": d, "stage": d.stage, "stage_label": d.get_stage_display(), "outcome": d.outcome,
+            "outcome_label": labels.get(d.outcome, d.outcome),
+            "approval_type": d.approval_type, "approved_streams": d.approved_streams,
+            "commencement_date": d.commencement_date, "expiry_date": d.expiry_date,
+            "weaknesses": list(d.weaknesses or []), "remark": d.note, "by": d.decided_by,
+            "by_name": _who(d.decided_by), "at": d.decided_at}
+
+
+def _report_brief(report):
+    """The compiled post-visit report, its endorsements and every attendee's report."""
+    from inspection.models import PostVisitMemberReport, PostVisitMemberReview, PostVisitReport, ReportEndorsement
+
+    if report is None:
+        return None, [], None
+    rec_labels = dict(PostVisitReport.RECOMMENDATION_CHOICES)
+    endorsements = [{"layer": e.layer, "layer_label": e.get_layer_display(), "action": e.action,
+                     "action_label": e.get_action_display(), "content": e.content, "by": e.actor,
+                     "by_name": _who(e.actor), "at": e.at}
+                    for e in ReportEndorsement.unscoped.filter(report=report).select_related("actor")
+                    .order_by("at", "pk")]
+    compiled = {"report": report, "pk": report.pk, "status": report.status,
+                "summary": report.summary, "findings": report.findings or {}, "sections": report.sections or {},
+                "recommendation": report.recommendation,
+                "recommendation_label": rec_labels.get(report.recommendation, ""),
+                "submitted_by": report.submitted_by, "submitted_by_name": _who(report.submitted_by),
+                "submitted_at": report.submitted_at, "fines_total": report.fines_total,
+                "gps_flag": report.gps_flag, "gps_distance_km": report.gps_distance_km,
+                "endorsements": endorsements}
+    reviews = {}
+    for rv in (PostVisitMemberReview.unscoped.filter(member_report__report=report).select_related("actor")
+               .order_by("at", "pk")):
+        reviews.setdefault(rv.member_report_id, []).append(
+            {"action": rv.action, "action_label": rv.get_action_display(), "content": rv.content,
+             "by": rv.actor, "by_name": _who(rv.actor), "at": rv.at})
+    members = []
+    for mr in (PostVisitMemberReport.unscoped.filter(report=report).exclude(status="draft")
+               .select_related("author", "reviewed_by", "attendee").order_by("attendee_id", "pk")):
+        attendee = mr.attendee
+        members.append({"member_report": mr, "pk": mr.pk, "author": mr.author, "author_name": _who(mr.author),
+                        "person_type": attendee.person_type, "role": attendee.role_on_team or attendee.get_duty_display(),
+                        "status": mr.status, "status_label": mr.get_status_display(),
+                        "summary": mr.summary, "findings": mr.findings or {},
+                        "recommendation": mr.recommendation,
+                        "recommendation_label": rec_labels.get(mr.recommendation, ""),
+                        "submitted_at": mr.submitted_at, "review_note": mr.review_note,
+                        "reviewed_by": mr.reviewed_by, "reviewed_by_name": _who(mr.reviewed_by),
+                        "reviews": reviews.get(mr.pk, [])})
+    directorate = None
+    if report.recommended_by_id:
+        directorate = {"recommendation": report.recommendation,
+                       "label": rec_labels.get(report.recommendation, ""),
+                       "note": report.recommendation_note, "by": report.recommended_by,
+                       "by_name": _who(report.recommended_by), "at": report.updated_at}
+    return compiled, members, directorate
+
+
+def _rp_report_dict(item):
+    return {key: item[key] for key in (
+        "pk", "person", "person_kind", "scope", "scope_label", "target", "duty_label", "from_date", "to_date",
+        "status_label", "approval_label", "rp_response", "rp_response_label", "rp_response_at",
+        "rp_response_note", "report", "report_recommendation", "report_recommendation_label",
+        "report_submitted_at")}
+
+
+def timeline_remarks(case, user):
+    """Every remark written on the case's flow and every comment on its stage
+    tasks (that ``user`` may read), oldest first."""
+    from . import case_services as cs
+    from tasks.services import visible_comments
+
+    out = []
+    instance = cs.instance_of(case)
+    if instance is not None:
+        for e in instance.events.select_related("actor").order_by("at", "id"):
+            if (e.remark or "").strip():
+                out.append({"at": e.at, "kind": "flow", "stage": e.from_stage,
+                            "stage_label": cs.stage_label(e.from_stage) if e.from_stage else "",
+                            "action": e.action_code.replace("_", " "), "by": e.actor, "by_name": _who(e.actor),
+                            "text": e.remark.strip()})
+    for link in cs.case_links(case):
+        for c in visible_comments(link.task, user).select_related("author").order_by("created_at"):
+            out.append({"at": c.created_at, "kind": "comment", "stage": link.stage_code,
+                        "stage_label": cs.stage_label(link.stage_code), "action": "comment",
+                        "by": c.author, "by_name": _who(c.author), "text": c.body,
+                        "internal": c.is_internal})
+    out.sort(key=lambda r: r["at"])
+    return out
+
+
+def decision_brief(case, user, stage):
+    """``es_brief``: per programme the compiled report, every attendee's report,
+    the Directorate's stage-13 recommendation, every CQAC member's vote and
+    comment (by name), the tally, the panel's recommendation and the
+    Chairman's decision and remark, plus the resource persons' reports; and
+    every remark on the case. ``None`` when ``user`` may not have it.
+
+    For the Chairman (stage 15) the brief stops before his own stage, and the
+    panel's aggregated recommendation stays hidden until he has decided
+    (his blind rule is unchanged)."""
+    if not brief_allowed(case, user, stage):
+        return None
+    from inspection import services as insp
+
+    reveal = reveal_earlier(case, stage, user)
+    history = {}
+    for d in Decision.unscoped.filter(case=case).select_related("approval_type", "decided_by").order_by("pk"):
+        history.setdefault(d.qa_request_programme_id, {})[d.stage] = d
+    labels = dict(Decision.OUTCOME_CHOICES)
+    rp_items = insp.case_rp_mappings(case)
+    programmes = []
+    for row in rows(case):
+        compiled, members, directorate = _report_brief(_report_for(case, row))
+        votes = []
+        for v in (CQACVote.unscoped.filter(case=case, qa_request_programme=row)
+                  .select_related("user", "approval_type").order_by("user__first_name", "pk")):
+            votes.append({"vote": v, "member": v.user, "member_name": _who(v.user), "outcome": v.outcome,
+                          "outcome_label": labels.get(v.outcome, v.outcome), "approval_type": v.approval_type,
+                          "approved_streams": v.approved_streams, "commencement_date": v.commencement_date,
+                          "weaknesses": list(v.weaknesses or []), "comment": v.note, "at": v.updated_at})
+        by_stage = history.get(row.pk, {})
+        item = {"row": row, "programme": row.programme, "report": compiled, "member_reports": members,
+                "directorate_recommendation": directorate, "cqac_votes": votes,
+                "tally": _vote_tally(case, row),
+                "cqac_decision": _decision_dict(by_stage.get(Decision.CQAC)) if reveal else None,
+                "chair": None, "es": None,
+                "rp_reports": [_rp_report_dict(i) for i in rp_items if i["programme"] is not None
+                               and i["mapping"].qa_request_programme_id == row.pk]}
+        if stage == Decision.ES:
+            item["chair"] = _decision_dict(by_stage.get(Decision.CHAIR))
+            item["es"] = _decision_dict(by_stage.get(Decision.ES))
+        programmes.append(item)
+    return {"stage": stage, "for_es": stage == Decision.ES, "earlier_hidden": not reveal,
+            "programmes": programmes,
+            "rp_reports": [_rp_report_dict(i) for i in rp_items if i["programme"] is None],
+            "rp_mappings": [_rp_report_dict(i) for i in rp_items],
+            "timeline_remarks": timeline_remarks(case, user)}

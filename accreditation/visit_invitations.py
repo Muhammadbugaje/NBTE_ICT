@@ -183,7 +183,7 @@ def invitees(case):
     for mapping in (QAMapping.unscoped.filter(case=case, status__in=QAMapping.LIVE, duty__in=VISIT_DUTIES,
                                               resource_person__isnull=False)
                     .select_related("resource_person", "qa_request_programme__programme")):
-        add_rp(mapping.resource_person, str(mapping.qa_request_programme.programme))
+        add_rp(mapping.resource_person, mapping.target_label)  # v2.9: may be the whole institution
     # The visit team's external members (SOP-03 stage 3), when that model is present.
     try:
         from .models import VisitExternalMember

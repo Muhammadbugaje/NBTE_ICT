@@ -494,6 +494,137 @@ def _ensure_awaiting_payment(obligation, actor):
     raise ValidationError(f"{obligation.reference} cannot take a payment now ({stage_label(obligation)}).")
 
 
+# ===========================================================================
+# "My payment failed / was reversed — pay again" (institution)
+# ===========================================================================
+PAY_AGAIN_FLAG = "reported_failed_by_institution"
+
+
+def can_pay_again(obligation):
+    """The institution may withdraw its claim while the bill is being
+    confirmed (never once it is settled, cancelled or expired)."""
+    return obligation.status in PaymentObligation.CLAIMED
+
+
+def report_payment_failed(obligation, *, user, reason):
+    """The institution says the payment it claimed (an uploaded proof, a
+    Remita / Paystack report, or a checkout stuck in progress) never reached
+    NBTE — it failed or the bank reversed it. The claim is withdrawn (kept,
+    marked, never deleted), the bill returns to ``awaiting_payment`` with no
+    method chosen, and the Finance officers and the Director of Finance are
+    told. Open checkouts are asked about first: only a provider that says
+    "paid" stops it (raised as :class:`OnlinePaymentError` kind
+    'already_paid', after what was learnt is committed)."""
+    obligation, error = _report_payment_failed(obligation, user=user, reason=reason)
+    if error is not None:
+        raise error
+    return obligation
+
+
+def _decided_attempt_ids(obligation):
+    return set(PaymentVerification.unscoped.filter(obligation=obligation, attempt__isnull=False)
+               .exclude(final_decision="").values_list("attempt_id", flat=True))
+
+
+@transaction.atomic
+def _report_payment_failed(obligation, *, user, reason):
+    obligation = PaymentObligation.unscoped.select_for_update().get(pk=obligation.pk)
+    reason = " ".join((reason or "").split())
+    if len(reason) < 5:
+        raise ValidationError("Say briefly what happened to the payment (for example: reversed by the bank).")
+    if not can_pay_again(obligation):
+        raise ValidationError(f"{obligation.reference} is not waiting for a payment to be confirmed "
+                              f"({stage_label(obligation)}).")
+    # 1. Open checkouts: re-check with the provider. Paid → stop (recorded).
+    blocker = _settle_open_attempts_first(obligation, block_unreachable=False)
+    if blocker is not None:
+        return obligation, blocker
+    obligation.refresh_from_db()
+    if not can_pay_again(obligation):   # pragma: no cover - defensive (record moved it out of CLAIMED)
+        return obligation, OnlinePaymentError(
+            f"{obligation.reference} is {stage_label(obligation, public=True).lower()}.", kind="already_paid")
+    now = timezone.now()
+    note = f"Reported failed or reversed by the institution: {reason}"
+    withdrawn = []
+    # 2. The open Finance queue item is closed without a decision (kept).
+    item = PaymentVerification.unscoped.select_for_update().filter(obligation=obligation, is_open=True).first()
+    if item is not None:
+        item.is_open = False
+        item.withdrawn_at, item.withdrawn_by, item.withdrawn_reason = now, user, reason
+        item.save(update_fields=["is_open", "withdrawn_at", "withdrawn_by", "withdrawn_reason", "updated_at"])
+        audit.log("other", item, actor=user, note=f"Claim withdrawn by the institution: {reason}")
+        withdrawn.append(f"Finance queue item #{item.pk}")
+    # 3. Provider reports the Director has not ruled on → failed (kept, flagged).
+    decided = _decided_attempt_ids(obligation)
+    for attempt in PaymentAttempt.unscoped.select_for_update().filter(obligation=obligation,
+                                                                      status="provider_reported_paid"):
+        if attempt.pk in decided:
+            continue
+        attempt.status = "failed"
+        attempt.failure_reason = note[:255]
+        attempt.flags = sorted(set((attempt.flags or []) + [PAY_AGAIN_FLAG]))
+        attempt.save(update_fields=["status", "failure_reason", "flags", "updated_at"])
+        withdrawn.append(f"{attempt.get_provider_display()} {attempt.provider_reference}")
+    # 4. Checkouts still open (the provider did not say paid): superseded. They
+    #    stay pending so the poll keeps asking; they are never reused.
+    for attempt in PaymentAttempt.unscoped.select_for_update().filter(obligation=obligation,
+                                                                      status__in=("initiated", "pending")):
+        attempt.flags = sorted(set((attempt.flags or []) + ["superseded", PAY_AGAIN_FLAG]))
+        attempt.failure_reason = note[:255]
+        attempt.save(update_fields=["flags", "failure_reason", "updated_at"])
+        withdrawn.append(f"{attempt.get_provider_display()} {attempt.provider_reference} (in progress)")
+    # 5. Proofs not yet ruled on by the Director → withdrawn (kept).
+    decided_proofs = set(PaymentVerification.unscoped.filter(obligation=obligation, proof__isnull=False)
+                         .exclude(final_decision="").values_list("proof_id", flat=True))
+    for proof in ProofOfPayment.unscoped.filter(obligation=obligation, withdrawn_at__isnull=True):
+        if proof.pk in decided_proofs:
+            continue
+        proof.withdrawn_at, proof.withdrawn_reason = now, reason
+        proof.save(update_fields=["withdrawn_at", "withdrawn_reason", "updated_at"])
+        withdrawn.append(f"proof {proof.teller_number or proof.pk}")
+    # 6. Back to awaiting_payment through the flow; every method offered again.
+    previous_status, previous_method = obligation.status, obligation.chosen_method
+    _move(obligation, "report_payment_failed", user, remark=reason,
+          metadata={"withdrawn": withdrawn, "from": previous_status})
+    obligation.chosen_method, obligation.chosen_at = "", None
+    if previous_method == "remita":
+        obligation.remita_rrr = ""
+    obligation.flags = sorted(set((obligation.flags or []) + ["payment_reported_failed"]))
+    obligation.save(update_fields=["chosen_method", "chosen_at", "remita_rrr", "flags", "updated_at"])
+    audit.log("other", obligation, actor=user, note=f"Pay again: {note} (withdrawn: {', '.join(withdrawn) or 'none'})")
+    timeline.record(obligation.institution, "payment.reported_failed", subject=obligation, actor=user,
+                    visibility="public",
+                    public_text=f"You reported that your payment for {obligation.reference} failed or was "
+                                "reversed. You can pay again with any method.",
+                    internal_text=f"{note}. Withdrawn: {', '.join(withdrawn) or 'nothing'}.")
+    who = (user.get_full_name() or user.email) if getattr(user, "pk", None) else "The institution"
+    alert(obligation, f"{who} ({obligation.institution.name}) withdrew the payment claim on "
+                      f"{obligation.reference} — reported failed or reversed: \"{reason}\". Withdrawn: "
+                      f"{', '.join(withdrawn) or 'nothing'}. The bill is open for payment again; if the earlier "
+                      "money does reach NBTE as well, the extra payment is routed to refund.")
+    return obligation, None
+
+
+def _mark_duplicate_handled(attempt):
+    PaymentAttempt.unscoped.filter(pk=attempt.pk).update(
+        flags=sorted(set((attempt.flags or []) + ["duplicate_refund_opened"])), updated_at=timezone.now())
+
+
+def _refund_unaccounted_payments(obligation):
+    """After the Director settles a bill: an online payment the provider
+    reported as paid that no decided queue item accounts for (e.g. the
+    earlier payment the institution reported as reversed did land after all,
+    or two checkouts were both paid while the bill waited) is a duplicate —
+    flagged and routed to refund (§10.6). Never confirms anything."""
+    decided = _decided_attempt_ids(obligation)
+    for attempt in PaymentAttempt.unscoped.filter(obligation=obligation, status="provider_reported_paid"):
+        if attempt.pk in decided or "duplicate_refund_opened" in (attempt.flags or []):
+            continue
+        amount = (attempt.verify_result or {}).get("amount") or attempt.amount
+        _money_after_settlement(obligation, amount, f"{attempt.get_provider_display()} {attempt.provider_reference}")
+        _mark_duplicate_handled(attempt)
+
+
 def _open_verification(obligation, source, *, attempt=None, proof=None, line=None):
     open_item = PaymentVerification.unscoped.filter(obligation=obligation, is_open=True).first()
     if open_item is not None:
@@ -695,16 +826,23 @@ def _reusable_attempt(obligation, provider, amount):
     still open — reused instead of starting a second checkout (same key)."""
     minutes = _int("qa.payment.attempt_reuse_minutes", 60)
     since = timezone.now() - datetime.timedelta(minutes=max(1, minutes))
-    return (PaymentAttempt.unscoped.filter(obligation=obligation, provider=provider.code, amount=amount,
-                                           status__in=REUSABLE_ATTEMPT, created_at__gte=since)
-            .exclude(checkout_url="").order_by("-created_at").first())
+    candidates = (PaymentAttempt.unscoped.filter(obligation=obligation, provider=provider.code, amount=amount,
+                                                 status__in=REUSABLE_ATTEMPT, created_at__gte=since)
+                  .exclude(checkout_url="").order_by("-created_at"))
+    # A checkout the institution reported as stuck/failed ("pay again") is
+    # never handed back to it.
+    return next((a for a in candidates if not a.superseded), None)
 
 
-def _settle_open_attempts_first(obligation, provider):
+def _settle_open_attempts_first(obligation, provider=None, *, block_unreachable=True):
     """Never charge twice: before a new checkout, ask the provider about every
     open attempt on this bill. A paid one is recorded and stops the new
-    payment; if the provider cannot be reached the institution is asked to
-    wait rather than pay again."""
+    payment. If the provider cannot be reached the institution is asked to
+    wait rather than pay again — unless it already told us that attempt
+    failed ("pay again": ``block_unreachable=False`` or a superseded
+    attempt). Then only a provider that actually says "paid" blocks; the
+    attempt stays pending, so the poll and the nightly reconciliation keep
+    asking, and money that still lands is handled as a duplicate."""
     open_attempts = list(PaymentAttempt.unscoped.filter(obligation=obligation, status__in=REUSABLE_ATTEMPT,
                                                         provider__in=providers.ONLINE))
     for earlier in open_attempts:
@@ -715,6 +853,8 @@ def _settle_open_attempts_first(obligation, provider):
             result = prov.verify(earlier)
         except providers.ProviderUnreachable as exc:
             mark_attempt_unverified(earlier, str(exc))
+            if not block_unreachable or earlier.superseded:
+                continue
             return OnlinePaymentError(
                 "We are still checking your last payment attempt with the provider and could not reach it just "
                 "now. To avoid paying twice, please wait a few minutes and refresh this page.",
@@ -887,6 +1027,7 @@ def record_provider_result(attempt, result, *, via="webhook"):
         else:
             attempt.save(update_fields=["verify_result", "last_polled_at", "updated_at"])
         return attempt
+    was_withdrawn = attempt.reported_failed_by_institution or attempt.superseded
     attempt.status = "provider_reported_paid"
     attempt.webhook_verified = True
     attempt.completed_at = timezone.now()
@@ -894,12 +1035,30 @@ def record_provider_result(attempt, result, *, via="webhook"):
     timeline.record(obligation.institution, "payment.provider_reported", subject=obligation, visibility="public",
                     public_text=f"{attempt.get_provider_display()} reported a payment for {obligation.reference}. "
                                 "Institution claims paid — awaiting Finance confirmation.")
+    if was_withdrawn:
+        alert(obligation, f"{attempt.get_provider_display()} {attempt.provider_reference}, which the institution "
+                          f"reported as failed or reversed, is now reported PAID by the provider "
+                          f"({naira(result.amount if result.amount is not None else attempt.amount)}). If another "
+                          "payment for this bill also lands, the extra one is a duplicate to refund or hold as "
+                          "credit.")
     if obligation.status in PaymentObligation.SETTLED or obligation.status == "cancelled":
         _money_after_settlement(obligation, result.amount or attempt.amount, f"{attempt.get_provider_display()} "
                                 f"{attempt.provider_reference}")
+        _mark_duplicate_handled(attempt)
         return attempt
     if obligation.status in ("awaiting_finance_confirmation", "finance_confirmation_overdue"):
-        _open_verification(obligation, "provider", attempt=attempt)
+        item = _open_verification(obligation, "provider", attempt=attempt)
+        if item.attempt_id and item.attempt_id != attempt.pk:
+            # A second online payment landed while another one waits for the
+            # Director: both stay visible on the item; the extra one is routed
+            # to refund when the bill is confirmed (_refund_unaccounted_payments).
+            obligation.flags = sorted(set((obligation.flags or []) + ["possible_duplicate"]))
+            obligation.save(update_fields=["flags", "updated_at"])
+            alert(obligation, f"A second online payment landed for {obligation.reference}: "
+                              f"{attempt.get_provider_display()} {attempt.provider_reference} "
+                              f"({naira(result.amount if result.amount is not None else attempt.amount)}) while "
+                              f"{item.attempt.provider_reference} is awaiting the Director of Finance. Confirm one; "
+                              "the other is opened as a duplicate refund when the bill is confirmed.")
         return attempt
     if obligation.status in ("awaiting_payment", "rejected", "partially_paid"):
         _ensure_awaiting_payment(obligation, None)
@@ -1327,6 +1486,7 @@ def final_decision(item, *, user, decision, reason="", impersonating=False, amou
         _move(obligation, "record_overpayment", user, remark=f"Overpaid by {naira(excess)}")
     advice = generate_advice(obligation, item)
     _after_confirm(obligation, item, advice, user, settled=True)
+    _refund_unaccounted_payments(obligation)
     return item
 
 

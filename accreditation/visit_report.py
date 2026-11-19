@@ -272,6 +272,22 @@ def distance_km(a, b):
     return 2 * 6371 * math.asin(math.sqrt(h))
 
 
+def institution_sites(institution):
+    """The (lat, lng) points recorded for the institution: the GPS of its
+    current addresses (``InstitutionAddress.gps``; Institution has no GPS of
+    its own). Physical sites first; the postal address only when no site has
+    a GPS. The visit is compared with the nearest one (an institution may run
+    a take-off and a permanent site)."""
+    from institutions.models import InstitutionAddress
+
+    rows = list(InstitutionAddress.unscoped.filter(institution=institution, is_current=True)
+                .exclude(gps="").values_list("kind", "gps"))
+    points = [p for kind, gps in rows if kind != "postal" for p in [_parse_point(gps)] if p]
+    if not points:
+        points = [p for _kind, gps in rows for p in [_parse_point(gps)] if p]
+    return points
+
+
 @transaction.atomic
 def record_gps(report, *, user, lat=None, lng=None, accuracy=None, point=""):
     """X40: where the report was written (from the panel's device). Compared
@@ -297,8 +313,9 @@ def record_gps(report, *, user, lat=None, lng=None, accuracy=None, point=""):
     report.gps_lat, report.gps_lng = round(lat, 6), round(lng, 6)
     report.gps_accuracy_m = int(float(accuracy)) if accuracy not in (None, "") else None
     report.gps_at = timezone.now()
-    site = _parse_point(getattr(report.institution, "gps", ""))
-    report.gps_distance_km = round(distance_km(site, (lat, lng)), 2) if site else None
+    sites = institution_sites(report.institution)
+    report.gps_distance_km = (round(min(distance_km(site, (lat, lng)) for site in sites), 2)
+                              if sites else None)
     limit = float(config.get("qa.visit.gps_max_km", 5) or 5)
     limit += float(config.get("qa.visit.gps_offset_m", 200) or 0) / 1000
     report.gps_flag = bool(report.gps_distance_km is not None and report.gps_distance_km > limit)

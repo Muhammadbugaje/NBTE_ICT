@@ -53,11 +53,19 @@ def _rows_or_page(request, target, rows_template, page_template, ctx):
 def engagements(request):
     rp = request.resource_person
     errors, error_for, report_error_for, member_form = {}, None, None, None
+    respond_error_for = None
     if request.method == "POST":
         mapping = next((m for m in services.rp_engagements(rp) if str(m.pk) == request.POST.get("mapping")), None)
         if mapping is None:
             raise Http404
-        if request.POST.get("action") == "member_report":
+        if request.POST.get("action") == "respond":  # v2.9: confirm availability
+            try:
+                services.rp_respond(mapping, user=request.user, accept=request.POST.get("op") != "decline",
+                                    note=request.POST.get("note", ""))
+            except (ValidationError, PermissionDenied) as exc:
+                errors = getattr(exc, "message_dict", None) or {"note": list(getattr(exc, "messages", [str(exc)]))}
+                respond_error_for = mapping.pk
+        elif request.POST.get("action") == "member_report":
             inspection = services.live_inspection(mapping.case)
             report = (PostVisitReport.unscoped.filter(
                 inspection=inspection, qa_request_programme=mapping.qa_request_programme).first()
@@ -89,7 +97,9 @@ def engagements(request):
                     report_error_for = mapping.pk
         else:
             try:
-                services.submit_findings(mapping, user=request.user, text=request.POST.get("findings", ""))
+                services.submit_findings(mapping, user=request.user, text=request.POST.get("findings", ""),
+                                         recommendation=request.POST.get("recommendation") if
+                                         "recommendation" in request.POST else None)
             except (ValidationError, PermissionDenied) as exc:
                 errors = getattr(exc, "message_dict", None) or {"findings": exc.messages if hasattr(exc, "messages")
                                                                 else [str(exc)]}
@@ -114,6 +124,7 @@ def engagements(request):
     page = paginate(request, list(qs))
     for m in page["rows"]:
         m.can_write, m.write_why = services.findings_open(m)
+        m.can_respond = services.response_open(m)[0]
         inspection = services.live_inspection(m.case)
         m.visit_report = (PostVisitReport.unscoped.filter(
             inspection=inspection, qa_request_programme=m.qa_request_programme).first()
@@ -130,12 +141,17 @@ def engagements(request):
                          forms.MemberReportForm(member_report=m.member_report) if m.member_report else None)
     ctx = _shell_context(request, "engagements", page=page, filters=f, status=status, statuses=ENGAGEMENT_STATUS,
                          duties=DUTY_CHOICES, rp=rp, errors=errors, error_for=error_for,
-                         report_error_for=report_error_for,
+                         report_error_for=report_error_for, respond_error_for=respond_error_for,
+                         recommendations=QAMapping.RECOMMENDATION_CHOICES,
                          draft=request.POST.get("findings", "") if errors else "")
     if request.method == "POST":
         response = render(request, "qa_portal/resource_person/engagements.html", ctx, status=422 if errors else 200)
         if errors:
             return toast(response, "error", "Not saved", " ".join(sum(errors.values(), [])))
+        if request.POST.get("action") == "respond":
+            accepted = request.POST.get("op") != "decline"
+            return toast(response, "success", "Availability confirmed" if accepted else "Engagement declined",
+                         "You can now submit your report." if accepted else "NBTE has been told.")
         if request.POST.get("action") == "member_report":
             submitted = request.POST.get("op") == "submit"
             return toast(response, "success", "Report submitted to the Team Lead" if submitted else "Draft saved",

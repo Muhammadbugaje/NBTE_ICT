@@ -1081,6 +1081,18 @@ def staff_in_department(dept, *, perm=None, roles=None):
     return out
 
 
+def director_or_es(dept):
+    """[the Director of ``dept``], or the Executive Secretary when the seat is
+    empty: who is told about (and may act on) director-only work such as
+    programme clearance."""
+    import org
+
+    director = org.director_of(dept) if dept is not None else None
+    if director is not None:
+        return [director]
+    return list(org.users_with_role(org.ES_ROLE, staff_only=True)[:5])
+
+
 def notify_role(event, context, users, *, url=""):
     from qa_core import notify
 

@@ -225,8 +225,32 @@ def map_demo_people(case, people, rps):
             if pa is not None and pa.status == "pending":
                 actions.confirm(pa, people.director, remark="Eligible in the finder (demo).")
             mapping.refresh_from_db()
+        approve_demo_mapping(case, mapping, people)
         out.append(mapping)
     return out
+
+
+def approve_demo_mapping(case, mapping, people):
+    """v2.9 ES-led mapping: Audit verifies, the ES approves, the resource
+    person confirms availability on the portal. Idempotent."""
+    from .models import QAMapping
+
+    if mapping.status not in QAMapping.LIVE:
+        return mapping
+    auditor = (case.supervising_audit_officer if case.supervising_audit_officer_id
+               else getattr(people, "audit_director", None))
+    if not mapping.audit_verified_at and auditor is not None:
+        services.approve_mapping(mapping, actor=auditor, layer="audit", remark="Verified (demo).")
+    mapping.refresh_from_db()
+    es = getattr(people, "es", None)
+    if mapping.audit_verified_at and not mapping.es_approved_at and es is not None:
+        services.approve_mapping(mapping, actor=es, layer="es", remark="Approved (demo).")
+    mapping.refresh_from_db()
+    rp = mapping.resource_person
+    if mapping.es_approved_at and rp is not None and rp.user_id and not mapping.rp_response:
+        services.rp_respond(mapping, user=rp.user, accept=True, note="Available (demo).")
+    mapping.refresh_from_db()
+    return mapping
 
 
 DEMO_RP_FINDINGS = ("Workshops visited with the team: the electrical machines laboratory has the equipment listed "

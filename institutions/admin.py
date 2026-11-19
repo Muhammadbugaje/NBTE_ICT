@@ -104,7 +104,7 @@ class InstitutionAddressAdmin(UnscopedAdmin):
 for model, cols in ((InstitutionOwnership, ("code", "name", "is_public", "is_active")),
                     (InstitutionType, ("code", "name", "default_department", "is_active")),
                     (InstitutionCategory, ("code", "name", "institution_type", "routing_department", "is_active")),
-                    (Discipline, ("code", "name", "is_active")), (ProgrammeLevel, ("code", "name", "is_active")),
+                    (ProgrammeLevel, ("code", "name", "is_active")),
                     (ProgrammeCategory, ("name", "discipline", "students_per_stream", "is_technology_based")),
                     (DocumentKind, ("code", "name", "max_mb", "is_active")),
                     (DocumentRequirement, ("document_kind", "process", "ownership", "institution_type",
@@ -113,6 +113,23 @@ for model, cols in ((InstitutionOwnership, ("code", "name", "is_public", "is_act
                     (ZonalAssignment, ("zone_code", "staff", "from_date", "to_date")),
                     (InstitutionImportBatch, ("pk", "kind", "status", "created_by", "created_at"))):
     admin.site.register(model, type(f"{model.__name__}Admin", (ModelAdmin,), {"list_display": cols}))
+
+
+@admin.register(Discipline)
+class DisciplineAdmin(ModelAdmin):
+    """The discipline -> institution type mapping drives the portal programme
+    picker: an institution sees the catalogue programmes whose discipline lists
+    its type (or lists no type at all)."""
+
+    list_display = ("code", "name", "offered_to", "is_active")
+    filter_horizontal = ("institution_types",)
+    fields = ("code", "name", "is_active", "sort_order", "institution_types")
+
+    @admin.display(description="Offered to")
+    def offered_to(self, obj):
+        names = [t.name for t in obj.institution_types.all()]
+        return ", ".join(names) if names else "All institution types"
+
 
 from .models import ProfessionalBody, ProgrammeBodyMapping  # noqa: E402
 

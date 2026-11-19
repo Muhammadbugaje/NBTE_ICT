@@ -1,4 +1,6 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load static %}
+{# sop3.css is linked here, inside the panel, because the case is also opened by HTMX swap from the board and queues (detail.html links it in <head> for full loads). #}
+<link rel="stylesheet" href="{% static 'css/sop3.css' %}">
 <div class="c3-page" data-qa-live-url="{% url 'qa_case:live' case.pk %}" data-qa-live-target="#qa-panel" data-qa-live-label="{{ case.reference }}">
 <nav class="qa-crumbs" aria-label="Breadcrumb">
   <a href="{% url 'qa_case:board' %}" hx-get="{% url 'qa_case:board' %}" hx-target="#qa-panel" hx-push-url="true">Case Board</a>
@@ -88,7 +90,8 @@
     {% elif tab == "letters" %}{% include "accreditation/case/_tab_letters.html" %}
     {% elif tab == "timeline" %}{% include "accreditation/case/_tab_timeline.html" %}
     {% elif tab == "tasks" %}{% include "accreditation/case/_tab_tasks.html" %}{% endif %}
-    {% if started %}{% with stage_tab=tab %}{% include "accreditation/case/_stage_actions.html" %}{% endwith %}{% endif %}
+    {# The Visit tab places its own stage card right after the visit details (work, then submit), so it is not repeated here. #}
+    {% if started and tab != "visit" %}{% with stage_tab=tab %}{% include "accreditation/case/_stage_actions.html" %}{% endwith %}{% endif %}
   {% endif %}
   {% if can_send_back %}
   <p class="c3-footnote">{% icon "rotate" 14 %} Need Audit to look at the cost again? Use <a href="{% url 'qa_inst:action' inst.code 'accreditation.send_back_to_audit' %}">Send back to Audit</a> — a two-officer action that returns the case to stage 5 with your remark.</p>

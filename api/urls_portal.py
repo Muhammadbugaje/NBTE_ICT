@@ -111,6 +111,7 @@ urlpatterns += [
     path("engagements/", pr.EngagementsView.as_view(), name="portal_engagements"),
     path("engagements/<int:pk>/", pr.EngagementDetailView.as_view(), name="portal_engagement"),
     path("engagements/<int:pk>/findings/", pr.EngagementFindingsView.as_view(), name="portal_engagement_findings"),
+    path("engagements/<int:pk>/respond/", pr.EngagementRespondView.as_view(), name="portal_engagement_respond"),
     path("service-history/", pr.ServiceHistoryView.as_view(), name="portal_service_history"),
     path("service-history/summary/", pr.ServiceHistorySummaryView.as_view(), name="portal_service_history_summary"),
     path("profile/", pr.RPProfileView.as_view(), name="portal_rp_profile"),

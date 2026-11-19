@@ -1,0 +1,124 @@
+{% load qa_tags %}
+{# v2.9: the decision brief — `es_brief` from accreditation.decisions.decision_brief. Read-only. #}
+{# Shown to the ES at stage 16 (and, votes only, to the CQAC Chairman at 15). Look: static/css/sop3.css section 8 (.s3-brief). #}
+{# Order per programme: verdict strip (Directorate → CQAC → Chairman → ES), who voted what, then the reports behind it (folded). Case remarks fold at the end. #}
+<section class="qa-card qa-stack c3-es-brief s3-brief" aria-labelledby="es-brief-h">
+  <header class="s3-brief__head">
+    <span class="qa-eyebrow">Decision brief · {% if es_brief.for_es %}Executive Secretary{% else %}read-only{% endif %}</span>
+    <h3 id="es-brief-h">{% if es_brief.for_es %}Everything before your final decision{% else %}The panel's votes (read-only){% endif %}</h3>
+    <p>One block per programme: where each level landed, how each member voted, then the reports and remarks behind it.</p>
+  </header>
+  {% if es_brief.earlier_hidden %}<p class="s3-brief__lock">{% icon "lock" 14 "2.2" %} Earlier decisions are hidden until you record your own. They appear here as soon as you save.</p>{% endif %}
+
+  {% for p in es_brief.programmes %}
+  <article class="s3-brief__prog" aria-label="Brief for {{ p.programme }}">
+    <h4 class="s3-brief__title">{{ p.programme }}</h4>
+
+    <ol class="s3-verdict" aria-label="Recommendations and decisions so far">
+      <li class="s3-verdict__step{% if not p.directorate_recommendation %} is-empty{% endif %}">
+        <span class="s3-verdict__label">Directorate · stage 13</span>
+        {% if p.directorate_recommendation %}<strong>{{ p.directorate_recommendation.label }}</strong>
+          <small>{{ p.directorate_recommendation.by_name }}{% if p.directorate_recommendation.at %} · {{ p.directorate_recommendation.at|date:"j M Y" }}{% endif %}</small>
+          {% if p.directorate_recommendation.note %}<span class="s3-verdict__note">{{ p.directorate_recommendation.note }}</span>{% endif %}
+        {% else %}<strong>Not recorded</strong>{% endif %}
+      </li>
+      <li class="s3-verdict__step{% if not p.cqac_decision and not p.tally %} is-empty{% endif %}">
+        <span class="s3-verdict__label">CQAC panel · stage 14</span>
+        {% if p.cqac_decision %}<strong>{{ p.cqac_decision.outcome_label }}</strong>
+          {% if p.cqac_decision.approval_type %}<small>{{ p.cqac_decision.approval_type.name|default:p.cqac_decision.approval_type }} · {{ p.cqac_decision.approved_streams }} stream{{ p.cqac_decision.approved_streams|pluralize }}</small>{% endif %}
+        {% elif p.tally %}<strong>Voting</strong>
+        {% else %}<strong>Not recorded</strong>{% endif %}
+        {% if p.tally %}<small>{% for l in p.tally.lines %}{{ l.label }} {{ l.count }}{% if not forloop.last %} · {% endif %}{% endfor %} of {{ p.tally.total }}</small>{% endif %}
+        {% if p.cqac_decision.remark %}<span class="s3-verdict__note">{{ p.cqac_decision.remark }}</span>{% endif %}
+      </li>
+      <li class="s3-verdict__step{% if not p.chair %} is-empty{% endif %}">
+        <span class="s3-verdict__label">CQAC Chairman · stage 15</span>
+        {% if p.chair %}<strong>{{ p.chair.outcome_label }}</strong>
+          <small>{% if p.chair.approval_type %}{{ p.chair.approval_type.name|default:p.chair.approval_type }} · {{ p.chair.approved_streams }} stream{{ p.chair.approved_streams|pluralize }} · {% endif %}{{ p.chair.by_name }}{% if p.chair.at %} · {{ p.chair.at|date:"j M Y" }}{% endif %}</small>
+          {% if p.chair.remark %}<span class="s3-verdict__note">{{ p.chair.remark }}</span>{% endif %}
+        {% else %}<strong>Not recorded</strong>{% endif %}
+      </li>
+      {% if p.es %}
+      <li class="s3-verdict__step">
+        <span class="s3-verdict__label">Executive Secretary · stage 16</span>
+        <strong>{{ p.es.outcome_label }}</strong>
+        <small>{% if p.es.approval_type %}{{ p.es.approval_type.name|default:p.es.approval_type }} · {{ p.es.approved_streams }} stream{{ p.es.approved_streams|pluralize }} · {% endif %}{{ p.es.by_name }}{% if p.es.at %} · {{ p.es.at|date:"j M Y" }}{% endif %}</small>
+        {% if p.es.remark %}<span class="s3-verdict__note">{{ p.es.remark }}</span>{% endif %}
+      </li>
+      {% endif %}
+    </ol>
+    {% if p.chair.weaknesses %}<p class="s3-brief__weak"><strong>Weaknesses listed by the Chairman:</strong> {{ p.chair.weaknesses|join:"; " }}</p>
+    {% elif p.cqac_decision.weaknesses %}<p class="s3-brief__weak"><strong>Weaknesses listed by the panel:</strong> {{ p.cqac_decision.weaknesses|join:"; " }}</p>{% endif %}
+
+    <section class="s3-brief__block" aria-label="CQAC votes">
+      <h5>CQAC member votes{% if p.tally %} <span>{{ p.tally.total }} member{{ p.tally.total|pluralize }}</span>{% endif %}</h5>
+      {% if p.tally %}<div class="s3-tally">{% for l in p.tally.lines %}<div class="s3-tally__line"><span>{{ l.label }}</span><span class="s3-tally__bar" aria-hidden="true"><i style="width:{{ l.pct }}%"></i></span><strong>{{ l.count }}</strong></div>{% endfor %}</div>{% endif %}
+      <ul class="s3-votes" role="list">
+        {% for v in p.cqac_votes %}
+        <li class="s3-votes__row">
+          <span class="s3-votes__who"><span class="c3-av" aria-hidden="true">{{ v.member_name|slice:":1" }}</span><strong>{{ v.member_name }}</strong></span>
+          <span class="s3-votes__what"><span class="qa-chip">{{ v.outcome_label }}</span>{% if v.approval_type %}<span>{{ v.approval_type.name|default:v.approval_type }} · {{ v.approved_streams }} stream{{ v.approved_streams|pluralize }}{% if v.commencement_date %} · from {{ v.commencement_date|date:"j M Y" }}{% endif %}</span>{% endif %}{% if v.at %}<small>{{ v.at|date:"j M Y" }}</small>{% endif %}</span>
+          {% if v.comment %}<span class="s3-votes__say">“{{ v.comment }}”</span>{% endif %}
+          {% if v.weaknesses %}<span class="s3-votes__say"><strong>Weaknesses:</strong> {{ v.weaknesses|join:"; " }}</span>{% endif %}
+        </li>
+        {% empty %}<li class="s3-votes__row s3-votes__row--empty">No CQAC votes recorded.</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <details class="s3-fold"{% if es_brief.for_es and es_brief.programmes|length == 1 %} open{% endif %}>
+      <summary><span class="s3-fold__title">Reports</span><span class="s3-fold__meta">{% if p.report %}Compiled report{% if p.report.recommendation_label %} ({{ p.report.recommendation_label }}){% endif %}{% else %}No compiled report{% endif %}{% if p.member_reports %} · {{ p.member_reports|length }} attendee{{ p.member_reports|length|pluralize }}{% endif %}{% if p.rp_reports %} · {{ p.rp_reports|length }} resource person{{ p.rp_reports|length|pluralize }}{% endif %}</span></summary>
+      {% if p.report %}
+      <section class="s3-brief__block" aria-label="Compiled post-visit report">
+        <h5>Team Lead's compiled report{% if p.report.recommendation_label %} <span>{{ p.report.recommendation_label }}</span>{% endif %}</h5>
+        <p class="s3-brief__meta">{% if p.report.submitted_by_name %}Submitted by {{ p.report.submitted_by_name }}{% if p.report.submitted_at %} · {{ p.report.submitted_at|date:"j M Y" }}{% endif %}{% endif %}{% if p.report.fines_total %} · <span class="c3-late">Falsification fine {{ p.report.fines_total|naira }}</span>{% endif %}{% if p.report.gps_flag %} · <span class="c3-late">Location {{ p.report.gps_distance_km }} km from the site</span>{% endif %}</p>
+        {% if p.report.summary %}<p class="s3-brief__text">{{ p.report.summary|linebreaksbr }}</p>{% endif %}
+        {% if p.report.findings %}<details class="s3-how s3-how--inline"><summary>Section findings</summary>
+          <dl class="s3-brief__dl">{% for key, text in p.report.findings.items %}{% if text %}<div><dt>{{ key|humanize_code }}</dt><dd>{{ text|linebreaksbr }}</dd></div>{% endif %}{% endfor %}</dl></details>{% endif %}
+        {% if p.report.endorsements %}<ol class="s3-brief__trail" aria-label="Endorsements">{% for e in p.report.endorsements %}<li><strong>{{ e.layer_label }}</strong> {{ e.action_label|lower }} — {{ e.by_name }}, {{ e.at|date:"j M Y" }}{% if e.content %}<span>“{{ e.content }}”</span>{% endif %}</li>{% endfor %}</ol>{% endif %}
+      </section>
+      {% endif %}
+      {% if p.member_reports %}
+      <section class="s3-brief__block" aria-label="Attendee reports">
+        <h5>Each attendee's report <span>{{ p.member_reports|length }}</span></h5>
+        <ul class="s3-votes" role="list">
+          {% for m in p.member_reports %}
+          <li class="s3-votes__row">
+            <span class="s3-votes__who"><span class="c3-av" aria-hidden="true">{{ m.author_name|slice:":1" }}</span><strong>{{ m.author_name }}</strong></span>
+            <span class="s3-votes__what"><span>{{ m.role }}</span><span class="qa-chip">{{ m.status_label }}</span>{% if m.recommendation_label %}<span class="qa-chip">{{ m.recommendation_label }}</span>{% endif %}{% if m.submitted_at %}<small>{{ m.submitted_at|date:"j M Y" }}</small>{% endif %}</span>
+            {% if m.summary %}<span class="s3-votes__say">{{ m.summary|linebreaksbr }}</span>{% endif %}
+            {% if m.findings %}<details class="s3-how s3-how--inline"><summary>Section findings</summary>
+              <dl class="s3-brief__dl">{% for key, text in m.findings.items %}{% if text %}<div><dt>{{ key|humanize_code }}</dt><dd>{{ text|linebreaksbr }}</dd></div>{% endif %}{% endfor %}</dl></details>{% endif %}
+            {% if m.review_note %}<span class="s3-votes__say"><strong>Team Lead{% if m.reviewed_by_name %} ({{ m.reviewed_by_name }}){% endif %}:</strong> {{ m.review_note }}</span>{% endif %}
+            {% for rv in m.reviews %}{% if rv.content and rv.content != m.review_note %}<span class="s3-votes__say"><strong>{{ rv.action_label }}{% if rv.by_name %} — {{ rv.by_name }}{% endif %}{% if rv.at %}, {{ rv.at|date:"j M Y" }}{% endif %}:</strong> {{ rv.content }}</span>{% endif %}{% endfor %}
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+      {% if p.rp_reports %}
+      <section class="s3-brief__block" aria-label="Resource-person reports">
+        <h5>Resource persons <span>{{ p.rp_reports|length }}</span></h5>
+        <ul class="s3-votes" role="list">{% for r in p.rp_reports %}{% include "accreditation/case/_es_brief_rp.html" %}{% endfor %}</ul>
+      </section>
+      {% endif %}
+      {% if not p.report and not p.member_reports and not p.rp_reports %}<p class="s3-brief__meta">No reports are on file for this programme.</p>{% endif %}
+    </details>
+  </article>
+  {% endfor %}
+
+  {% if es_brief.rp_reports %}
+  <section class="s3-brief__block s3-brief__block--top" aria-label="Whole-institution resource persons">
+    <h5>Resource persons (whole institution) <span>{{ es_brief.rp_reports|length }}</span></h5>
+    <ul class="s3-votes" role="list">{% for r in es_brief.rp_reports %}{% include "accreditation/case/_es_brief_rp.html" %}{% endfor %}</ul>
+  </section>
+  {% endif %}
+  {% if es_brief.timeline_remarks %}
+  <details class="s3-fold">
+    <summary><span class="s3-fold__title">Every remark on this case</span><span class="s3-fold__meta">{{ es_brief.timeline_remarks|length }}</span></summary>
+    <ol class="s3-brief__trail s3-brief__trail--remarks">
+      {% for t in es_brief.timeline_remarks %}<li><strong>{{ t.by_name }}</strong> · {{ t.stage_label }}{% if t.action %} · {{ t.action|humanize_code }}{% endif %} · <time datetime="{{ t.at|date:'c' }}">{{ t.at|date:"j M Y, H:i" }}</time>{% if t.internal %} <span class="qa-chip">Internal</span>{% endif %}<span>{{ t.text }}</span></li>{% endfor %}
+    </ol>
+  </details>
+  {% endif %}
+</section>

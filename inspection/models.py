@@ -201,9 +201,20 @@ class QAMapping(InstitutionScopedModelMixin, TimeStampedModel):
     STATUS_CHOICES = [("proposed", "Proposed"), ("active", "Active"), ("released", "Released"),
                       ("overridden", "Overridden")]
 
+    # v2.9: a mapping covers one programme (course) of the case, or the whole
+    # institution (``qa_request_programme`` empty).
+    PROGRAMME, INSTITUTION = "programme", "institution"
+    SCOPE_CHOICES = [(PROGRAMME, "One programme"), (INSTITUTION, "Whole institution")]
+    SUGGESTED_BY_CHOICES = [("es", "Executive Secretary"), ("audit", "Audit"), ("other", "QA officer")]
+    RESPONSE_CHOICES = [("", "Awaiting reply"), ("accepted", "Available — accepted"), ("declined", "Declined")]
+    RECOMMENDATION_CHOICES = [("accredit", "Accredit"), ("interim", "Interim accreditation"),
+                              ("deny", "Deny"), ("revisit", "Revisit needed")]
+
     case = models.ForeignKey("accreditation.QACase", on_delete=models.CASCADE, related_name="qa_mappings")
-    qa_request_programme = models.ForeignKey("accreditation.QARequestProgramme", on_delete=models.CASCADE,
-                                             related_name="qa_mappings")
+    scope = models.CharField(max_length=12, choices=SCOPE_CHOICES, default=PROGRAMME)
+    qa_request_programme = models.ForeignKey("accreditation.QARequestProgramme", null=True, blank=True,
+                                             on_delete=models.CASCADE, related_name="qa_mappings",
+                                             help_text="Empty when the mapping covers the whole institution.")
     duty = models.CharField(max_length=24, choices=DUTY_CHOICES)
     qa_personnel = models.ForeignKey(QAPersonnel, null=True, blank=True, on_delete=models.PROTECT,
                                      related_name="mappings")
@@ -223,6 +234,19 @@ class QAMapping(InstitutionScopedModelMixin, TimeStampedModel):
     director_approved_at = models.DateTimeField(null=True, blank=True)
     es_approved_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     es_approved_at = models.DateTimeField(null=True, blank=True)
+    # v2.9 (ES-led): the ES or Audit suggests, Audit verifies, only the ES
+    # approves. ``director_approved_*`` above is kept for old rows only.
+    suggested_by_role = models.CharField(max_length=8, choices=SUGGESTED_BY_CHOICES, blank=True)
+    audit_verified_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    audit_verified_at = models.DateTimeField(null=True, blank=True)
+    audit_remark = models.CharField(max_length=255, blank=True)
+    es_remark = models.CharField(max_length=255, blank=True)
+    # The resource person's reply on the portal and their own report.
+    rp_response = models.CharField(max_length=10, choices=RESPONSE_CHOICES, blank=True)
+    rp_response_at = models.DateTimeField(null=True, blank=True)
+    rp_response_note = models.CharField(max_length=255, blank=True)
+    rp_recommendation = models.CharField(max_length=12, choices=RECOMMENDATION_CHOICES, blank=True)
+    findings_submitted_at = models.DateTimeField(null=True, blank=True)
 
     objects = InstitutionScopedManager()
     unscoped = UnscopedInstitutionManager()
@@ -235,12 +259,26 @@ class QAMapping(InstitutionScopedModelMixin, TimeStampedModel):
                            | Q(qa_personnel__isnull=True, resource_person__isnull=False)),
                 name="qamapping_exactly_one_person"),
             models.CheckConstraint(condition=Q(to_date__gte=models.F("from_date")), name="qamapping_dates_ordered"),
+            models.CheckConstraint(
+                condition=(Q(scope="programme", qa_request_programme__isnull=False)
+                           | Q(scope="institution", qa_request_programme__isnull=True)),
+                name="qamapping_scope_target"),
         ]
         indexes = [models.Index(fields=["resource_person", "status"]),
                    models.Index(fields=["qa_personnel", "status"])]
 
     def __str__(self):
-        return f"{self.person} → {self.qa_request_programme.programme} ({self.get_duty_display()})"
+        return f"{self.person} → {self.target_label} ({self.get_duty_display()})"
+
+    @property
+    def programme(self):
+        """The programme covered, or None for a whole-institution mapping."""
+        return self.qa_request_programme.programme if self.qa_request_programme_id else None
+
+    @property
+    def target_label(self):
+        programme = self.programme
+        return str(programme) if programme is not None else "Whole institution"
 
     @property
     def person(self):

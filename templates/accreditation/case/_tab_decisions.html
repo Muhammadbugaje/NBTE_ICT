@@ -1,17 +1,17 @@
-{% load qa_tags %}
-<section class="qa-card c3-decision-page" aria-labelledby="dec-h">
+{% load qa_tags %}{# Decisions tab (stages 14–17). Look: static/css/sop3.css on top of ux-case.css. #}
+<section class="qa-card c3-decision-page s3-decisions" aria-labelledby="dec-h">
   <header class="qa-card__head c3-decision-page__head">
     <div class="c3-decision-page__intro">
       <span class="qa-eyebrow">Official decision workflow · SOP-03</span>
       <h2 id="dec-h">Decisions</h2>
-      <p>Review the case record before each decision. The CQAC recommends at Stage 14, the Chairman decides at Stage 15{% if batch_enabled %} (here or on the <a href="{% url 'qa_case:batch' %}">batch decisions</a> page){% endif %}, and the Executive Secretary gives final approval at Stage 16. Stage 17 records the outcome and issues letters; expiry is calculated from the approval type.</p>
+      <p>Review the case record before each decision: the CQAC recommends, the Chairman decides, the Executive Secretary gives final approval, then the programme record is updated.</p>
     </div>
-    <ol class="c3-decision-route" aria-label="Decision workflow">
-      <li{% if decision_stage == "cqac_recommendation" %} class="is-current" aria-current="step"{% endif %}><span class="c3-decision-route__number" aria-hidden="true">14</span><span><strong>CQAC</strong><small>Recommendation</small></span></li>
-      <li{% if decision_stage == "cqac_chair_approval" %} class="is-current" aria-current="step"{% endif %}><span class="c3-decision-route__number" aria-hidden="true">15</span><span><strong>Chairman</strong><small>Decision</small></span></li>
-      <li{% if decision_stage == "es_final_approval" %} class="is-current" aria-current="step"{% endif %}><span class="c3-decision-route__number" aria-hidden="true">16</span><span><strong>Executive Secretary</strong><small>Final approval</small></span></li>
-      <li><span class="c3-decision-route__number" aria-hidden="true">17</span><span><strong>Programme record</strong><small>Outcome and letters</small></span></li>
-    </ol>
+    {# Stages 14–17 as a live track (who holds it now); look: static/css/sop3.css #}
+    {% include "accreditation/case/_phase_track.html" with lo=14 hi=17 track_label="Decision workflow, stages 14 to 17" %}
+    <details class="s3-how">
+      <summary>{% icon "shield" 14 "2.2" %} How decisions work</summary>
+      <div class="s3-how__body"><p>Review the case record before each decision. The CQAC recommends at Stage 14, the Chairman decides at Stage 15{% if batch_enabled %} (here or on the <a href="{% url 'qa_case:batch' %}">batch decisions</a> page){% endif %}, and the Executive Secretary gives final approval at Stage 16. Stage 17 records the outcome and issues letters; expiry is calculated from the approval type.</p></div>
+    </details>
   </header>
   {% if decision_stage %}
   <div class="qa-card__body qa-stack">
@@ -35,7 +35,8 @@
       <div class="c3-panel-mode__body">
         <span class="qa-eyebrow">Stage 14 · CQAC review panel</span>
         <h3 id="cqac-panel-heading">Individual panel votes</h3>
-          <p>Every assigned member votes on each programme on their own form. Nobody sees another member's vote until the whole panel has voted. The outcome is decided by majority; approval type, streams and commencement date by majority of the “Approve” votes. A tie is returned for review.</p>
+        <details class="s3-how s3-how--inline"><summary>How the panel vote is counted</summary>
+          <div class="s3-how__body"><p>Every assigned member votes on each programme on their own form. Nobody sees another member's vote until the whole panel has voted. The outcome is decided by majority; approval type, streams and commencement date by majority of the “Approve” votes. A tie is returned for review.</p></div></details>
         <div class="c3-panel-mode__members" aria-label="Assigned CQAC panelists">
           {% for member in cqac_panel_members %}<span class="c3-panel-member">{% icon "user" 13 %} {{ member|who }}</span>
           {% empty %}<span class="qa-chip qa-tone-warn">No CQAC members are currently assigned</span>{% endfor %}
@@ -43,6 +44,8 @@
       </div>
     </section>
     {% endif %}
+    {# v2.9: the decision brief leads (context `es_brief`: ES at stage 16, votes-only for the Chairman at 15); the evidence library and the decision form follow. #}
+    {% if es_brief %}{% include "accreditation/case/_es_brief.html" %}{% endif %}
     {% if decision_evidence %}
     <section class="qa-card qa-stack c3-decision-evidence" aria-labelledby="decision-evidence-heading">
       <header class="qa-card__head"><div><span class="qa-eyebrow">Decision briefing · {{ decision_stage_label }}</span>
@@ -196,6 +199,7 @@
   </div>
   {% endif %}
   {% if all_decisions %}
+  <div class="s3-record-head"><span class="qa-eyebrow">On record</span><h3>Decisions recorded on this case</h3></div>
   <div class="qa-table-wrap"><table class="qa-table">
     <caption class="sr-only">Decisions recorded on this case</caption>
     <thead><tr><th scope="col">Programme</th><th scope="col">Stage</th><th scope="col">Outcome</th><th scope="col">Approval</th><th scope="col">Expires</th><th scope="col">By</th></tr></thead>
@@ -203,3 +207,4 @@
   </table></div>
   {% elif not decision_stage %}<div class="qa-card__body"><p class="qa-muted">Decisions are recorded from stage 14 (CQAC recommendation).</p></div>{% endif %}
 </section>
+{% include "accreditation/case/_rp_mappings.html" with compact=True %}

@@ -38,12 +38,23 @@ def document(request, pk):
     show_popup = services.opened(doc, request.user) if not impersonating else doc.provisional
     body = (doc.payload or {}).get("body") or []
     facts = (doc.payload or {}).get("facts") or []
+    signers = doc.signatories or []
+    if not body:
+        try:
+            from accreditation.letters import document_preview
+
+            preview = document_preview(doc)
+        except Exception:  # the page must still open without the preview
+            preview = None
+        if preview:
+            body, letter_signers = preview
+            signers = signers or letter_signers
     from .official_letters import portal_status
 
     ctx = _shell_context(request, "letters", doc=doc, official=doc.official_copy, show_popup=show_popup,
                          official_status=portal_status(doc),
                          popup_text=issuing.popup_text(), qr=_qr_data_uri(doc), body=body, facts=facts,
-                         signers=doc.signatories or [])
+                         signers=signers)
     return render(request, "documents/portal/document.html", ctx)
 
 

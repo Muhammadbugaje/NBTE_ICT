@@ -12,6 +12,7 @@ urlpatterns = [
     path("clearance/delegates/", views.delegate_add, name="delegate_add"),
     path("clearance/delegates/<int:pk>/revoke/", views.delegate_revoke, name="delegate_revoke"),
     path("programmes/reviews/<int:pk>/decide/", views.programme_decide, name="programme_decide"),
+    path("programmes/<int:pk>/decide/", views.programme_decide_bulk, name="programme_decide_bulk"),
     path("<int:pk>/", views.application_detail, name="detail"),
     path("<int:pk>/lift-hold/", views.hold_lift, name="hold_lift"),
     path("<int:pk>/resume/", views.application_resume, name="resume"),

@@ -18,18 +18,26 @@
     {% csrf_token %}
     <div class="qa-card__body">
       {% include "qa_core/partials/_form_errors.html" %}
-      <div class="qa-fields">
-        {% include "qa_core/partials/_field.html" with field=form.source wide=True %}
-        <div data-show-if='{"source": ["custom"]}' class="qa-fields is-wide">
+      <div class="qa-field is-wide">
+        <span class="qa-field__label">Programmes from NBTE's list</span>
+        <div class="qa-field__help">Every programme NBTE lists for {% if inst.institution_type %}a {{ inst.institution_type.name }}{% else %}your institution{% endif %}. Tick the levels you plan to run. An HND needs the ND of the same programme — already running at your institution, or ticked together with it.</div>
+        {% include "qa_portal/application/_master_options.html" with picker_field="masters" %}
+      </div>
+      <details class="qa-manual"{% if manual_open %} open{% endif %}><summary>Not on the list? Type it yourself and choose its body</summary>
+        <p class="qa-small qa-muted">Leave the list above unticked. You must choose the professional body that covers the programme; NBTE then adds it to the master list.</p>
+        <div class="qa-fields">
           {% include "qa_core/partials/_field.html" with field=form.name %}
           {% include "qa_core/partials/_field.html" with field=form.level %}
+          {% include "qa_core/partials/_field.html" with field=form.category %}
+          {% include "qa_core/partials/_field.html" with field=form.body %}
         </div>
+      </details>
+      <div class="qa-fields">
         {% include "qa_core/partials/_field.html" with field=form.streams %}
       </div>
       <div class="qa-form-actions"><button class="btn btn-primary btn-lg" type="submit"{% if request.is_impersonating %} disabled{% endif %}>{% icon "arrow" 16 "2.4" %} Add and continue to the request</button>
         <a class="btn btn-subtle" href="{% url 'qa_portal:programme_board' %}">Cancel</a></div>
     </div>
   </form>
-  <script src="{% static 'js/forms-dynamic.js' %}" defer></script>
 </div>
 {% endblock %}

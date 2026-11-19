@@ -7,26 +7,29 @@
       <span class="qa-map-person"><strong>{{ m.person }}</strong>
         <span class="qa-small qa-muted">{% if m.resource_person_id %}Resource person{% else %}QA personnel{% endif %}</span></span>
     </td>
-    <td>{{ m.qa_request_programme.programme }}<br><a class="qa-small qa-mono" href="{% url 'qa_case:detail' m.case_id %}">{{ m.case.reference }}</a></td>
+    <td>{{ m.target_label }}{% if m.scope == "institution" %} <span class="qa-small qa-muted">(all programmes)</span>{% endif %}<br><a class="qa-small qa-mono" href="{% url 'qa_case:detail' m.case_id %}">{{ m.case.reference }}</a></td>
     <td><span class="vx-chip {{ m.duty|vx_tone }}">{{ m.get_duty_display }}</span></td>
     <td>{{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</td>
-    <td><span class="vx-chip {{ m.status|vx_tone }}">{{ m.get_status_display }}</span>{% if m.created_via %}<br><span class="qa-small qa-muted qa-mono">{{ m.created_via.reference }}</span>{% endif %}</td>
+    <td><span class="vx-chip {{ m.status|vx_tone }}">{{ m.get_status_display }}</span>{% if m.created_via %}<br><span class="qa-small qa-muted qa-mono">{{ m.created_via.reference }}</span>{% endif %}{% if m.rp_response %}<br><span class="qa-small qa-muted">{{ m.get_rp_response_display }}</span>{% endif %}</td>
     <td class="qa-map-approval">
       <span class="qa-map-steps" aria-label="Approval state">
-        <span class="qa-map-step{% if m.director_approved_at %} is-done{% endif %}" title="{% if m.director_approved_by %}Director approved{% else %}Waiting for the Director{% endif %}">{% icon "check" 11 "3" %} Director</span>
+        <span class="qa-map-step{% if m.suggested_by_role %} is-done{% endif %}" title="Suggested by">{% icon "check" 11 "3" %} {{ m.get_suggested_by_role_display|default:"Suggested" }}</span>
+        <span class="qa-map-step{% if m.audit_verified_at %} is-done{% endif %}" title="{% if m.audit_verified_by %}Verified by {{ m.audit_verified_by }}{% else %}Waiting for Audit to verify{% endif %}">{% icon "check" 11 "3" %} Audit</span>
         <span class="qa-map-step{% if m.es_approved_at %} is-done{% endif %}" title="{% if m.es_approved_by %}ES approved{% else %}Waiting for the ES{% endif %}">{% icon "check" 11 "3" %} ES</span>
       </span>
       <span class="qa-small qa-muted">{{ m.approval_label }}</span>
-      {% if m.can_director_approve and not m.director_approved_at or m.can_es_approve and m.director_approved_at and not m.es_approved_at %}
+      {% if m.audit_remark %}<span class="qa-small qa-muted">Audit: {{ m.audit_remark }}</span>{% endif %}
+      {% if m.can_audit_verify and not m.audit_verified_at or m.can_es_approve and m.audit_verified_at %}
       <form class="qa-map-actions" method="post" action="{% url 'qa_insp:mapping_decide' m.pk %}" hx-post="{% url 'qa_insp:mapping_decide' m.pk %}" hx-target="body">
         {% csrf_token %}
-        {% if m.can_director_approve and not m.director_approved_at %}
-          <input type="hidden" name="layer" value="director">
-          <button class="btn btn-xs btn-primary" type="submit" name="decision" value="approve">Approve</button>
-          <button class="btn btn-xs btn-ghost" type="submit" name="decision" value="reject">Send back</button>
-        {% elif m.can_es_approve and m.director_approved_at and not m.es_approved_at %}
+        <input class="input" type="text" name="remark" placeholder="Remark (needed to send back)" maxlength="255">
+        {% if m.can_es_approve and m.audit_verified_at %}
           <input type="hidden" name="layer" value="es">
           <button class="btn btn-xs btn-primary" type="submit" name="decision" value="approve">ES approve</button>
+          <button class="btn btn-xs btn-ghost" type="submit" name="decision" value="reject">Do not approve</button>
+        {% else %}
+          <input type="hidden" name="layer" value="audit">
+          <button class="btn btn-xs btn-primary" type="submit" name="decision" value="approve">Verify (Audit)</button>
           <button class="btn btn-xs btn-ghost" type="submit" name="decision" value="reject">Send back</button>
         {% endif %}
       </form>

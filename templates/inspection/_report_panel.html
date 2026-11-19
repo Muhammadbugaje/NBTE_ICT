@@ -1,4 +1,6 @@
-{% load qa_tags %}
+{% load qa_tags %}{% load static %}
+{# sop3.css is linked inside the panel because this page is also swapped in by HTMX; it carries the report page look (sections 8–9 of that file). #}
+<link rel="stylesheet" href="{% static 'css/sop3.css' %}">
 {% include "inspection/_subnav.html" with section="endorsements" %}
 <nav class="qa-crumbs" aria-label="Breadcrumb" data-qa-live-url="{% url 'qa_insp:report_live' report.pk %}" data-qa-live-target="#qa-panel" data-qa-live-label="{{ inspection.reference }}"><a href="{% url 'qa_insp:inspection' inspection.pk %}" hx-get="{% url 'qa_insp:inspection' inspection.pk %}" hx-target="#qa-panel" hx-push-url="true">{{ inspection.reference }}</a><span aria-hidden="true">/</span><span aria-current="page">Post-visit report</span></nav>
 <header class="qa-inst-head rp-hero">
@@ -62,7 +64,8 @@
   </div>
 </section>
 
-<section class="qa-card rp-attendees" aria-labelledby="team-reports-h">
+{# rp-team / rp-member, not rp-attendees / rp-attendee: ux-case.css (in the "finish" bundle, loaded on every page) styles those two names as a compact flex list for the case Reports tab, which collapsed this card and its rows. #}
+<section class="qa-card rp-team" aria-labelledby="team-reports-h">
   <header class="qa-card__head"><div class="rp-cardhead"><span class="rp-cardhead__icon rp-cardhead__icon--blue">{% icon "users" 17 "2.2" %}</span><div><h2 id="team-reports-h">Attendee reports for this programme</h2>
     <p>Each person who attended writes their own findings. The Team Lead reviews each submission, returns it with a comment, accepts it for compilation, or skips it with a reason. Absences do not hold up the report.</p>
   </div></div>
@@ -80,7 +83,7 @@
     {% endif %}
     <ul class="qa-rowlist" role="list">
       {% for row in member_roster %}
-      <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge rp-attendee" data-status="{% if not row.attendee.attended %}absent{% elif not row.member_report %}unlinked{% else %}{{ row.member_report.status }}{% endif %}">
+      <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge rp-member" data-status="{% if not row.attendee.attended %}absent{% elif not row.member_report %}unlinked{% else %}{{ row.member_report.status }}{% endif %}">
         <span class="rp-attendee__avatar" aria-hidden="true">{{ row.person|stringformat:"s"|slice:":1" }}</span>
         <span class="qa-rowlink__main">
           <span class="qa-rowlink__title">{{ row.person }}
@@ -214,35 +217,3 @@
     </section>
   </aside>
 </div>
-
-<style>
-  .qa-stepper--chain { flex-wrap: wrap; overflow: visible; row-gap: 12px; padding-bottom: 2px; }
-  .qa-stepper--chain li:first-child::before { inset-inline-start: 50%; }
-  .qa-stepper--chain li:last-child::before { inset-inline-end: 50%; }
-  .qa-chain-with { margin: 10px 0 0; }
-  @media (max-width: 1099px) {
-    .qa-stepper--chain li.is-current .qa-stepper__label { display: block; }
-  }
-  .rp-role { display: flex; align-items: flex-start; gap: 12px; }
-  .rp-role__icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text-muted); }
-  .rp-role > div > strong { display: block; font-size: .92rem; }
-  .rp-role p strong { font-weight: var(--fw-bold); }
-  .rp-role p { margin: 4px 0 0; font-size: .82rem; line-height: 1.5; color: var(--text-muted); }
-  .rp-role--lead { background: color-mix(in srgb, #129c62 6%, var(--surface)); border-left: 3px solid #129c62; }
-  .rp-role--lead .rp-role__icon { background: color-mix(in srgb, #129c62 14%, transparent); color: #0f7d4f; }
-  .rp-role--member { background: color-mix(in srgb, #0b6bcb 6%, var(--surface)); border-left: 3px solid #0b6bcb; }
-  .rp-role--member .rp-role__icon { background: color-mix(in srgb, #0b6bcb 14%, transparent); color: #0b6bcb; }
-  .rp-mini-stats { display: flex; flex-wrap: wrap; gap: 6px; }
-  .rp-count { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2, #fafbfc); font-size: .72rem; color: var(--text-muted); }
-  .rp-count b { color: var(--text); }
-  .rp-count--warn { color: #b45309; border-color: color-mix(in srgb, #d97706 25%, var(--border)); background: color-mix(in srgb, #d97706 7%, var(--surface)); }
-  .rp-count--info { color: #0b6bcb; border-color: color-mix(in srgb, #0b6bcb 25%, var(--border)); background: color-mix(in srgb, #0b6bcb 7%, var(--surface)); }
-  .rp-count--ok { color: #0f7d4f; border-color: color-mix(in srgb, #129c62 25%, var(--border)); background: color-mix(in srgb, #129c62 7%, var(--surface)); }
-  .rp-count--muted { color: #64748b; }
-  .rp-skip-btn { color: #b45309; border-color: color-mix(in srgb, #d97706 30%, var(--border)); }
-  .rp-skip { margin-top: 6px; }
-  .rp-skip__toggle { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: .74rem; color: #b45309; list-style: none; padding: 3px 0; }
-  .rp-skip__toggle::-webkit-details-marker { display: none; }
-  .rp-skip[open] .rp-skip__toggle { margin-bottom: 2px; }
-  .rp-skip-form { padding: 10px 12px; border: 1px dashed color-mix(in srgb, #d97706 30%, var(--border)); border-radius: 10px; background: color-mix(in srgb, #d97706 4%, var(--surface)); }
-</style>

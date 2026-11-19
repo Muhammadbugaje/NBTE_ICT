@@ -23,7 +23,7 @@ from functools import wraps
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, Max, Q, Sum
 from django.http import Http404, HttpResponse, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from tasks.services import visible_comments as task_visible_comments  # Phase 0 (H18)
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -31,7 +31,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from accreditation import case_services as cs
 from qa_core import flow
 from qa_core.permissions import require, require_or_404
-from qa_core.ui import paginate, render_qa, toast
+from qa_core.ui import is_htmx, paginate, render_qa, toast
 
 from . import forms, rules, services
 from .models import (
@@ -338,7 +338,11 @@ def _finder_need(request, user):
 
     rows = list(QARequestProgramme.objects.for_user(user).filter(qa_request=case.qa_request, status="active")
                 .select_related("programme__category__discipline")) or services.case_rows(case)
-    row = next((r for r in rows if str(r.pk) == str(f.get("row"))), rows[0] if rows else None)
+    # v2.9: "institution" (or scope=institution) maps to the whole institution.
+    if f.get("row") == "institution" or f.get("scope") == "institution":
+        row = None
+    else:
+        row = next((r for r in rows if str(r.pk) == str(f.get("row"))), rows[0] if rows else None)
     duty = f.get("duty") or "resource_inspection"
     try:
         need = services.need_for(case, row, duty, _date(f.get("start")), _date(f.get("end")))
@@ -356,7 +360,8 @@ def finder(request):
            "cases": cs.visible_cases(user).exclude(status="closed").select_related("institution").order_by("-pk")[:200],
            "case": case, "rows": rows or [], "rules": rules.RULES,
            "can_map": not services.is_monitor(user) and (user.is_superuser or user.has_perm(
-               "inspection.initiate_edit_qa_mapping"))}
+               "inspection.initiate_edit_qa_mapping") or (case is not None and services.can_suggest_mapping(
+                   case, user)[0]))}  # v2.9: the ES and the case's Audit suggest too
     if isinstance(need, str):
         ctx["error"] = need
     elif need is not None:
@@ -398,8 +403,9 @@ def finder_map(request):
     response = render(request, "inspection/_finder_panel.html", ctx, status=422 if error else 200)
     if error:
         return toast(response, "error", "Not mapped", error)
-    status = "Mapped" if pa.status == "applied" else f"Dates held — waiting for Director and ES approval ({pa.reference})"
-    return toast(response, "success", status, f"{person} → {need.row.programme} ({mapping.get_duty_display()}).")
+    status = ("Suggested — waiting for Audit to verify and the ES to approve" if pa is None or pa.status == "applied"
+              else f"Dates held — waiting for Audit and the ES ({pa.reference})")
+    return toast(response, "success", status, f"{person} → {mapping.target_label} ({mapping.get_duty_display()}).")
 
 
 @require(cs.can_view_cases)
@@ -426,8 +432,9 @@ def mappings(request):
     ctx = {"page": paginate(request, qs), "filters": f, "statuses": QAMapping.STATUS_CHOICES, "duties": DUTY_CHOICES}
     for m in ctx["page"]["rows"]:
         m.approval_state, m.approval_label = services.mapping_approval_state(m)
-        m.can_director_approve = services.can_approve_mapping(m, request.user, "director")[0]
-        m.can_es_approve = services.can_approve_mapping(m, request.user, "es")[0]
+        live = m.status in QAMapping.LIVE and not m.es_approved_at
+        m.can_audit_verify = live and services.can_approve_mapping(m, request.user, "audit")[0]
+        m.can_es_approve = live and services.can_approve_mapping(m, request.user, "es")[0]
     return _hx_rows(request, "inspection/mappings.html", ctx, "inspection/_mappings_panel.html",
                     "inspection/_mappings_rows.html")
 
@@ -435,24 +442,34 @@ def mappings(request):
 @require(cs.can_view_cases)
 @require_POST
 def mapping_decide(request, pk):
-    """v2.7: the Director then the ES approve (or send back) a mapping."""
+    """v2.9: Audit verifies (layer "audit"), then ONLY the ES approves (layer
+    "es"). ``next`` may send the browser back to the case page."""
     from django.http import HttpResponse
     from django.urls import reverse
+    from django.utils.http import url_has_allowed_host_and_scheme
 
     mapping = services.visible_mappings(request.user).filter(pk=pk).first()
     if mapping is None:
         raise Http404
-    layer = request.POST.get("layer", "director")
+    layer = request.POST.get("layer", "audit")
     approve = request.POST.get("decision") != "reject"
+    target = request.POST.get("next") or ""
+    if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):
+        target = ""
+    target = target or reverse("qa_insp:mappings")
     try:
         services.approve_mapping(mapping, actor=request.user, layer=layer, approve=approve,
                                  remark=request.POST.get("remark", ""))
-    except (PermissionDenied, ValidationError) as exc:
-        response = HttpResponse(status=422)
-        response["HX-Redirect"] = reverse("qa_insp:mappings")
-        return response
+    except PermissionDenied as exc:
+        response = HttpResponse(_msg(exc), status=403)
+        return toast(response, "error", "Not allowed", _msg(exc))
+    except ValidationError as exc:
+        response = HttpResponse(_msg(exc), status=422)
+        return toast(response, "error", "Not saved", _msg(exc))
     response = HttpResponse(status=204)
-    response["HX-Redirect"] = reverse("qa_insp:mappings")
+    response["HX-Redirect"] = target
+    if not is_htmx(request):
+        return redirect(target)
     return response
 
 

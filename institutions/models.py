@@ -111,6 +111,16 @@ class InstitutionCategory(LookupBase):
 
 
 class Discipline(LookupBase):
+    """Engineering, Health Sciences … ``institution_types`` says which kinds of
+    institution offer programmes of this discipline: the programme picker
+    shows an institution only the catalogue programmes relevant to its type.
+    A discipline with no types is offered to every institution."""
+
+    institution_types = models.ManyToManyField(
+        InstitutionType, blank=True, related_name="disciplines",
+        help_text="Institution types that may add programmes of this discipline. Leave empty for all types.",
+    )
+
     class Meta(LookupBase.Meta):
         pass
 

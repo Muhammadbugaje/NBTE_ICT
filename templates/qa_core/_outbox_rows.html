@@ -11,10 +11,12 @@
           <span class="vx-mail__item-top"><span class="vx-mail__item-to">{{ m.recipients.0|default:"No recipient" }}{% if m.recipients|length > 1 %} <span class="vx-mail__more">+{{ m.recipients|length|add:"-1" }}</span>{% endif %}</span><time datetime="{{ m.created_at|date:'c' }}">{{ m.created_at|date:"j M, H:i" }}</time></span>
           <span class="vx-mail__item-subject">{{ m.subject }}</span>
           <span class="vx-mail__item-snippet">{{ m.body_text|truncatechars:120 }}</span>
-          <span class="vx-chip">{{ m.category|default:"e-mail" }}</span>
+          <span class="vx-chip">{{ m.category|default:"e-mail" }}</span>{% if m.is_log %} <span class="vx-chip {% if m.status == 'sent' %}vx-t-green{% elif m.status == 'failed' %}vx-t-red{% else %}vx-t-amber{% endif %}" {% if m.last_error %}title="{{ m.last_error|truncatechars:300 }}"{% endif %}>{{ m.get_status_display }}</span>{% endif %}
         </span>
         <template data-vx-mail-html>{{ m.body_html }}</template>
-        <template data-vx-mail-text>{{ m.body_text }}</template>
+        <template data-vx-mail-text>{% if m.is_log and m.status == "failed" and m.last_error %}Delivery failed: {{ m.last_error }}
+
+{% endif %}{{ m.body_text }}</template>
       </button>
     </li>
   {% endfor %}
@@ -24,6 +26,6 @@
   <div class="vx-empty">
     <span class="vx-empty__icon vx-t-slate" aria-hidden="true">{% icon "inbox" 26 "2" %}</span>
     <h3>No messages</h3>
-    <p>{% if filters.q or filters.category or filters.period or filters.to %}Nothing matches these filters. Try clearing the search or choosing “Any time”.{% else %}Nothing has been logged yet. Messages appear here when the QA system writes an e-mail in log-only mode.{% endif %}</p>
+    <p>{% if filters.q or filters.category or filters.period or filters.to %}Nothing matches these filters. Try clearing the search or choosing “Any time”.{% else %}Nothing has been logged yet. Messages appear here as soon as the QA system sends an e-mail.{% endif %}</p>
   </div>
 {% endif %}

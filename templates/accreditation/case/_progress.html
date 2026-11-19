@@ -1,5 +1,5 @@
-{% load qa_tags %}{# SOP-03 progress: every passed step shows a green check, the current step(s) are highlighted, upcoming steps are muted. #}
-<section class="c3-prog" aria-labelledby="c3-prog-h">
+{% load qa_tags %}{# SOP-03 journey (static/css/sop3.css): where the case is, who holds it, what comes next, then every stage as a dot grouped into five phases. Passed steps show a check, the current step is filled, upcoming steps are hollow. #}
+<section class="c3-prog s3-journey" aria-labelledby="c3-prog-h">
   <div class="c3-prog__head">
     <div class="c3-prog__now">
       <h2 id="c3-prog-h" class="sr-only">SOP-03 progress</h2>
@@ -17,15 +17,42 @@
       <span class="c3-prog__bar"><span style="width: {{ progress.pct }}%"></span></span>
     </div>
   </div>
-  <ol class="c3-steps">
-    {% for st in stepper %}
-    <li class="c3-steps__item is-{{ st.state }}{% if st.parts %} has-parts{% endif %}" title="{% if st.no %}Stage {{ st.no }}: {% endif %}{{ st.label }}"{% if st.state == "current" %} aria-current="step"{% endif %}>
-      <span class="c3-steps__dot" aria-hidden="true">{% if st.state == "done" %}{% icon "check" 14 "3" %}{% elif st.no == 0 %}{% icon "flag" 13 "2.4" %}{% else %}{{ st.no }}{% endif %}</span>
-      <span class="c3-steps__label"><span class="sr-only">{% if st.state == "done" %}Done: {% elif st.state == "current" %}Current: {% else %}Upcoming: {% endif %}{% if st.no %}stage {{ st.no }}, {% endif %}</span>{{ st.label }}</span>
-      {% if st.parts and st.state == "current" %}
-      <span class="c3-steps__parts">{% for p in st.parts %}<span class="c3-part is-{{ p.state }}" title="{{ p.label }}">{% if p.state == "done" %}{% icon "check" 10 "3" %}{% endif %}{% if p.code == "assign_audit_officer" %}Audit{% elif p.code == "assign_finance_officer" %}Finance{% elif p.code == "assign_ict_officer" %}ICT{% else %}{{ p.label }}{% endif %}<span class="sr-only"> ({{ p.state }})</span></span>{% endfor %}</span>
-      {% endif %}
+
+  {% if progress.current %}
+  <ul class="s3-now" role="list" aria-label="Who holds the case now and what comes next">
+    {% for a in actions %}
+    <li class="s3-now__row{% if a.can %} is-mine{% endif %}{% if a.overdue %} is-overdue{% endif %}">
+      <span class="s3-now__key">{% if a.can %}Your turn{% else %}Waiting on{% endif %}</span>
+      <span class="s3-now__val">
+        {% if actions|length > 1 %}<span class="s3-now__stage">{% if a.stage.code == "assign_audit_officer" %}Audit{% elif a.stage.code == "assign_finance_officer" %}Finance{% elif a.stage.code == "assign_ict_officer" %}ICT{% else %}{{ a.stage.label }}{% endif %}</span>{% endif %}
+        {% if a.stage.code == "post_visit_report" %}<span>The visit team — attendee reports, then the Team Lead's compilation and its endorsements</span>
+        {% else %}{% for u in a.holders %}<span class="c3-person c3-person--sm"><span class="c3-av" aria-hidden="true">{{ u|initials }}</span>{{ u|who }}{% if u == request.user %} <em class="c3-you-tag">you</em>{% endif %}</span>{% empty %}<span>Nobody yet — in the department queue</span>{% endfor %}{% endif %}
+        {% if a.since %}<span class="s3-now__since">for {{ a.since }}</span>{% endif %}
+        {% if a.overdue %}<span class="qa-chip qa-tone-danger">Overdue</span>{% endif %}
+      </span>
     </li>
     {% endfor %}
+    {% for st in stepper %}{% if st.state == "todo" %}{% ifchanged st.state %}
+    <li class="s3-now__row s3-now__row--next">
+      <span class="s3-now__key">Then</span>
+      <span class="s3-now__val"><span class="s3-now__no" aria-hidden="true">{{ st.no }}</span><span><span class="sr-only">Stage {{ st.no }}: </span>{{ st.label }}</span></span>
+    </li>
+    {% endifchanged %}{% endif %}{% endfor %}
+  </ul>
+  {% endif %}
+
+  <ol class="s3-phases" aria-label="All SOP-03 stages, grouped by phase">
+    <li class="s3-phase"><span class="s3-phase__name">Set-up</span><ol class="s3-steps">
+    {% for st in stepper %}
+      {% if st.no == 2 %}</ol></li><li class="s3-phase"><span class="s3-phase__name">Cost and team</span><ol class="s3-steps">
+      {% elif st.no == 8 %}</ol></li><li class="s3-phase"><span class="s3-phase__name">Visit</span><ol class="s3-steps">
+      {% elif st.no == 12 %}</ol></li><li class="s3-phase"><span class="s3-phase__name">Reports</span><ol class="s3-steps">
+      {% elif st.no == 14 %}</ol></li><li class="s3-phase"><span class="s3-phase__name">Decision</span><ol class="s3-steps">{% endif %}
+      <li class="s3-step is-{{ st.state }}" title="{% if st.no %}Stage {{ st.no }}: {% endif %}{{ st.label }}"{% if st.state == "current" %} aria-current="step"{% endif %}>
+        <span class="s3-step__dot" aria-hidden="true">{% if st.state == "done" %}{% icon "check" 11 "3.2" %}{% elif st.no == 0 %}{% icon "flag" 11 "2.4" %}{% else %}{{ st.no }}{% endif %}</span>
+        <span class="sr-only">{% if st.state == "done" %}Done: {% elif st.state == "current" %}Current: {% else %}Upcoming: {% endif %}{% if st.no %}stage {{ st.no }}, {% endif %}{{ st.label }}{% if st.parts and st.state == "current" %} ({% for p in st.parts %}{% if p.code == "assign_audit_officer" %}Audit{% elif p.code == "assign_finance_officer" %}Finance{% elif p.code == "assign_ict_officer" %}ICT{% else %}{{ p.label }}{% endif %} {{ p.state }}{% if not forloop.last %}, {% endif %}{% endfor %}){% endif %}</span>
+      </li>
+    {% endfor %}
+    </ol></li>
   </ol>
 </section>

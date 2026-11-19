@@ -3,17 +3,34 @@
 <ul class="qa-rowlist" role="list">{% for m in page.rows %}
   <li class="qa-rowlink qa-rowlink--static qa-engagement qa-rowlink--nobadge">
     <div class="qa-rowlink__main">
-      <span class="qa-rowlink__title">{{ m.qa_request_programme.programme }}</span>
-      <span class="qa-rowlink__meta"><span>{{ m.case.institution.name }}</span><span>· {{ m.get_duty_display }}</span><span>· {{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</span></span>
+      <span class="qa-rowlink__title">{{ m.target_label }}</span>
+      <span class="qa-rowlink__meta"><span>{{ m.case.institution.name }}</span><span>· {{ m.get_scope_display }}</span><span>· {{ m.get_duty_display }}</span><span>· {{ m.from_date|date:"j M" }}–{{ m.to_date|date:"j M Y" }}</span></span>
+      {# v2.9: confirm availability first (accept / decline) #}
+      {% if m.can_respond and not m.rp_response %}
+      <form class="qa-form qa-engagement__respond" method="post" action="{% url 'qa_portal:rp_engagements' %}?{{ request.GET.urlencode }}" hx-post="{% url 'qa_portal:rp_engagements' %}?{{ request.GET.urlencode }}" hx-target="#qa-main" novalidate>{% csrf_token %}
+        <input type="hidden" name="action" value="respond"><input type="hidden" name="mapping" value="{{ m.pk }}">
+        <p class="qa-small"><strong>Are you available for this engagement?</strong> The ES approved it; please confirm.</p>
+        <div class="qa-field{% if respond_error_for == m.pk %} has-error{% endif %}"><label for="rn-{{ m.pk }}">Note (needed if you decline)</label>
+          <input class="input" id="rn-{{ m.pk }}" name="note" maxlength="255">
+          {% if respond_error_for == m.pk %}{% for e in errors.note %}<p class="qa-field__error" role="alert">{{ e }}</p>{% endfor %}{% endif %}
+        </div>
+        <div class="qa-form-actions"><button class="btn btn-primary btn-sm" type="submit" name="op" value="accept">Accept — I am available</button>
+          <button class="btn btn-subtle btn-sm" type="submit" name="op" value="decline">Decline</button></div>
+      </form>
+      {% elif m.rp_response %}<span class="qa-small"><strong>{{ m.get_rp_response_display }}</strong>{% if m.rp_response_at %} · {{ m.rp_response_at|date:"j M Y" }}{% endif %}{% if m.rp_response_note %} — {{ m.rp_response_note }}{% endif %}</span>
+      {% endif %}
       {% if m.can_write %}
       <form class="qa-form qa-engagement__form" method="post" action="{% url 'qa_portal:rp_engagements' %}?{{ request.GET.urlencode }}" hx-post="{% url 'qa_portal:rp_engagements' %}?{{ request.GET.urlencode }}" hx-target="#qa-main" novalidate>{% csrf_token %}<input type="hidden" name="mapping" value="{{ m.pk }}">
         <div class="qa-field{% if error_for == m.pk %} has-error{% endif %}"><label for="fd-{{ m.pk }}">My findings</label>
           <textarea class="input" id="fd-{{ m.pk }}" name="findings" rows="4"{% if error_for == m.pk %} aria-invalid="true" aria-describedby="fd-{{ m.pk }}-err"{% endif %}>{% if error_for == m.pk %}{{ draft }}{% else %}{{ m.findings }}{% endif %}</textarea>
           {% if error_for == m.pk %}{% for e in errors.findings %}<p class="qa-field__error" role="alert" id="fd-{{ m.pk }}-err">{{ e }}</p>{% endfor %}{% endif %}
         </div>
-        <div class="qa-form-actions"><button class="btn btn-primary btn-sm" type="submit">{% if m.findings %}Update{% else %}Submit{% endif %} findings</button></div>
+        <div class="qa-field"><label for="fr-{{ m.pk }}">My recommendation</label>
+          <select class="input qa-select" id="fr-{{ m.pk }}" name="recommendation"><option value="">— No recommendation —</option>{% for v, l in recommendations %}<option value="{{ v }}"{% if m.rp_recommendation == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+        </div>
+        <div class="qa-form-actions"><button class="btn btn-primary btn-sm" type="submit">{% if m.findings %}Update{% else %}Submit{% endif %} my report</button></div>
       </form>
-      {% elif m.findings %}<span class="qa-small"><strong>My findings:</strong> {{ m.findings|truncatechars:240 }}</span>
+      {% elif m.findings %}<span class="qa-small"><strong>My report:</strong> {{ m.findings|truncatechars:240 }}{% if m.rp_recommendation %} · {{ m.get_rp_recommendation_display }}{% endif %}</span>
       {% else %}<span class="qa-small qa-muted">{{ m.write_why }}</span>{% endif %}
       {% if m.visit_report %}
       <section class="qa-card qa-mt-sm" aria-label="My individual visit report">

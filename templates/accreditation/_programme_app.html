@@ -8,11 +8,20 @@
     <span class="qa-progq__side">{% if app.status == "programme_clearance" %}<span class="qa-chip qa-tone-info">{{ item.pending }} waiting</span><span class="qa-small {% if item.waiting_days >= 7 %}qa-strong{% else %}qa-muted{% endif %}">{% if item.waiting_days %}{{ item.waiting_days }} day{{ item.waiting_days|pluralize }}{% else %}New today{% endif %}</span>{% else %}<span class="qa-chip {{ app.status|tone }}">{{ app.status|humanize_code }}</span>{% endif %}</span>
   </header>
   {% if error %}<div class="qa-callout qa-callout--danger" role="alert"><div><strong>Not done</strong><p>{{ error }}</p></div></div>{% endif %}
-  {% if not item.can_clear and app.status == "programme_clearance" %}<p class="qa-small qa-muted">{{ item.why }}</p>{% endif %}
-  <ul class="qa-progq__list" role="list">
+  {% if not item.can_clear and app.status == "programme_clearance" %}<p class="qa-small qa-muted">{% icon "lock" 12 %} {{ item.why }}</p>{% endif %}
+  {% if item.can_clear and item.pending %}
+    <form id="progq-bulk-{{ app.pk }}" class="qa-progq__bulk" method="post" action="{% url 'qa_app:programme_decide_bulk' app.pk %}" hx-post="{% url 'qa_app:programme_decide_bulk' app.pk %}" hx-target="#progq-{{ app.pk }}" hx-swap="outerHTML" data-bulk-form>{% csrf_token %}
+      <label class="qa-progq__all"><input type="checkbox" data-select-all="progq-bulk-{{ app.pk }}" aria-controls="progq-list-{{ app.pk }}"> <span>Select all waiting <span class="qa-muted">({{ item.pending }})</span></span></label>
+      <label class="sr-only" for="progq-bulk-rm-{{ app.pk }}">Remark for the ticked programmes</label>
+      <input class="input" id="progq-bulk-rm-{{ app.pk }}" name="remark" placeholder="One remark for every ticked programme (required to return)" autocomplete="off">
+      <div class="btn-group"><button class="btn btn-sm btn-primary" type="submit" name="decision" value="clear" data-bulk-needs-selection>{% icon "check" 14 "2.4" %} Clear selected <span data-bulk-count></span></button><button class="btn btn-sm btn-subtle" type="submit" name="decision" value="return" data-bulk-needs-selection>Return selected</button></div>
+    </form>
+  {% endif %}
+  <ul class="qa-progq__list" id="progq-list-{{ app.pk }}" role="list">
     {% for r in item.reviews %}
       <li class="qa-progq__row is-{{ r.status }}">
-        <div class="qa-progq__prog"><strong>{{ r.programme.name }}</strong>
+        {% if r.status == "pending" and item.can_clear %}<input class="qa-progq__tick" type="checkbox" name="reviews" value="{{ r.pk }}" form="progq-bulk-{{ app.pk }}" data-select-item="progq-bulk-{{ app.pk }}" aria-label="Select {{ r.programme.name }}">{% endif %}
+        <div class="qa-progq__prog"><strong>{{ r.programme.level.code|upper }} {{ r.programme.name }}</strong>
           <span class="qa-small qa-muted">{{ r.programme.level.name }}{% if r.programme.category %} · {{ r.programme.category.name }}{% endif %} · {{ r.programme.requested_streams }} stream{{ r.programme.requested_streams|pluralize }}</span>
           {% if r.remark %}<span class="qa-small">“{{ r.remark }}”</span>{% endif %}</div>
         {% if r.status == "pending" and item.can_clear %}

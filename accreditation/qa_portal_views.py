@@ -115,7 +115,9 @@ def _new_context(request, inst, qa_type=None, **extra):
         extra["chosen"] = [int(i) for i in request.GET.getlist("chosen") if str(i).isdigit()]
     for row in programmes:  # Phase 8: the streams box per programme
         row["streams"] = asked.get(row["programme"].pk) or svc.default_streams(row["programme"], qa_type)
-        row["nd_warning"] = svc.nd_prerequisite_warning(row["programme"])  # v2.3: HND without ND
+        # Owner rule: an HND needs the ND of the same programme (running, on an
+        # open request, or ticked on this one) — shown as a hint, enforced on submit.
+        row["nd_block"] = svc.hnd_block_reason(row["programme"])
         row["justification"] = justified.get(row["programme"].pk, "")
     return _shell_context(request, "qa_requests", inst=inst, types=types, qa_type=qa_type, programmes=programmes,
                           window=svc.window_months(), max_streams=svc.max_streams(), **extra)
@@ -832,45 +834,42 @@ def staff_dashboard_context(request):
 # Propose a new programme (approved institutions) → Resource Inspection
 # ===========================================================================
 class ProposeProgrammeForm(forms.Form):
-    CUSTOM = "custom"
-    source = forms.ChoiceField(label="Programme", choices=(),
-                               help_text="Choose the programme as it appears on NBTE's programme list.")
+    """Approved institution: tick programmes from NBTE's list (relevant to its
+    institution type) or type one that is not on it, with its professional
+    body. Every add goes through ``programme_master.add_programme`` (flags,
+    ND/HND rule, notifications)."""
+
+    masters = forms.ModelMultipleChoiceField(None, required=False, widget=forms.MultipleHiddenInput)
     name = forms.CharField(max_length=200, required=False, label="Programme name")
     level = forms.ModelChoiceField(None, required=False, label="Level")
+    category = forms.ModelChoiceField(None, required=False, label="Category")
+    body = forms.ModelChoiceField(None, required=False, label="Professional body",
+                                  empty_label="Choose the body that regulates it")
     streams = forms.IntegerField(min_value=1, max_value=10, initial=1, label="Streams you plan to run",
                                  help_text="How many parallel classes (streams) you want approved.")
 
     def __init__(self, *args, institution=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from institutions.models import ProgrammeLevel, ProgrammeMaster
+        from institutions.models import ProfessionalBody, ProgrammeCategory, ProgrammeLevel
+        from institutions.programme_master import relevant_masters
 
         self.institution = institution
-        have = set(Programme.unscoped.filter(institution=institution).exclude(status="dropped")
-                   .values_list("name", "level_id"))
-        masters = [m for m in ProgrammeMaster.objects.filter(is_active=True).select_related("level").order_by("name")
-                   if (m.name, m.level_id) not in have]
-        self._masters = {str(m.pk): m for m in masters}
-        self.fields["source"].choices = ([("", "Choose…")] + [(str(m.pk), str(m)) for m in masters]
-                                         + [(self.CUSTOM, "Not on the NBTE list — type it in")])
-        self.fields["level"].queryset = ProgrammeLevel.objects.filter(is_active=True).order_by("sort_order")
+        self.fields["masters"].queryset = relevant_masters(institution)
+        self.fields["level"].queryset = (ProgrammeLevel.objects.filter(is_active=True).exclude(code="admin")
+                                         .order_by("sort_order"))
+        self.fields["category"].queryset = ProgrammeCategory.objects.filter(is_active=True)
+        self.fields["body"].queryset = ProfessionalBody.objects.filter(is_active=True)
 
     def clean(self):
         d = super().clean()
-        src = d.get("source")
-        if src == self.CUSTOM:
+        masters = list(d.get("masters") or [])
+        # ND before HND: the HND of a programme may come with its ND.
+        d["masters"] = sorted(masters, key=lambda m: (m.level.sort_order if m.level_id else 0, m.name.lower()))
+        if not masters:
             if len((d.get("name") or "").strip()) < 3:
-                self.add_error("name", "Type the programme's full name.")
+                raise ValidationError("Tick a programme on NBTE's list, or type the programme's full name.")
             if not d.get("level"):
                 self.add_error("level", "Choose the level.")
-        elif src not in self._masters:
-            self.add_error("source", "Choose a programme, or 'Not on the NBTE list'.")
-        master = self._masters.get(src or "")
-        name = master.name if master else " ".join((d.get("name") or "").split())
-        level = master.level if master else d.get("level")
-        if name and level and Programme.unscoped.filter(institution=self.institution, name__iexact=name,
-                                                         level=level).exclude(status="dropped").exists():
-            raise ValidationError("This programme is already on your record — use it in a QA request.")
-        d["master"], d["final_name"], d["final_level"] = master, name, level
         return d
 
 
@@ -880,28 +879,44 @@ class ProposeProgrammeForm(forms.Form):
 def programme_propose(request):
     """An approved institution adds a programme it plans to run. It is recorded
     as *proposed* and goes through a Resource Inspection request (SOP-02 →
-    SOP-03) like any new programme — NBTE decides; nothing is approved here."""
-    from qa_core import timeline
+    SOP-03) like any new programme — NBTE decides; nothing is approved here.
+    An HND needs the ND of the same programme (running, or proposed with it)."""
+    from django.db import transaction
+
+    from institutions.programme_master import add_programme, picker
 
     user = request.user
     inst = _inst(request)
     if not svc.can_manage_requests(user, inst):
         raise Http404
     form = ProposeProgrammeForm(request.POST or None, institution=inst)
-    if request.method == "POST" and form.is_valid():
+    picked = []
+    if request.method == "POST" and not getattr(request, "is_impersonating", False) and form.is_valid():
         d = form.cleaned_data
-        m = d["master"]
-        p = Programme.unscoped.create(
-            institution=inst, name=d["final_name"], level=d["final_level"],
-            category=getattr(m, "programme_category", None), master=m,
-            professional_body=getattr(m, "professional_body", None),
-            status="proposed", requested_streams=d.get("streams") or 1, not_in_master=m is None)
-        timeline.record(inst, "programme.proposed", subject=p, actor=user, visibility="public",
-                        public_text=f"New programme proposed: {p}. Next: a Resource Inspection request.")
-        messages.success(request, f"{p} is on your record as a proposed programme. Now ask NBTE for a Resource "
-                                  "Inspection — it is ticked for you below.")
-        ri = QAType.objects.filter(code="resource_inspection", is_active=True).first()
-        url = reverse("qa_portal:qa_request_new") + (f"?type={ri.code}&chosen={p.pk}" if ri else "")
-        return redirect(url)
+        picked = d["masters"]
+        try:
+            with transaction.atomic():
+                if picked:
+                    added = [add_programme(inst, user=user, master=m, streams=d.get("streams") or 1)
+                             for m in picked]
+                else:
+                    added = [add_programme(inst, user=user, typed_name=d.get("name") or "", level=d.get("level"),
+                                           category=d.get("category"), body=d.get("body"),
+                                           streams=d.get("streams") or 1)]
+        except ValidationError as exc:
+            form.add_error(None, _msg(exc))
+        else:
+            names = ", ".join(str(p) for p in added)
+            messages.success(request, f"{names} {'is' if len(added) == 1 else 'are'} on your record as proposed. "
+                                      "Now ask NBTE for a Resource Inspection — ticked for you below.")
+            ri = QAType.objects.filter(code="resource_inspection", is_active=True).first()
+            url = reverse("qa_portal:qa_request_new")
+            if ri:
+                url += f"?type={ri.code}" + "".join(f"&chosen={p.pk}" for p in added)
+            return redirect(url)
+    elif request.method == "POST":
+        picked = list(form.cleaned_data.get("masters") or []) if hasattr(form, "cleaned_data") else []
     return render(request, "qa_portal/qa_requests/propose_programme.html",
-                  _shell_context(request, "qa_requests", form=form, inst=inst))
+                  _shell_context(request, "qa_requests", form=form, inst=inst,
+                                 picker=picker(inst, picked=[m.pk for m in picked]),
+                                 manual_open=bool(request.POST.get("name")) and not picked))
