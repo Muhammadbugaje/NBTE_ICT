@@ -7,7 +7,7 @@
   {% elif estimate.error %}
     <p class="qa-small qa-muted">{{ estimate.error }}</p>
   {% else %}
-    {% if estimate.lines %}<ul class="qa-fee-est__lines" role="list">{% for label, amount in estimate.lines %}<li><span>{{ label }}</span><span class="qa-mono">{{ amount|naira }}</span></li>{% endfor %}</ul>{% endif %}
+    {% if estimate.lines %}<ul class="qa-fee-est__lines" role="list">{% with base=estimate.lines.0.0 %}{% for label, amount in estimate.lines %}<li><span>{% if forloop.first and "×" not in label %}Base fee{% elif not forloop.first and base in label and "×" in label %}{% with n=label|cut:base|cut:" programmes"|cut:" programme" %}Per programme ({{ n.strip }}){% endwith %}{% else %}{{ label }}{% endif %}</span><span class="qa-mono">{{ amount|naira }}</span></li>{% endfor %}{% endwith %}</ul>{% endif %}
     <p class="qa-small qa-muted">An estimate from NBTE's current fee rules. The bill NBTE issues is final{% if estimate.schedule %} ({{ estimate.schedule.name }}){% endif %}.</p>
   {% endif %}
 </div>

@@ -1,9 +1,9 @@
 {% load qa_tags %}
-<section class="qa-card" aria-labelledby="nq-progs"><header class="qa-card__head"><div><h2 id="nq-progs">2. Programmes</h2><p>{% if qa_type %}{{ qa_type.name }}{% if qa_type.uses_reassessment_window %} opens {{ window }} months before a programme’s accreditation expires (Requirement 4){% endif %}.{% if qa_type.asks_streams %} Say how many streams you want for each programme (1 to {{ max_streams }}).{% endif %}{% else %}Choose a QA type first.{% endif %}</p></div></header>
+<section class="qa-card" aria-labelledby="nq-progs"><header class="qa-card__head"><div><h2 id="nq-progs">2. Programmes</h2><p>{% if qa_type %}{{ qa_type.name }}{% if qa_type.uses_reassessment_window %} opens {{ window }} months before a programme’s accreditation expires{% endif %}.{% if qa_type.asks_streams %} Say how many streams you want for each programme (1 to {{ max_streams }}).{% endif %}{% else %}Choose a QA type first.{% endif %}</p></div></header>
   {% if qa_type %}
-    <ul class="qa-checklist" role="list">
+    <ul class="qa-checklist" role="list" data-nq-programmes>
       {% for row in programmes %}
-        <li class="qa-checklist__item{% if not row.eligible %} is-disabled{% endif %}">
+        <li class="qa-checklist__item{% if not row.eligible %} is-disabled{% endif %}" data-nq-row data-level="{{ row.programme.level.code|lower }}" data-programme="{{ row.programme.name }}">
           <label class="qa-field--check">
             <input type="checkbox" name="programmes" value="{{ row.programme.pk }}"{% if not row.eligible %} disabled{% endif %}{% if row.programme.pk in chosen %} checked{% endif %}>
             <span><strong>{{ row.programme }}</strong> <span class="qa-chip {{ row.programme.status|tone }}">{{ row.programme.get_status_display }}</span>
@@ -12,7 +12,7 @@
               {% if not row.eligible %}<span class="qa-small qa-block qa-muted">{% icon "lock" 12 %} {{ row.reason }}</span>{% endif %}</span>
           </label>
           {% if row.nd_block and row.eligible %}
-            <div class="v3-warn" role="note"><p>{% icon "lock" 14 %} {{ row.nd_block }}</p></div>
+            <div class="v3-warn" role="note" data-nq-nd-note><p>{% icon "lock" 14 %} {{ row.nd_block }}</p></div>
           {% endif %}
           {% if qa_type.asks_streams and row.eligible %}
             <span class="qa-streams"><label for="st-{{ row.programme.pk }}">Number of streams</label>

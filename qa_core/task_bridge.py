@@ -114,6 +114,8 @@ def qa_url(link):
         return f"/qa/cases/{link.object_id}/?stage={link.stage_code}"
     if model == "postvisitreport":  # Phase 5: the report sub-flow
         return f"/qa/inspection/reports/{link.object_id}/"
+    if model == "qarequest":  # SOP-02: programme clearance
+        return f"/qa/requests/{link.object_id}/"
     if model == "inspection":
         return f"/qa/inspection/inspections/{link.object_id}/"
     if model == "complaint":  # Phase 7: complaint stages and escalations

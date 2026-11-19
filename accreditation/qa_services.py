@@ -78,6 +78,18 @@ def public_status(req):
     return flow.public_label(request_instance(req)) or req.status
 
 
+def public_status_map(flow_code=None):
+    """{stage code: institution-facing label} of the current QA request flow,
+    for list pages (one query instead of the per-row flow lookups)."""
+    from qa_core.models import FlowStage
+
+    version = flow.current_version(flow_code or REQUEST_FLOW)
+    if version is None:
+        return {}
+    return {code: public or label for code, public, label in
+            FlowStage.objects.filter(flow=version).values_list("code", "public_label", "label")}
+
+
 def ssq_public_status(ssq):
     """The institution-facing SSQ status. Once submitted it follows the real
     stage at NBTE (assignment, assessment, approval) — ssq_routing.public_stage."""
@@ -624,7 +636,7 @@ def on_submitted(ctx):
     count = QARequestProgramme.unscoped.filter(qa_request=req, status=QARequestProgramme.ACTIVE).count()
     timeline.record(req.institution, "qa_request.submitted", subject=req, actor=ctx.actor, visibility="public",
                     public_text=f"{req.qa_type.name} request {req.reference} submitted ({count} programme(s)).")
-    dept = req.institution.handling_department
+    dept = inst_services.effective_handling_department(req.institution)
 
     def _send():
         users = inst_services.staff_in_department(dept, perm="accreditation.view_qa_case")
@@ -761,7 +773,7 @@ def on_cancelled(ctx):
             pay.cancel(ob, actor=ctx.actor, reason=f"QA request {req.reference} cancelled.")
     timeline.record(req.institution, "qa_request.cancelled", subject=req, actor=ctx.actor, visibility="public",
                     public_text=f"QA request {req.reference} was cancelled.", internal_text=ctx.remark)
-    dept = req.institution.handling_department
+    dept = inst_services.effective_handling_department(req.institution)
 
     def _send():
         context = {"reference": req.reference, "remark": ctx.remark}
@@ -781,15 +793,7 @@ def clearance_department(req):
     are not approved yet; for an approved institution still pointing at the
     onboarding department (a stale handling department) the category's
     department is used instead."""
-    from institutions.models import Institution
-
-    inst = req.institution
-    dept = inst.handling_department if inst.handling_department_id else None
-    if inst.status not in (Institution.PROPOSED, Institution.UNDER_REVIEW):
-        onboarding = inst_services.proposed_department()
-        if dept is None or (onboarding is not None and dept.pk == onboarding.pk):
-            dept = inst.derive_handling_department() or dept
-    return dept or inst.derive_handling_department()
+    return inst_services.effective_handling_department(req.institution)
 
 
 def can_clear(req, user):
@@ -804,7 +808,9 @@ def can_clear(req, user):
     if not (user.is_superuser or org.is_es(user) or (dept is not None and org.is_director(user, dept))):
         return False, (f"Programme clearance belongs to the Director of "
                        f"{getattr(dept, 'name', 'the handling department')}.")
-    if not user.has_perm("accreditation.clear_qa_programmes"):
+    # The ES and a superuser clear without the role permission (the ES is the
+    # fallback when a department has no Director).
+    if not (user.is_superuser or org.is_es(user) or user.has_perm("accreditation.clear_qa_programmes")):
         return False, "You do not hold accreditation.clear_qa_programmes."
     if req.status != "programme_clearance":
         return False, "The request is not waiting for programme clearance."
@@ -815,7 +821,10 @@ def clearance_queue(user, *, limit=200):
     """Requests waiting for ``user``'s programme clearance (the Director of
     each institution's handling department, the ES or a superuser). Reads past
     the institution scope and keeps only the requests ``can_clear`` allows."""
-    if getattr(user, "user_type", "staff") != "staff" or not user.has_perm("accreditation.clear_qa_programmes"):
+    import org
+
+    if getattr(user, "user_type", "staff") != "staff" or not (
+            user.is_superuser or org.is_es(user) or user.has_perm("accreditation.clear_qa_programmes")):
         return []
     reqs = (QARequest.unscoped.filter(status="programme_clearance")
             .select_related("institution__handling_department", "qa_type").order_by("created_at")[:limit])
@@ -1327,7 +1336,7 @@ def can_review(ssq, user):
 
     inst = ssq.institution
     privileged = (user.is_superuser or org.is_super_admin(user) or org.is_es(user)
-                  or org.is_director(user, inst.handling_department_id))
+                  or org.is_director(user, getattr(inst_services.effective_handling_department(inst), "pk", None)))
     assigned = False
     if not privileged:
         from . import ssq_assign
@@ -1469,7 +1478,7 @@ def on_spawn_case(ctx):
     req = ctx.subject
     if QACase.unscoped.filter(qa_request=req).exists():
         return
-    dept = req.institution.handling_department
+    dept = inst_services.effective_handling_department(req.institution)
     code = getattr(dept, "code", "") or "qa"
     count = QARequestProgramme.unscoped.filter(qa_request=req, status=QARequestProgramme.ACTIVE).count()
     case = QACase.unscoped.create(reference=references.issue("case", dept=code.upper()), qa_request=req,
@@ -1523,7 +1532,8 @@ def raise_query(subject, *, user, title, body, due_days=None):
         raise PermissionDenied("You do not hold accreditation.raise_query.")
     inst = _institution_of(subject)
     if not (user.is_superuser or user.has_perm("qa_core.view_all_institutions")
-            or user.has_perm("accounts.access_all_departments") or user.department_id == inst.handling_department_id):
+            or user.has_perm("accounts.access_all_departments") or user.department_id == inst.handling_department_id
+            or user.department_id == getattr(inst_services.effective_handling_department(inst), "pk", None)):
         raise PermissionDenied("This institution is not in your scope.")
     title, body = (title or "").strip(), (body or "").strip()
     if len(title) < 3 or len(body) < 5:
@@ -1633,3 +1643,28 @@ def fee_estimate(inst, qa_type, pairs):
 
     schedule = qa_type.fee_schedule if qa_type is not None else None
     return estimate(inst, schedule.code if schedule is not None else "qa_request_processing", pairs)
+
+
+# ---------------------------------------------------------------------------
+# Tasks bridge: programme clearance becomes a task in the clearer's My work
+# (the stage has ``creates_task``; the task closes itself when the Director
+# clears or returns the programmes, or the request is cancelled).
+# ---------------------------------------------------------------------------
+def _request_task_resolver(req, stage, prefer_user):
+    dept = clearance_department(req)
+    users = []
+    if stage.code == "programme_clearance":
+        users = inst_services.director_or_es(dept)
+        if prefer_user is not None and prefer_user in users:
+            users = [prefer_user]
+    title = f"{req.reference} · {req.institution.name}"
+    return [u for u in users if u is not None][:1], dept, title
+
+
+def _register_request_tasks():
+    from qa_core import task_bridge
+
+    task_bridge.register_subject(QARequest, _request_task_resolver)
+
+
+_register_request_tasks()

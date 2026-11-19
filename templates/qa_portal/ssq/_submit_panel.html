@@ -1,6 +1,6 @@
 {% load qa_tags %}
 <section class="qa-card" aria-labelledby="ssq-sub-h">
-  <header class="qa-card__head"><div><h2 id="ssq-sub-h">{% if is_department %}Send back{% else %}Submit to NBTE{% endif %}</h2>
+  <header class="qa-card__head"><div><h2 id="ssq-sub-h">{% if is_department %}Send back{% elif can_submit %}Submit to NBTE{% else %}Ready to submit?{% endif %}</h2>
     <p>{% if problem_count %}{{ problem_count }} required answer{{ problem_count|pluralize }} still need{{ problem_count|pluralize:"s," }} attention.{% else %}Every required answer is in.{% endif %}</p></div></header>
   <div class="qa-card__body qa-stack">
     {% if problem_count %}
@@ -13,8 +13,12 @@
       <form class="qa-stack" method="post" action="{% url 'qa_portal:ssq_submit' req.pk ssq.pk %}" hx-post="{% url 'qa_portal:ssq_submit' req.pk ssq.pk %}" hx-target="#ssq-workspace" data-ssq-flush hx-trigger="qa:confirmed" data-qa-confirm="Your answers and files are frozen as version {{ ssq.version }} of this SSQ. You cannot change them unless NBTE returns it." data-qa-confirm-title="Submit the SSQ to NBTE?" data-qa-confirm-label="Submit">{% csrf_token %}
         <label class="qa-field--check qa-small"><input type="checkbox" name="declaration" required> I confirm these answers and documents are true and complete.</label>
         <button class="btn btn-primary btn-block" type="submit"{% if problem_count or request.is_impersonating %} disabled{% endif %}>Submit SSQ</button></form>
-    {% elif not is_department and ssq.status == "draft" %}
-      <p class="qa-small qa-muted">Only the Chief Executive can submit SSQs to NBTE. Ask your Chief Executive to sign in and submit.</p>
+    {% elif is_department %}
+      <p class="qa-small qa-muted s2-lock">{% icon "lock" 14 %} <span>Nothing on this SSQ is with you right now. Your institution's administrator sends you the sections to complete.</span></p>
+    {% elif ssq.status == "returned_to_department" %}
+      <p class="qa-small qa-muted s2-lock">{% icon "lock" 14 %} <span>The SSQ is with your academic department. It can be submitted once they send it back, or after you take it back. Only the Chief Executive can submit SSQs to NBTE.</span></p>
+    {% else %}{# draft or back from the department, and this account is not the Chief Executive #}
+      <p class="qa-small qa-muted s2-lock">{% icon "lock" 14 %} <span>Only the Chief Executive can submit SSQs to NBTE. {% if problem_count %}Finish the answers above, then ask{% else %}Ask{% endif %} your Chief Executive to sign in and submit.</span></p>
     {% endif %}
   </div>
 </section>

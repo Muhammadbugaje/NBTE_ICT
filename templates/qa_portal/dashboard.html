@@ -1,7 +1,8 @@
 {% extends base_template %}
-{% load qa_tags brand portal_journey_tags %}
+{% load qa_tags brand portal_journey_tags static %}
 {% block title %}Dashboard · {{ portal_name }}{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="{% static 'css/sop2.css' %}">
 <div class="qa-portal-page pp-page pp-dash">
   {% if institution and not is_resource_person %}{% get_linear_journey institution as lj %}{% endif %}
   {% include "qa_portal/payments/_welcome.html" %}
@@ -10,7 +11,7 @@
   <section class="pp-hero" data-tour="dash-hero" aria-labelledby="qa-welcome-title">
     <div class="pp-hero__main">
       <span class="pp-hero__eyebrow">{% icon "home" 14 "2.3" %}{% if is_resource_person %}Resource person{% else %}Institution dashboard{% endif %}</span>
-      <h1 id="qa-welcome-title" data-qa-focus>{% with gn=request.user|greet_name %}Welcome{% if gn %}, {{ gn }}{% endif %}{% endwith %}</h1>
+      <h1 id="qa-welcome-title" data-qa-focus>{% with gn=request.user|greet_name %}{% with g=gn|lower %}Welcome{% if not gn or g == "portal" or g == "admin" or g == "administrator" or g == "user" or g == "account" or g == "institution" or g == "ict" or g == "test" %}{% if institution %}, {{ institution.name }}{% endif %}{% else %}, {{ gn }}{% endif %}{% endwith %}{% endwith %}</h1>
       <p>
         {% if is_resource_person %}
           This is where NBTE shares the quality assurance engagements you are invited to — dates, programmes and what to submit.
@@ -38,6 +39,20 @@
       </div>
     {% endif %}
   </section>
+
+  {# ---------- Academic-department account: its own task first (the journey below describes the whole institution) ---------- #}
+  {% if request.user.role.code == "inst-academic-dept" and action_items %}
+  <section class="s2-mine" aria-labelledby="s2-mine-h">
+    <span class="s2-mine__mark" aria-hidden="true">{% icon "flag" 20 "2.4" %}</span>
+    <div class="s2-mine__body">
+      <span class="s2-mine__kicker" id="s2-mine-h">Your task{{ action_items|length|pluralize }} from your institution</span>
+      <ul class="s2-mine__list" role="list">{% for a in action_items %}
+        <li><div><strong>{{ a.title }}</strong>{% if a.body %}<span>{{ a.body|plain }}</span>{% endif %}</div>
+          <a class="btn {% if forloop.first %}btn-primary{% else %}btn-subtle{% endif %}" href="{{ a.url }}">{{ a.cta|default:"Open" }} <span aria-hidden="true">→</span></a></li>{% endfor %}
+      </ul>
+    </div>
+  </section>
+  {% endif %}
 
   {# ---------- The one linear journey: where you are and the one next thing ---------- #}
   {% if lj %}

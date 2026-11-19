@@ -36,7 +36,8 @@ def _int(key, default):
 
 
 def department_of(ssq):
-    return ssq.qa_request_programme.qa_request.institution.handling_department
+    from institutions.services import effective_handling_department
+    return effective_handling_department(ssq.qa_request_programme.qa_request.institution)
 
 
 def can_assign(user, ssq):

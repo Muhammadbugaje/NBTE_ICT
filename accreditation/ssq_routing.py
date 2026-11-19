@@ -121,7 +121,55 @@ def _save_meta(ssq, meta):
 # ---------------------------------------------------------------------------
 # Department and people
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Batch memo: list pages call holder() for many SSQs. Inside ``batch()`` the
+# department / director / ES lookups are remembered for the duration of the
+# block (one request), so a page of 25 SSQs costs a handful of queries, not
+# hundreds. Outside a batch nothing is cached.
+# ---------------------------------------------------------------------------
+import contextlib
+import contextvars
+
+_memo = contextvars.ContextVar("ssq_routing_memo", default=None)
+
+
+@contextlib.contextmanager
+def batch():
+    token = _memo.set({}) if _memo.get() is None else None
+    try:
+        yield
+    finally:
+        if token is not None:
+            _memo.reset(token)
+
+
+def batched(func):
+    """Decorator: run ``func`` inside :func:`batch`."""
+    import functools
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with batch():
+            return func(*args, **kwargs)
+    return wrapper
+
+
+def _cached(key, compute):
+    memo = _memo.get()
+    if memo is None:
+        return compute()
+    if key not in memo:
+        memo[key] = compute()
+    return memo[key]
+
+
 def handling_department(ssq):
+    routing = _meta(ssq).get("routing")
+    routed = routing.get("department_id") if isinstance(routing, dict) else None
+    return _cached(("dept", routed, _institution(ssq).pk), lambda: _handling_department(ssq))
+
+
+def _handling_department(ssq):
     """The department handling the SSQ: the one recorded when it was routed,
     otherwise the institution's handling department (Master Plan §5.2: NTIRD
     while the institution is proposed / under review, then its category's
@@ -132,24 +180,28 @@ def handling_department(ssq):
         dept = Department.objects.filter(pk=routing["department_id"]).first()
         if dept is not None:
             return dept
-    inst = _institution(ssq)
-    if inst.handling_department_id:
-        return inst.handling_department
+    from institutions.services import effective_handling_department
     try:
-        return inst.derive_handling_department()
+        return effective_handling_department(_institution(ssq))
     except Exception:  # pragma: no cover
         return None
 
 
 def _es_users():
     import org
-    return list(org.users_with_role("executive-secretary", staff_only=True).order_by("pk")[:3])
+    return _cached(("es",), lambda: list(org.users_with_role("executive-secretary", staff_only=True)
+                                        .order_by("pk")[:3]))
+
+
+def _director_of(dept):
+    import org
+    if dept is None:
+        return None
+    return _cached(("director", dept.pk), lambda: org.director_of(dept))
 
 
 def director(ssq):
-    import org
-    dept = handling_department(ssq)
-    return org.director_of(dept) if dept is not None else None
+    return _director_of(handling_department(ssq))
 
 
 def assigners(ssq):
@@ -158,10 +210,10 @@ def assigners(ssq):
     import org
     dept = handling_department(ssq)
     if dept is not None:
-        d = org.director_of(dept)
+        d = _director_of(dept)
         if d is not None:
             return [d]
-        heads = org.heads_of(dept)
+        heads = _cached(("heads", dept.pk), lambda: list(org.heads_of(dept)))
         if heads:
             return heads[:3]
     return _es_users()
@@ -179,7 +231,7 @@ def approver(ssq):
 def ict_director():
     import org
     from assignments import access
-    return org.director_of(access.ict_department_code())
+    return _cached(("ict_director",), lambda: org.director_of(access.ict_department_code()))
 
 
 def ict_supervisors(ssq):
@@ -226,12 +278,11 @@ def route_on_submit(ssq, actor=None, *, notify=True):
     import org
     inst = _institution(ssq)
     # Route on the institution's department *now* (a new version re-routes).
-    dept = inst.handling_department if inst.handling_department_id else None
-    if dept is None:
-        try:
-            dept = inst.derive_handling_department()
-        except Exception:  # pragma: no cover
-            dept = None
+    from institutions.services import effective_handling_department
+    try:
+        dept = effective_handling_department(inst)
+    except Exception:  # pragma: no cover
+        dept = None
     d = org.director_of(dept) if dept is not None else None
     if d is not None:
         people = [d]

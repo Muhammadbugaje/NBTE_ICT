@@ -346,7 +346,8 @@ def _notify_nbte_of_programme(programme):
         # department only (NTIRD does not handle approved institutions).
         users = list(get_user_model().objects.filter(is_active=True, user_type="staff",
                                                      department__code__iexact=code))
-    dept = getattr(programme.institution, "handling_department", None)
+    from .services import effective_handling_department
+    dept = effective_handling_department(programme.institution)
     if dept is not None and dept.director_id:
         director = get_user_model().objects.filter(pk=dept.director_id, is_active=True, user_type="staff").first()
         if director is not None and director not in users:

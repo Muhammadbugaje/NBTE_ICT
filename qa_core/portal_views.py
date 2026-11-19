@@ -703,7 +703,7 @@ def notifications(request):
     qs = mine.order_by("-created_at")
     if show == "unread":
         qs = qs.filter(is_read=False)
-    ctx = _shell_context(request, "notifications", page=paginate(request, list(qs)), show=show,
+    ctx = _shell_context(request, "notifications", page=paginate(request, qs), show=show,
                          unread_total=mine.filter(is_read=False).count())
     if is_htmx(request) and request.headers.get("HX-Target") == "qa-notif-rows":
         return render(request, "qa_portal/_notification_rows.html", ctx)

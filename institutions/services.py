@@ -66,6 +66,23 @@ def proposed_department():
     return qa_department(code)
 
 
+def effective_handling_department(inst):
+    """The department that really handles ``inst`` now. NTIRD (the onboarding
+    department) handles only institutions that are not approved yet; an
+    approved institution still pointing at it (a stale record) is handled by
+    its category's department instead."""
+    from .models import Institution
+
+    if inst is None:
+        return None
+    dept = inst.handling_department if inst.handling_department_id else None
+    if inst.status not in (Institution.PROPOSED, Institution.UNDER_REVIEW):
+        onboarding = proposed_department()
+        if dept is None or (onboarding is not None and dept.pk == onboarding.pk):
+            dept = inst.derive_handling_department() or dept
+    return dept or inst.derive_handling_department()
+
+
 @lru_cache(maxsize=1)
 def lga_map():
     path = Path(settings.BASE_DIR) / "staff" / "data" / "lgas.json"

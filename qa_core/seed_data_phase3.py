@@ -33,7 +33,7 @@ QA_TYPES = [
     ("increase_capacity", "Increase in Carrying Capacity",
      "Request to admit more streams for an accredited programme.", ["accredited"], False, False, False),
     ("institutional_administration", "Institutional Administration",
-     "The non-academic Institutional Administration 'programme' (Spec §6.3) on the same expiry cycle.",
+     "A review of how the institution is run (governance, administration and support services), on the same cycle as its programmes.",
      ["accredited", "interim", "expired", "approval_to_commence"], True, False, True),
 ]
 
@@ -286,7 +286,8 @@ QA_REQUEST_FLOW = {
         ("draft", "Draft", "Draft — choose your programmes, then submit", "start", "institution", {}),
         ("submitted", "Submitted", "Submitted to NBTE", "system", "system", {}),
         ("programme_clearance", "Programme clearance", "New programmes under review by NBTE", "action",
-         "role_in_department", {"actor_scope": "owning", "sla_hours": 120}),  # the handling department's Director
+         "role_in_department", {"actor_scope": "owning", "sla_hours": 120, "creates_task": True}),
+        # ↑ the handling department's Director; a task lands in their My work
         ("fee_due", "QA fee due", "QA processing fee due", "action", "institution", {}),
         ("payment_pending_confirmation", "Payment awaiting Finance confirmation",
          "Institution claims paid — awaiting Finance confirmation", "action", "finance_director", {}),
@@ -368,7 +369,7 @@ FLOWS = [QA_REQUEST_FLOW, SSQ_FLOW]
 # ---------------------------------------------------------------------------
 _REVIEW = ["accreditation.view_qa_case", "accreditation.raise_query", "accreditation.review_ssq"]
 ROLE_PERMISSIONS = {
-    "executive-secretary": ["accreditation.view_qa_case"],
+    "executive-secretary": ["accreditation.view_qa_case", "accreditation.clear_qa_programmes"],
     "director": _REVIEW + ["accreditation.clear_qa_programmes", "accreditation.publish_ssq_template",
                            "accreditation.manage_ssq_templates", "accreditation.manage_catalogue",
                            "institutions.initiate_add_programme_to_qa", "institutions.confirm_add_programme_to_qa"],

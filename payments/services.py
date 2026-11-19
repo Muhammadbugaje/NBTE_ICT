@@ -602,6 +602,9 @@ def _report_payment_failed(obligation, *, user, reason):
                       f"{obligation.reference} — reported failed or reversed: \"{reason}\". Withdrawn: "
                       f"{', '.join(withdrawn) or 'nothing'}. The bill is open for payment again; if the earlier "
                       "money does reach NBTE as well, the extra payment is routed to refund.")
+    # The subject (QA request / onboarding application) leaves "payment awaiting
+    # Finance" and goes back to "fee due", exactly as after a rejected claim.
+    transaction.on_commit(lambda: payment_rejected.send(sender=PaymentObligation, obligation=obligation))
     return obligation, None
 
 
@@ -2266,9 +2269,10 @@ NEXT_STEPS = {
     "programme_processing": ("Next: NBTE plans your visit",
                              "Your programme fee is confirmed. NBTE schedules the accreditation visit and tells you "
                              "here and by e-mail.", "qa_portal:dashboard", "Go to my dashboard"),
-    "qa_request_processing": ("Next: your QA request moves on",
-                              "NBTE now reviews your QA request. Follow its progress on the QA requests page.",
-                              "qa_portal:qa_requests", "Open my QA requests"),
+    "qa_request_processing": ("Next: fill in your self-study questionnaires",
+                              "Your QA fee is confirmed and your self-study questionnaires (SSQs) are open — one "
+                              "per programme. Fill them in and submit them; NBTE reviews them and then plans the "
+                              "visit.", "qa_portal:qa_requests", "Open my self-studies"),
 }
 
 
@@ -2284,6 +2288,12 @@ def next_step(obligation):
         url = reverse(name)
     except NoReverseMatch:
         url = reverse("qa_portal:dashboard")
+    if name == "qa_portal:qa_requests" and obligation.source_type_id and obligation.source_id \
+            and obligation.source_type.model == "qarequest":
+        try:  # straight to the request whose SSQs just opened
+            url = reverse("qa_portal:qa_request", args=[obligation.source_id])
+        except NoReverseMatch:  # pragma: no cover
+            pass
     return {"title": title, "text": text, "url": url, "label": label}
 
 

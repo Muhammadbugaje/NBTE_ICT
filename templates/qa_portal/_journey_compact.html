@@ -1,21 +1,36 @@
-{# Compact journey of one QA request (portal_journey.request_journey). Plain words only. #}
-{% if j %}{% with c=j.current %}
-<section class="lj lj--compact" aria-labelledby="ljc-h">
+{# Compact journey of one QA request (portal_journey.request_journey): where you are, then what to do next. Plain words only. #}
+{% if j %}{% with c=j.current %}{% url 'qa_portal:qa_request' req.pk as self_url %}
+<section class="lj lj--compact s2-here" aria-labelledby="ljc-h">
   <div class="lj__head">
     <div class="lj-ring lj-ring--sm" role="img" aria-label="{{ j.pct }}% of this request is done">
       <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false"><circle class="lj-ring__bg" cx="60" cy="60" r="52"/><circle class="lj-ring__fg" cx="60" cy="60" r="52" pathLength="100" style="stroke-dasharray:{{ j.pct }} 100"/></svg>
       <span><b>{{ j.pct }}%</b></span>
     </div>
     <div class="lj__intro">
-      <p class="lj__eyebrow">This request{% if not j.complete %} · <b>step {{ j.position }} of {{ j.total }}</b>{% endif %}</p>
+      <p class="lj__eyebrow">Where you are{% if not j.complete %} · <b>step {{ j.position }} of {{ j.total }}</b>{% endif %}</p>
       <h2 id="ljc-h">{{ j.headline }}</h2>
-      {% if c %}<p class="lj__who"><span class="lj-who{% if c.state == 'action' %} lj-who--you{% endif %}"><i aria-hidden="true">{% if c.state == "action" %}✓{% else %}N{% endif %}</i>{% if c.state == "action" %}Your turn · {{ c.holder|default:"You" }}{% else %}With {{ c.holder|default:"NBTE" }}{% endif %}</span></p>{% endif %}
+      {% if c %}<p class="lj__who"><span class="lj-who{% if c.state == 'action' %} lj-who--you{% endif %}"><i aria-hidden="true">{% if c.state == "action" %}✓{% else %}N{% endif %}</i>{% if c.state == "action" %}Your turn · {{ c.holder|default:"You" }}{% else %}With {{ c.holder|default:"NBTE" }}{% endif %}</span>
+        {% if c.since_days %}<span class="lj-since">for {{ c.since_days }} day{{ c.since_days|pluralize }}</span>{% endif %}</p>{% endif %}
     </div>
-    <div class="lj-compact__do">
-      {% if c.todo and c.todo.cta_url %}<a class="btn btn-primary" href="{{ c.todo.cta_url }}">{{ c.todo.cta_label }} <span aria-hidden="true">→</span></a>
-      {% elif j.complete %}<span class="lj-pill lj-pill--done">All done</span>
-      {% else %}<span class="lj-pill">Nothing to do now — we'll notify you</span>{% endif %}
+  </div>
+  <div class="s2-todo{% if c.todo %} is-act{% elif j.complete %} is-done{% endif %}" role="region" aria-label="What to do next">
+    <div class="s2-todo__text">
+      <span class="s2-todo__kicker">What to do next</span>
+      {% if c.todo %}
+        <strong>{{ c.todo.title }}</strong>
+        {% if c.todo.text and c.todo.text != c.todo.title %}<span>{{ c.todo.text }}</span>{% endif %}
+      {% elif j.complete %}
+        <strong>Nothing — every step of this request is complete</strong>
+      {% else %}
+        <strong>Nothing to do now</strong>
+        <span>{{ c.wait|default:"NBTE is working on this step. We will notify you when it is your turn." }}</span>
+      {% endif %}
     </div>
+    {% if c.todo and c.todo.cta_url %}
+      {% if c.todo.cta_url != self_url %}<a class="btn btn-primary" href="{{ c.todo.cta_url }}">{{ c.todo.cta_label }} <span aria-hidden="true">→</span></a>
+      {% elif req.status == "draft" %}<a class="btn btn-primary" href="#rq-submit">Go to Submit <span aria-hidden="true">↓</span></a>
+      {% else %}<a class="btn btn-primary" href="#rq-ssq">Go to the self-studies <span aria-hidden="true">↓</span></a>{% endif %}
+    {% endif %}
   </div>
   <ol class="lj-track" aria-label="Steps of this request">
     {% for st in j.steps %}

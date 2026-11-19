@@ -87,6 +87,10 @@ def dispatch(event_code, context, recipients, *, url="", actor=None, level="info
         rules = (NotificationRule.objects.filter(event_code=event_code, is_active=True,
                                                  template__is_active=True)
                  .select_related("template"))
+        # In-app rules first: a user who already got the in-app notice for this
+        # event does not get a second feed copy of the e-mail.
+        rules = sorted(rules, key=lambda r: r.template.channel != "in_app")
+        in_app_pks = set()
         for rule in rules:
             users = [u for u in (recipients.get(rule.recipient_kind) or []) if u is not None]
             if not users:
@@ -101,9 +105,10 @@ def dispatch(event_code, context, recipients, *, url="", actor=None, level="info
                     notify(user, title=subject or event_code, body=strip_tags(body)[:2000], url=url,
                            category=Notification.QA, level=level, actor=actor,
                            metadata={"event": event_code})
+                    in_app_pks.add(user.pk)
                     sent += 1
             elif rule.template.channel == "email":
-                _email(subject, body, users)
+                _email(subject, body, users, url=url, skip_feed_pks=in_app_pks)
                 sent += len(users)
             # SMS has no provider yet (Master Plan §19); rows are kept for later.
     except Exception:
@@ -111,7 +116,7 @@ def dispatch(event_code, context, recipients, *, url="", actor=None, level="info
     return sent
 
 
-def _email(subject, body, users):
+def _email(subject, body, users, *, url="", skip_feed_pks=()):
     from . import mail
     from notifications.preferences import should_deliver  # Phase 9: per-user e-mail preference
 
@@ -122,5 +127,9 @@ def _email(subject, body, users):
                               or should_deliver(u, "qa_cases", channel="email"))})
     if not recipients:
         return
+    feed = sorted({u.email for u in users if getattr(u, "email", "") and u.pk not in set(skip_feed_pks)}
+                  & set(recipients))
     mail.send(subject or "NBTE Quality Assurance", recipients, "emails/qa_notification.html",
-              {"subject": subject, "body_html": body}, category="qa")
+              {"subject": subject, "body_html": body}, category="qa", portal_notification=False)
+    if feed:  # the portal copy (with the link) for users without an in-app notice
+        mail._notify_recipients(subject, feed, "qa", {"url": url}, body_text=strip_tags(body))

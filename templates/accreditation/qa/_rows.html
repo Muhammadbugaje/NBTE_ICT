@@ -1,14 +1,18 @@
 {% load qa_tags %}
 {% if page.rows %}
-  <ul class="qa-rowlist" role="list">
+  <div class="s2-list" role="table" aria-label="QA requests">
+    <div class="s2-list__head" role="row"><span role="columnheader">Institution and request</span><span role="columnheader">Stage</span><span role="columnheader">With</span><span role="columnheader">Waiting</span></div>
     {% for r in page.rows %}
-      <li><a class="qa-rowlink" href="{% url 'qa_req:detail' r.pk %}" hx-get="{% url 'qa_req:detail' r.pk %}" hx-target="#qa-panel" hx-push-url="true">
-        <span class="qa-rowlink__badge">{{ r.institution.code }}</span>
-        <span class="qa-rowlink__main"><span class="qa-rowlink__title">{{ r.institution.name }} — {{ r.qa_type.name }}</span>
-          <span class="qa-rowlink__meta"><span class="qa-mono">{{ r.reference }}</span><span>· {{ r.count }} programme{{ r.count|pluralize }}</span>{% if r.submitted_at %}<span>· submitted {{ r.submitted_at|date:"j M Y" }}</span>{% else %}<span>· started {{ r.created_at|date:"j M Y" }}</span>{% endif %}</span></span>
-        <span class="qa-rowlink__side"><span class="qa-chip {{ r.status|tone }}">{{ r.public }}</span>{% if r.fee_note %}<span class="qa-small qa-muted">Fee not issued</span>{% endif %}</span></a></li>
+      <a class="s2-list__row" role="row" href="{% url 'qa_req:detail' r.pk %}" hx-get="{% url 'qa_req:detail' r.pk %}" hx-target="#qa-panel" hx-push-url="true">
+        <span class="s2-list__main" role="cell"><span class="qa-rowlink__badge" aria-hidden="true">{{ r.institution.code }}</span>
+          <span class="s2-list__text"><strong>{{ r.institution.name }} — {{ r.qa_type.name }}</strong>
+            <span class="s2-list__meta"><span class="qa-mono">{{ r.reference }}</span> · {{ r.count }} programme{{ r.count|pluralize }} · {% if r.submitted_at %}submitted {{ r.submitted_at|date:"j M Y" }}{% else %}started {{ r.created_at|date:"j M Y" }}{% endif %}</span></span></span>
+        <span class="s2-list__cell" role="cell" data-label="Stage"><span class="qa-chip {{ r.status|tone }}" title="The institution sees: {{ r.public }}">{{ r.stage_label }}</span>{% if r.fee_note %}<span class="qa-small qa-muted">Fee not issued</span>{% endif %}</span>
+        <span class="s2-list__cell s2-with is-{{ r.with_kind }}" role="cell" data-label="With">{{ r.with_whom }}</span>
+        <span class="s2-list__cell s2-list__days" role="cell" data-label="Waiting">{% if r.waiting_days %}{{ r.waiting_days }} day{{ r.waiting_days|pluralize }}{% elif r.waiting_days is not None %}Today{% else %}—{% endif %}</span>
+      </a>
     {% endfor %}
-  </ul>
+  </div>
   {% include "qa_core/partials/_pagination.html" with target="#qa-rows" %}
 {% else %}
   <div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "file" 28 %}</span><h3 class="nbte-empty-state__title">No QA requests here</h3><p class="nbte-empty-state__body">Requests appear when approved institutions start them on the portal. Try clearing the filters.</p></div>

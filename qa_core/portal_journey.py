@@ -628,8 +628,9 @@ def _request_ssq_rows(req):
 
 
 def _request_steps(s, inst, req, user):
+    from institutions.services import effective_handling_department
     type_name = getattr(req.qa_type, "name", "accreditation") if req is not None else "accreditation"
-    dept = getattr(inst, "handling_department", None)
+    dept = effective_handling_department(inst)
     if req is None:
         s["request"]["title"] = "Ask NBTE for accreditation"
         _set(s["request"], "action", "Your institution is approved. You can now ask NBTE to look at your "
@@ -681,8 +682,10 @@ def _request_steps(s, inst, req, user):
                         "Your answers save as you type. When every programme is complete, your Chief Executive "
                         "sends them to NBTE.", "Open the self-studies", req_url))
         return
-    if st == "ssq_submitted":
-        rows = _request_ssq_rows(req)
+    rows = _request_ssq_rows(req) if st in ("ssq_submitted", "in_workflow") else []
+    if st == "ssq_submitted" or any(not r["finished"] for r in rows):
+        # The QA case opens as soon as the last SSQ is submitted, so a returned
+        # or still-unreviewed SSQ is shown here (it is what matters now).
         back = [r for r in rows if r["state"] == "action"]
         if back:
             _set(s["request_ssq"], "action", f"NBTE sent back the self-study for {back[0]['name']}.",
@@ -708,7 +711,8 @@ def _request_steps(s, inst, req, user):
 def _case_steps(s, inst, req):
     from accreditation.models import QACase
     case = QACase.unscoped.filter(qa_request=req).select_related("owning_department").first()
-    dept = getattr(case, "owning_department", None) or getattr(inst, "handling_department", None)
+    from institutions.services import effective_handling_department
+    dept = getattr(case, "owning_department", None) or effective_handling_department(inst)
     holder = nbte_holder(dept)
     stage = getattr(case, "status", "") or "awaiting_sop03"
     visit = None

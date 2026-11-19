@@ -1,19 +1,27 @@
-{% load qa_tags %}
+{% load qa_tags static %}
+<link rel="stylesheet" href="{% static 'css/sop2.css' %}">
 <nav class="qa-crumbs" aria-label="Breadcrumb"><a href="{% url 'qa_portal:qa_requests' %}" hx-get="{% url 'qa_portal:qa_requests' %}" hx-target="#qa-main" hx-push-url="true">QA requests</a><span aria-hidden="true">/</span><a href="{% url 'qa_portal:qa_request' req.pk %}" hx-get="{% url 'qa_portal:qa_request' req.pk %}" hx-target="#qa-main" hx-push-url="true">{{ req.reference }}</a><span aria-hidden="true">/</span><span aria-current="page">SSQ · {{ programme.name }}</span></nav>
 <header class="qa-page-head qa-ssq-head">
   <div>
     <span class="qa-eyebrow">{% icon "sheet" 14 "2.2" %} Self-study questionnaire · {{ req.qa_type.name }}</span>
     <h1 data-qa-focus>{{ programme }}</h1>
     <p class="qa-row qa-gap-sm qa-wrap"><span class="qa-chip {{ ssq.status|tone }}">{{ public }}</span><span class="qa-small qa-muted">Version {{ ssq.version }} · questionnaire v{{ template.version }}</span>
-      {% if editable_sections %}{% include "qa_portal/ssq/_save_status.html" with state="idle" %}{% endif %}{% include "complaints/portal/_raise_link.html" with kind="ssq" pk=ssq.pk %}</p>
+      {% if editable_sections %}{% include "qa_portal/ssq/_save_status.html" with state="idle" %}{% endif %}</p>
   </div>
 </header>
 
 {% if error %}{% include "qa_core/partials/_callout.html" with kind="danger" title="Something needs attention" message=error %}{% endif %}
 {% if ssq.status == "returned" %}
   <div class="qa-callout qa-callout--danger" role="status">{% icon "alert" 18 "2.2" %}
-    <div><strong>NBTE returned this SSQ</strong><p>{{ ssq.review_remark }}</p>
+    <div><strong>NBTE returned this SSQ</strong>{% if ssq.review_remark %}<p class="s2-asked"><span class="s2-asked__k">What NBTE asked for</span>“{{ ssq.review_remark }}”</p>{% else %}<p>NBTE did not leave a note. Check your notifications or ask NBTE what to change.</p>{% endif %}
       {% if is_admin and ssq.is_current %}<form method="post" action="{% url 'qa_portal:ssq_revise' req.pk ssq.pk %}" hx-post="{% url 'qa_portal:ssq_revise' req.pk ssq.pk %}" hx-target="#ssq-workspace">{% csrf_token %}<button class="btn btn-sm btn-primary" type="submit">{% icon "rotate" 14 %} Start version {{ ssq.version|add:1 }}</button></form><p class="qa-small qa-muted">The returned version stays on record unchanged; your answers and files are copied into the new one.</p>{% endif %}</div></div>
+{% endif %}
+{% if ssq.is_current and ssq.status != "returned" and ssq.status != "submitted" and ssq.status != "accepted" and ssq.status != "analysed" %}{% for v in versions %}{% if v.version|add:1 == ssq.version and v.status == "returned" and v.review_remark %}
+  <div class="qa-callout qa-callout--warn" role="note">{% icon "rotate" 18 "2.2" %}
+    <div><strong>This is version {{ ssq.version }} — NBTE returned version {{ v.version }}</strong><p class="s2-asked"><span class="s2-asked__k">What NBTE asked for</span>“{{ v.review_remark }}”</p>
+      <p class="qa-small qa-muted">Your earlier answers and files were copied here. Make the changes NBTE asked for, then submit again.</p></div></div>
+{% endif %}{% endfor %}{% endif %}
+{% if ssq.status == "returned" %}
 {% elif ssq.status == "returned_to_department" %}
   {% if is_department %}
     {% include "qa_core/partials/_callout.html" with kind="info" title="Your institution sent you sections to complete" message=ssq.department_remark %}
@@ -59,3 +67,4 @@
   </aside>
 </div>
 {% endif %}
+<p class="s2-foot">Something not right with how this SSQ was handled? {% include "complaints/portal/_raise_link.html" with kind="ssq" pk=ssq.pk %}</p>

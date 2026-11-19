@@ -1,0 +1,263 @@
+/* ==========================================================================
+   sop2.css — SOP-02 (QA request) screens, staff and institution portal.
+
+   Not bundled. Linked from inside the panels themselves
+   (templates/accreditation/qa/_detail_panel.html, _list_panel.html,
+   _ssq_queue_panel.html, accreditation/_clearance_panel.html and the portal's
+   qa_requests/detail.html, ssq/_workspace.html, dashboard.html,
+   _notification_rows.html) so it also arrives when a panel is swapped in by
+   HTMX, and it loads after every bundle.
+
+   Same house rules as sop3.css (Apple "liquid glass"):
+   · One white surface per section; inside it, hairlines or one quiet grey tray.
+   · The raised white segment on a grey tray says "this is where it is now".
+   · Colour is the accent only: brand green for now / your turn, amber for
+     waiting, red for returned. Everything else is ink.
+   · Every colour is a token, so light, system-dark and [data-theme="dark"]
+     all follow without separate blocks.
+   · No backdrop-filter: nothing here floats over content.
+   · Self-contained: it does not need sop3.css (the portal does not load it).
+     On staff pages the stage track reuses sop3's .s3-track markup.
+   ========================================================================== */
+@media screen {
+
+:root {
+  --s2-hair: var(--divider, rgba(0, 0, 0, .07));
+  --s2-fill: rgba(118, 118, 128, .08);
+  --s2-fill-strong: rgba(118, 118, 128, .16);
+  --s2-accent-soft: color-mix(in srgb, var(--primary) 10%, transparent);
+  --s2-ok-soft: color-mix(in srgb, var(--success) 14%, transparent);
+  --s2-warn-soft: color-mix(in srgb, var(--warning) 14%, transparent);
+  --s2-danger-soft: color-mix(in srgb, var(--danger) 11%, transparent);
+  --s2-raise: 0 0 0 .5px rgba(0, 0, 0, .06), 0 1px 3px rgba(0, 0, 0, .10);
+  --s2-sheet: 0 1px 2px rgba(16, 24, 20, .04), 0 14px 34px -24px rgba(16, 24, 20, .28);
+  --s2-r-sheet: 20px;
+  --s2-r-tray: 16px;
+  --s2-r-row: 12px;
+  --s2-pad: clamp(18px, 2.4vw, 26px);
+}
+:root[data-theme="dark"] {
+  --s2-raise: 0 0 0 .5px rgba(255, 255, 255, .10), 0 1px 3px rgba(0, 0, 0, .5);
+  --s2-sheet: 0 0 0 .5px rgba(255, 255, 255, .06), 0 14px 34px -24px rgba(0, 0, 0, .7);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --s2-raise: 0 0 0 .5px rgba(255, 255, 255, .10), 0 1px 3px rgba(0, 0, 0, .5);
+    --s2-sheet: 0 0 0 .5px rgba(255, 255, 255, .06), 0 14px 34px -24px rgba(0, 0, 0, .7);
+  }
+}
+
+/* ---- 1. Staff: summary-first header --------------------------------------- */
+.s2-sum {
+  display: grid; gap: 18px; margin: 0 0 20px; padding: var(--s2-pad);
+  border-radius: var(--s2-r-sheet); background: var(--surface); border: 1px solid var(--s2-hair);
+  box-shadow: var(--s2-sheet); container-type: inline-size;
+}
+.s2-sum.is-mine { border-color: color-mix(in srgb, var(--primary) 34%, var(--border, transparent)); }
+.s2-sum__top { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.5fr); gap: 18px 28px; align-items: center; }
+.s2-sum__facts { align-self: start; padding-top: 22px; }
+.s2-sum__lead { display: grid; gap: 4px; min-width: 0; }
+.s2-sum__lead .s3-eyebrow, .s2-eyebrow { font-size: .78rem; font-weight: 600; color: var(--text-muted); }
+.s2-sum__lead .s3-figure {
+  font-size: clamp(1.35rem, 2.6vw, 1.85rem); font-weight: 700; letter-spacing: -.025em; line-height: 1.15;
+  color: var(--text); overflow-wrap: anywhere; text-wrap: balance;
+}
+.s2-sum__tag {
+  display: inline-block; vertical-align: middle; margin-inline-start: 6px; padding: 3px 9px; border-radius: 999px;
+  font-size: .74rem; font-weight: 600; letter-spacing: 0; background: var(--s2-danger-soft); color: var(--danger-fg, var(--danger));
+}
+.s2-sum__public { font-size: .84rem; line-height: 1.45; color: var(--text-muted); }
+.s2-sum__facts { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.s2-sum__facts > div { display: grid; align-content: start; gap: 3px; min-width: 0; padding: 2px 16px; border-inline-start: 1px solid var(--s2-hair); }
+.s2-sum__facts dt { font-size: .78rem; font-weight: 500; color: var(--text-muted); }
+.s2-sum__facts dd { margin: 0; font-size: .95rem; font-weight: 600; line-height: 1.35; color: var(--text); overflow-wrap: anywhere; }
+.s2-sum__facts dd small { display: block; font-size: .8rem; font-weight: 400; color: var(--text-muted); }
+@container (max-width: 720px) {
+  .s2-sum__top { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .s2-sum__facts { grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--s2-hair); padding-top: 0; }
+  .s2-sum__facts > div { grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 12px; padding: 10px 0; border-inline-start: 0; border-bottom: 1px solid var(--s2-hair); }
+  .s2-sum__facts dd { text-align: end; }
+}
+
+/* "Your turn": the one accent tray on the page. */
+.s2-turn {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px 14px; align-items: center;
+  padding: 14px 16px; border-radius: var(--s2-r-tray); background: var(--s2-accent-soft);
+}
+.s2-turn__mark {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 999px;
+  background: var(--primary); color: var(--primary-fg, #fff);
+}
+.s2-turn__text { display: grid; gap: 2px; min-width: 0; }
+.s2-turn__kicker { font-size: .76rem; font-weight: 700; color: var(--primary); }
+.s2-turn__text strong { font-size: 1.02rem; font-weight: 650; letter-spacing: -.01em; color: var(--text); }
+.s2-turn__text > span:last-child { font-size: .88rem; line-height: 1.5; color: var(--text-muted); max-width: 72ch; }
+@container (max-width: 620px) {
+  .s2-turn { grid-template-columns: auto minmax(0, 1fr); }
+  .s2-turn > .btn { grid-column: 1 / -1; justify-self: start; }
+}
+.s2-next { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: .9rem; line-height: 1.55; color: var(--text-muted); max-width: 86ch; }
+.s2-next > svg { flex: none; margin-top: 4px; }
+.s2-next strong { color: var(--text); font-weight: 600; }
+
+/* Seven stages: sop3's track, dot above the label so seven fit one row. */
+.s2-track.s3-track { margin: 0; }
+.s2-track .s3-track__step { grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 10px 10px 11px; }
+.s2-track .s3-track__label { font-size: .82rem; }
+.s2-track .s3-track__state { font-size: .75rem; }
+.s2-track .s3-track__step.is-skipped .s3-track__label { font-weight: 500; color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--s2-fill-strong); }
+.s2-track .s3-track__step.is-skipped .s3-track__dot { box-shadow: inset 0 0 0 1.5px var(--s2-fill-strong); }
+@media (max-width: 860px) {
+  .s2-track .s3-track__step { grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
+}
+
+/* Callouts between the summary and the cards keep their own breathing room. */
+.s2-page > .qa-callout, .s2-portal > .qa-callout { margin-bottom: 16px; }
+/* Narrow side cards: a long bill reference wraps instead of squeezing its status chip. */
+.s2-page aside .qa-rowlink__meta .qa-mono, .s2-portal aside .qa-rowlink__meta .qa-mono { white-space: normal; overflow-wrap: anywhere; }
+.s2-page aside .qa-rowlink__side .qa-chip, .s2-portal aside .qa-rowlink__side .qa-chip { white-space: nowrap; }
+
+/* ---- 2. Programme rows: one plain state per programme --------------------- */
+.s2-state {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px;
+  font-size: .82rem; font-weight: 600; line-height: 1.3; white-space: nowrap;
+  background: var(--s2-fill); color: var(--text);
+}
+.s2-state > svg { flex: none; }
+.s2-state.is-wait { background: var(--s2-warn-soft); color: var(--warning-fg, var(--warning)); }
+.s2-state.is-ok { background: var(--s2-ok-soft); color: var(--success-fg, var(--success)); }
+.s2-state.is-back { background: var(--s2-danger-soft); color: var(--danger-fg, var(--danger)); }
+@media (max-width: 560px) { .s2-state { white-space: normal; } }
+
+/* The decision sits directly under the rows it decides, on one grey tray. */
+.s2-decide { display: grid; gap: 14px; padding: 16px; border-radius: var(--s2-r-tray); background: var(--s2-fill); }
+.s2-decide__head { display: grid; gap: 3px; }
+.s2-decide__head strong { font-size: 1rem; font-weight: 650; letter-spacing: -.01em; color: var(--text); }
+.s2-decide__head span { font-size: .86rem; line-height: 1.5; color: var(--text-muted); max-width: 70ch; }
+.s2-decide .qa-field { margin: 0; }
+.s2-decide textarea.input { background: var(--surface); }
+
+/* ---- 3. Staff list: stage · with · waiting -------------------------------- */
+.s2-list { display: grid; }
+.s2-list__head, .s2-list__row {
+  display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1.25fr) minmax(0, 1.35fr) 84px; gap: 6px 18px; align-items: center;
+  padding: 12px var(--s2-pad);
+}
+.s2-list__head { padding-block: 9px; font-size: .76rem; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--s2-hair); }
+.s2-list__row { color: inherit; text-decoration: none; border-bottom: 1px solid var(--s2-hair); transition: background-color .15s ease; }
+.s2-list__row:last-child { border-bottom: 0; }
+.s2-list__row:hover { background: var(--s2-fill); }
+.s2-list__row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: var(--s2-r-row); }
+.s2-list__main { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; min-width: 0; }
+.s2-list__text { display: grid; gap: 2px; min-width: 0; }
+.s2-list__text strong { font-size: .95rem; font-weight: 600; letter-spacing: -.01em; color: var(--text); overflow-wrap: anywhere; }
+.s2-list__meta { font-size: .8rem; line-height: 1.45; color: var(--text-muted); overflow-wrap: anywhere; }
+.s2-list__cell { display: grid; gap: 3px; justify-items: start; min-width: 0; font-size: .88rem; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+.s2-list__cell .qa-chip { white-space: normal; max-width: 100%; text-align: start; line-height: 1.3; }
+.s2-list__days { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.s2-with { font-weight: 500; }
+.s2-with.is-nbte { font-weight: 600; }
+.s2-with.is-institution, .s2-with.is-system, .s2-with.is-none { color: var(--text-muted); }
+@media (max-width: 900px) {
+  .s2-list__head { display: none; }
+  .s2-list__row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .s2-list__cell { grid-template-columns: 64px minmax(0, 1fr); align-items: center; }
+  .s2-list__cell::before { content: attr(data-label); grid-row: 1 / span 2; font-size: .76rem; font-weight: 600; color: var(--text-muted); }
+}
+
+/* ---- 4. Portal: "where you are / what to do next" -------------------------- */
+.s2-here.lj--compact .lj__head { margin-bottom: 14px; }
+.s2-todo {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px; align-items: center;
+  margin: 0 0 16px; padding: 14px 16px; border-radius: var(--s2-r-tray); background: var(--s2-fill);
+}
+.s2-todo.is-act { background: var(--s2-warn-soft); }
+.s2-todo.is-done { background: var(--s2-ok-soft); }
+.s2-todo__text { display: grid; gap: 3px; min-width: 0; }
+.s2-todo__kicker { font-size: .76rem; font-weight: 700; color: var(--text-muted); }
+.s2-todo.is-act .s2-todo__kicker { color: var(--warning-fg, var(--warning)); }
+.s2-todo__text strong { font-size: 1.05rem; font-weight: 650; letter-spacing: -.012em; line-height: 1.3; color: var(--text); }
+.s2-todo__text > span:last-child { font-size: .9rem; line-height: 1.55; color: var(--text-muted); max-width: 70ch; }
+.s2-todo .btn { min-height: 44px; }
+@media (max-width: 620px) {
+  .s2-todo { grid-template-columns: minmax(0, 1fr); }
+  .s2-todo .btn { justify-self: start; }
+}
+.s2-portal .qa-rowlink__side .s2-state { justify-self: end; }
+/* Long programme names and long NBTE status lines wrap instead of cutting each other off. */
+.s2-portal .qa-rowlink__title { white-space: normal; overflow-wrap: anywhere; }
+.s2-portal .qa-rowlink__side .qa-chip { white-space: normal; text-align: end; line-height: 1.3; max-width: 30ch; }
+#ssq-workspace > .qa-callout { margin-bottom: 16px; }
+
+/* NBTE's own words, quoted once, clearly labelled. */
+.s2-asked { margin: 6px 0 8px; font-size: .98rem; line-height: 1.55; color: var(--text); }
+.s2-asked__k { display: block; margin-bottom: 2px; font-size: .76rem; font-weight: 700; color: var(--text-muted); }
+
+.s2-lock { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 12px 14px; border-radius: var(--s2-r-row); background: var(--s2-fill); line-height: 1.5; }
+.s2-lock > svg { flex: none; margin-top: 3px; }
+
+/* A quiet last line (the complaint link lives here, not in the header). */
+.s2-foot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 28px 0 0; padding-top: 14px;
+  border-top: 1px solid var(--s2-hair); font-size: .82rem; color: var(--text-muted);
+}
+
+/* Cancel: collapsed, last, ink not red until it is opened. */
+.s2-cancel.qa-card { box-shadow: none; background: transparent; border: 1px solid var(--s2-hair); }
+.s2-cancel__sum {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 13px 16px; cursor: pointer; list-style: none;
+  border-radius: inherit;
+}
+.s2-cancel__sum::-webkit-details-marker { display: none; }
+.s2-cancel__sum::after {
+  content: ""; flex: none; width: 7px; height: 7px; margin-inline-start: auto; align-self: center;
+  border: solid var(--text-muted); border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); transition: transform .2s ease;
+}
+.s2-cancel[open] > .s2-cancel__sum::after { transform: rotate(225deg); }
+.s2-cancel__sum:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.s2-cancel__title { font-size: .9rem; font-weight: 600; color: var(--text-muted); }
+.s2-cancel[open] .s2-cancel__title { color: var(--text); }
+.s2-cancel__hint { font-size: .8rem; color: var(--text-muted); }
+.s2-cancel__hint strong { font-weight: 600; color: var(--text); }
+
+/* ---- 5. Portal dashboard: the department account's own task --------------- */
+.s2-mine {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px 16px; align-items: start;
+  margin: 0 0 20px; padding: var(--s2-pad); border-radius: var(--s2-r-sheet);
+  background: var(--surface); border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--border, transparent));
+  box-shadow: var(--s2-sheet);
+}
+.s2-mine__mark { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; background: var(--primary); color: var(--primary-fg, #fff); }
+.s2-mine__body { display: grid; gap: 10px; min-width: 0; }
+.s2-mine__kicker { font-size: .78rem; font-weight: 700; color: var(--primary); }
+.s2-mine__list { list-style: none; margin: 0; padding: 0; display: grid; }
+.s2-mine__list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 18px; align-items: center; padding: 12px 0; border-top: 1px solid var(--s2-hair); }
+.s2-mine__list li:first-child { border-top: 0; padding-top: 0; }
+.s2-mine__list li:last-child { padding-bottom: 0; }
+.s2-mine__list li > div { display: grid; gap: 3px; min-width: 0; }
+.s2-mine__list strong { font-size: clamp(1.05rem, 1.8vw, 1.3rem); font-weight: 700; letter-spacing: -.02em; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
+.s2-mine__list li:not(:first-child) strong { font-size: 1rem; font-weight: 600; letter-spacing: -.01em; }
+.s2-mine__list span { font-size: .92rem; line-height: 1.55; color: var(--text-muted); max-width: 70ch; }
+.s2-mine__list .btn { min-height: 44px; }
+@media (max-width: 620px) {
+  .s2-mine { grid-template-columns: minmax(0, 1fr); }
+  .s2-mine__list li { grid-template-columns: minmax(0, 1fr); }
+  .s2-mine__list .btn { justify-self: start; }
+}
+
+/* ---- 6. Portal notifications: a row with a link is a link ------------------ */
+.s2-notif { position: relative; transition: background-color .15s ease; }
+.s2-notif:hover { background: var(--s2-fill); }
+.s2-notif__link { color: var(--text); text-decoration: none; }
+.s2-notif__link::after { content: ""; position: absolute; inset: 0; }
+.s2-notif__link:focus-visible { outline: none; }
+.s2-notif:has(.s2-notif__link:focus-visible) { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: var(--s2-r-row); }
+.s2-notif__go { font-size: .8rem; font-weight: 600; color: var(--primary); white-space: nowrap; }
+/* the tick box stays clickable above the stretched link */
+.s2-notif input[type="checkbox"], .s2-notif label { position: relative; z-index: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .s2-list__row, .s2-notif, .s2-cancel__sum::after { transition: none; }
+}
+
+}

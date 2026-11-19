@@ -29,6 +29,11 @@ from .models import (BodyRequirementCheck, Evidence, QACase, QARequest, QAReques
 # ---------------------------------------------------------------------------
 # Access
 # ---------------------------------------------------------------------------
+def ssq_routing_batched(func):
+    from .ssq_routing import batched
+    return batched(func)
+
+
 def can_view_qa_requests(user):
     return (user.is_authenticated and getattr(user, "user_type", "staff") == "staff"
             and (user.is_superuser or any(user.has_perm(p) for p in (
@@ -131,11 +136,24 @@ def request_list(request):
     if f.get("fee_note") == "yes":
         qs = qs.exclude(fee_note="")
     page = paginate(request, qs)
+    from . import qa_request_ui
+
+    # One query each for the labels and the programme counts (not 4 per row).
+    labels = svc.public_status_map()
+    from django.db.models import Count
+
+    ids = [r.pk for r in page["rows"]]
+    counts = dict(QARequestProgramme.unscoped.filter(qa_request_id__in=ids, status="active")
+                  .values_list("qa_request_id").annotate(n=Count("pk")).values_list("qa_request_id", "n"))
+    stage_labels, entered = qa_request_ui.list_prefetch(page["rows"])
+    departments = {}
     for r in page["rows"]:
-        r.public = svc.public_status(r)
-        r.count = QARequestProgramme.objects.for_user(user).filter(qa_request=r, status="active").count()
+        r.public = labels.get(r.status) or svc.public_status(r)
+        r.count = counts.get(r.pk, 0)
+        # display only: internal stage + "with whom"
+        qa_request_ui.list_meta(r, labels=stage_labels, entered=entered, departments=departments)
     base = QARequest.objects.for_user(user)
-    ctx = {"page": page, "filters": f, "stages": STATUS_GROUPS, "types": QAType.objects.order_by("sort_order"),
+    ctx = {"page": page, "filters": f, "stages": STATUS_GROUPS, "types": QAType.objects.filter(is_active=True).order_by("sort_order"),
            "counts": {"total": base.count(), "clearance": base.filter(status="programme_clearance").count(),
                       "ssq_waiting": SSQ.objects.for_user(user).filter(status="submitted", is_current=True).count(),
                       "open_queries": Query.objects.for_user(user).filter(status__in=("open", "answered")).count()}}
@@ -143,6 +161,7 @@ def request_list(request):
                      {"qa-panel": "accreditation/qa/_list_panel.html", "qa-rows": "accreditation/qa/_rows.html"})
 
 
+@ssq_routing_batched
 def _detail_context(request, req, **extra):
     user = request.user
     row_manager = QARequestProgramme.unscoped if getattr(req, "_clearance_view", False) else \
@@ -188,6 +207,13 @@ def _detail_context(request, req, **extra):
         "can_retry_fee": req.status == "fee_due" and bool(req.fee_note) and not svc.open_obligations(req)
         and (user.is_superuser or user.has_perm("payments.view_obligation") or user.has_perm("accreditation.view_qa_case")),
     }
+    from . import qa_request_ui  # display only: the summary-first header and the SOP-02 stage track
+
+    for row in rows:
+        row.note_is_system = qa_request_ui.note_is_system(row)
+    ctx["sop2"] = qa_request_ui.summary(req, user, rows=rows, events=ctx["history"], can_clear=can_clear,
+                                        clear_reason=why_not, can_retry_fee=ctx["can_retry_fee"], ssqs=ssqs,
+                                        obligations=obligations, case=ctx["case"])
     ctx.update(extra)
     return ctx
 
@@ -309,6 +335,13 @@ def _queue_context(request, params=None):
     from django.utils import timezone
 
     now = timezone.now()
+    with ssq_routing.batch():
+        return _queue_rows_context(request, user, f, status, base, qs, openable, now)
+
+
+def _queue_rows_context(request, user, f, status, base, qs, openable, now):
+    from . import ssq_routing
+
     rows = list(qs[:500])
     for s in rows:
         s.who = ssq_routing.holder(s, now=now, with_supervisors=False)
@@ -326,9 +359,10 @@ def _queue_context(request, params=None):
     page = paginate(request, rows)
     # Stats over everything at NBTE in scope (independent of the filters).
     stats = {"waiting": 0, "unassigned": 0, "assessing": 0, "approval": 0, "overdue": 0}
+    known = {s.pk: s.who for s in rows}
     for s in base.filter(status="submitted", is_current=True).select_related(
             "qa_request_programme__qa_request__institution__handling_department")[:1000]:
-        info = ssq_routing.holder(s, now=now, with_supervisors=False)
+        info = known.get(s.pk) or ssq_routing.holder(s, now=now, with_supervisors=False)
         stats["waiting"] += 1
         for key, stages in STAGE_FILTERS.items():
             if info["stage"] in stages:
@@ -342,7 +376,7 @@ def _queue_context(request, params=None):
     return {"page": page, "filters": f, "status": status, "statuses": SSQ_FILTERS,
             # tabs with a live count where the stage is "at NBTE" (the others are history, not work)
             "tabs": [(value, label, tab_counts.get(value)) for value, label in SSQ_FILTERS],
-            "types": QAType.objects.order_by("sort_order"), "levels": _levels(),
+            "types": QAType.objects.filter(is_active=True).order_by("sort_order"), "levels": _levels(),
             "departments": Department.objects.filter(pk__in=[d for d in dept_ids if d]).order_by("name"),
             "counts": stats, "sla_days": ssq_routing._int("qa.ssq.stage_sla_days", 5),
             "tracks_all": ssq_routing.tracks_everything(user)}
@@ -356,6 +390,7 @@ def ssq_queue(request):
                       "qa-rows": "accreditation/qa/_ssq_rows.html"})
 
 
+@ssq_routing_batched
 def _ssq_context(request, ssq, **extra):
     user = request.user
     submission = Submission.objects.for_user(user).filter(ssq=ssq).order_by("-version").first()

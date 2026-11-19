@@ -1,16 +1,22 @@
-{% load qa_tags %}{% load ux_tags %}
+{% load qa_tags %}{% load ux_tags %}{% load static %}
+<link rel="stylesheet" href="{% static 'css/sop2.css' %}">
 {% if page.rows %}
 <div class="bulk-toolbar qa-card__body" style="padding-bottom:0">{% bulk_all "bulk-pnotifs" %}</div>
+{# Notification links are stored relative to the portal host ("/payments/38/"); `pfx` adds the mount path when the portal is served under one. #}
+{% url 'qa_portal:notifications' as alerts_url %}{% with pfx=alerts_url|cut:"/alerts/" %}
 <ul class="qa-rowlist" role="list">{% for n in page.rows %}
-  <li class="qa-rowlink qa-rowlink--static qa-rowlink--nobadge{% if not n.is_read %} is-unread{% endif %}" data-uxb-row>
+  {% with first=n.url|slice:":1" two=n.url|slice:":2" %}
+  <li class="qa-rowlink {% if n.url and first == '/' and two != '//' %}s2-notif{% else %}qa-rowlink--static{% endif %} qa-rowlink--nobadge{% if not n.is_read %} is-unread{% endif %}" data-uxb-row>
     {% bulk_check "bulk-pnotifs" n.pk n.title %}
     <span class="qa-rowlink__main">
-      <span class="qa-rowlink__title">{{ n.title }}</span>
+      {% if n.url and first == '/' and two != '//' %}<a class="qa-rowlink__title s2-notif__link" href="{% if pfx and pfx not in n.url %}{{ pfx }}{% endif %}{{ n.url }}">{{ n.title }}</a>
+      {% else %}<span class="qa-rowlink__title">{{ n.title }}</span>{% endif %}
       {% if n.body %}<span class="qa-small qa-muted">{{ n.body }}</span>{% endif %}
       <span class="qa-rowlink__meta"><time datetime="{{ n.created_at|date:'c' }}">{{ n.created_at|date:"j M Y, H:i" }}</time></span>
     </span>
-    <span class="qa-rowlink__side">{% if not n.is_read %}<span class="qa-chip qa-tone-pending">New</span>{% endif %}</span>
+    <span class="qa-rowlink__side">{% if not n.is_read %}<span class="qa-chip qa-tone-pending">New</span>{% endif %}{% if n.url and first == '/' and two != '//' %}<span class="s2-notif__go" aria-hidden="true">Open →</span>{% endif %}</span>
   </li>
-{% endfor %}</ul>
+  {% endwith %}
+{% endfor %}</ul>{% endwith %}
 {% include "qa_core/partials/_pagination.html" with target="#qa-notif-rows" %}
 {% else %}<div class="nbte-empty-state qa-empty"><span class="nbte-empty-state__icon" aria-hidden="true">{% icon "bell" 28 %}</span><h3 class="nbte-empty-state__title">{% if show == "unread" %}Nothing unread{% else %}No notifications yet{% endif %}</h3><p class="nbte-empty-state__body">When NBTE needs something from you, or a decision is made, it appears here.</p></div>{% endif %}

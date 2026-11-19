@@ -11,11 +11,12 @@
   </div>
 </section>
 {% elif can_cancel %}
-<details class="qa-card qa-danger-zone rf-cancel-card"><summary class="qa-card__head" style="cursor:pointer"><div><h2>Cancel {{ noun }}</h2><p>Refund now: <strong>{{ quote.percent }}%</strong>{% if quote.paid %} · {{ quote.refund_amount|naira }} of {{ quote.paid|naira }}{% endif %}</p></div></summary>
+{# Low-key on purpose: collapsed, last on the page. The refund figure leads only when money was actually paid. #}
+<details class="qa-card rf-cancel-card s2-cancel"><summary class="s2-cancel__sum"><span class="s2-cancel__title">Cancel {{ noun }}</span><span class="s2-cancel__hint">{% if quote.paid %}Refund now: <strong>{{ quote.percent }}%</strong> · {{ quote.refund_amount|naira }} of {{ quote.paid|naira }}{% else %}Free — nothing has been paid{% endif %}</span></summary>
   <div class="qa-card__body qa-stack">
-    <p class="qa-small">The work stops and unpaid bills are cancelled. {% if quote.paid %}You would get {{ quote.refund_amount|naira }} back ({{ quote.percent }}%).{% else %}Nothing has been paid, so nothing is refunded.{% endif %}</p>
-    <a class="btn btn-subtle qa-btn-reject" href="{{ cancel_url }}" hx-get="{{ cancel_url }}" hx-target="#qa-main" hx-push-url="true">{% icon "ban" 16 %} Cancel {{ noun }}…</a>
-    <a class="qa-small" href="{% url 'qa_portal:refund_policy' %}" hx-get="{% url 'qa_portal:refund_policy' %}" hx-target="#qa-main" hx-push-url="true">Refund policy</a>
+    <p class="qa-small">The work stops and unpaid bills are cancelled. {% if quote.paid %}You would get {{ quote.refund_amount|naira }} back ({{ quote.percent }}% of the {{ quote.paid|naira }} you paid).{% else %}You have not paid anything, so cancelling costs nothing and no refund is needed.{% endif %}</p>
+    <a class="btn btn-sm btn-subtle qa-btn-reject" href="{{ cancel_url }}" hx-get="{{ cancel_url }}" hx-target="#qa-main" hx-push-url="true">{% icon "ban" 14 %} Cancel {{ noun }}…</a>
+    {% if quote.paid %}<a class="qa-small" href="{% url 'qa_portal:refund_policy' %}" hx-get="{% url 'qa_portal:refund_policy' %}" hx-target="#qa-main" hx-push-url="true">Refund policy</a>{% endif %}
   </div>
 </details>
 {% elif ce_only %}

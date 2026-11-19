@@ -221,11 +221,13 @@ def profile_gate(view):
         if gate_enabled() and getattr(user, "user_type", "") == "institution" and user.institution_id:
             inst = Institution.unscoped.filter(pk=user.institution_id).select_related("ownership").first()
             if inst is not None and not profile_complete(inst):
+                from qa_core.hosts import portal_mount
+                target = portal_mount(request) + "/setup/"  # keeps the /qa-portal/ mount on Render
                 if request.headers.get("HX-Request"):
                     response = HttpResponse(status=204)
-                    response["HX-Redirect"] = "/setup/"
+                    response["HX-Redirect"] = target
                     return response
-                return redirect("/setup/")
+                return redirect(target)
         return view(request, *args, **kwargs)
     return wrapped
 

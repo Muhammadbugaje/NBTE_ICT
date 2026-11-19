@@ -123,7 +123,14 @@ def _notify_recipients(subject, recipients, category, context, *, body_text=""):
             return []
         url = str((context or {}).get("url") or "")
         text = (body_text or "").strip()
+        # The feed shows the message, not the e-mail wrapper (greeting banner,
+        # "reply to this email" footer, signature block).
+        cut = text.find("You can reply directly to this email")
+        if cut > 0:
+            text = text[:cut].strip()
         title = str(subject or "Message from NBTE")[:255]
+        if text.startswith(title):
+            text = text[len(title):].strip()
         body = text[:600] or f"E-mail sent to you: {title}."
         from django.db.models import Q
 
